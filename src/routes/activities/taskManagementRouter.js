@@ -1,0 +1,29 @@
+import { AllTask, archiveAllTask, convertSupportTicketAllTask, CreateSupportTicket, createSupportTicketMessage, deleteAllTask, generateTaskSampleSheetProvider, getAllTask, getSupportTicket, getSupportTicketCategory, getSupportTicketMessage, getTaskCategory, getTaskCount, readUnreadTask, stickyNotesComplateData, stickyNotesCreateData, stickyNotesDeleteData, stickyNotesGet, stickyNotesUpdateData, unarchiveAllTask, updateAllTask, WidgetAddRemove } from "../../controllers/activities/taskManagementController.js";
+import { authenticateToken } from "../../middlewares/auth.js";
+import { supportChatUpload, taskUpload } from "../../middlewares/multer.js";
+import { tenantMiddleware } from "../../middlewares/tenantMiddleware.js";
+
+export default (app) => {
+  app.post("/create-task", authenticateToken, tenantMiddleware, taskUpload, AllTask);
+  app.post("/get-task", authenticateToken, tenantMiddleware, getAllTask);
+  app.post("/update-task", authenticateToken, tenantMiddleware, taskUpload, updateAllTask);
+  app.post("/deleteTask", authenticateToken, tenantMiddleware, deleteAllTask);
+  app.post("/get-Task-count", authenticateToken, tenantMiddleware, getTaskCount);
+  app.post("/archiveTask", authenticateToken, tenantMiddleware, archiveAllTask);
+  app.post("/unarchive-Task", authenticateToken, tenantMiddleware, unarchiveAllTask);
+  app.post("/covert-supportticket-task", authenticateToken, tenantMiddleware, convertSupportTicketAllTask);
+  app.post("/generate-Task-sample-sheet", authenticateToken, tenantMiddleware, generateTaskSampleSheetProvider);
+  app.post("/create-support-ticket", authenticateToken, tenantMiddleware, taskUpload, CreateSupportTicket);
+  app.post("/get-support-ticket", authenticateToken, tenantMiddleware, getSupportTicket);
+  app.post("/get-supportticket-category", authenticateToken, getSupportTicketCategory);
+  app.post("/get-support-ticket-message", authenticateToken, getSupportTicketMessage);
+  app.post("/create-support-ticket-message", authenticateToken, supportChatUpload, createSupportTicketMessage);
+  app.post("/readunread-task", authenticateToken, tenantMiddleware, readUnreadTask);
+  app.post("/stickyNotesGet", authenticateToken, tenantMiddleware, stickyNotesGet);
+  app.post("/stickyNotesCreate", authenticateToken, tenantMiddleware, stickyNotesCreateData);
+  app.post("/stickyNotesEdit", authenticateToken, tenantMiddleware, stickyNotesUpdateData);
+  app.post("/stickyNotesDelete", authenticateToken, tenantMiddleware, stickyNotesDeleteData);
+  app.post("/stickyNotesComplate", authenticateToken, tenantMiddleware, stickyNotesComplateData);
+  app.post("/getTaskCategory", authenticateToken, tenantMiddleware, getTaskCategory);
+  app.post("/widget-add", authenticateToken, tenantMiddleware, WidgetAddRemove);
+};

@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Account Statement</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Poppins:wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap"
+      rel="stylesheet"
+    />
+
+    <style>
+      @page {
+        size: A4 portrait;
+        margin: 10mm;
+      }
+      body {
+        font-family: "Poppins", sans-serif;
+        font-size: 10px;
+        color: #000;
+        margin: 0;
+        padding: 0;
+      }
+      .statement-container {
+        max-width: 1000px;
+        margin: 0 auto;
+        background: #fff;
+        padding: 15px;
+        border-radius: 4px;
+      }
+      h5 {
+        font-size: 12px;
+        margin: 0;
+        text-transform: uppercase;
+      }
+      h6 {
+        font-size: 12px;
+        margin: 0;
+      }
+      .small {
+        font-size: 10px;
+      }
+      .text-muted {
+        color: #6c757d;
+      }
+      .text-end {
+        text-align: right;
+      }
+      .text-start {
+        text-align: left;
+      }
+      .text-center {
+        text-align: center;
+      }
+
+      .row {
+        display: flex;
+        flex-wrap: nowrap;
+        margin-bottom: 8px;
+      }
+      .col-6 {
+        flex: 0 0 50%;
+        max-width: 50%;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 10px;
+      }
+      thead {
+        background: #f8f9fa;
+      }
+      th,
+      td {
+        border: 1px solid #dee2e6;
+        padding: 6px 8px;
+        vertical-align: middle;
+      }
+      .remark-cell {
+        max-width: 280px;
+        word-break: break-word;
+        white-space: pre-wrap;
+      }
+      .totals-row td {
+        font-weight: 600;
+        background: #f1f3f5;
+      }
+      tr {
+        page-break-inside: avoid;
+        break-inside: avoid;
+      }
+      td,
+      th {
+        page-break-inside: avoid;
+        break-inside: avoid;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="statement-container">
+      <table
+        style="margin-bottom: 8px; border: none; width: 100%"
+        cellspacing="0"
+        cellpadding="0"
+      >
+        <tr>
+          <% if ( settingDetails.headerImage ) { %>
+          <td
+            style="
+              border: none;
+              vertical-align: top;
+              text-align: left;
+              width: 50%;
+            "
+          >
+            <div style="padding-right: 10px">
+              <h5 style="margin: 0; text-transform: uppercase">
+                <%= companyData?.company_name || '' %>
+              </h5>
+              <% if (companyData?.address) { %>
+              <div class="small"><%= companyData.address %></div>
+              <% } %>
+              <div class="small">
+                <% if (companyData?.company_contact) { %> Mo. <%=
+                companyData.company_contact %> <% } %> <% if
+                (companyData?.company_email) { %> <% if
+                (companyData?.company_contact) { %> | <% } %> <%=
+                companyData.company_email %> <% } %>
+              </div>
+              <% if (companyData?.gst_number) { %>
+              <div class="small">GSTIN: <%= companyData.gst_number %></div>
+              <% } %>
+            </div>
+          </td>
+          <% } %>
+
+          <td
+            style="
+              border: none;
+              vertical-align: top;
+             text-align: <%= settingDetails.headerImage ? 'right' : 'left' %>;
+              width: 50%;
+            "
+          >
+            <div style="text-align: left; display: inline-block">
+              <h6 style="margin: 0">Account Statement</h6>
+              <p class="text-muted small" style="margin: 0">
+                From <%= fromDate %> to <%= toDate %>
+              </p>
+              <% if (employeeData) { %>
+              <div class="small" style="margin-top: 6px; text-align: left">
+                <% if (employeeData.username) { %>
+                <div><strong><%= employeeData.username %></strong></div>                
+                <% } %> <% if (employeeData.recovery_mobile) { %>
+                <div>Mo. <%= employeeData.recovery_mobile %></div>
+                <% } %> <% if (employeeData.recovery_email) { %>
+                <div><%= employeeData.recovery_email %></div>                
+                <% } %>
+              </div>
+              <% } %>
+            </div>
+          </td>
+        </tr>
+      </table>
+
+      <hr />
+      <!-- Transactions Table -->
+      <% const toNumber = v => { if (v == null) return 0; const s =
+      String(v).replace(/[, ]+/g, ""); const n = Number(s); return isNaN(n) ? 0
+      : n; }; const fmtNum = n => Number(n).toLocaleString("en-IN", {
+      maximumFractionDigits: 2 }); const formatBalanceCell = v => { const num =
+      toNumber(v); const abs = fmtNum(Math.abs(num)); if (num < 0) return {
+      text: `${abs} (Dr)`, style: "color: red;" }; return { text: `${abs} (Cr)`,
+      style: "color: green;" }; }; %>
+      <div>
+        <table>
+          <thead>
+            <tr>
+              <th>No.</th>
+              <th>Date & Time</th>
+              <th>Remark</th>
+              <th class="text-end">Credit</th>
+              <th class="text-end">Debit</th>
+              <th class="text-end">Balance</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% if (rowsWithBalance.length === 0) { %>
+            <tr>
+              <td colspan="6" class="text-center">No transactions found</td>
+            </tr>
+            <% } else { %> <% rowsWithBalance.forEach((tx, idx) => { const
+            balCell = formatBalanceCell(tx.balance); %>
+            <tr>
+              <td>#<%= tx.id %></td>
+              <td><%= tx.payment_date %></td>
+              <td class="remark-cell"><%- tx.remark %></td>
+              <td class="text-end"><%= tx.credit || '-' %></td>
+              <td class="text-end"><%= tx.debit || '-' %></td>
+              <td class="text-end" style="<%= balCell.style %>">
+                <%= balCell.text %>
+              </td>
+            </tr>
+            <% }) %> <% const lastBalCell = formatBalanceCell(lastRowBalance);
+            %>
+            <tr class="totals-row">
+              <td colspan="3">Total</td>
+              <td class="text-end"><%= totalCredit %></td>
+              <td class="text-end"><%= totalDebit %></td>
+              <td class="text-end" style="<%= lastBalCell.style %>">
+                <%= lastBalCell.text %>
+              </td>
+            </tr>
+            <% } %>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Footer -->
+      <% if (companyData?.footer_img && settingDetails.footerImage ) { %>
+      <div class="text-center" style="margin-top: 20px">
+        <img
+          src="<%= backendUrl %>/companyImg/<%= companyData.footer_img %>"
+          style="width: 100%"
+        />
+      </div>
+      <% } %>
+    </div>
+  </body>
+</html>

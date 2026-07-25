@@ -1,0 +1,33 @@
+1. a_application_login_type_rights
+    ALTER TABLE `a_application_login_type_rights` ADD UNIQUE(`a_application_login_id`, `company_masters_id`, `page_id`);
+
+2.company_masters
+    ALTER TABLE `company_masters` ADD UNIQUE(`qr_code`);
+
+4.tenant_masters
+    ALTER TABLE `tenant_masters` ADD UNIQUE(`a_application_login_id`, `company_masters_id`);
+
+5.products
+    ALTER TABLE products MODIFY COLUMN product_barcode_number VARCHAR(13) NOT NULL, ADD UNIQUE (product_barcode_number);
+  
+
+
+
+
+----------------
+find unique key quary.
+
+SELECT 
+    TABLE_SCHEMA AS database_name,
+    TABLE_NAME AS table_name,
+    INDEX_NAME AS unique_index_name,
+    GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX) AS unique_columns
+FROM 
+    information_schema.STATISTICS
+WHERE 
+    NON_UNIQUE = 0  -- means UNIQUE index
+    AND TABLE_SCHEMA = 'your_database_name'  -- replace with your DB name
+GROUP BY 
+    TABLE_SCHEMA, TABLE_NAME, INDEX_NAME
+ORDER BY 
+    TABLE_NAME, INDEX_NAME;

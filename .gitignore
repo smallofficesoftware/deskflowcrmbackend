@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+package-lock.json
+yarn.lock
+bun.lockb
+bun.lock
+
+# Logs
+logs/
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Migration temporary config files
+src/config/temp-tenant-config-*.js
+
+# Secrets
+credentials.json
+firebaseAdminSDK.json
+
+# Build output
+dist/
+build/
+out/
+
+# Test coverage
+coverage/
+.nyc_output/
+

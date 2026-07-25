@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap" rel="stylesheet" />
+  
+  <style>
+    body {
+      font-family: "Poppins", sans-serif;
+      font-size: 10px;
+      margin: 0;
+      padding: 0;
+    }
+    @page {
+      width: 80mm;
+      margin: 2mm 1mm;
+    }
+    .print-table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+    .print-table td {
+      padding: 3px;
+      font-size: 10px;
+      vertical-align: top;
+    }
+    .text-center { text-align: center !important; }
+    .text-right { text-align: right !important; }
+    .bolde-style { font-weight: bold; }
+    .companyName {
+      font-size: 20px !important;
+      text-transform: uppercase;
+      font-weight: bold;
+    }
+    hr {
+      margin: 2px 0;
+      border-top: 2px solid #000 !important;
+      height: 2px;
+      width: 100%;
+    }
+    .section-title {
+      text-align: center;
+      font-weight: bold;
+      padding: 6px 0;
+    }
+    @media print {
+      body, .content, .print-table {
+        width: 80mm !important;
+        max-width: 80mm !important;
+      }
+      .print-table td {
+        padding: 2px 5px !important;
+      }
+      .companyName { font-size: 20px !important; }
+    }
+    * { border: 0px !important; }
+  </style>
+</head>
+<body>
+  <% if (accountTransactions) { %>
+  <div style="position: relative; width: 80mm; min-height: 100vh; margin: 0 auto; font-size: 10px; line-height: 1.2;">
+    <div class="content" id="content">
+      <table class="print-table">
+
+        <!-- ==================== HEADER ==================== -->
+        <% if (settingDetails.headerImage) { %>
+        <thead>
+          <tr>
+            <td class="companyName" colspan="4" style="text-align: center; border: 1px solid black; padding: 3px;">
+              <%= companyDetails?.company_name %>
+            </td>
+          </tr>
+          <tr>
+            <td colspan="4" style="text-align: center; border: 1px solid black; padding: 3px;">
+              <%= companyDetails?.address %><br />
+              <b>Mo.</b> <%= companyDetails?.company_contact %> , 
+              <b>Email:</b> <%= companyDetails?.company_email %> , 
+              <b>GSTIN:</b> <%= companyDetails?.gst_number %>
+            </td>
+          </tr>
+        </thead>
+        <% } %>
+
+        <tbody>
+
+          <!-- ==================== CONTACT DETAILS SECTION ==================== -->
+          <% if (settingDetails.employeeDetails) { %>
+          <tr style="page-break-before: always;">
+            <td class="main-colspan-class text-center" colspan="4">
+              <hr />
+              <p class="m-0"><b>Employee Details</b></p>
+              <hr />
+            </td>
+          </tr>
+
+          <tr>
+            <td class="main-colspan-class" style="padding: 0" colspan="4">
+              <table border="0" style="width: 100%; border: 0">
+                <tbody>
+                  <tr>
+                    <td style="vertical-align: top; padding: 4px 6px 4px 0; font-weight: bold; width: 45%;">Employee Name:</td>
+                    <td style="text-align: right; vertical-align: top; padding: 4px 0; width: 55%;">
+                      <%= employeeDetails?.username || '-' %>
+                    </td>
+                  </tr>
+                 
+                  <% if (employeeDetails?.recover_mobile) { %>
+                  <tr>
+                    <td style="vertical-align: top; padding: 4px 6px 4px 0; font-weight: bold;">Mobile No:</td>
+                    <td style="text-align: right; vertical-align: top; padding: 4px 0;">
+                      <%= employeeDetails?.recover_mobile %>
+                    </td>
+                  </tr>
+                  <% } %>
+                  <% if (employeeDetails?.recovery_email) { %>
+                  <tr>
+                    <td style="vertical-align: top; padding: 4px 6px 4px 0; font-weight: bold;">Email:</td>
+                    <td style="text-align: right; vertical-align: top; padding: 4px 0;">
+                      <%= employeeDetails?.recovery_email %>
+                    </td>
+                  </tr>
+                  <% } %>
+                 
+                </tbody>
+              </table>
+            </td>
+          </tr>
+          <% } %>
+
+          <!-- ==================== ACCOUNT TRANSACTION SECTION ==================== -->
+          <tr style="page-break-before: always;">
+            <td class="main-colspan-class text-center" colspan="4">
+              <hr />
+              <p class="m-0"><b>Account Transaction</b></p>
+              <hr />
+            </td>
+          </tr>
+
+          <tr>
+            <td class="main-colspan-class" style="padding: 0" colspan="4">
+              <table border="0" style="width: 100%; border: 0">
+                <tbody>
+                  <tr>
+                    <td style="width: 48%; vertical-align: top; padding: 4px 6px 4px 0; font-weight: bold;">Transaction ID:</td>
+                    <td style="width: 52%; text-align: right; vertical-align: top; padding: 4px 0;">
+                      <span class="bolde-style"># <%= accountTransactions.id %></span>
+                    </td>
+                  </tr>
+
+                  <tr>
+                    <td style="vertical-align: top; padding: 4px 6px 4px 0; font-weight: bold;">Employee Name:</td>
+                    <td style="text-align: right; vertical-align: top; padding: 4px 0;">
+                      <%= employeeDetails?.username || '-' %>
+                    </td>
+                  </tr>
+
+                  <tr>
+                    <td style="vertical-align: top; padding: 4px 6px 4px 0; font-weight: bold;">Amount:</td>
+                    <td style="text-align: right; vertical-align: top; padding: 4px 0;">
+                      <span style="font-weight: bold; font-size: 13px; color: <%= accountTransactions.type == '1' ? 'green' : 'red' %>;">
+                        <%= currencySymbol || '₹' %> <%= formatNumber(accountTransactions.amount) %>
+                        <%= accountTransactions.type == '1' ? '(Credit)' : '(Debit)' %>
+                      </span>
+                    </td>
+                  </tr>
+
+                  <tr>
+                    <td style="vertical-align: top; padding: 4px 6px 4px 0; font-weight: bold;">Payment Date & Time:</td>
+                    <td style="text-align: right; vertical-align: top; padding: 4px 0;">
+                      <%= accountTransactions.payment_date_time ? formatDateAndTime(accountTransactions.payment_date_time) : '-' %>
+                    </td>
+                  </tr>
+
+                  <tr>
+                    <td style="vertical-align: top; padding: 4px 6px 4px 0; font-weight: bold;">Payment Mode:</td>
+                    <td style="text-align: right; vertical-align: top; padding: 4px 0;">
+                      <%= payment_type_name || '-' %>
+                    </td>
+                  </tr>
+
+                  <tr>
+                    <td style="text-align: left; vertical-align: top; padding: 6px 0 4px 0; font-weight: bold;">
+                      <%- accountTransactions?.remark || "" %>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td colspan="4" style="height: 0; padding: 0; margin: 0;">
+              <hr />
+            </td>
+          </tr>
+
+          <tr class="without_price_check" style="border: 0; padding-bottom: 20px; text-align: center">
+            <td colspan="4" style="border: 0">Thank You!</td>
+          </tr>
+
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      setTimeout(function () {
+        window.print();
+      }, 700);
+    })();
+  </script>
+
+  <% } else { %>
+    <p class="text-center">Loading...</p>
+  <% } %>
+</body>
+</html>

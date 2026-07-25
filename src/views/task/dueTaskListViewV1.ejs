@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Due Tasks</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Poppins:wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap"
+      rel="stylesheet"
+    />
+
+    <style>
+      @page {
+        size: A4 portrait;
+        margin: 10mm;
+      }
+      body {
+        font-family: "Poppins", sans-serif;
+        font-size: 10px;
+        color: #000;
+        margin: 0;
+        padding: 0;
+      }
+      .statement-container {
+        max-width: 1000px;
+        margin: 0 auto;
+        background: #fff;
+        padding: 15px;
+        border-radius: 4px;
+      }
+      h5 {
+        font-size: 12px;
+        margin: 0;
+        text-transform: uppercase;
+      }
+      h6 {
+        font-size: 12px;
+        margin: 0;
+      }
+      .small {
+        font-size: 10px;
+      }
+      .text-muted {
+        color: #6c757d;
+      }
+      .text-end {
+        text-align: right;
+      }
+      .text-start {
+        text-align: left;
+      }
+      .text-center {
+        text-align: center;
+      }
+
+      .row {
+        display: flex;
+        flex-wrap: nowrap;
+        margin-bottom: 8px;
+      }
+      .col-6 {
+        flex: 0 0 50%;
+        max-width: 50%;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 10px;
+      }
+      thead {
+        background: #f8f9fa;
+      }
+      th,
+      td {
+        border: 1px solid #dee2e6;
+        padding: 6px 8px;
+        vertical-align: middle;
+      }
+      .remark-cell {
+        max-width: 280px;
+        word-break: break-word;
+        white-space: pre-wrap;
+      }
+      .totals-row td {
+        font-weight: 600;
+        background: #f1f3f5;
+      }
+      tr {
+        page-break-inside: avoid;
+        break-inside: avoid;
+      }
+      td,
+      th {
+        page-break-inside: avoid;
+        break-inside: avoid;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="statement-container">
+      <table
+        style="margin-bottom: 8px; border: none; width: 100%"
+        cellspacing="0"
+        cellpadding="0"
+      >
+        <tr>
+          <td
+            style="
+              border: none;
+              vertical-align: top;
+              text-align: left;
+              width: 50%;
+            "
+          >
+            <div style="padding-right: 10px">
+              <h5 style="margin: 0; text-transform: uppercase">
+                <%= companyData?.company_name || '' %>
+              </h5>
+              <% if (companyData?.address) { %>
+              <div class="small"><%= companyData.address %></div>
+              <% } %>
+              <div class="small">
+                <% if (companyData?.company_contact) { %> Mo. <%=
+                companyData.company_contact %> <% } %> <% if
+                (companyData?.company_email) { %> <% if
+                (companyData?.company_contact) { %> | <% } %> <%=
+                companyData.company_email %> <% } %>
+              </div>
+              <% if (companyData?.gst_number) { %>
+              <div class="small">GSTIN: <%= companyData.gst_number %></div>
+              <% } %>
+            </div>
+          </td>
+
+          <td
+            style="
+              border: none;
+              vertical-align: top;
+              text-align: right;
+              width: 50%;
+            "
+          ></td>
+        </tr>
+      </table>
+
+      <hr />
+    <div>
+
+<% if (teamWiseTaskList.length === 0) { %>
+<table>
+<tbody>
+<tr>
+<td colspan="8" class="text-center">No due task found</td>
+</tr>
+</tbody>
+</table>
+<% } else { %>
+<% teamWiseTaskList.forEach((team) => { %>
+
+<div style="margin-top:15px;font-weight:600;font-size:14px;">Team Person : <%= team.team_name %></div>
+
+<table style="margin-top:5px;">
+<thead>
+<tr>
+<th>No.</th>
+<th>Task no.</th>
+<th>Task title</th>
+<th class="text-end">Current status</th>
+<th class="text-end">Assigned to</th>
+<th class="text-end">Date</th>
+<th class="text-end">Due days</th>
+</tr>
+</thead>
+<tbody>
+<% team.tasks.forEach((tx, idx) => { %>
+<tr>
+<td style="width: 10px !important"><%= idx + 1 %></td>
+<td style="width: 10px !important"><%= tx.id %></td>
+<td><b><%= tx.task_title %></b><br /><%= tx.task_remark %></td>
+<td style="width: 20px !important; color: <%= tx.status_color %>"><b><%= tx.status_name %></b></td>
+<td><%= tx.assinged_to_names %></td>
+<td style="width: 80px !important">Start <%= tx.task_fromdate %><br />End <%= tx.task_enddate %></td>
+<td style="width: 10px !important"><%= tx.due_days %></td>
+</tr>
+<% }) %>
+</tbody>
+</table>
+
+<% }) %>
+<% } %>
+
+</div>
+    </div>
+  </body>
+</html>

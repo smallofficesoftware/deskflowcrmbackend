@@ -1,0 +1,1262 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap" rel="stylesheet">
+  <title>Invoice</title>
+
+<style>
+  /* Global Styles */
+
+  * {
+    margin: 0px;
+    padding: 0px;
+    font-style: normal !important;
+  }
+
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    margin: 0;
+    padding: 0;
+    color: #333;
+    z-index: 0;
+    font-style: normal !important;
+  }
+
+  /* Table Styling */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    z-index: 9999;
+    font-style: normal !important;
+    table-layout: fixed;
+  }
+
+  .now-rap-white-space{
+      white-space: nowrap !important;
+  }
+
+  th,
+  td {
+    border: 1px solid #000;
+    min-height: 30px !important;
+    padding: 6px 7px;
+    text-align: left;
+    font-style: normal !important;
+    line-height: 1.5;
+    vertical-align: top;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    white-space: normal;
+  }
+
+  th {
+    text-align: center;
+    font-weight: bold;
+  }
+
+  .bold {
+    font-weight: bold;
+    text-align: center;
+  }
+
+  .from-section,
+  .to-section,
+  .invoice-details {
+    width: 33%;
+  }
+
+  .text-center {
+    text-align: center;
+  }
+
+  strong {
+    font-weight: bold;
+    font-style: normal !important;
+  }
+
+  p {
+    font-style: normal !important;
+    line-height: 1.5;
+  }
+
+  span {
+    font-style: normal !important;
+  }
+
+  div {
+    font-style: normal !important;
+  }
+
+  br {
+    line-height: 1.5;
+  }
+
+  /* CRITICAL - INVOICE ITEMS TABLE - PREVENT PAGE BREAK */
+  .invoice-items {
+    page-break-inside: auto;
+  }
+
+  .invoice-items thead {
+    display: table-header-group;
+  }
+
+  .invoice-items tbody {
+    display: table-row-group;
+  }
+
+  /* MOST IMPORTANT - Keep each item row together */
+  .invoice-items tbody tr,
+  .invoice-row {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    page-break-after: auto;
+    page-break-before: auto;
+  }
+
+  /* Keep all cells in a row together */
+  .invoice-items tbody tr td,
+  .invoice-row td {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* Images must not break */
+  img {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    display: block;
+    max-width: 100%;
+    height: auto;
+  }
+
+  /* Image containers must not break */
+  td div {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  @media print {
+    @page {
+      size: A4;
+      margin: 0.2cm;
+      font-style: normal !important;
+    }
+
+    body {
+      font-family: Arial, Helvetica, sans-serif !important;
+    }
+
+    .watermark {
+      display: block !important;
+    }
+
+    /* CRITICAL - Invoice items page break control */
+    .invoice-items,
+    .invoice-items tbody,
+    .invoice-items tbody tr,
+    .invoice-row {
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
+    }
+
+    .invoice-items thead {
+      display: table-header-group;
+    }
+
+    .invoice-items tfoot {
+      display: table-footer-group;
+    }
+
+    .page-break {
+      page-break-before: always;
+    }
+
+    .invoice-container {
+      width: 100% !important;
+      max-width: none !important;
+      margin: 0 !important;
+    }
+
+    table {
+      width: 100%;
+      table-layout: fixed;
+    }
+
+    th,
+    td {
+      padding: 6px 7px !important;
+      min-height: 30px !important;
+      line-height: 1.5 !important;
+      page-break-inside: avoid !important;
+      vertical-align: top !important;
+    }
+
+    tr {
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
+    }
+
+    /* Images in print */
+    img {
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
+      max-width: 100%;
+    }
+
+    * {
+      font-size: 11px !important;
+      line-height: 1.5 !important;
+      font-style: normal !important;
+    }
+
+    p, span, div, strong {
+      line-height: 1.5 !important;
+    }
+  }
+
+  * {
+    font-size: 11px !important;
+    line-height: 1.5 !important;
+    font-style: normal !important;
+  }
+
+  table th[rowspan="2"]:first-child {
+    position: relative;
+  }
+
+  table th[rowspan="2"]:first-child::after {
+    content: "";
+    position: absolute;
+    right: 0;
+    top: 0;
+    width: 1px;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.663);
+  }
+
+  /* Remove borders from nested table inside bank details section */
+  td[style*="border-top: 0"] table,
+  td[style*="border-bottom: 0"] table {
+    border: 0 !important;
+  }
+
+  td[style*="border-top: 0"] table tr,
+  td[style*="border-bottom: 0"] table tr {
+    border: 0 !important;
+  }
+
+  td[style*="border-top: 0"] table td,
+  td[style*="border-bottom: 0"] table td {
+    border: 0 !important;
+  }
+
+  /* Specifically target the QR code table cell */
+  td[style*="border: 0px"] {
+    border: 0 !important;
+  }
+</style>
+
+</head>
+
+<body>
+
+  <%
+    let orderType = orderTypesList.find((option) => Number(option.id) === cart.type) || {};
+    let dynamicColor = "";
+
+    if (orderType.id == 1) {
+        dynamicColor = companyDetail.quotation_view_color || "#cfcfcf";
+    } else if (orderType.id == 2) {
+        dynamicColor = companyDetail.order_view_color || "#cfcfcf"; 
+    } else if (orderType.id == 3) {
+        dynamicColor = companyDetail.invoice_view_color || "#cfcfcf"; 
+    } else if (orderType.id == 4) {
+        dynamicColor = companyDetail.purchase_view_color || "#cfcfcf"; 
+    } else if (orderType.id == 5) {
+        dynamicColor = companyDetail.purchase_order_color || "#cfcfcf"; 
+    } else if (orderType.id == 6) {
+        dynamicColor = companyDetail.return_saled_invoice_color || "#cfcfcf"; 
+    } else if (orderType.id == 7) {
+        dynamicColor = companyDetail.return_purchase_invoice_color || "#cfcfcf"; 
+    } else if (orderType.id == 8) {
+        dynamicColor = companyDetail.inward_color || "#cfcfcf"; 
+    } else if (orderType.id == 9) {
+        dynamicColor = companyDetail.dispatch_color || "#cfcfcf"; 
+    }
+
+    let dynamicTitle = "";
+
+    if (orderType.id == 1) {
+        dynamicTitle = companyDetail.quotation_title || "Quotation";
+    } else if (orderType.id == 2) {
+        dynamicTitle = companyDetail.order_title || "Sales Order"; 
+    } else if (orderType.id == 3) {
+        dynamicTitle = companyDetail.invoice_title || "Sales Invoice"; 
+    } else if (orderType.id == 4) {
+        dynamicTitle = companyDetail.purchase_title || "Purchase Invoice"; 
+    } else if (orderType.id == 5) {
+        dynamicTitle = companyDetail.purchase_order_title || "Purchase Order"; 
+    } else if (orderType.id == 6) {
+        dynamicTitle = companyDetail.return_saled_invoice_title || "Return Sales Invoice"; 
+    } else if (orderType.id == 7) {
+        dynamicTitle = companyDetail.return_purchase_invoice_title || "Return Purchase Invoice"; 
+    } else if (orderType.id == 8) {
+        dynamicTitle = companyDetail.inward_title || "Goods Received Note"; 
+    } else if (orderType.id == 9) {
+        dynamicTitle = companyDetail.dispatch_title || "Dispatch"; 
+    }
+
+const groupedItems = items.reduce((acc, item) => {
+    const hsn = item.item_hsn_code?.trim() || 'N/A';
+    const gstRate = Number(item.item_gst) || 0;
+    const key = `${hsn}|||${gstRate}`;
+
+    if (!acc[key]) {
+        acc[key] = {
+            item_hsn_code: hsn === 'N/A' ? 'Unknown' : hsn,
+            item_gst: gstRate,
+            item_total: 0
+        };
+    }
+    acc[key].item_total += Number(item.item_total) || 0;
+    return acc;
+}, {});
+
+    // Global variable to store GST amount
+    const totalGstAmount = Number(cart.gst_amt) || 0;
+      
+const dynamicColumns = [];
+if (items && items.length > 0 && productCustom && productCustom.length > 0 && printSetting.product_custom_feilds) {
+  const firstProductCustom = productCustom[0] || {};
+  for (let key in firstProductCustom) {
+    const rowColumnKey = key + "_product_feild_row_column";
+    const rowColumnValue = firstProductCustom[rowColumnKey];
+    if (rowColumnValue == 2) {
+      dynamicColumns.push({
+        key: key,
+        title: key.replace(/_/g, " ").toUpperCase()
+      });
+    }
+  }
+}
+
+const visibleDynamicColumns = dynamicColumns.filter(col => {
+  return items.some((item, idx) => {
+    const customFields = productCustom[idx] || {};
+    let value = customFields[col.key];
+
+    if (value == null || value === undefined || value === "" || (typeof value === 'string' && value.trim() === "" )) {
+      return false;
+    }
+
+    
+    if (
+      value === undefined ||
+      value === "" ||
+      value === " " ||
+      value === "0" ||
+      value === "00:00:00" ||
+      value === "0000-00-00" ||
+      value === "0000-00-00 00:00:00" ||
+      value === "null" ||
+      value === "NULL"
+    ) {
+      return false;
+    }
+
+    const isDateTime = col.key.toLowerCase().includes("date") || col.key.toLowerCase().includes("time");
+    if (isDateTime) {
+      const d = new Date(value);
+      // Invalid date returns false
+      if (isNaN(d.getTime())) return false;
+      // Check if date is not default/zero date
+      if (d.getFullYear() === 1970 || d.getFullYear() < 1900) return false;
+      return true;
+    }
+
+    // For non-date fields, must have valid content
+    return true;
+  });
+});
+
+const visibleColCount = visibleDynamicColumns.length;
+
+
+
+%>
+
+  <%
+  let formattedDate = "00-00-00 00:00:00";
+
+  if (cart.update_Date_time && cart.update_Date_time !== "00-00-00 00:00:00") {
+    const date = new Date(cart.update_Date_time);
+
+    if (!isNaN(date.getTime())) { // check valid date
+      const day = ('0' + date.getDate()).slice(-2);
+      const month = ('0' + (date.getMonth() + 1)).slice(-2); // months are 0-indexed
+      const year = date.getFullYear();
+
+      let hours = date.getHours();
+      const minutes = ('0' + date.getMinutes()).slice(-2);
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      hours = hours % 12;
+      hours = hours ? hours : 12; // 0 should be 12
+
+      formattedDate = `${day}-${month}-${year} ${hours}:${minutes} ${ampm}`;
+    }
+  }
+%>
+  <div style="position: relative;">
+    <div class="watermark" style="text-align: center; display: none; ">
+      <!-- <img src="<%= company_logo%>" alt="" style="width: 50mm;"> -->
+      <% if (company_logo === "") { %>
+      <% } else { %>
+      <img src="<%= company_logo%>" style="width: 100%; display: none;" alt="Watermark Image">
+      <% } %>
+    </div>
+
+
+    <div class="header" style="text-align: center; display: none; height:1px !important;">
+      <% if (headerImg == "" ) { %>
+      <% } else { %>
+      <img src="<%= headerImg %>" style="width: 100%;" alt="Header Image">
+      <% } %>
+    </div>
+
+
+
+<div>
+      <%
+  for (let key in cartCustom) {
+      const value = cartCustom[key];
+      const isValid = value != "0" && value != "00:00:00" && value != "0000-00-00 00:00:00" && value != "0000-00-00" && value != null && value != undefined && value != "" && value != " ";
+      const isDateTime = key.toLowerCase().includes("date") || key.toLowerCase().includes("time");
+      let formType = '';
+      let displayOrder = '';
+      let idTitle = '';
+      const keyParts = key.split("_");
+      if (keyParts.length === 2) {
+          formType = keyParts[0]; 
+          displayOrder = keyParts[1].split("=")[0]; 
+          idTitle = keyParts[1].split("=")[1]; 
+      }
+  %>
+      <% if (isValid && (formType == 11 || formType == 12) && displayOrder <= 0) { %>
+      <div style="page-break-after: always; page-break-before: always; break-inside: avoid; page-break-inside: avoid;">
+        <% if (isDateTime) { 
+            const d = new Date(value);
+            const validDate = !isNaN(d.getTime());
+        %>
+        <%= validDate ? d.toLocaleString() : "Invalid Date" %><br>
+        <% } else if (formType == 11 && printSetting.pageText) { %>
+            <%
+                let modifiedHtml = value || '';
+                if (modifiedHtml) {
+                    modifiedHtml = modifiedHtml.replace(
+                        /<thead>/gi,
+                        '<thead style="background-color:' + dynamicColor + ';">'
+                    );
+                }
+            %>
+            <%- modifiedHtml %><br>
+        <% } else if (formType == 12 && printSetting.pageURL) { %>
+            <img src="<%- value %>" alt="" style="width: 100%; max-height: 810px; object-fit: cover; display: block; break-inside: avoid;">
+            <br>
+        <% } %>
+      </div>
+      <% } %>
+  <% } %>
+</div>
+
+    <table style="width: 100%; border-collapse: collapse; font-family: Poppins, sans-serif; ">
+      <tr style="background-color:<%= dynamicColor %>">
+        <td style="text-align: left; font-weight: bold; border-right: 0px; width: 33%;">
+<%= 
+  !printSetting.debitCredit 
+    ? "" 
+    : (orderType.id == 3 || orderType.id == 7) 
+        ? "Debit Memo" 
+        : (orderType.id == 4 || orderType.id == 6) 
+            ? "Credit Memo" 
+            : ""
+%>
+        </td>
+
+        <td style="text-align: center; font-weight: bold; border-inline: 0px; border-left: 0px; border-right: 0px; width: 33%;">
+          <%= dynamicTitle %>
+        </td>
+
+       
+       <td style="text-align: right; font-weight: bold; border-left: 0px; width: 33%;">
+  <%= printSetting.orignalDuplicate ? 
+        ((cart.cart_number.length > 0 && cart.cart_number != "XXXXXXX") ? "Original" : "Draft") 
+        : "" %>
+</td>
+
+      </tr>
+      <tr>
+        <table>
+          <tr>
+            <td style="padding-top:0; padding-left:5px; vertical-align: top; border-bottom: 0; border-right: 0;width: 50%;max-width:50%;word-break: break-word;white-space: normal; overflow-wrap: anywhere;">
+              <% if (printSetting.toBuyer) { %>
+              <strong>TO/BUYER,</strong><br>
+              <strong style="text-transform: uppercase;"><%= cart.to_customer_company_name %>(<%= cart.to_customer_name %>)</strong><br>
+
+              <% if (cart.to_customer_phone) { %>
+              <strong>Mo.</strong> <%= cart.to_customer_phone%> <span> - </span>
+              <% } %>
+
+              <% if (cart.to_customer_email) { %>
+              <strong>Email:</strong> <%= cart.to_customer_email%>
+              <% } %>
+              <% } %>
+              <% if (printSetting.billingAddress && cart.Address.length>0) { %>
+<br>
+              <strong>Billing Address:</strong><br> <%= cart.Address%><br>
+              <% } %>
+
+              <% if (printSetting.shippingAddress && cart.shipping_address.length>0) { %>
+              <strong>Shipping Address:</strong><br> <%= cart.shipping_address%><br>
+              <% } %>
+
+              <% if (printSetting.gstinNo && cart.to_customer_gst_number.length >0 ) { %>
+              <strong>GSTIN No.:</strong> <%= cart.to_customer_gst_number%><br>
+              <% } %>
+
+              <% if (printSetting.supplyTo && cart_state_name.length>0) { %>
+              <strong>Supply To:</strong> <%= cart_state_name%>
+              <% } %>
+
+            </td>
+            <td style="padding-top:0; padding-left:5px; vertical-align: top;border-bottom: 0;">
+
+              <% if (printSetting.orderNo) { %>
+              <strong><%= dynamicTitle %> No.:</strong> <%= cart.cart_number%><br>
+              <% } %>
+
+              <% if (printSetting.orderDateTime) { %>
+              <strong><%= dynamicTitle %> Date & Time:</strong> <%= formattedDate%>
+              <% } %>
+
+              <% if (printSetting.contactPerson) { %>
+              <hr style="margin: 0;" />
+              <strong>Contact Person:</strong> <%= loginDetail.username%> <br>
+              <% } %>
+
+
+              <%
+                for (let key in cartCustom) {
+                    const value = cartCustom[key];
+                    const isValid = value != "0" && value != "00:00:00" && value != "0000-00-00 00:00:00" && value != "0000-00-00" && value != null && value != undefined && value != "" && value != " " && printSetting.cart_custom_feilds;
+                    const isDateTime = key.toLowerCase().includes("date") || key.toLowerCase().includes("time");
+               
+               
+                     let formType = '';
+                      let displayOrder = '';
+                      let idTitle = '';
+
+                        const keyParts = key.split("_");
+                        if (keyParts.length === 2) {
+                            formType = keyParts[0]; 
+                            displayOrder = keyParts[1].split("=")[0]; 
+                            idTitle = keyParts[1].split("=")[1]; 
+                        }
+                  %>
+
+              <% if (isValid  && formType != 11 && formType != 12&& printSetting.product_custom_feilds) { %>
+              <% if (isDateTime) { 
+                            const d = new Date(value);
+                            const validDate = !isNaN(d.getTime());
+                        %>
+              <% if (validDate) { 
+                                const day = String(d.getDate()).padStart(2, '0');
+                                const month = String(d.getMonth() + 1).padStart(2, '0');
+                                const year = d.getFullYear();
+                                let hours = d.getHours();
+                                const minutes = String(d.getMinutes()).padStart(2, '0');
+                                const ampm = hours >= 12 ? 'PM' : 'AM';
+                                hours = hours % 12 || 12;
+                                const time = String(hours).padStart(2, '0') + ':' + minutes + ' ' + ampm;
+                                const formatted = `${day}-${month}-${year} ${time}`;
+                            %>
+              <strong><%= idTitle %></strong>: <%= formatted %><br>
+              <% } else { %>
+              <strong><%= idTitle %></strong>: Invalid Date<br>
+              <% } %>
+              <% } else { %>
+              <strong><%= idTitle %></strong>: <%= value %><br>
+              <% } %>
+              <% } %>
+              <% } %>
+            </td>
+
+          </tr>
+        </table>
+      </tr>
+    </table>
+
+    <div class="invoice-container" style="border-top: 0px; border-bottom: 0;">
+
+      <table class="invoice-items">
+        <thead>
+          <tr style="background-color:<%= dynamicColor %>">
+            <th class="text-center" style="width: 3%;">No.</th>
+            <% if (printSetting.productImage && printSetting.productImageinColumn) { %>
+            <th class="text-center" style="width: 7%;">Image</th>
+            <% } %>
+
+            <th class="text-center" colspan="2" style="width: <%= visibleColCount > 0 ? '25%' : '35%' %>;">Particular Description</th>
+
+            <% visibleDynamicColumns.forEach((col, index) => { %>
+            <th class="text-center" style="width: 8%;"><%= col.title %></th>
+            <% }); %>
+
+            <% if (printSetting.hsnColumn) { %>
+            <th class="text-center" style="width: 7%;">HSN/SAC</th>
+            <% } %>
+
+            <th class="text-center" colspan="<%= printSetting.hsnColumn ? 1 : 2 %>" style="width: <%= printSetting.hsnColumn ? '8%' : '10%' %>;">Qty/Unit</th>
+
+            <% if (printSetting.rate) { %>
+            <th class="text-center" colspan="<%= printSetting.discountColumn ? 1 : 2 %>" style="width: <%= printSetting.discountColumn ? '8%' : '10%' %>;">Rate</th>
+
+            <% if (printSetting.discountColumn) { %>
+            <th class="text-center" style="width: 6%;">Dis(%)</th>
+            <% } %>
+
+            <% if (printSetting.gstColumn && totalGstAmount > 0) { %>
+            <th class="text-center" style="width: 6%;">GST(%)</th>
+            <% } %>
+
+            <th class="text-center" colspan="<%= (totalGstAmount > 0 || printSetting.gstColumn) ? 4 : 3 %>" style="width: <%= (totalGstAmount > 0 || printSetting.gstColumn) ? '12%' : '15%' %>;">
+              Amount
+            </th>
+            <% } %>
+          </tr>
+        </thead>
+        <tbody>
+          <% 
+  if (!items) items = [];
+  if (!productCustom) productCustom = [];
+%>
+
+          <% items.forEach((item, i) => { 
+            const productDescBorderStyle = printSetting.productBottomBorder
+  ? "border-top: 0 !important; border-bottom: 0 !important;"
+  : "";
+
+          %>
+          <tr class="invoice-row" style="word-break: break-word; white-space: normal; overflow-wrap: anywhere;">
+
+            <td class="bold" style="<%= productDescBorderStyle %>"><%= i + 1 %></td>
+
+            <% if (printSetting.productImage  && printSetting.productImageinColumn) { %>
+           <td class="bold" style="<%= productDescBorderStyle %>; text-align:center; padding:4px; vertical-align:middle;">
+  <div style="
+      max-width: 50px;
+      max-height:50px;
+      overflow: hidden;
+      margin: auto;
+    ">
+<img
+  src="<%= (item.product && item.product.product_img && item.product.product_img.trim() !== '') 
+        ? item.product.product_img 
+        : `${BACKEND_OF_SMALL_OFFICE_CRM_END_POINT}/no_image.jpeg` %>"
+  alt="image"
+  style="
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
+    display: block;
+  "
+/>
+  </div>
+</td>
+
+
+            <% } %>
+
+            <td colspan="2" style="<%= productDescBorderStyle %>">
+              <%= item.item_product_name %>
+              <% if (printSetting.productCode && item.item_product_code) { %><br><strong>Product Code:</strong><%= item.item_product_code %><% } %><br>
+              <p><%- item.item_product_description.replace(/\n/g, "<br>") %></p>
+              <% if (printSetting.product_custom_feilds && productCustom[i] && Object.keys(productCustom[i]).length > 0) { %>
+              <% const customFields = productCustom[i] || {}; %>
+              <% for (let key in customFields) { %>
+              <% 
+                        // Skip if this is a row_column key itself
+                        if (key.endsWith("_product_feild_row_column")) continue;
+                        
+                        // Check if this field should be in a separate column
+                        const rowColumnKey = key + "_product_feild_row_column";
+                        const rowColumnValue = customFields[rowColumnKey];
+                        const isColumnField = (rowColumnValue === "2" || rowColumnValue === 2);
+                        
+                        if (!isColumnField) {
+                            let value = customFields[key];
+                            const isValid = value !== "0" && value !== "00:00:00" && value !== "0000-00-00 00:00:00" && value !== "0000-00-00" && value != null && value !== undefined && value !== "" && value !== " ";
+                            const isDateTime = key.toLowerCase().includes("date") || key.toLowerCase().includes("time");
+                            if (isValid) {
+                                if (isDateTime) {
+                                    const d = new Date(value);
+                                    if (!isNaN(d.getTime())) {
+                                        const day = String(d.getDate()).padStart(2, '0');
+                                        const month = String(d.getMonth() + 1).padStart(2, '0');
+                                        const year = d.getFullYear();
+                                        let hours = d.getHours();
+                                        const minutes = String(d.getMinutes()).padStart(2, '0');
+                                        const ampm = hours >= 12 ? 'PM' : 'AM';
+                                        hours = hours % 12 || 12;
+                                        const time = String(hours).padStart(2, '0') + ':' + minutes + ' ' + ampm;
+                                        value = `${day}-${month}-${year} ${time}`;
+                                    } else {
+                                        value = "Invalid Date";
+                                    }
+                                }
+                    %>
+              <strong><%= key %></strong>: <%= value %><br>
+              <% } %>
+              <% } %>
+              <% } %>
+              <% } %>
+              <% if (printSetting.productImage  && !printSetting.productImageinColumn) { %>
+              <div style="
+      max-width: 50%;
+      overflow: hidden;
+      margin: auto;
+      text-align: left; 
+    ">
+<img
+  src="<%= (item.product && item.product.product_img && item.product.product_img.trim() !== '') 
+        ? item.product.product_img 
+        : `${BACKEND_OF_SMALL_OFFICE_CRM_END_POINT}/no_image.jpeg` %>"
+  alt="image"
+  style="
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: left;
+    display: block;
+    text-align: left; 
+  "
+/>
+  </div>
+  <% } %>
+
+            </td>
+
+            <% visibleDynamicColumns.forEach(col => { 
+    const customFields = productCustom[i] || {};
+    let value = customFields[col.key] || "";
+    const isDateTime = col.key.toLowerCase().includes("date") || col.key.toLowerCase().includes("time");
+    
+    if (isDateTime && value) {
+        const d = new Date(value);
+        if (!isNaN(d.getTime())) {
+            const day = String(d.getDate()).padStart(2, '0');
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const year = d.getFullYear();
+            let hours = d.getHours();
+            const minutes = String(d.getMinutes()).padStart(2, '0');
+            const ampm = hours >= 12 ? 'PM' : 'AM';
+            hours = hours % 12 || 12;
+            const time = String(hours).padStart(2, '0') + ':' + minutes + ' ' + ampm;
+            value = `${day}-${month}-${year} ${time}`;
+        } else {
+            value = ""; // optional: show blank instead of "Invalid Date"
+        }
+    }
+%>
+            <td style="text-align: left; word-break: break-word; white-space: normal; overflow-wrap: anywhere;<%= productDescBorderStyle %>">
+              <%= value %>
+            </td>
+            <% }); %>
+
+
+            <% if (printSetting.hsnColumn) { %>
+            <td style="text-align: right;<%= productDescBorderStyle %>"><%= item.item_hsn_code %></td>
+            <% } %>
+
+            <td style="text-align: right; <%= productDescBorderStyle %>" colspan="<%= printSetting.hsnColumn ? 1 : 2 %>">
+              <%= formatNum(item.item_qty, 2) %> / <%= item.item_unit_name %>
+            </td>
+
+            <% if (printSetting.rate) { %>
+            <td class="now-rap-white-space" style="text-align: right;<%= productDescBorderStyle %>" colspan="<%= printSetting.discountColumn ? 1 : 2 %>">
+              <%= currency %> <%= formatNum(item.item_rate || 0, 2) %>
+            </td>
+
+            <% if (printSetting.discountColumn) { %>
+            <td style="text-align: right;<%= productDescBorderStyle %>">
+              <%= formatNum(item.item_discount_pct || 0, 2) %>
+            </td>
+            <% } %>
+
+            <% if (printSetting.gstColumn && totalGstAmount > 0) { %>
+            <td style="text-align: right;<%= productDescBorderStyle %>">
+              <%= formatNum(item.item_gst || 0, 2) %>
+            </td>
+            <% } %>
+
+            <td class="now-rap-white-space" style="text-align: right;<%= productDescBorderStyle %>" colspan="<%= (totalGstAmount > 0 || printSetting.gstColumn) ? 4 : 3 %>">
+              <%= currency %> <%= formatNum(item.item_total || 0, 2) %>
+            </td>
+            <% } %>
+          </tr>
+          <% }); %>
+
+          <% 
+  for (let i = items.length; i < 7; i++) {
+    const productDescBorderStyle = printSetting.productBottomBorder
+  ? "border-top: 0 !important; border-bottom: 0 !important;"
+  : "";
+     %>
+          <tr class="invoice-row" style="break-inside: avoid; page-break-inside: avoid;">
+            <td class="bold" style="<%= productDescBorderStyle %>">&nbsp;</td>
+             <% if (printSetting.productImage  && printSetting.productImageinColumn) { %>
+            <td class="bold" style="<%= productDescBorderStyle %>">&nbsp;</td>
+            <% } %>
+
+            <td colspan="2" style="<%= productDescBorderStyle %>"></td>
+
+            <% visibleDynamicColumns.forEach(col => { %>
+            <td style="<%= productDescBorderStyle %>"></td>
+            <% }); %>
+
+            <% if (printSetting.hsnColumn) { %>
+            <td style="text-align: right;<%= productDescBorderStyle %>"></td>
+            <% } %>
+
+            <td style="text-align: right;<%= productDescBorderStyle %>" colspan="<%= printSetting.hsnColumn ? 1 : 2 %>">
+            </td>
+
+            <% if (printSetting.rate) { %>
+            <td style="text-align: right;<%= productDescBorderStyle %>" colspan="<%= printSetting.discountColumn ? 1 : 2 %>">
+            </td>
+
+            <% if (printSetting.discountColumn) { %>
+            <td style="text-align: right;<%= productDescBorderStyle %>">
+            </td>
+            <% } %>
+
+            <% if (printSetting.gstColumn && totalGstAmount > 0) { %>
+            <td style="text-align: right;<%= productDescBorderStyle %>">
+            </td>
+            <% } %>
+
+            <td style="text-align: right;<%= productDescBorderStyle %>" colspan="<%= (totalGstAmount > 0 || printSetting.gstColumn) ? 4 : 3 %>">
+            </td>
+            <% } %>
+          </tr>
+          <% } %>
+          <tr style="background-color:<%= dynamicColor %>"> 
+            <td style="font-weight: bold; text-align: center;" colspan="<%= 
+    3 + // No. + Product Description (colspan 2)
+    (printSetting.productImage && printSetting.productImageinColumn ? 1 : 0) + // Image
+    visibleColCount + // Dynamic columns
+    (printSetting.hsnColumn ? 1 : 0) + // HSN column
+    (printSetting.hsnColumn ? 1 : 2) + // Qty/Unit column
+    (printSetting.rate ? (printSetting.discountColumn ? 1 : 2) : 0) + // Rate column
+    (printSetting.rate && printSetting.discountColumn ? 1 : 0) + // Discount column
+    (printSetting.rate && printSetting.gstColumn && totalGstAmount > 0 ? 1 : 0) + // GST column
+    (printSetting.rate ? ((totalGstAmount > 0 || printSetting.gstColumn) ? 4 : 3) : 0) // Amount column
+  %>">&nbsp;</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <table style="width: 100%;">
+      <tr>
+
+<td colspan="2" style="width: 60%; vertical-align: top; padding-top: 0px; padding-left: 5px; border-top: 0; border-bottom: 0; border-right: 0;">
+  <table style="width: 100%; border: 0;">
+    <tr style="border: 0;">       
+
+     <td style="width: 80%; vertical-align: top; padding: 5px; border: 0;">
+         <% if (printSetting.bankDetails) { %>
+        <p style="margin: 5px 0;margin-bottom: 0px; font-size: 9px !important;font-weight: bold;"><%- companyDetail.bank_detail %></p>
+         <% } %>
+
+           <% if (printSetting.rate) { %>
+  <p class="grand-total-words" style="font-weight: bold;"><strong style="font-weight: bold;">Grand Total In Words :</strong> <%= numberToword%></p>
+  <% } %>
+  
+  <% if (printSetting.rate && printSetting.gstColumn) { %>
+  <% if (totalGstAmount > 0) { %>
+  <p class="grand-total-words" style="font-weight: bold;"><strong style="font-weight: bold;">GST Total In Words :</strong> <%= gstnumberToword%></p>
+  <% } %>
+  <% } %>
+
+    <p class="grand-total-words" style="font-weight: bold;">
+    <% if (cart.cart_remark.length > 0) { %>
+    <strong style="font-weight: bold;">Remarks :</strong>
+    <% } %>
+    <%- cart.cart_remark.replace(/\n/g, "<br>") %>
+  </p>
+  
+  <% if (printSetting.note) { %>
+  <p class="payment-note" style="font-weight: bold;"><strong>Note: <%-cart.cart_note %></strong></p>
+  <% } %>
+
+
+      </td>
+      
+<% if (printSetting.paymentQR && (cart.type == 2 || cart.type == 3)&& qrSvg != null) { %>
+
+  <td style="vertical-align: top; align-items: end; text-align: center; background-color: transparent; border: 0; padding: 0px; margin: 0px;">
+    <div style="width: 85px; height: 85px; margin: 0px; background-color: transparent;padding: 0px;">
+      <%- qrSvg %>
+      <center>
+        <p style="margin-bottom: 20px;margin: 0px;padding: 0px; display: flex;justify-content: top; align-items: center; font-weight: bold;">
+          Pay via UPI
+        </p>
+      </center>
+    </div>
+  </td>
+
+<% } %>
+    </tr>
+  </table>
+ 
+  
+
+  
+</td>
+
+        <% if (printSetting.rate) {
+              const productDescBorderStyle = printSetting.productBottomBorder
+  ? "border-top: 0 !important; border-bottom: 0 !important;"
+  : "";
+
+           %>
+        <td colspan="2" style="width: 40%; vertical-align: top; padding: 0px;border: 0; border-left: 0px;">
+          <table style="width: 100%; border-collapse: collapse; border-top: 0;">
+
+            <tr style="border-top: 0;">
+              <td style="font-weight: bold; border-top: 0; <%= productDescBorderStyle %>">Sub Total</td>
+              <td class="amount-column now-rap-white-space" style="text-align: right; border-top: 0;<%= productDescBorderStyle %>"><%= currency%> <%= formatNum(cart.total_amt, 2)%></td>
+            </tr>
+
+            <% if (cart.packing_forwarding_charge && cart.packing_forwarding_charge !== 0) { %>
+            <tr>
+              <td style="font-weight: bold;<%= productDescBorderStyle %>"><%=cart.packing_forwarding_charge_title || "Packing Charge"%></td>
+              <td class="amount-column now-rap-white-space" style="text-align: right;<%= productDescBorderStyle %>"><%= currency%> <%= formatNum(cart.packing_forwarding_charge, 2)%></td>
+            </tr>
+            <% } %>
+
+            <% if (cart.transport_charge && cart.transport_charge !== 0) { %>
+            <tr>
+              <td style="font-weight: bold;<%= productDescBorderStyle %>"><%=cart.transport_charge_title || "Transport Charge"%></td>
+              <td class="amount-column now-rap-white-space" style="text-align: right;<%= productDescBorderStyle %>"><%= currency%> <%= formatNum(cart.transport_charge, 2)%></td>
+            </tr>
+            <% } %>
+
+            <tr>
+              <td style="font-weight: bold;<%= productDescBorderStyle %>">Total Taxable Amount</td>
+              <td class="amount-column now-rap-white-space" style="text-align: right;<%= productDescBorderStyle %>"><%= currency%> <%= formatNum(cart.taxable_amt, 2)%></td>
+            </tr>
+
+            <% if (printSetting.gstColumn) { %>
+            <% if (totalGstAmount > 0) { %>
+            <% if (company_state_name === cart_state_name && companyDetail.state_id !== 0) { %>
+            <tr>
+              <td style="font-weight: bold;<%= productDescBorderStyle %>">CGST</td>
+              <td class="amount-column now-rap-white-space" style="text-align: right;<%= productDescBorderStyle %>"><%= currency %> <%= formatNum(cart.gst_amt /2 , 2) %></td>
+            </tr>
+            <tr>
+              <td style="font-weight: bold;<%= productDescBorderStyle %>">SGST</td>
+              <td class="amount-column now-rap-white-space" style="text-align: right;<%= productDescBorderStyle %>"><%= currency %> <%= formatNum(cart.gst_amt/2, 2) %></td>
+            </tr>
+            <% } else { %>
+            <tr>
+              <td style="font-weight: bold;<%= productDescBorderStyle %>">IGST</td>
+              <td class="amount-column now-rap-white-space" style="text-align: right;<%= productDescBorderStyle %>"><%= currency %> <%= formatNum(cart.gst_amt, 2) %></td>
+            </tr>
+            <% } %>
+            <% } %>
+            <% } %>
+
+            <% if (cart.tcs_amt && cart.tcs_amt !== 0) { %>
+            <tr>
+              <td style="font-weight: bold;<%= productDescBorderStyle %>"><%=cart.tcs_title ||"TCS"%></td>
+              <td class="amount-column now-rap-white-space" style="text-align: right;<%= productDescBorderStyle %>"><%= currency%> <%= formatNum(cart.tcs_amt, 2)%></td>
+            </tr>
+            <% } %>
+
+            <% 
+            // Calculate how many blank rows needed
+            let blankRowsNeeded = 0;
+            if (!cart.packing_forwarding_charge || cart.packing_forwarding_charge === 0) blankRowsNeeded++;
+            if (!cart.transport_charge || cart.transport_charge === 0) blankRowsNeeded++;
+            if (!cart.tcs_amt || cart.tcs_amt === 0) blankRowsNeeded++;
+            
+            // Add blank rows before Round Off
+            for (let i = 0; i < blankRowsNeeded; i++) { 
+            %>
+            <tr>
+              <td style="<%= productDescBorderStyle %>">&nbsp;</td>
+              <td class="amount-column" style="<%= productDescBorderStyle %>">&nbsp;</td>
+            </tr>
+            <% } %>
+
+            <% if (cart.round_off && cart.round_off !== 0) { %>
+            <tr>
+              <td style="font-weight: bold;<%= productDescBorderStyle %>">Round Off</td>
+              <td class="amount-column now-rap-white-space" style="text-align: right;<%= productDescBorderStyle %>"><%= currency%> <%= formatNum(cart.round_off, 2) %></td>
+            </tr>
+            <% } %>
+
+            <tr style="border-bottom: 0;">
+              <td class="final-total" style="font-weight: bold; font-size: 8px;border-bottom: 0;">Grand Total</td>
+              <td class="amount-column final-total now-rap-white-space" style="text-align: right;border-bottom: 0;"><%= currency%> <%= formatNum(cart.grand_total, 2)%></td>
+            </tr>
+
+          </table>
+        </td>
+        <% } %>
+      </tr>
+    </table>
+
+    <% if (printSetting.rate && printSetting.gstColumn && printSetting.hsnSummery) { %>
+
+
+
+    <% if (totalGstAmount > 0) { 
+
+      const productDescBorderStyle = printSetting.productBottomBorder
+  ? "border-top: 0 !important; border-bottom: 0 !important;"
+  : "";
+       %>
+    <table style="width: 100%; border-collapse: collapse;">
+      <thead>
+        <tr>
+<th rowspan="2" 
+    >
+    HSN/SAC
+</th>
+
+<th rowspan="2" 
+    >
+    Taxable Value
+</th>
+          <% if (company_state_name === cart_state_name) { %>
+          <th colspan="2" class="text-center" style="border: 1px solid #000;">CGST</th>
+          <th colspan="2" class="text-center" style="border: 1px solid #000;">SGST</th>
+          <% } else { %>
+          <th colspan="2" class="text-center" style="border: 1px solid #000;">IGST</th>
+          <% } %>
+          <th rowspan="2" class="text-center" style="border: 1px solid #000;">Total Tax Amount</th>
+        </tr>
+        <tr>
+          <% if (company_state_name === cart_state_name) { %>
+          <th class="text-center">Rate</th>
+          <th class="text-center">Amount</th>
+          <th class="text-center">Rate</th>
+          <th class="text-center">Amount</th>
+          <% } else { %>
+          <th class="text-center">Rate</th>
+          <th class="text-center">Amount</th>
+          <% } %>
+        </tr>
+      </thead>
+      <tbody>
+        <% Object.values(groupedItems).forEach((group) => { 
+                    const taxRate = Number(group.item_gst);
+                    const taxable = Number(group.item_total);
+                    const isSameState = company_state_name === cart_state_name;
+                    const halfRate = taxRate / 2;
+                    const cgstAmount = isSameState ? (taxable * halfRate) / 100 : 0;
+                    const sgstAmount = isSameState ? (taxable * halfRate) / 100 : 0;
+                    const igstAmount = !isSameState ? (taxable * taxRate) / 100 : 0;
+                    const totalTax = cgstAmount + sgstAmount + igstAmount;
+
+                    const productDescBorderStyle = printSetting.productBottomBorder
+  ? "border-top: 0 !important; border-bottom: 0 !important;"
+  : "";
+                %>
+        <tr>
+          <td class="text-left" style="<%= productDescBorderStyle %>"><%= group.item_hsn_code %></td>
+          <td class="text-right now-rap-white-space" style="<%= productDescBorderStyle %> text-align: right;"><%= currency %> <%= formatNum(taxable, 2) %></td>
+          <% if (isSameState) { %>
+          <td class="text-center" style="<%= productDescBorderStyle %>"><%= formatNum(halfRate, 2) %>%</td>
+          <td class="text-right now-rap-white-space" style="<%= productDescBorderStyle %> text-align: right;"><%= currency %> <%= formatNum(cgstAmount, 2) %></td>
+          <td class="text-center" style="<%= productDescBorderStyle %>"><%= formatNum(halfRate, 2) %>%</td>
+          <td class="text-right now-rap-white-space" style="<%= productDescBorderStyle %> text-align: right;"><%= currency %> <%= formatNum(sgstAmount, 2) %></td>
+          <% } else { %>
+          <td class="text-center" style="<%= productDescBorderStyle %>"><%= formatNum(taxRate, 2) %>%</td>
+          <td class="text-right now-rap-white-space" style="<%= productDescBorderStyle %> text-align: right;"><%= currency %> <%= formatNum(igstAmount, 2) %></td>
+          <% } %>
+          <td class="text-right now-rap-white-space" style="<%= productDescBorderStyle %> text-align: right;"><%= currency %> <%= formatNum(totalTax, 2) %></td>
+        </tr>
+        <% }) %>
+
+        <% if (cart.packing_forwarding_charge > 0) { 
+                    const taxable = Number(cart.packing_forwarding_charge);
+                    const staticHsn = packingHSN ; 
+                    const staticGstRate =packingGST; 
+                    const isSameState = company_state_name === cart_state_name;
+                    const halfRate = staticGstRate / 2;
+                    const cgstAmount = isSameState ? (taxable * halfRate) / 100 : 0;
+                    const sgstAmount = isSameState ? (taxable * halfRate) / 100 : 0;
+                    const igstAmount = !isSameState ? (taxable * staticGstRate) / 100 : 0;
+                    const totalTax = cgstAmount + sgstAmount + igstAmount;
+
+                    const productDescBorderStyle = printSetting.productBottomBorder
+  ? "border-top: 0 !important; border-bottom: 0 !important;"
+  : "";
+                %>
+        <tr>
+          <td class="text-left" style="<%= productDescBorderStyle %>"><%= staticHsn %></td>
+          <td class="text-right now-rap-white-space" style="<%= productDescBorderStyle %> text-align: right;"><%= currency %> <%= formatNum(taxable, 2) %></td>
+          <% if (isSameState) { %>
+          <td class="text-center" style="<%= productDescBorderStyle %>"><%= formatNum(halfRate, 2) %>%</td>
+          <td class="text-right now-rap-white-space" style="<%= productDescBorderStyle %> text-align: right;"><%= currency %> <%= formatNum(cgstAmount, 2) %></td>
+          <td class="text-center" style="<%= productDescBorderStyle %>"><%= formatNum(halfRate, 2) %>%</td>
+          <td class="text-right now-rap-white-space" style="<%= productDescBorderStyle %> text-align: right;"><%= currency %> <%= formatNum(sgstAmount, 2) %></td>
+          <% } else { %>
+          <td class="text-center" style="<%= productDescBorderStyle %>"><%= formatNum(staticGstRate, 2) %>%</td>
+          <td class="text-right now-rap-white-space" style="<%= productDescBorderStyle %> text-align: right;"><%= currency %> <%= formatNum(igstAmount, 2) %></td>
+          <% } %>
+          <td class="text-right now-rap-white-space" style="<%= productDescBorderStyle %> text-align: right;"><%= currency %> <%= formatNum(totalTax, 2) %></td>
+        </tr>
+        <% } %>
+
+        <% if (cart.transport_charge > 0) { 
+                    const taxable = Number(cart.transport_charge);
+                    const staticHsn = transportHSN ; 
+                    const staticGstRate = transportGST;
+                    const isSameState = company_state_name === cart_state_name;
+                    const halfRate = staticGstRate / 2;
+                    const cgstAmount = isSameState ? (taxable * halfRate) / 100 : 0;
+                    const sgstAmount = isSameState ? (taxable * halfRate) / 100 : 0;
+                    const igstAmount = !isSameState ? (taxable * staticGstRate) / 100 : 0;
+                    const totalTax = cgstAmount + sgstAmount + igstAmount;
+
+                        const productDescBorderStyle = printSetting.productBottomBorder
+  ? "border-top: 0 !important; border-bottom: 0 !important;"
+  : "";
+
+                %>
+        <tr>
+          <td class="text-left" style="<%= productDescBorderStyle %>"><%= staticHsn %></td>
+          <td class="text-right now-rap-white-space" style="<%= productDescBorderStyle %> text-align: right;"><%= currency %> <%= formatNum(taxable, 2) %></td>
+          <% if (isSameState) { %>
+          <td class="text-center" style="<%= productDescBorderStyle %>"><%= formatNum(halfRate, 2) %>%</td>
+          <td class="text-right now-rap-white-space" style="<%= productDescBorderStyle %> text-align: right;"><%= currency %> <%= formatNum(cgstAmount, 2) %></td>
+          <td class="text-center" style="<%= productDescBorderStyle %>"><%= formatNum(halfRate, 2) %>%</td>
+          <td class="text-right now-rap-white-space" style="<%= productDescBorderStyle %> text-align: right;"><%= currency %> <%= formatNum(sgstAmount, 2) %></td>
+          <% } else { %>
+          <td class="text-center" style="<%= productDescBorderStyle %>"><%= formatNum(staticGstRate, 2) %>%</td>
+          <td class="text-right now-rap-white-space" style="<%= productDescBorderStyle %> text-align: right;"><%= currency %> <%= formatNum(igstAmount, 2) %></td>
+          <% } %>
+          <td class="text-right now-rap-white-space" style="<%= productDescBorderStyle %> text-align: right;"><%= currency %> <%= formatNum(totalTax, 2) %></td>
+        </tr>
+        <% } %>
+
+        <tr>
+          <td class="text-left" style="border-bottom: 0; "><strong>Total</strong></td>
+          <td class="text-right now-rap-white-space" style="border-bottom: 0; text-align: right;"><strong><%= currency %> <%= formatNum(cart.taxable_amt, 2) %></strong></td>
+          <% if (company_state_name === cart_state_name) { %>
+          <td class="text-right" style="border-bottom: 0;text-align: right; "></td>
+          <td class="text-right now-rap-white-space" style="border-bottom: 0;text-align: right; "><strong><%= currency %> <%= formatNum(cart.gst_amt / 2, 2) %></strong></td>
+          <td class="text-right" style="border-bottom: 0;text-align: right; "></td>
+          <td class="text-right now-rap-white-space" style="border-bottom: 0;text-align: right; "><strong><%= currency %> <%= formatNum(cart.gst_amt / 2, 2) %></strong></td>
+          <% } else { %>
+          <td class="text-right" style="border-bottom: 0;text-align: right; "></td>
+          <td class="text-right now-rap-white-space" style="border-bottom: 0; "><strong><%= currency %> <%= formatNum(cart.gst_amt, 2) %></strong></td>
+          <% } %>
+          <td class="text-right now-rap-white-space" style="border-bottom: 0;text-align: right; "><strong><%= currency %> <%= formatNum(cart.gst_amt, 2) %></strong></td>
+        </tr>
+      </tbody>
+    </table>
+    <% } %>
+    <% } %>
+
+    <table style="width:100%; page-break-inside: avoid; break-inside: avoid;">
+      <% if (!printSetting.termsCondition && !printSetting.signSignatory) { %>
+      <% } else { %>
+      <tr style="page-break-inside: avoid; break-inside: avoid;">
+        <td style="width: 60%; border-right:0; page-break-inside: avoid; break-inside: avoid;">
+          <% if (printSetting.termsCondition) { %>
+          <strong>Terms & Conditions :</strong>
+          <%- cart.cart_terms_and_condition %>
+          <% } %>
+        </td>
+        <td class="amount-column final-total" style="text-align: right; border-left: 0; page-break-inside: avoid; break-inside: avoid;">
+          <% if (printSetting.signSignatory) { %>
+          <p>For, <%= companyDetail.company_name %></p>
+          <% if (company_sign) { %>
+          <img src="<%= company_sign %>" alt="Company Sign" style="width: 80px;">
+          <% } else { %>
+          <div style="width: 80px; height: 80px;"></div>
+          <% } %>
+          <p>(Authorized Signatory)</p>
+          <% } %>
+        </td>
+      </tr>
+      <% } %>
+
+
+    </table>
+    <div>
+      <%
+  for (let key in cartCustom) {
+      const value = cartCustom[key];
+      const isValid = value != "0" && value != "00:00:00" && value != "0000-00-00 00:00:00" && value != "0000-00-00" && value != null && value != undefined && value != "" && value != " ";
+      const isDateTime = key.toLowerCase().includes("date") || key.toLowerCase().includes("time");
+
+      let formType = '';
+      let displayOrder = '';
+      let idTitle = '';
+
+      const keyParts = key.split("_");
+      if (keyParts.length === 2) {
+          formType = keyParts[0]; 
+          displayOrder = keyParts[1].split("=")[0]; 
+          idTitle = keyParts[1].split("=")[1]; 
+      }
+  %>
+
+      <% if (isValid && (formType == 11 || formType == 12) && displayOrder > 0) { %>
+      <div style="page-break-after: always; page-break-before: always; break-inside: avoid; page-break-inside: avoid; ">
+        <% if (isDateTime) { 
+            const d = new Date(value);
+            const validDate = !isNaN(d.getTime());
+        %>
+        <%= validDate ? d.toLocaleString() : "Invalid Date" %><br>
+        <% } else if (formType == 11 && printSetting.pageText) { %>
+        <%
+                let modifiedHtml = value || '';
+                if (modifiedHtml) {
+                    modifiedHtml = modifiedHtml.replace(
+                        /<thead>/gi,
+                        '<thead style="background-color:' + dynamicColor + ';">'
+                    );
+                }
+            %>
+            <%- modifiedHtml %><br>
+        <% } else if (formType == 12 && printSetting.pageURL) { %>
+
+        <img src="<%- value %>" alt="" style="width: 100%; max-height: 810px; object-fit: cover; display: block; break-inside: avoid;">
+        <br>
+        <% } %>
+      </div>
+      <% } %>
+      <% } %>
+    </div>
+
+
+    <div class="footer" style="text-align: center; display: none;">
+      <img src="<%= footerImg%>" style="width: 100%;" alt="">
+    </div>
+
+</body>
+
+</html>

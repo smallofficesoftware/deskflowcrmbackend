@@ -1,0 +1,129 @@
+
+ 
+ ------------------------not requird-----------------------
+
+   app.post("/register", userRegister);
+  app.post("/login", userLogin);
+  app.post("/verifyOtp", otpVerify);
+  app.post('/webhookindiamart/:companyCode', indiaMartPushApi);
+
+  app.post("/whatsapp-sender-messages", whatsappSendMessagesWebhook);
+  app.post("/whatsapp-messages-rights", getPermissionWhatsAppMessage);
+
+
+  app.post("/razorpay", addPlanRrazorpay);
+  app.post("/verify-payment-razorpay", verifyPaymentRazorpay);
+
+    app.post("/b2bgetproduct",b2ballProduct);
+
+    app.post("/currency",allCurrency);
+
+
+  app.post("/createContactByQR/:qrcode", createContactByQR)
+
+
+  app.post(
+    "/connection",
+    allchatcontroller
+  );
+
+    app.post("/invitation_key" , invitationKeyJoin);
+ app.post("/createCompany", createCompany);
+  app.post("/createPlane", createPlane);
+  app.post("/step-company", setNewCompany);
+    app.post("/category-b2b", allCategoryb2b);
+  app.post("/subCategory-b2b", allSubCategoryb2b);
+  app.post("/book-demo", bookDemo);
+  app.post("/addContactDetail", addContactUs);
+
+    app.post("/getCompanyVsReferralCode", getCompanyReferralCodeDetail);
+
+
+  app.post("/mainCommonGet", getMainCommon);
+  app.post("/mainCommonCreate", mainCommonCreate);
+  app.post("/mainCommonUpdate", mainCommonUpdate);
+
+ ----------------------------------------------------------
+Done
+   app.post(
+    "/completeRemainderTaskMsg",
+    tenantMiddleware,
+    completeReminderForTaskMsg
+  );
+
+  app.post("/google-sheet-for-facebook", tenantMiddleware, getGoogleSheetForFacebook);
+
+  app.post("/addCron", addCron);
+  app.post("/viewCron", viewCron);
+  app.post("/startCron", startCron);
+  app.post("/stopCron", stopCron);
+  app.post("/startAllCron", startAllCron);
+  app.post("/stopAllCron", stopAllCron);
+  app.post("/start-stop-reminder-notificaition", startStopReminderCron);
+
+  app.post("/categoryDelete",tenantMiddleware,categoryDelete);
+  app.post("/taskcategoryDelete",tenantMiddleware,taskcategoryDelete);
+
+  app.post("/inner-join-team", JoinTeamMemberInner);
+
+  app.post("/India-mart", tenantMiddleware, indiaMartApi);
+  app.post("/excel-sheet", tenantMiddleware, uploadExcelSheet.single("file"), getExcelSheet);
+  app.post("/excel-sheet-product", tenantMiddleware, uploadExcelSheetProduct.single("file"), getExcelSheetProduct);
+  app.post("/gimini", tenantMiddleware, giminiAi);
+  app.post("/trade-india", tenantMiddleware, tradeIndiaApi);
+  app.post("/trade-india-buy-leads", tenantMiddleware, tradeIndiaApiBuyLeads);
+ 
+
+
+  app.post("/commonGet", tenantMiddleware, getCommon)
+  app.post("/commonCreate", tenantMiddleware, commonCreate);
+  app.post("/commonUpdate", tenantMiddleware, commonUpdate);
+  app.post("/commonGetCount", tenantMiddleware, commonGetCountProvider);
+  
+ PENDING
+
+
+
+
+  
+
+
+
+----------------------------------------------------------------
+
+commonGet = 84
+ commonCreate = 30
+ commonUpdate = 85
+ commonGetCount = 1
+ checkAuthToken = 2
+ mainCommonGet = 15
+ mainCommonCreate = 1
+ mainCommonUpdate = 10
+
+ -------------------------
+backnend 
+ 2. media folder ma application login wise kay maltu nathi company id wise folder banse
+ 3. images name nu folder delete kayru che
+ 4. cron job nu folder dashborad ma lidhu che atle ano path adddon karvo
+aaa change karva javu padse 
+ 1. upload folder name change to (new_company_creation_sql)
+ 2. onboard akhu test karvanu che
+
+ images and attechment upload test
+ 1. order ma all version 
+ 2. account trasction
+ 3. badha report print/excel hase bane ma 
+ 4 . document attechment chat and task chat both(done) 
+ 5. company ma all attechment 
+ 6. product
+ 7. visit
+
+
+IN media- folder(just for your information purpues).
+1.contact ni chat  ma contact id wise folder bane che.
+2.task chat ma task id wise attechment pade che
+3.visit ni under company wise attechment pade che
+4.product ma company wise pade che 
+5.order ma company wise
+6.Company ma company id wise
+7.profile ma company id wise

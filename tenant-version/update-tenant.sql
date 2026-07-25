@@ -1,0 +1,2 @@
+-- http://192.168.1.48:2424/api/updateTenent
+-- Request body ma kai add karvanu nathi.

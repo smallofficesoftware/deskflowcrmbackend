@@ -1,0 +1,1 @@
+console.log("Ela... Typescript no code compile thaay, JavaScript no nai.\nChaanomaano source code copy kar, ka aakhu backend pure Typescript ma lakh.\nE sivaay build nu vicharto pan nai.");

@@ -1,0 +1,35 @@
+{
+  "compilerOptions": {
+    "target": "esnext",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "allowJs": true,
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "paths": {
+      "@/*": ["./src/*"]
+    },
+    "types": ["node"],
+    "resolveJsonModule": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": false,
+    "verbatimModuleSyntax": false,
+    "jsx": "react-jsx"
+  },
+  "include": [
+    "apk",
+    "new_company_creation_sql",
+    "smalofficecrminstruction",
+    "src",
+    "tenant-version",
+    ".env.production",
+    "alter.txt",
+    "credentials.json",
+    "firebaseAdminSDK.json",
+    "jsconfig.json"
+  ],
+  "exclude": ["node_modules", "dist", "build", "coverage"]
+}

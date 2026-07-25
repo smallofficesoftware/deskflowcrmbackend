@@ -1,0 +1,2113 @@
+01-01-2026 Keval 
+ALTER TABLE `carts` ADD `stock_type` TINYINT NOT NULL AFTER `cart_status`;
+ALTER TABLE `cart_items` ADD `stock_type` TINYINT NOT NULL AFTER `cart_type`;
+
+06-01-2025 Dinesh
+ALTER TABLE `products` ADD `purchase_rate` DOUBLE NOT NULL AFTER `net_rate`, ADD `purchase_gst_per` DOUBLE NOT NULL AFTER `purchase_rate`, ADD `purchase_net_rate` DOUBLE NOT NULL AFTER `purchase_gst_per`;
+
+09-01-2025 Dinesh
+1
+    3 invoice
+    7 return_purchase_invoice
+    9 dispatch
+2
+    4 purchase_order
+    6 return_sales_invoice
+    8 inward
+
+UPDATE 1111carts SET stock_type='-4' WHERE type IN (3,7,9,4,6,8) AND cart_number != '';
+UPDATE 1111cart_items SET stock_type='-4' WHERE cart_type IN (3,7,9,4,6,8) AND cart_id IN (SELECT id FROM carts  WHERE type IN (3,7,9,4,6,8) AND cart_number != '');
+
+16-01-2025 Dinesh
+ALTER TABLE `wrkflw_auto_assignment_of_contacts` ADD `created_date_time` DATETIME NOT NULL AFTER `modified_date`;
+
+--------------------------------------------------------------- 3.0.3 -----------------------------------
+
+
+20-01-2026 Keval 
+INSERT INTO `a_application_pages` (`id`, `page_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, 'Activity Location Tracking', 'activity_location_tracking', 'Activity Location Tracking', '0', '0', '0', '1', '2026-01-20 08:28:03.000000', current_timestamp(), '0', '1');
+
+
+INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, '2', '103', '0', '2026-01-20 08:30:20.000000', current_timestamp(), '0', '1'), (NULL, '3', '103', '0', '2026-01-20 08:30:20.000000', current_timestamp(), '0', '1');
+
+20-01-2026 Dinesh
+ALTER TABLE `a_application_logins` ADD `web_device_token` TEXT NOT NULL AFTER `ios_refresh_token`, ADD `android_device_token` TEXT NOT NULL AFTER `web_device_token`, ADD `ios_device_token` TEXT NOT NULL AFTER `android_device_token`, ADD `web_last_login` DATETIME NULL DEFAULT NULL AFTER `ios_device_token`, ADD `android_last_login` DATETIME NULL DEFAULT NULL AFTER `web_last_login`, ADD `ios_last_login` DATETIME NULL DEFAULT NULL AFTER `android_last_login`;
+
+20-01-2026 Dinesh
+ALTER TABLE `expenses` ADD `image` VARCHAR(255) NOT NULL AFTER `expense_status`;
+
+20-01-2026 Keval 
+new folder create 
+media-folder/expense-images
+
+---------------------------------- 3.0.3 ----------------------------------
+
+NOTE:: page Rights apvana baki che Api run karvani che 
+
+21-01-2026 Keval 
+
+***** CREATE TABLE `user_app_tracks` (`id` INT(11) NOT NULL AUTO_INCREMENT , `a_application_login_id` INT(11) NOT NULL , `company_masters_id` INT(11) NOT NULL , `location_switch` TINYINT(4) NOT NULL DEFAULT '0' , `location_activity_switch` TINYINT(4) NOT NULL DEFAULT '0' , `call_popup_switch` TINYINT(4) NOT NULL DEFAULT '0' , `call_history_switch` TINYINT(4) NOT NULL DEFAULT '0' , `call_tracker_app` TINYINT(4) NOT NULL DEFAULT '0' , `gps` TINYINT(4) NOT NULL DEFAULT '0' , `phone_name` VARCHAR(255) NOT NULL , `android_version` VARCHAR(255) NOT NULL , `device_id` VARCHAR(255) NOT NULL , `platform` VARCHAR(255) NOT NULL , `created_date_time` DATETIME NOT NULL , `s_timestemp` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP , `isDelete` TINYINT(4) NOT NULL DEFAULT '0' , `isActive` TINYINT(4) NOT NULL DEFAULT '1' , PRIMARY KEY (`id`)) ENGINE = InnoDB;
+
+ALTER TABLE `user_app_tracks` ADD `modified_date` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER `isActive`;
+
+22-01-2026 Keval
+ALTER TABLE `call_histories` ADD `remark` TEXT NOT NULL AFTER `file_duration`;
+
+27-01-2026 Dinesh
+ALTER TABLE `inquiries` ADD `uniqe_india_mart_id` TEXT NOT NULL AFTER `static`;
+ALTER TABLE `inquiries` ADD `uniqe_trade_india_id` TEXT NOT NULL AFTER `uniqe_india_mart_id`;
+
+28-01-2026 Keval
+ALTER TABLE `expense_type_masters` ADD `expense_subtype` TINYINT(4) NOT NULL AFTER `color`, ADD `min_time` TIME NOT NULL AFTER `expense_subtype`, ADD `max_time` TIME NOT NULL AFTER `min_time`, ADD `min_amount` DOUBLE NOT NULL AFTER `max_time`, ADD `max_amount` DOUBLE NOT NULL AFTER `min_amount`, ADD `fix_amount` DOUBLE NOT NULL AFTER `max_amount`, ADD `amount_per_km` DOUBLE NOT NULL AFTER `fix_amount`, ADD `compulsory_image` TINYINT(4) NOT NULL AFTER `amount_per_km`;
+
+ALTER TABLE `expense_type_masters` CHANGE `compulsory_image` `compulsory_image` TINYINT(4) NOT NULL COMMENT '1 => \"Yes\",2 => \"No\"';
+
+ALTER TABLE `expense_type_masters` CHANGE `expense_subtype` `expense_subtype` TINYINT(4) NOT NULL COMMENT '1 => \"general\",2 => \"kilometer\"';
+
+
+28-01-2026 Dinesh
+
+CREATE TABLE `a_application_login_type_rights` (
+  `id` int(11) NOT NULL,
+  `a_application_login_id` int(11) NOT NULL,
+  `company_masters_id` int(11) NOT NULL,
+  `page_id` int(11) NOT NULL,
+  `page_name` varchar(255) NOT NULL,
+  `a_page_id_rights_jason` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL CHECK (json_valid(`a_page_id_rights_jason`)),
+  `created_date_time` datetime NOT NULL,
+  `s_timestemp` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `isDelete` tinyint(4) NOT NULL DEFAULT 0,
+  `isActive` tinyint(4) NOT NULL DEFAULT 1
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
+
+ALTER TABLE `a_application_login_type_rights` ADD PRIMARY KEY (`id`), ADD UNIQUE KEY `a_application_login_id` (`a_application_login_id`,`company_masters_id`,`page_id`);
+
+ALTER TABLE `a_application_login_type_rights` MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+ALTER TABLE `a_application_login_type_rights` ADD INDEX(`a_application_login_id`);
+ALTER TABLE `a_application_login_type_rights` ADD INDEX(`company_masters_id`);
+ALTER TABLE `a_application_login_type_rights` ADD INDEX(`page_id`);
+ALTER TABLE `contact_masters` ADD INDEX(`mobile_number`);
+ALTER TABLE `company_vs_application_logins` ADD INDEX(`company_masters_id`);
+ALTER TABLE `company_vs_application_logins` ADD INDEX(`a_application_login_id`);
+ALTER TABLE `company_vs_application_logins` ADD INDEX(`company_flag`);
+
+INSERT INTO small_office_a4_c4.a_application_login_type_rights SELECT * FROM smalloffice.a_application_login_type_rights WHERE company_masters_id = 4;
+
+29-01-2026 Keval
+ALTER TABLE `a_application_logins` ADD `expense_types` VARCHAR(255) NOT NULL AFTER `registration_flag`;
+
+ALTER TABLE `expenses` ADD `kilometers` DOUBLE NOT NULL AFTER `status_remark`;
+
+30-01-2026 Keval 
+ALTER TABLE `expenses` ADD `expense_date` DATE NULL DEFAULT NULL AFTER `kilometers`;
+
+-------------------------------- 3.0.5 - 03-02-2026 -------------------
+
+04-02-2026 Dinesh
+ALTER TABLE `company_masters` ADD `invoice_series_pattern` TEXT NOT NULL AFTER `upi_name`, ADD `order_series_pattern` TEXT NOT NULL AFTER `invoice_series_pattern`, ADD `return_sales_invoice_series_pattern` TEXT NOT NULL AFTER `order_series_pattern`, ADD `quotation_series_pattern` TEXT NOT NULL AFTER `return_sales_invoice_series_pattern`, ADD `purchase_series_pattern` TEXT NOT NULL AFTER `quotation_series_pattern`, ADD `return_purchase_invoice_series_pattern` TEXT NOT NULL AFTER `purchase_series_pattern`, ADD `purchase_ord_series_pattern` TEXT NOT NULL AFTER `return_purchase_invoice_series_pattern`, ADD `inward_series_pattern` TEXT NOT NULL AFTER `purchase_ord_series_pattern`, ADD `dispatch_series_pattern` TEXT NOT NULL AFTER `inward_series_pattern`;
+
+05-02-2026 Dinesh
+ALTER TABLE `attendance_histories` ADD `remark` TEXT NOT NULL AFTER `image_url`, ADD `updated_by` INT NOT NULL AFTER `remark`;
+
+09-02-2026 Dinesh
+ALTER TABLE `a_countries` CHANGE `id` `id` INT(11) NOT NULL AUTO_INCREMENT COMMENT 'Primary key: Unique identifier for each country';
+
+
+10-02-2026 Rohan
+CREATE TABLE leave_type_masters ( id INT AUTO_INCREMENT PRIMARY KEY, company_masters_id INT, a_application_login_id INT, leave_type VARCHAR(255), color VARCHAR(255), created_date_time DATETIME DEFAULT CURRENT_TIMESTAMP, s_timestemp VARCHAR(255), isDelete TINYINT(1) DEFAULT 0, isActive TINYINT(1) DEFAULT 1, modified_date DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP );
+
+ALTER TABLE `leave_type_masters` CHANGE `s_timestemp` `s_timestemp` TIMESTAMP NULL DEFAULT NULL;
+
+INSERT INTO `a_application_pages` (`id`, `page_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, 'Leave Types', 'leave_types', 'Leave Type Page', '0', '0', '0', '1', '2026-02-10 08:24:47.000000', current_timestamp(), '0', '1');
+
+INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, '2', '104', '0', '2026-02-10 08:28:16.000000', current_timestamp(), '0', '1'), (NULL, '3', '104', '0', '2026-02-10 08:28:16.000000', current_timestamp(), '0', '1');
+
+INSERT INTO `a_application_login_type_rights` (`id`, `a_application_login_id`, `company_masters_id`, `page_id`, `page_name`, `a_page_id_rights_jason`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, '129', '67', '104', 'Leave Types', '{\"view\":1,\"add\":1,\"edit\":1,\"delete\":1,\"approve\":1,\"import\":1,\"print\":1,\"share\":1,\"all_data\":1,\"personal\":1,\"limit\":\"0\"}', '2026-02-10 08:46:59.000000', current_timestamp(), '0', '1');
+
+ALTER TABLE `leave_type_masters` ADD `paid_by` INT NOT NULL AFTER `color`;
+
+CREATE TABLE leaves ( id INT AUTO_INCREMENT PRIMARY KEY, leave_type_id INT, leave_date DATE, reporting_date DATE, remark VARCHAR(255), status_remark VARCHAR(255), attachment VARCHAR(255), leave_status INT, created_by INT, company_masters_id INT, a_application_login_id INT, created_date_time DATETIME DEFAULT CURRENT_TIMESTAMP, modified_date DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, s_timestemp TIMESTAMP DEFAULT CURRENT_TIMESTAMP, isDelete TINYINT(1) DEFAULT 0, isActive TINYINT(1) DEFAULT 1 );
+
+
+11-02-2026 Rohan
+ALTER TABLE `leaves` ADD `leave_duration` INT NOT NULL AFTER `reporting_date`;
+
+INSERT INTO `a_application_pages` (`id`, `page_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, 'Leaves', 'leaves', 'Leave Page', '0', '0', '0', '1', '2026-02-11 06:11:50.000000', current_timestamp(), '0', '1');
+
+INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, '2', '105', '0', '2026-02-11 06:14:26.000000', current_timestamp(), '0', '1'), (NULL, '3', '105', '0', '2026-02-11 06:14:26.000000', current_timestamp(), '0', '1');
+
+INSERT INTO `a_application_login_type_rights` (`id`, `a_application_login_id`, `company_masters_id`, `page_id`, `page_name`, `a_page_id_rights_jason`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, '129', '67', '105', 'Leaves', '{\"view\":1,\"add\":1,\"edit\":1,\"delete\":1,\"approve\":1,\"import\":1,\"print\":1,\"share\":1,\"all_data\":1,\"personal\":1,\"limit\":\"0\"}', '2026-02-11 06:20:03.000000', current_timestamp(), '0', '1');
+
+
+11-02-2026 keval
+
+CREATE TABLE `product_groups` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `company_masters_id` int(11) NOT NULL,
+  `a_application_login_id` int(11) NOT NULL,
+  `group_name` text NOT NULL,
+  `group_color` varchar(50) NOT NULL,
+  `created_date_time` datetime NOT NULL,
+  `s_timestemp` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `isDelete` tinyint(4) NOT NULL DEFAULT 0,
+  `isActive` tinyint(4) NOT NULL DEFAULT 1,
+
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+ALTER TABLE `product_groups` ADD `modified_date` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP;
+
+ALTER TABLE `categories` ADD `group_id` INT(11) NOT NULL AFTER `color`;
+
+INSERT INTO `product_groups` (`id`, `company_masters_id`, `a_application_login_id`, `group_name`, `group_color`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`, `modified_date`) VALUES (NULL, '0', '0', 'DEMO GROUP', '#999999', '2026-02-11 15:10:07.000000', current_timestamp(), '0', '1', current_timestamp());
+
+UPDATE `111111categories` SET `group_id` = '-1';
+
+
+11-02-2026 Dinesh
+ALTER TABLE `a_application_logins` ADD `location_switch` TINYINT NOT NULL AFTER `expense_types`, ADD `activitylocationswitch` TINYINT NOT NULL AFTER `location_switch`, ADD `callHistoryswitch` TINYINT NOT NULL AFTER `activitylocationswitch`, ADD `callhistory_lastdate` TEXT NOT NULL AFTER `callHistoryswitch`, ADD `callPopupSwitch` TINYINT NOT NULL AFTER `callhistory_lastdate`;
+
+12-02-2026 Keval
+
+CREATE TABLE `warehouses` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `company_masters_id` int(11) NOT NULL,
+  `a_application_login_id` int(11) NOT NULL,
+  `warehouse_name` text NOT NULL,
+  `warehouse_color` varchar(50) NOT NULL,
+  `created_date_time` datetime NOT NULL,
+  `modified_date` datetime NOT NULL,
+  `s_timestemp` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `isDelete` tinyint(4) NOT NULL DEFAULT 0,
+  `isActive` tinyint(4) NOT NULL DEFAULT 1,
+
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+ALTER TABLE `warehouses` ADD `modified_date` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP;
+
+INSERT INTO `warehouses` (`id`, `company_masters_id`, `a_application_login_id`, `warehouse_name`, `warehouse_color`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`, `modified_date`) VALUES (NULL, '0', '0', 'DEMO WAREHOUSE', '#999999', '2026-02-11 15:10:07.000000', current_timestamp(), '0', '1', current_timestamp());
+
+12-02-2026 Rohan
+ALTER TABLE `a_application_logins` ADD `salary_type` TINYINT NOT NULL AFTER `expense_types`, ADD `per_day_salary` INT NOT NULL AFTER `salary_type`, ADD `per_month_salary` INT NOT NULL AFTER `per_day_salary`, ADD `per_work_salary` INT NOT NULL AFTER `per_month_salary`, ADD `week_off_days` VARCHAR(255) NOT NULL AFTER `per_work_salary`;
+
+ALTER TABLE `a_application_logins`
+  DROP `per_day_salary`,
+  DROP `per_month_salary`,
+  DROP `per_work_salary`;
+
+ALTER TABLE `a_application_logins` CHANGE `per_hour_salary` `per_hour_salary` DOUBLE NOT NULL;
+
+ALTER TABLE `a_application_logins` ADD `salary_amount_type_wise` DOUBLE NOT NULL AFTER `salary_type`;
+
+ALTER TABLE `a_application_logins` ADD `daily_working_hours` VARCHAR(255) NOT NULL AFTER `daily_in_time`;
+
+
+13-02-2026 keval
+INSERT INTO `a_application_pages` (`id`, `page_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, 'Reminder Report', 'reminder_report', 'Reminder Report', '0', '0', '0', '1', '2026-02-13 08:42:54.000000', current_timestamp(), '0', '1');
+
+INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, '1', '106', '0', '2026-02-13 08:47:49.000000', current_timestamp(), '0', '1'), (NULL, '2', '106', '0', '2026-02-13 08:47:50.000000', current_timestamp(), '0', '1'), (NULL, '3', '106', '0', '2026-02-13 08:47:50.000000', current_timestamp(), '0', '1');
+
+INSERT INTO `a_application_pages` (`id`, `page_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, 'Contact Chain Wise Report', 'contact_chain_wise_report', 'Contact Chain Wise Report', '0', '0', '0', '1', '2026-02-13 08:50:37.000000', current_timestamp(), '0', '1');
+
+INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, '1', '107', '0', '2026-02-13 08:51:38.000000', current_timestamp(), '0', '1'), (NULL, '2', '107', '0', '2026-02-13 08:51:38.000000', current_timestamp(), '0', '1'), (NULL, '3', '107', '0', '2026-02-13 08:51:38.000000', current_timestamp(), '0', '1');
+
+
+INSERT INTO `a_application_pages` (`id`, `page_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, 'Product Group', 'product_group', 'Product Group', '0', '0', '0', '1', '2026-02-13 08:55:16.000000', current_timestamp(), '0', '1');
+
+INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, '1', '108', '0', '2026-02-13 08:56:16.000000', current_timestamp(), '0', '1'), (NULL, '2', '108', '0', '2026-02-13 08:56:16.000000', current_timestamp(), '0', '1'), (NULL, '3', '108', '0', '2026-02-13 08:56:16.000000', current_timestamp(), '0', '1');
+
+INSERT INTO `a_application_pages` (`id`, `page_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, 'Warehouse', 'warehouse', 'Warehouse', '0', '0', '0', '1', '2026-02-13 10:59:56.000000', current_timestamp(), '0', '1');
+
+INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, '2', '109', '0', '2026-02-13 11:01:26.000000', current_timestamp(), '0', '1'), (NULL, '3', '109', '0', '2026-02-13 11:01:26.000000', current_timestamp(), '0', '1');
+
+ALTER TABLE `cart_items` ADD `item_warehouse_id` INT NOT NULL AFTER `update_date_time`;
+
+13-02-2026 Dinesh
+INSERT INTO `cron_jobs` (`id`, `cron_title`, `crone_tab_start_stop_flag`, `cron_time`, `cron_start_time`, `cron_stop_time`, `created_date_time`) VALUES (NULL, 'crone_tab_task_time_gap_wise_send_email', '1', '', '2026-02-13 10:56:32.000000', '2026-02-13 10:56:32.000000', '2026-02-13 10:56:32.000000');
+
+16-02-2026 Dinesh
+ALTER TABLE `task_templete_datasources` ADD `notification_time` VARCHAR(255) NOT NULL AFTER `notification_time_gap`;
+ALTER TABLE `task_managements` CHANGE `task_fromdate` `task_fromdate` DATETIME NOT NULL, CHANGE `task_enddate` `task_enddate` DATETIME NOT NULL;
+
+17-02-2026 Dhey
+ALTER TABLE `wrkflw_auto_assignment_of_contacts` ADD `text_match_description` TEXT NOT NULL AFTER `team_person_id`, ADD `auto_sequence_flag` TINYINT NOT NULL AFTER `text_match_description`, ADD `is_whatsapp_email_send_flag` TINYINT NOT NULL AFTER `auto_sequence_flag`, ADD `send_description` TEXT NOT NULL AFTER `is_whatsapp_email_send_flag`;
+
+17-02-2026 Keval
+ALTER TABLE `company_masters` ADD `is_strict_wharehouse_wise_product_stock_check` TINYINT(1) NOT NULL DEFAULT '1' COMMENT '1 => Off , 2=>On' AFTER `is_strict_check_product_stock`;
+
+17-02-2026 Dinesh
+ALTER TABLE `task_managements` ADD `is_not_visible` TINYINT NOT NULL AFTER `is_notification_sand_email`;
+ALTER TABLE `task_managements` ADD `task_template_data_source_id` INT NOT NULL AFTER `is_not_visible`;
+ALTER TABLE `task_managements` ADD `task_template_data_id` INT NOT NULL COMMENT 'For Referance' AFTER `is_not_visible`;
+ALTER TABLE `task_managements` ADD `grouped_task_unque_key` TEXT NOT NULL AFTER `task_template_data_source_id`;
+ALTER TABLE `task_managements` ADD `template_seq_no` INT NOT NULL AFTER `grouped_task_unque_key`;
+
+18-02-2026 Dinesh
+INSERT INTO `stage_status_masters` (`id`, `company_masters_id`, `a_application_login_id`, `name`, `color`, `order_type`, `change_status_team_ids`, `show_status_data_team_ids`, `status_type`, `display_order_type`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`, `modified_date`) VALUES ('-8', '', '', 'Pending For Dispatch', '#F59E0B', ' 4', '', '', '', '', '2026-02-18 10:46:55.000000', current_timestamp(), '0', '1', current_timestamp()), ('-9', '', '', 'Partially Dispatch', '#3B82F6', ' 4', '', '', '', '', '2026-02-18 10:46:55.000000', current_timestamp(), '0', '1', current_timestamp()), ('-10', '', '', 'Full Dispatched', '#22C55E', ' 4', '', '', '', '', '2026-02-18 10:46:55.000000', current_timestamp(), '0', '1', current_timestamp()), ('-11', '', '', 'Pending For GRN', '#FBBF24', '7', '', '', '', '', '2026-02-18 10:46:55.000000', current_timestamp(), '0', '1', current_timestamp()), ('-12', '', '', 'Partially GRN', '#8B5CF6', '7', '', '', '', '', '2026-02-18 10:46:55.000000', current_timestamp(), '0', '1', current_timestamp()), ('-13', '', '', 'Full GRN', '#16A34A', '7', '', '', '', '', '2026-02-18 10:46:55.000000', current_timestamp(), '0', '1', current_timestamp());
+
+18-02-2026 Keval
+New folder Create: media-folder/export/task
+
+19-02-2026 Keval
+INSERT INTO `a_application_pages` (`id`, `page_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, 'Payment Type', 'payment_type', 'Payment Type', '0', '0', '0', '1', '2026-02-19 13:54:23.000000', current_timestamp(), '0', '1');
+
+INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, '1', '110', '0', '2026-02-19 13:56:56.000000', current_timestamp(), '0', '1');
+
+
+INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, '2', '110', '0', '2026-02-19 13:57:12.000000', current_timestamp(), '0', '1'), (NULL, '3', '110', '0', '2026-02-19 13:57:12.000000', current_timestamp(), '0', '1');
+
+CREATE TABLE `payment_types` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `company_masters_id` int(11) NOT NULL,
+  `a_application_login_id` int(11) NOT NULL,
+  `payment_type_name` text NOT NULL,
+  `payment_color` varchar(50) NOT NULL,
+  `created_date_time` datetime NOT NULL,
+  `modified_date` datetime NOT NULL,
+  `s_timestemp` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `isDelete` tinyint(4) NOT NULL DEFAULT 0,
+  `isActive` tinyint(4) NOT NULL DEFAULT 1,
+
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+
+INSERT INTO `payment_types` (`id`, `company_masters_id`, `a_application_login_id`, `payment_type_name`, `payment_color`, `created_date_time`, `modified_date`, `s_timestemp`, `isDelete`, `isActive`) VALUES ('-1', '0', '0', 'Other', '#ffa64d', '2026-02-19 14:35:50.000000', '2026-02-19 14:35:50.000000', current_timestamp(), '0', '1'), ('-2', '0', '0', 'Kasar Account', '#296be6', '2026-02-19 14:35:50.000000', '2026-02-19 14:35:50.000000', current_timestamp(), '0', '1');
+
+INSERT INTO `payment_types` (`id`, `company_masters_id`, `a_application_login_id`, `payment_type_name`, `payment_color`, `created_date_time`, `modified_date`, `s_timestemp`, `isDelete`, `isActive`) VALUES ('1', '0', '0', 'Cash', '#009900', '2026-02-19 14:41:11.000000', '2026-02-19 14:41:11.000000', current_timestamp(), '0', '1'), ('2', '0', '0', 'Cheque', '#ea6d70', '2026-02-19 14:41:11.000000', '2026-02-19 14:41:11.000000', current_timestamp(), '0', '1');
+
+INSERT INTO `payment_types` (`id`, `company_masters_id`, `a_application_login_id`, `payment_type_name`, `payment_color`, `created_date_time`, `modified_date`, `s_timestemp`, `isDelete`, `isActive`) VALUES ('3', '0', '0', 'Online Portal', '#990099', '2026-02-19 14:42:46.000000', '2026-02-19 14:42:46.000000', current_timestamp(), '0', '1'), ('4', '0', '0', 'UPI', '#cc9900', '2026-02-19 14:42:46.000000', '2026-02-19 14:42:46.000000', current_timestamp(), '0', '1');
+
+
+INSERT INTO `payment_types` (`id`, `company_masters_id`, `a_application_login_id`, `payment_type_name`, `payment_color`, `created_date_time`, `modified_date`, `s_timestemp`, `isDelete`, `isActive`) VALUES ('5', '0', '0', 'Bank transfer by NEFT', '#990099', '2026-02-19 14:51:25.000000', '2026-02-19 14:51:25.000000', current_timestamp(), '0', '1'), ('6', '0', '0', 'Bank transfer by RTGS', '#1df0c2', '2026-02-19 14:51:25.000000', '2026-02-19 14:51:25.000000', current_timestamp(), '0', '1');
+
+INSERT INTO `payment_types` (`id`, `company_masters_id`, `a_application_login_id`, `payment_type_name`, `payment_color`, `created_date_time`, `modified_date`, `s_timestemp`, `isDelete`, `isActive`) VALUES ('7', '0', '0', 'Bank transfer by IMPS', '#f21b4d', '2026-02-19 14:56:56.000000', '2026-02-19 14:56:56.000000', current_timestamp(), '0', '1');
+
+19-02-2026 Dinesh
+ALTER TABLE `wrkflw_auto_assignment_of_contacts` ADD `is_recurred` TINYINT NOT NULL AFTER `auto_sequence_flag`;
+
+21-02-2025 Dinesh
+ALTER TABLE `carts` ADD `temp` TINYINT NOT NULL AFTER `modified_date`;
+ALTER TABLE `task_templete_datasources` ADD `is_depend_on_previous_task` TINYINT NOT NULL AFTER `notification_time`;
+
+-------------------------------- 3.0.7 - 22-02-2026 -------------------
+
+25-02-2026 Keval 
+CREATE TABLE `bill_of_materials_masters` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `company_masters_id` int(11) NOT NULL,
+  `a_application_login_id` int(11) NOT NULL,
+  `bill_of_materials_name` text NOT NULL,
+  `bill_of_materials_color` varchar(50) NOT NULL,
+  `created_date_time` datetime NOT NULL,
+  `modified_date` datetime NOT NULL,
+  `s_timestemp` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `isDelete` tinyint(4) NOT NULL DEFAULT 0,
+  `isActive` tinyint(4) NOT NULL DEFAULT 1,
+
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+INSERT INTO `a_application_pages` (`id`, `page_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, 'Bill Of Material Master', 'bill_of_metarial_master', 'Bill Of Material Master', '0', '0', '0', '1', '2026-02-25 10:37:23.000000', current_timestamp(), '0', '1');
+
+INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, '3', '111', '0', '2026-02-25 10:39:32.000000', current_timestamp(), '0', '1');
+
+
+25-02-2026 Dinesh
+INSERT INTO `source_types` (`id`, `company_masters_id`, `a_application_login_id`, `source_name`, `api_key`, `webhook`, `color`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`, `modified_date`) VALUES ('-20', '', '', 'Call Dialer', '', '', '#0D5C63', '2026-02-25 11:48:49.000000', current_timestamp(), '0', '1', current_timestamp());
+
+NOTE: Company master ma files alag na thay to 24/02 date vali file add kari devi build time a createcompanyview.tsx.
+
+26-02-2026 Rohan
+ALTER TABLE `custom_field_form_masters` ADD `min_limit` TINYINT NOT NULL AFTER `required_for`, ADD `max_limit` TINYINT NOT NULL AFTER `min_limit`, ADD `validation_type` TINYINT NOT NULL AFTER `max_limit`;
+
+
+26 - 02-2026 Keval
+ALTER TABLE `products` ADD `product_group_id` INT(11) NOT NULL AFTER `hsn_code`;
+
+27-02-2026 Keval
+ALTER TABLE `company_masters` ADD `order_qty_unit` INT(11) NOT NULL AFTER `dispatch_series_pattern`;
+
+ALTER TABLE `products` ADD `product_inner_qty` DOUBLE NOT NULL AFTER `product_group_id`, ADD `product_outer_qty` DOUBLE NOT NULL AFTER `product_inner_qty`, ADD `product_inner_unit` INT(11) NOT NULL AFTER `product_outer_qty`, ADD `product_outer_unit` INT(11) NOT NULL AFTER `product_inner_unit`, ADD `product_length` DOUBLE NOT NULL AFTER `product_outer_unit`, ADD `product_width` DOUBLE NOT NULL AFTER `product_length`, ADD `product_height` DOUBLE NOT NULL AFTER `product_width`;
+
+ALTER TABLE `cart_items` ADD `item_inner_quantity` DOUBLE NOT NULL AFTER `item_warehouse_id`, ADD `item_outer_quantity` DOUBLE NOT NULL AFTER `item_inner_quantity`;
+
+28-02-2026 Dinesh
+UPDATE 11111company_masters SET order_qty_unit = 1 WHERE 1=2
+
+ALTER TABLE `cart_items` ADD `inner_qty_unit` VARCHAR(255) NOT NULL AFTER `item_unit_name`, ADD `outer_qty_unit` VARCHAR(255) NOT NULL AFTER `inner_qty_unit`;
+
+
+03-03-2026 Rohan
+ALTER TABLE `reminder_messages` ADD `call_date` DATETIME NOT NULL AFTER `remark`, ADD `call_duration` VARCHAR(255) NOT NULL AFTER `call_date`, ADD `call_type` INT NOT NULL AFTER `call_duration`;
+
+05-03-2026 Keval
+ALTER TABLE `cart_items` ADD `product_inner_qty` DOUBLE NOT NULL AFTER `outer_qty_unit`, ADD `product_outer_qty` DOUBLE NOT NULL AFTER `product_inner_qty`;
+
+ALTER TABLE `cart_items` ADD `item_loose_quantity` DOUBLE NOT NULL AFTER `item_outer_quantity`;
+
+
+***********ALTER TABLE `cart_items` CHANGE `item_outter_quantity` `item_outer_quantity` DOUBLE NOT NULL;
+
+06-03-2026 Rohan
+
+CREATE TABLE employee_account_transactions ( id INT AUTO_INCREMENT PRIMARY KEY, team_id INT, a_application_login_id INT, company_masters_id INT, type TINYINT, mode INT, amount DOUBLE, payment_date_time DATETIME, remark VARCHAR(255), approve_by_a_application_login_id INT, approve_date_time DATETIME, created_date_time DATETIME DEFAULT CURRENT_TIMESTAMP, modified_date DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, s_timestemp VARCHAR(255), isDelete TINYINT DEFAULT 0, isActive TINYINT DEFAULT 1 );
+
+07-03-2026 Rohan
+ALTER TABLE `employee_account_transactions` CHANGE `approve_by_a_application_login_id` `approve_by_a_application_login_id` INT(11) NULL;
+
+INSERT INTO `a_application_pages` (`id`, `page_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, 'Employee Account Transaction', 'employee_account_transaction', 'Employee Account Transaction', '0', '0', '0', '1', '2026-03-07 06:27:29.000000', current_timestamp(), '0', '1');
+
+INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, '2', '112', '0', '2026-03-07 06:30:50.000000', current_timestamp(), '0', '1'), (NULL, '3', '112', '0', '2026-03-07 06:30:50.000000', current_timestamp(), '0', '1');
+
+ALTER TABLE `employee_account_transactions` CHANGE `s_timestemp` `s_timestemp` TIMESTAMP NULL DEFAULT NULL;
+
+ALTER TABLE `employee_account_transactions` CHANGE `s_timestemp` `s_timestemp` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP;
+
+07-03-2026 Keval
+INSERT INTO `a_application_pages` (`id`, `page_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, 'Print Settings Rights', 'print_settings_rights', 'Print Settings Rights', '0', '0', '0', '1', '2026-03-07 12:37:08.000000', current_timestamp(), '0', '1');
+
+INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, '1', '113', '0', '2026-03-07 13:07:46.000000', current_timestamp(), '0', '1'), (NULL, '2', '113', '0', '2026-03-07 13:07:46.000000', current_timestamp(), '0', '1');
+
+INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, '3', '113', '0', '2026-03-07 13:08:31.000000', current_timestamp(), '0', '1');
+
+08-03-2026 Keval
+ALTER TABLE `task_managements` ADD `label_id` VARCHAR(50) NOT NULL AFTER `complated_by`;
+
+ALTER TABLE `contact_masters` ADD `pinned_message` INT(11) NOT NULL AFTER `is_archive`;
+
+09-03-2026 Rohan
+ALTER TABLE `employee_account_transactions` CHANGE `approve_by_a_application_login_id` `approve_by_a_application_login_id` INT(11) NULL DEFAULT '0';
+
+
+10-03-2026 Dinesh
+ALTER TABLE `plan_masters` ADD `monthly_plan_amount` DOUBLE NOT NULL AFTER `plan_amount`;
+
+
+CREATE TABLE `company_masters_vs_set_prefixes` (
+  `id` int(11) NOT NULL,
+  `company_id` int(11) NOT NULL,
+  `order_prefix` text NOT NULL,
+  `order_title` text NOT NULL,
+  `order_doc_no` text NOT NULL,
+  `order_view_color` text NOT NULL,
+  `order_view_formate` tinyint(4) NOT NULL,
+  `quotation_prefix` text NOT NULL,
+  `quotation_title` text NOT NULL,
+  `quotation_doc_no` text NOT NULL,
+  `quotation_view_color` text NOT NULL,
+  `quotation_view_formate` tinyint(4) NOT NULL,
+  `invoice_prefix` text NOT NULL,
+  `invoice_title` text NOT NULL,
+  `invoice_doc_no` text NOT NULL,
+  `invoice_view_color` text NOT NULL,
+  `invoice_view_formate` tinyint(4) NOT NULL,
+  `purchase_ord_prefix` text NOT NULL,
+  `purchase_order_title` text NOT NULL,
+  `purchase_order_doc_no` text NOT NULL,
+  `purchase_order_view_color` text NOT NULL,
+  `purchase_order_view_formate` tinyint(4) NOT NULL,
+  `return_sales_invoice_prefix` text NOT NULL,
+  `return_sales_invoice_title` text NOT NULL,
+  `return_sales_invoice_doc_no` text NOT NULL,
+  `return_sales_invoice_view_color` text NOT NULL,
+  `return_sales_invoice_view_formate` tinyint(4) NOT NULL,
+  `return_purchase_invoice_prefix` text NOT NULL,
+  `return_purchase_invoice_title` text NOT NULL,
+  `return_purchase_invoice_doc_no` text NOT NULL,
+  `return_purchase_invoice_view_color` text NOT NULL,
+  `return_purchase_invoice_view_formate` tinyint(4) NOT NULL,
+  `workorder_prefix` text NOT NULL,
+  `workorder_title` text NOT NULL,
+  `workorder_doc_no` text NOT NULL,
+  `workorder_view_color` text NOT NULL,
+  `workorder_view_formate` tinyint(4) NOT NULL,
+  `purchase_prefix` text NOT NULL,
+  `purchase_title` text NOT NULL,
+  `purchase_doc_no` text NOT NULL,
+  `purchase_view_color` text NOT NULL,
+  `purchase_view_formate` tinyint(4) NOT NULL,
+  `quotation_terms_conditions` text NOT NULL,
+  `quotation_remark` text NOT NULL,
+  `quotation_note` text NOT NULL,
+  `order_terms_conditions` text NOT NULL,
+  `order_remark` text NOT NULL,
+  `order_note` text NOT NULL,
+  `sales_invoice_terms_conditions` text NOT NULL,
+  `sales_invoice_remark` text NOT NULL,
+  `sales_invoice_note` text NOT NULL,
+  `return_sales_invoice_terms_conditions` text NOT NULL,
+  `return_sales_invoice_remark` text NOT NULL,
+  `return_sales_invoice_note` text NOT NULL,
+  `purchase_order_terms_conditions` text NOT NULL,
+  `purchase_order_remark` text NOT NULL,
+  `purchase_order_note` text NOT NULL,
+  `purchase_invoice_terms_conditions` text NOT NULL,
+  `purchase_invoice_remark` text NOT NULL,
+  `purchase_invoice_note` text NOT NULL,
+  `return_purchase_invoice_terms_conditions` text NOT NULL,
+  `return_purchase_invoice_remark` text NOT NULL,
+  `return_purchase_invoice_note` text NOT NULL,
+  `work_order_terms_conditions` text NOT NULL,
+  `work_order_remark` text NOT NULL,
+  `work_order_note` text NOT NULL,
+  `inward_prefix` text NOT NULL,
+  `inward_title` text NOT NULL,
+  `inward_doc_no` text NOT NULL,
+  `inward_view_color` text NOT NULL,
+  `inward_view_formate` tinyint(4) NOT NULL,
+  `inward_terms_conditions` text NOT NULL,
+  `inward_remark` text NOT NULL,
+  `inward_note` text NOT NULL,
+  `dispatch_prefix` text NOT NULL,
+  `dispatch_title` text NOT NULL,
+  `dispatch_doc_no` text NOT NULL,
+  `dispatch_view_color` text NOT NULL,
+  `dispatch_view_formate` tinyint(4) NOT NULL,
+  `dispatch_terms_conditions` text NOT NULL,
+  `dispatch_remark` text NOT NULL,
+  `dispatch_note` text NOT NULL,
+  `quotation_packing_charge_title` text NOT NULL,
+  `quotation_transport_charge_title` text NOT NULL,
+  `quotation_tcs_title` text NOT NULL,
+  `quotation_tsc_percentage` double NOT NULL,
+  `order_packing_charge_title` text NOT NULL,
+  `order_transport_charge_title` text NOT NULL,
+  `order_tcs_title` text NOT NULL,
+  `order_tsc_percentage` double NOT NULL,
+  `sales_invoice_packing_charge_title` text NOT NULL,
+  `sales_invoice_transport_charge_title` text NOT NULL,
+  `sales_invoice_tcs_title` text NOT NULL,
+  `sales_invoice_tsc_percentage` double NOT NULL,
+  `return_sales_invoice_packing_charge_title` text NOT NULL,
+  `return_sales_invoice_transport_charge_title` text NOT NULL,
+  `return_sales_invoice_tcs_title` text NOT NULL,
+  `return_sales_invoice_tsc_percentage` double NOT NULL,
+  `purchase_order_packing_charge_title` text NOT NULL,
+  `purchase_order_transport_charge_title` text NOT NULL,
+  `purchase_order_tcs_title` text NOT NULL,
+  `purchase_order_tsc_percentage` double NOT NULL,
+  `purchase_invoice_packing_charge_title` text NOT NULL,
+  `purchase_invoice_transport_charge_title` text NOT NULL,
+  `purchase_invoice_tcs_title` text NOT NULL,
+  `purchase_invoice_tsc_percentage` double NOT NULL,
+  `return_purchase_invoice_packing_charge_title` text NOT NULL,
+  `return_purchase_invoice_transport_charge_title` text NOT NULL,
+  `return_purchase_invoice_tcs_title` text NOT NULL,
+  `return_purchase_invoice_tsc_percentage` double NOT NULL,
+  `work_order_packing_charge_title` text NOT NULL,
+  `work_order_transport_charge_title` text NOT NULL,
+  `work_order_tcs_title` text NOT NULL,
+  `work_order_tsc_percentage` double NOT NULL,
+  `inward_packing_charge_title` text NOT NULL,
+  `inward_transport_charge_title` text NOT NULL,
+  `inward_tcs_title` text NOT NULL,
+  `inward_tsc_percentage` double NOT NULL,
+  `dispatch_packing_charge_title` text NOT NULL,
+  `dispatch_transport_charge_title` text NOT NULL,
+  `dispatch_tcs_title` text NOT NULL,
+  `dispatch_tsc_percentage` double NOT NULL,
+  `created_date_time` datetime NOT NULL,
+  `s_timestemp` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `isDelete` tinyint(4) NOT NULL DEFAULT 0,
+  `isActive` tinyint(4) NOT NULL DEFAULT 1
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+ALTER TABLE `company_masters_vs_set_prefixes` ADD PRIMARY KEY (`id`);
+
+ALTER TABLE `company_masters_vs_set_prefixes` MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+CREATE TABLE `company_masters_vs_third_party_integrations` (
+  `id` int(11) NOT NULL,
+  `company_id` int(11) NOT NULL,
+  `host_out_going_mail` text NOT NULL,
+  `port_mail_setup` int(11) NOT NULL,
+  `mail_id_setup` text NOT NULL,
+  `password_mail_setup` text NOT NULL,
+  `pop3_host` text NOT NULL,
+  `incoming_port` int(11) NOT NULL,
+  `trade_india_user_id` text NOT NULL,
+  `trade_india_profile_id` text NOT NULL,
+  `trade_india_key` text NOT NULL,
+  `india_mart_api_key` text NOT NULL,
+  `whatsapp_authkey` text NOT NULL,
+  `whatsapp_appkey` text NOT NULL,
+  `chatgpt_appkey` text NOT NULL,
+  `gimini_appkey` text NOT NULL,
+  `google_lead_sheet_for_faceBook_1` text NOT NULL,
+  `google_lead_sheet_for_faceBook_2` text NOT NULL,
+  `google_sheet_key_3` text NOT NULL,
+  `google_sheet_key_4` text NOT NULL,
+  `serp_api_key` text NOT NULL,
+  `created_date_time` datetime NOT NULL,
+  `s_timestemp` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `isDelete` tinyint(4) NOT NULL DEFAULT 0,
+  `isActive` tinyint(4) NOT NULL DEFAULT 1
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+ALTER TABLE `company_masters_vs_third_party_integrations` ADD PRIMARY KEY (`id`);
+
+ALTER TABLE `company_masters_vs_third_party_integrations` MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+
+11-03-2026 Keval
+
+ALTER TABLE `contact_masters` CHANGE `cntc_column_number_1` `cntc_column_number_1` TEXT NOT NULL;
+ALTER TABLE `contact_masters` CHANGE `cntc_column_number_2` `cntc_column_number_2` TEXT NOT NULL;
+ALTER TABLE `contact_masters` CHANGE `cntc_column_number_3` `cntc_column_number_3` TEXT NOT NULL;
+ALTER TABLE `contact_masters` CHANGE `cntc_column_number_4` `cntc_column_number_4` TEXT NOT NULL;
+ALTER TABLE `contact_masters` CHANGE `cntc_column_number_5` `cntc_column_number_5` TEXT NOT NULL;
+
+
+14-03-2026 Rohan
+
+ALTER TABLE `stage_status_masters` ADD `visibility` TINYINT NOT NULL AFTER `status_type`;
+ALTER TABLE `task_categories` ADD `visibility` TINYINT NOT NULL AFTER `task_color`;
+
+17-03-2026 Keval 
+ALTER TABLE `task_managements` ADD `customer_company_id` INT(11) NOT NULL AFTER `label_id`, ADD `customer_application_login_id` INT(11) NOT NULL AFTER `customer_company_id`;
+
+18-03-2026 Rohan
+UPDATE `stage_status_masters` SET `name` = 'pause' WHERE `stage_status_masters`.`id` = -5;
+
+
+20-03-2026 Keval 
+NOTE: This Status is Only Customer Support Ticket Status
+**INSERT INTO `stage_status_masters` (`id`, `company_masters_id`, `a_application_login_id`, `name`, `color`, `order_type`, `change_status_team_ids`, `show_status_data_team_ids`, `status_type`, `visibility`, `display_order_type`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`, `modified_date`) VALUES ('-14', '0', '0', 'Pending for review', '#3385ff', '8', '', '', '', '1', '', '2026-03-20 14:09:53.000000', current_timestamp(), '0', '1', current_timestamp());
+
+23-03-2026 Keval
+ALTER TABLE `plan_vs_pages` ADD `extra_information` TEXT NOT NULL AFTER `data_limit`;
+UPDATE `plan_vs_pages` SET `extra_information` = 'Extra charge' WHERE `plan_vs_pages`.`page_id` = 38;
+
+
+
+24-03-2026 Deep
+CREATE TABLE `product_bill_of_material` (
+  `id` int(11) NOT NULL,
+  `product_id` int(11) NOT NULL,
+  `bom_number` varchar(255) NOT NULL,
+  `bom_name` varchar(255) NOT NULL,
+  `qty` double NOT NULL,
+  `unit` int(11) NOT NULL,
+  `bom_document` varchar(255) NOT NULL,
+  `bom_drawing` varchar(255) NOT NULL,
+  `bom_review_frequency` text NOT NULL,
+  `company_masters_id` int(11) NOT NULL,
+  `a_application_login_id` int(11) NOT NULL,
+  `created_date_time` datetime NOT NULL,
+  `s_timestemp` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `isDelete` tinyint(4) NOT NULL DEFAULT 0,
+  `isActive` tinyint(4) NOT NULL DEFAULT 1,
+  `modified_date` datetime NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
+
+ALTER TABLE `product_bill_of_material` ADD PRIMARY KEY (`id`);
+
+ALTER TABLE `product_bill_of_material` MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+ALTER TABLE `product_bill_of_material` ADD `product_img` VARCHAR(255) NOT NULL AFTER `bom_review_frequency`;
+
+
+25-03-2026 Dinesh
+RENAME TABLE product_bill_of_material TO product_bill_of_materials;
+ALTER TABLE `carts` ADD `due_date` DATE NULL DEFAULT NULL AFTER `stock_type`;
+
+26-03-2026
+ALTER TABLE `a_application_logins` ADD `daily_break_hours` VARCHAR(255) NOT NULL AFTER `daily_working_hours`, ADD `min_present_hours` VARCHAR(255) NOT NULL AFTER `daily_break_hours`;
+
+
+26-03-2026 Keval
+ALTER TABLE `a_application_pages` ADD `modual_name` VARCHAR(255) NOT NULL AFTER `page_name`;
+UPDATE print_settings
+SET setting_details = JSON_SET(setting_details, '$.displayMainPage', true)
+WHERE type BETWEEN 1 AND 9
+  AND print_version BETWEEN 1 AND 4
+  AND (
+        JSON_EXTRACT(setting_details, '$.displayMainPage') IS NULL
+        OR JSON_EXTRACT(setting_details, '$.displayMainPage') = false
+      );
+
+UPDATE 111a_application_pages SET modual_name = page_name;
+
+UPDATE `1411a_application_pages` SET `modual_name` = 'Reminder' WHERE `a_application_pages`.`id` = 4;
+UPDATE `1111a_application_pages` SET `modual_name` = 'Account' WHERE `a_application_pages`.`id` = 18;
+UPDATE `111a_application_pages` SET `modual_name` = 'Attendance' WHERE `a_application_pages`.`id` = 23;
+UPDATE `1111a_application_pages` SET `modual_name` = 'Field Visit' WHERE `a_application_pages`.`id` = 28;
+
+UPDATE `111a_application_pages` SET `isRights` = '01' WHERE `a_application_pages`.`id` = 4;
+UPDATE `51a_application_pages` SET `isRights` = '1' WHERE `a_application_pages`.`id` = 18;
+UPDATE `654a_application_pages` SET `isRights` = '1' WHERE `a_application_pages`.`id` = 23;
+UPDATE `654a_application_pages` SET `isRights` = '1' WHERE `a_application_pages`.`id` = 28;
+
+26-03-2026 Dinesh
+ALTER TABLE `company_masters` ADD `quotation_effect_last_data_on_new` TINYINT NOT NULL AFTER `dispatch_series_pattern`, ADD `invoice_effect_last_data_on_new` TINYINT NOT NULL AFTER `quotation_effect_last_data_on_new`, ADD `order_effect_last_data_on_new` TINYINT NOT NULL AFTER `invoice_effect_last_data_on_new`, ADD `return_sales_invoice_effect_last_data_on_new` TINYINT NOT NULL AFTER `order_effect_last_data_on_new`, ADD `purchase_effect_last_data_on_new` TINYINT NOT NULL AFTER `return_sales_invoice_effect_last_data_on_new`, ADD `return_purchase_invoice_effect_last_data_on_new` TINYINT NOT NULL AFTER `purchase_effect_last_data_on_new`, ADD `purchase_ord_effect_last_data_on_new` TINYINT NOT NULL AFTER `return_purchase_invoice_effect_last_data_on_new`;
+
+ALTER TABLE `company_masters` CHANGE `purchase_ord_effect_last_data_on_new` `purchase_order_effect_last_data_on_new` TINYINT(4) NOT NULL;
+ALTER TABLE `company_masters` CHANGE `purchase_effect_last_data_on_new` `purchase_invoice_effect_last_data_on_new` TINYINT(4) NOT NULL;
+ALTER TABLE `company_masters` CHANGE `invoice_effect_last_data_on_new` `sales_invoice_effect_last_data_on_new` TINYINT(4) NOT NULL;
+
+
+27-03-2026 Deep 
+CREATE TABLE `process_masters` (
+  `id` int(11) NOT NULL,
+  `company_masters_id` int(11) NOT NULL,
+  `a_application_login_id` int(11) NOT NULL,
+  `process_name` text NOT NULL,
+  `color` varchar(50) NOT NULL,
+  `created_date_time` datetime NOT NULL,
+  `s_timestemp` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `isDelete` tinyint(4) NOT NULL DEFAULT 0,
+  `isActive` tinyint(4) NOT NULL DEFAULT 1,
+  `modified_date` datetime NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+ALTER TABLE `process_masters` ADD PRIMARY KEY (`id`);
+ALTER TABLE `process_masters` MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+
+27-03-2026 Dinesh
+ALTER TABLE `company_masters` ADD `quotation_sr_number_generate_flag` TINYINT NOT NULL COMMENT '0 -> Auto 1 -> Manual' AFTER `purchase_order_effect_last_data_on_new`, ADD `order_sr_number_generate_flag` TINYINT NOT NULL COMMENT '0 -> Auto 1 -> Manual' AFTER `quotation_sr_number_generate_flag`, ADD `sales_invoice_sr_number_generate_flag` TINYINT NOT NULL COMMENT '0 -> Auto 1 -> Manual' AFTER `order_sr_number_generate_flag`, ADD `return_sales_invoice_sr_number_generate_flag` TINYINT NOT NULL COMMENT '0 -> Auto 1 -> Manual' AFTER `sales_invoice_sr_number_generate_flag`, ADD `purchase_order_sr_number_generate_flag` TINYINT NOT NULL COMMENT '0 -> Auto 1 -> Manual' AFTER `return_sales_invoice_sr_number_generate_flag`, ADD `purchase_invoice_sr_number_generate_flag` TINYINT NOT NULL COMMENT '0 -> Auto 1 -> Manual' AFTER `purchase_order_sr_number_generate_flag`, ADD `return_purchase_invoice_sr_number_generate_flag` TINYINT NOT NULL COMMENT '0 -> Auto 1 -> Manual' AFTER `purchase_invoice_sr_number_generate_flag`, ADD `inward_sr_number_generate_flag` TINYINT NOT NULL COMMENT '0 -> Auto 1 -> Manual' AFTER `return_purchase_invoice_sr_number_generate_flag`, ADD `dispatch_sr_number_generate_flag` TINYINT NOT NULL COMMENT '0 -> Auto 1 -> Manual' AFTER `inward_sr_number_generate_flag`;
+
+27-03-2026 Keval
+NOTE:a alter apply kayra pela user na price je live ma hoy a mukvana che
+UPDATE `plan_vs_pages` SET `extra_information` = '₹220 / Year/ Extra Users' WHERE `plan_vs_pages`.`id` = 56 AND `plan_vs_pages`.`page_id` = 34;
+UPDATE `plan_vs_pages` SET `extra_information` = '₹440 / Year/ Extra Users' WHERE `plan_vs_pages`.`id` = 139 AND `plan_vs_pages`.`page_id` = 34;
+UPDATE `plan_vs_pages` SET `extra_information` = '₹800 / Year/ Extra Users' WHERE `plan_vs_pages`.`id` = 223 AND `plan_vs_pages`.`page_id` = 34;
+
+UPDATE `smalloffice`.`plan_vs_pages` SET `extra_information` = 'Chat + Ticket' WHERE (`id` = '55');
+UPDATE `smalloffice`.`plan_vs_pages` SET `extra_information` = 'Chat + Ticket' WHERE (`id` = '138');
+UPDATE `smalloffice`.`plan_vs_pages` SET `extra_information` = 'Chat + Ticket (Priority)' WHERE (`id` = '222');
+
+28-03-2026 Deep
+CREATE TABLE `bom_vs_process_lists` (
+  `id` int(11) NOT NULL,
+  `bom_id` int(11) NOT NULL,
+  `product_id` int(11) NOT NULL,
+  `process_id` int(11) NOT NULL,
+  `workstation_id` int(11) NOT NULL,
+  `required_time` varchar(255) NOT NULL,
+  `process_cost` double NOT NULL,
+  `manpower_cost` double NOT NULL,
+  `company_masters_id` int(11) NOT NULL,
+  `a_application_login_id` int(11) NOT NULL,
+  `created_date_time` datetime NOT NULL,
+  `s_timestemp` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `isDelete` tinyint(4) NOT NULL DEFAULT 0,
+  `isActive` tinyint(4) NOT NULL DEFAULT 1,
+  `modified_date` datetime NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+
+ALTER TABLE `bom_vs_process_lists` ADD PRIMARY KEY (`id`);
+
+ALTER TABLE `bom_vs_process_lists` MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+ALTER TABLE `product_bill_of_materials` ADD `extra_charges_1` DOUBLE NOT NULL AFTER `bom_review_frequency`, ADD `extra_charges_2` DOUBLE NOT NULL AFTER `extra_charges_1`, ADD `sales_rate` DOUBLE NOT NULL AFTER `extra_charges_2`;
+
+28-03-2026 Dinesh
+
+
+UPDATE 11111company_masters SET purchase_invoice_sr_number_generate_flag = 1,return_sales_invoice_sr_number_generate_flag=1;
+
+
+28-03-2026 Keval 
+ALTER TABLE `task_managements` ADD `external_status` TINYINT(10) NOT NULL AFTER `status`;
+
+30-03-2026 Deep
+ALTER TABLE `bom_vs_process_lists` CHANGE `workstation_id` `workstation_id` TEXT NOT NULL;
+
+31-03-2026 Keval 
+NoTE: product_bill_of_materials Table koi new onbord ma na hoy to add karvu padse km k create_company_copy.sql ma bhul hti atla mate
+
+CREATE TABLE `product_bill_of_materials` (
+  `id` int(11) NOT NULL,
+  `product_id` int(11) NOT NULL,
+  `bom_number` varchar(255) NOT NULL,
+  `bom_name` varchar(255) NOT NULL,
+  `qty` double NOT NULL,
+  `unit` int(11) NOT NULL,
+  `bom_document` varchar(255) NOT NULL,
+  `bom_drawing` varchar(255) NOT NULL,
+  `bom_review_frequency` text NOT NULL,
+  `company_masters_id` int(11) NOT NULL,
+  `a_application_login_id` int(11) NOT NULL,
+  `created_date_time` datetime NOT NULL,
+  `s_timestemp` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `isDelete` tinyint(4) NOT NULL DEFAULT 0,
+  `isActive` tinyint(4) NOT NULL DEFAULT 1,
+  `modified_date` datetime NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
+
+ALTER TABLE `product_bill_of_materials` ADD PRIMARY KEY (`id`);
+
+ALTER TABLE `product_bill_of_materials` MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+ALTER TABLE `product_bill_of_materials` ADD `product_img` VARCHAR(255) NOT NULL AFTER `bom_review_frequency`;
+ALTER TABLE `product_bill_of_materials` ADD `extra_charges_1` DOUBLE NOT NULL AFTER `bom_review_frequency`, ADD `extra_charges_2` DOUBLE NOT NULL AFTER `extra_charges_1`, ADD `sales_rate` DOUBLE NOT NULL AFTER `extra_charges_2`;
+
+31-03-2026 Dinesh
+UPDATE stage_status_masters SET isDelete=1 WHERE id = '-14';
+
+31-03-2026 Keval
+ALTER TABLE `call_histories` ADD `contact_id` INT(11) NOT NULL AFTER `mobile_number`;
+
+01-04-2026 Dinesh
+CREATE TABLE `bom_process_vs_cons_rejcts` (
+  `id` int(11) NOT NULL,
+  `master_product_id` int(11) NOT NULL,
+  `bom_id` int(11) NOT NULL,
+  `process_id` int(11) NOT NULL,
+  `type` tinyint(4) NOT NULL,
+  `item_id` int(11) NOT NULL,
+  `qty` double NOT NULL,
+  `unit` int(11) NOT NULL,
+  `remark` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
+  `company_masters_id` int(11) NOT NULL,
+  `a_application_login_id` int(11) NOT NULL,
+  `created_date_time` datetime NOT NULL,
+  `s_timestemp` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `isDelete` tinyint(4) NOT NULL DEFAULT 0,
+  `isActive` tinyint(4) NOT NULL DEFAULT 1,
+  `modified_date` datetime NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
+
+ALTER TABLE `bom_process_vs_cons_rejcts` ADD PRIMARY KEY (`id`);
+
+ALTER TABLE `bom_process_vs_cons_rejcts` MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+
+01-04-2026 Rohan
+INSERT INTO `print_settings` (`id`, `type`, `print_version`, `setting_details`, `created_date_time`, `modify_date_time`, `modify_by`, `a_application_login_id`, `company_masters_id`, `isDelete`, `isActive`, `s_timestemp`) VALUES (NULL, '13', '1', '{\"type\":13,\"print_version\":1,\"a_application_login_id\":\"0\",\"headerImage\":true,\"footerImage\":true,\"employeeDetails\":true}', '2026-04-01 03:30:23.000000', '2026-04-01 03:30:23.000000', '', '0', '0', '0', '1', current_timestamp());
+
+01-04-2026 keval
+
+** SET SQL_SAFE_UPDATES = 0;
+UPDATE
+    products
+SET
+    product_inner_qty = 0,
+    product_inner_unit = 0,
+    product_outer_qty = 0,
+    product_outer_unit = 0
+WHERE
+    unit = '' AND (
+        unit_id IS NULL OR unit_id = '' OR unit_id = 0
+    );
+    SET SQL_SAFE_UPDATES = 1;
+
+*** UPDATE products SET product_outer_unit = unit_id WHERE  (product_outer_unit IS NULL OR product_outer_unit = '' OR product_outer_unit = 0);
+*** UPDATE products SET product_inner_unit = unit_id WHERE  (product_inner_unit IS NULL OR product_inner_unit = '' OR product_inner_unit = 0);
+
+02-04-2026 Keval 
+ALTER TABLE `price_lists` ADD `discount_amount` DOUBLE NOT NULL AFTER `discount`;
+
+06-04-2026 Dinesh
+ALTER TABLE `bom_process_vs_cons_rejcts` ADD `is_reusable` TINYINT NOT NULL AFTER `remark`;
+
+07-04-2026 Keval
+UPDATE print_settings
+SET setting_details = JSON_SET(setting_details, '$.employeeDetails', true)
+WHERE type = 12
+  AND print_version = 1
+  AND (
+        JSON_EXTRACT(setting_details, '$.employeeDetails') IS NULL
+        OR JSON_EXTRACT(setting_details, '$.employeeDetails') = false
+      );
+      
+ UPDATE print_settings
+SET setting_details = JSON_SET(setting_details, '$.ContactMobileNumber', true)
+WHERE type BETWEEN 1 AND 9
+  AND print_version BETWEEN 1 AND 4
+  AND (
+        JSON_EXTRACT(setting_details, '$.ContactMobileNumber') IS NULL
+        OR JSON_EXTRACT(setting_details, '$.ContactMobileNumber') = false
+      );     
+
+
+08-04-2026 Dinesh
+INSERT INTO `a_application_pages` (`id`, `page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, 'Stock Adjustment', 'Stock Adjustment', 'stock_adjustment', 'Stock Adjustment', '0', '0', '0', '1', '2026-03-07 12:37:08', '2026-03-26 16:06:45', '0', '1');
+
+INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `extra_information`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, '2', '114', '0', '', '2026-03-07 13:07:46', '2026-03-07 17:38:18', '0', '1');
+INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `extra_information`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, '3', '114', '0', '', '2026-03-07 13:08:31', '2026-03-07 17:38:40', '0', '1');
+
+08-04-2026 Rohan
+ALTER TABLE `a_application_logins` ADD `employee_id` VARCHAR(250) NOT NULL AFTER `admin_type_id`;
+
+14-04-2026 Keval 
+UPDATE 1price_lists SET discount_amount = (rate*discount)/100;
+
+    INSERT INTO `print_settings` (`id`, `type`, `print_version`, `setting_details`, `created_date_time`, `modify_date_time`, `modify_by`, `a_application_login_id`, `company_masters_id`, `isDelete`, `isActive`, `s_timestemp`) VALUES (NULL, '14', '1', '{\"type\":14,\"print_version\":1,\"a_application_login_id\":\"0\",\"ProductSection\":true}', '2026-04-14 03:30:23.000000', '2026-04-14 03:30:23.000000', '', '0', '0', '0', '1', current_timestamp());
+
+
+15-04-2026 Dinesh
+ALTER TABLE `a_application_logins` ADD INDEX(`recovery_mobile`, `isDelete`);
+ALTER TABLE `a_application_logins` ADD INDEX(`recovery_email`, `isDelete`);
+ALTER TABLE `a_application_logins` ADD INDEX(`isDelete`);
+ALTER TABLE `company_masters` ADD INDEX(`plan_expiry_date`, `isDelete`);
+ALTER TABLE `company_masters` ADD INDEX(`isDelete`);
+ALTER TABLE `company_masters` CHANGE `qr_code` `qr_code` VARCHAR(255) CHARACTER SET latin1 COLLATE latin1_swedish_ci NOT NULL;
+ALTER TABLE `company_masters` ADD INDEX(`qr_code`, `isDelete`);
+ALTER TABLE `company_vs_application_logins` ADD INDEX(`company_masters_id`, `isDelete`);
+
+-------------------
+
+ALTER TABLE `account_transactions` ADD INDEX(`contact_masters_id`, `isDelete`);
+ALTER TABLE `account_transactions` ADD INDEX(`a_application_login_id`, `isDelete`);
+ALTER TABLE `account_transactions` ADD INDEX(`payment_date_time`, `isDelete`);
+ALTER TABLE `account_transactions` ADD INDEX(`reference_id`, `reference_table`, `isDelete`);
+ALTER TABLE `attendance_histories` ADD INDEX(`a_application_login_id`, `isDelete`);
+ALTER TABLE `attendance_histories` ADD INDEX(`check_in_out_date_time`, `isDelete`);
+
+ALTER TABLE `a_application_login_type_rights` DROP INDEX `page_id`;
+ALTER TABLE `a_application_login_type_rights` DROP INDEX `company_masters_id`;
+ALTER TABLE `a_application_login_type_rights` DROP INDEX `a_application_login_id_2`;
+
+ALTER TABLE `a_application_login_type_rights` ADD INDEX(`a_application_login_id`, `isDelete`);
+ALTER TABLE `a_application_login_type_rights` ADD INDEX(`page_id`, `isDelete`);
+
+ALTER TABLE `call_histories` ADD INDEX(`mobile_number`, `isDelete`);
+ALTER TABLE `call_histories` ADD INDEX(`contact_id`, `isDelete`);
+ALTER TABLE `call_histories` ADD INDEX(`call_date_time`, `isDelete`);
+
+
+ALTER TABLE `carts` ADD INDEX(`type`, `isDelete`);
+ALTER TABLE `carts` ADD INDEX(`cart_date`, `isDelete`);
+ALTER TABLE `carts` ADD INDEX(`to_customer_id`, `isDelete`);
+ALTER TABLE `carts` ADD INDEX(`referance_cart_id`, `reference_type`, `isDelete`);
+
+ALTER TABLE `cart_items` ADD INDEX(`cart_id`, `isDelete`);
+ALTER TABLE `cart_items` ADD INDEX(`cart_type`, `isDelete`);
+ALTER TABLE `cart_items` ADD INDEX(`item_product_id`, `isDelete`);
+ALTER TABLE `cart_items` ADD INDEX(`isDelete`, `item_warehouse_id`);
+
+ALTER TABLE `contact_masters` DROP INDEX `mobile_number`;
+
+ALTER TABLE `contact_masters` ADD INDEX(`mobile_number`, `isDelete`);
+ALTER TABLE `contact_masters` ADD INDEX(`is_read_by_a_application_login_id`, `isDelete`);
+ALTER TABLE `contact_masters` ADD INDEX(`is_pin_by_a_application_login_id`, `isDelete`);
+ALTER TABLE `contact_masters` ADD INDEX(`is_archive`, `isDelete`);
+ALTER TABLE `contact_masters` ADD INDEX(`person_name`, `isDelete`);
+ALTER TABLE `contact_masters` ADD INDEX(`company_name`, `isDelete`);
+ALTER TABLE `contact_message_histories` ADD INDEX(`contact_masters_id`, `isDelete`);
+ALTER TABLE `employee_account_transactions` ADD INDEX(`team_id`, `isDelete`);
+ALTER TABLE `employee_account_transactions` ADD INDEX(`payment_date_time`, `isDelete`);
+ALTER TABLE `employee_account_transactions` ADD INDEX(`payment_date_time`, `isDelete`);
+ALTER TABLE `expenses` ADD INDEX(`expense_date`, `isDelete`);
+ALTER TABLE `expenses` ADD INDEX(`expense_type_id`, `isDelete`);
+ALTER TABLE `inquiries` ADD INDEX(`contact_master_id`, `isDelete`);
+ALTER TABLE `inquiries` ADD INDEX(`inquiry_date_time`, `isDelete`);
+
+ALTER TABLE `location_trackings` ADD INDEX(`a_application_login_id`, `isDelete`);
+ALTER TABLE `products` ADD INDEX(`category_id`, `isDelete`);
+ALTER TABLE `reminder_messages` ADD INDEX(`reminder_data_time`, `isDelete`);
+ALTER TABLE `reminder_messages` ADD INDEX(`assigned_to`, `isDelete`);
+ALTER TABLE `status_and_stages_logs` ADD INDEX(`reference_table`, `reference_id`, `isDelete`);
+ALTER TABLE `task_managements` ADD INDEX(`reference_table`, `reference_id`, `isDelete`);
+ALTER TABLE `task_managements` ADD INDEX(`task_fromdate`, `isDelete`);
+ALTER TABLE `task_managements` ADD INDEX(`task_fromdate`, `task_enddate`, `isDelete`);
+ALTER TABLE `task_managements` ADD INDEX(`is_support_ticket`, `isDelete`);
+ALTER TABLE `visits` ADD INDEX(`a_application_login_id`, `isDelete`);
+ALTER TABLE `visits` ADD INDEX(`start_date`, `end_date`, `isDelete`);
+ALTER TABLE `visits` ADD INDEX(`contact_id`, `isDelete`);
+------------------------------------------------------------------- V3.0.10 - 15-04-2026 -------------------
+15-04-2026 Keval
+New Folder Add : media-folder/product_bom
+
+21-24-2026 Dinesh
+CREATE TABLE `company_vs_whatsapp_configs` (
+  `id` int(11) NOT NULL,
+  `company_id` int(11) NOT NULL,
+  `created_date_time` datetime NOT NULL,
+  `s_timestemp` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `isDelete` tinyint(4) NOT NULL DEFAULT 0,
+  `isActive` tinyint(4) NOT NULL DEFAULT 1
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+ALTER TABLE `company_vs_whatsapp_configs` ADD PRIMARY KEY (`id`);
+
+ALTER TABLE `company_vs_whatsapp_configs` MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+ALTER TABLE `company_vs_whatsapp_configs` ADD `plateform` TINYINT NOT NULL AFTER `company_id`, ADD `configured_type` TINYINT NOT NULL AFTER `plateform`;
+
+
+INSERT INTO 1111company_vs_whatsapp_configs (company_id,plateform,configured_type) SELECT id,1,1 FROM 1111company_masters;
+
+ALTER TABLE `company_vs_whatsapp_configs` CHANGE `configured_type` `configured_type` TINYINT(4) NOT NULL COMMENT '1 -> QR, 2 -> Cloud';
+
+21-04-2026 Dhyey
+env ma new varibale CUSTOMER_SUPPORT_TICKET_DATE_VIEW Date change 
+
+24-04-2026 Dinesh
+ALTER TABLE `a_application_logins` ADD `whatsapp_phone_number_id` TEXT NOT NULL AFTER `callPopupSwitch`, ADD `whatsapp_connection_id` TEXT NOT NULL AFTER `whatsapp_phone_number_id`, ADD `whatsapp_api_key` TEXT NOT NULL AFTER `whatsapp_connection_id`;
+
+ALTER TABLE `company_vs_whatsapp_configs` ADD `whatsapp_phone_number_id` TEXT NOT NULL AFTER `configured_type`, ADD `whatsapp_connection_id` TEXT NOT NULL AFTER `whatsapp_phone_number_id`, ADD `whatsapp_api_key` TEXT NOT NULL AFTER `whatsapp_connection_id`;
+
+
+25-04-2026 Dinesh
+CREATE TABLE `miracle_configurations` (
+  `id` int(11) NOT NULL,
+  `company_id` int(11) NOT NULL,
+  `client_id` text NOT NULL,
+  `api_key` text NOT NULL,
+  `auth_token` text NOT NULL,
+  `auth_date_time` datetime NOT NULL,
+  `created_date_time` datetime NOT NULL,
+  `s_timestemp` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `isDelete` tinyint(4) NOT NULL DEFAULT 0,
+  `isActive` tinyint(4) NOT NULL DEFAULT 1
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+ALTER TABLE `miracle_configurations` ADD PRIMARY KEY (`id`);
+ALTER TABLE `miracle_configurations` MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+25-04-2026 Keval
+
+New Folder: media-folder/ShippingLabel
+
+UPDATE print_settings
+SET setting_details = JSON_SET(setting_details, '$.ShippingLabelCustomForm', true)
+WHERE type = 14
+  AND print_version = 1
+  AND (
+        JSON_EXTRACT(setting_details, '$.ShippingLabelCustomForm') IS NULL
+        OR JSON_EXTRACT(setting_details, '$.ShippingLabelCustomForm') = false
+      );
+
+27-04-2026 Dinesh
+
+CREATE TABLE `whatsapp_dispatch_jobs` (
+  `id` int(11) NOT NULL,
+  `company_id` int(11) NOT NULL,
+  `created_date_time` datetime NOT NULL,
+  `s_timestemp` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `isDelete` tinyint(4) NOT NULL DEFAULT 0,
+  `isActive` tinyint(4) NOT NULL DEFAULT 1
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+ALTER TABLE `whatsapp_dispatch_jobs` ADD PRIMARY KEY (`id`);
+
+ALTER TABLE `whatsapp_dispatch_jobs` MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+ALTER TABLE `whatsapp_dispatch_jobs` ADD `type` TINYINT NOT NULL COMMENT '1 => Task Send Whatsapp, 2 => Email Send Whatsapp' AFTER `id`;
+
+INSERT INTO `cron_jobs` (`id`, `cron_title`, `crone_tab_start_stop_flag`, `cron_time`, `cron_start_time`, `cron_stop_time`, `created_date_time`) VALUES (NULL, 'crone_tab_clear_whatsapp_dispatch_job', '1', '', '2026-04-27 12:25:16.000000', '2026-04-27 12:25:16.000000', '2026-04-27 12:25:16.000000');
+
+28-04-2026 Dinesh
+ALTER TABLE `company_masters` ADD `google_sheet_first_name` TEXT NOT NULL AFTER `google_sheet_key_4`, ADD `google_sheet_second_name` TEXT NOT NULL AFTER `google_sheet_first_name`, ADD `google_sheet_third_name` TEXT NOT NULL AFTER `google_sheet_second_name`, ADD `google_sheet_fourth_name` TEXT NOT NULL AFTER `google_sheet_third_name`;
+
+29-04-2026 Dinesh
+
+ALTER TABLE `miracle_configurations` DROP `auth_token`;
+
+ALTER TABLE `miracle_configurations` ADD `urlKey` TEXT NOT NULL AFTER `api_key`, ADD `baseurl` TEXT NOT NULL AFTER `urlKey`, ADD `authapi` TEXT NOT NULL AFTER `baseurl`, ADD `access_token` TEXT NOT NULL AFTER `authapi`;
+
+ALTER TABLE `miracle_configurations` DROP `authapi`;
+
+ALTER TABLE `products` ADD `miracle_UniqueId` TEXT NOT NULL AFTER `product_height`, ADD `miracle_update_date_time` TEXT NOT NULL AFTER `miracle_UniqueId`;
+ALTER TABLE `products` CHANGE `miracle_update_date_time` `miracle_update_date_time` DATETIME NOT NULL;
+
+ALTER TABLE `carts` ADD `miracle_UniqueId` TEXT NOT NULL AFTER `reference_type`, ADD `miracle_update_date_time` DATETIME NULL AFTER `miracle_UniqueId`;
+
+01-05-2026 Keval
+ALTER TABLE `warehouses` ADD `assigned_team_member` TEXT CHARACTER SET utf8 COLLATE utf8_general_ci NOT NULL AFTER `warehouse_color`;
+
+01-05-2026 Dinesh
+ALTER TABLE `contact_masters` ADD `miracle_UniqueId` TEXT NOT NULL AFTER `pinned_message`, ADD `miracle_update_date_time` DATETIME NULL AFTER `miracle_UniqueId`;
+
+
+04-05-2026 Keval
+
+UPDATE print_settings
+SET setting_details = JSON_SET(setting_details, '$.showLinesBetweenProducts', true)
+WHERE type BETWEEN 1 AND 9
+  AND print_version BETWEEN 1 AND 4
+  AND (
+        JSON_EXTRACT(setting_details, '$.showLinesBetweenProducts') IS NULL
+        OR JSON_EXTRACT(setting_details, '$.showLinesBetweenProducts') = false
+      );    
+
+05-05-2026 Dinesh
+ALTER TABLE `miracle_configurations` ADD `Year` VARCHAR(255) NOT NULL AFTER `company_id`;
+ALTER TABLE `miracle_configurations` ADD `BranchName` VARCHAR(255) NOT NULL COMMENT 'Miracle BranchName' AFTER `auth_date_time`, ADD `CompanyName` VARCHAR(255) NOT NULL COMMENT 'Miracle CompanyName' AFTER `BranchName`;
+ALTER TABLE `miracle_configurations` CHANGE `Year` `Year` VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT 'Miracle Finacial Year';
+ALTER TABLE `miracle_configurations` CHANGE `Year` `Year` VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT 'Miracle Formate Finacial Year\r\n2025-04-01#2026-03-31';
+
+
+CREATE TABLE `api_logs` (
+  `id` int(11) NOT NULL,
+  `type` tinyint(4) NOT NULL,
+  `company_masters_id` int(11) NOT NULL,
+  `a_application_login_id` int(11) NOT NULL,
+  `method` varchar(10) NOT NULL,
+  `url` varchar(255) NOT NULL,
+  `status_code` int(11) NOT NULL,
+  `response_time` int(11) NOT NULL,
+  `ip_address` varchar(45) NOT NULL,
+  `user_agent` text NOT NULL,
+  `level` enum('info','error') NOT NULL DEFAULT 'info',
+  `error` text NOT NULL,
+  `isDelete` tinyint(4) NOT NULL DEFAULT 0,
+  `isActive` tinyint(4) NOT NULL DEFAULT 1,
+  `created_date_time` datetime NOT NULL,
+  `modified_date` datetime NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
+
+ALTER TABLE `api_logs` ADD PRIMARY KEY (`id`);
+
+ALTER TABLE `api_logs` MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+ALTER TABLE `api_logs` ADD `requestBody` TEXT NOT NULL AFTER `level`;
+
+------------------------------------------------------------------- V3.0.11 - 05-05-2026 -------------------
+
+06-05-2026 Deep
+ALTER TABLE `company_masters_vs_third_party_integrations` ADD `google_sheet_first_name` TEXT NOT NULL AFTER `google_sheet_key_4`, ADD `google_sheet_second_name` TEXT NOT NULL AFTER `google_sheet_first_name`, ADD `google_sheet_third_name` TEXT NOT NULL AFTER `google_sheet_second_name`, ADD `google_sheet_fourth_name` TEXT NOT NULL AFTER `google_sheet_third_name`;
+
+11-05-2026 Keval
+
+ALTER TABLE
+    `task_managements` ADD `task_column_number_1` INT NOT NULL AFTER `modified_date`,
+    ADD `task_column_number_2` INT NOT NULL AFTER `task_column_number_1`,
+    ADD `task_column_number_3` INT NOT NULL AFTER `task_column_number_2`,
+    ADD `task_column_number_4` INT NOT NULL AFTER `task_column_number_3`,
+    ADD `task_column_number_5` INT NOT NULL AFTER `task_column_number_4`,
+    ADD `task_column_text_1` VARCHAR(255) NOT NULL AFTER `task_column_number_5`,
+    ADD `task_column_text_2` VARCHAR(255) NOT NULL AFTER `task_column_text_1`,
+    ADD `task_column_text_3` VARCHAR(255) NOT NULL AFTER `task_column_text_2`,
+    ADD `task_column_text_4` VARCHAR(255) NOT NULL AFTER `task_column_text_3`,
+    ADD `task_column_text_5` VARCHAR(255) NOT NULL AFTER `task_column_text_4`,
+    ADD `task_column_text_area_1` TEXT NOT NULL AFTER `task_column_text_5`,
+    ADD `task_column_text_area_2` TEXT NOT NULL AFTER `task_column_text_area_1`,
+    ADD `task_column_text_area_3` TEXT NOT NULL AFTER `task_column_text_area_2`,
+    ADD `task_column_text_area_4` TEXT NOT NULL AFTER `task_column_text_area_3`,
+    ADD `task_column_text_area_5` TEXT NOT NULL AFTER `task_column_text_area_4`,
+    ADD `task_column_date_1` INT NOT NULL AFTER `task_column_text_area_5`,
+    ADD `task_column_date_2` DATE NULL DEFAULT NULL AFTER `task_column_date_1`,
+    ADD `task_column_date_3` DATE NULL DEFAULT NULL AFTER `task_column_date_2`,
+    ADD `task_column_date_4` DATE NULL DEFAULT NULL AFTER `task_column_date_3`,
+    ADD `task_column_date_5` DATE NULL DEFAULT NULL AFTER `task_column_date_4`,
+    ADD `task_column_date_and_time_1` DATETIME NULL DEFAULT NULL AFTER `task_column_date_5`,
+    ADD `task_column_date_and_time_2` DATETIME NULL DEFAULT NULL AFTER `task_column_date_and_time_1`,
+    ADD `task_column_date_and_time_3` DATETIME NULL DEFAULT NULL AFTER `task_column_date_and_time_2`,
+    ADD `task_column_date_and_time_4` DATETIME NULL DEFAULT NULL AFTER `task_column_date_and_time_3`,
+    ADD `task_column_date_and_time_5` DATETIME NULL DEFAULT NULL AFTER `task_column_date_and_time_4`,
+    ADD `task_column_time_1` TIME NOT NULL AFTER `task_column_date_and_time_5`,
+    ADD `task_column_time_2` TIME NOT NULL AFTER `task_column_time_1`,
+    ADD `task_column_time_3` TEXT NOT NULL AFTER `task_column_time_2`,
+    ADD `task_column_time_4` TIME NOT NULL AFTER `task_column_time_3`,
+    ADD `task_column_time_5` TIME NOT NULL AFTER `task_column_time_4`,
+    ADD `task_column_switch_1` TINYINT NOT NULL AFTER `task_column_time_5`,
+    ADD `task_column_switch_2` TINYINT NOT NULL AFTER `task_column_switch_1`,
+    ADD `task_column_switch_3` TINYINT NOT NULL AFTER `task_column_switch_2`,
+    ADD `task_column_switch_4` TINYINT NOT NULL AFTER `task_column_switch_3`,
+    ADD `task_column_switch_5` TINYINT NOT NULL AFTER `task_column_switch_4`,
+    ADD `task_column_decimal_1` DOUBLE NOT NULL AFTER `task_column_switch_5`,
+    ADD `task_column_decimal_2` DOUBLE NOT NULL AFTER `task_column_decimal_1`,
+    ADD `task_column_decimal_3` DOUBLE NOT NULL AFTER `task_column_decimal_2`,
+    ADD `task_column_decimal_4` DOUBLE NOT NULL AFTER `task_column_decimal_3`,
+    ADD `task_column_decimal_5` DOUBLE NOT NULL AFTER `task_column_decimal_4`,
+    ADD `task_column_dropdown_1` VARCHAR(255) NOT NULL AFTER `task_column_decimal_5`,
+    ADD `task_column_dropdown_2` VARCHAR(255) NOT NULL AFTER `task_column_dropdown_1`,
+    ADD `task_column_dropdown_3` VARCHAR(255) NOT NULL AFTER `task_column_dropdown_2`,
+    ADD `task_column_dropdown_4` VARCHAR(255) NOT NULL AFTER `task_column_dropdown_3`,
+    ADD `task_column_dropdown_5` VARCHAR(255) NOT NULL AFTER `task_column_dropdown_4`,
+    ADD `task_column_radio_1` VARCHAR(255) NOT NULL AFTER `task_column_dropdown_5`,
+    ADD `task_column_radio_2` VARCHAR(255) NOT NULL AFTER `task_column_radio_1`,
+    ADD `task_column_radio_3` VARCHAR(255) NOT NULL AFTER `task_column_radio_2`,
+    ADD `task_column_radio_4` VARCHAR(255) NOT NULL AFTER `task_column_radio_3`,
+    ADD `task_column_radio_5` VARCHAR(255) NOT NULL AFTER `task_column_radio_4`;
+
+    13-05-2026 Keval
+  new Folder::   media-folder\exports\pricelist
+
+  ALTER TABLE `products` ADD `is_serial_number` TINYINT(1) NOT NULL DEFAULT '1' COMMENT '1 =>Off,2=>On' AFTER `miracle_update_date_time`;
+  
+  14-05-2026 Rohan
+  ALTER TABLE `task_managements` ADD `is_read_by_a_application_login_id` VARCHAR(255) NOT NULL AFTER `a_application_login_id`;
+ALTER TABLE `task_managements` ADD `is_unread` TINYINT NOT NULL AFTER `a_application_login_id`;
+
+14-05-2026 Keval
+
+CREATE TABLE `cart_vs_serial_numbers` (
+  `id` int(11) NOT NULL,
+  `cart_id` int(11) NOT NULL,
+  `cart_type` tinyint(4) NOT NULL,
+   `product_id` int(11) NOT NULL,
+  `serial_numbers` varchar(100) NOT NULL,
+  `a_application_login_id` int(11) NOT NULL,
+  `company_masters_id` int(11) NOT NULL,
+  `isDelete` tinyint(4) NOT NULL DEFAULT 0,
+  `isActive` tinyint(4) NOT NULL DEFAULT 1,
+  `created_date_time` datetime NOT NULL,
+  `modified_date` datetime NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
+
+ALTER TABLE `cart_vs_serial_numbers` ADD PRIMARY KEY (`id`);
+ALTER TABLE `cart_vs_serial_numbers` MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+ALTER TABLE `cart_items` ADD `is_serial_num_product_item` TINYINT(1) NOT NULL DEFAULT '0' AFTER `item_loose_quantity`;
+
+15-05-2026 Dinesh
+ALTER TABLE `company_vs_whatsapp_configs` ADD `whatsapp_waba_id` VARCHAR(100) NOT NULL AFTER `whatsapp_phone_number_id`;
+ALTER TABLE `a_application_logins` ADD `whatsapp_waba_id` VARCHAR(100) NOT NULL AFTER `whatsapp_phone_number_id`;
+ALTER TABLE `a_countries` CHANGE `id` `id` INT(11) NOT NULL AUTO_INCREMENT COMMENT 'Primary key: Unique identifier for each country';
+
+15-05-2026 Keval
+ALTER TABLE `cart_vs_serial_numbers` ADD `sn_reference_type` INT(11) NOT NULL AFTER `serial_numbers`;
+ALTER TABLE `cart_vs_serial_numbers` ADD `sn_reference_cart_id` INT(11) NOT NULL AFTER `sn_reference_type`;
+
+18-05-2026 Keval
+ALTER TABLE `cart_vs_serial_numbers` ADD `cart_item_id` INT(11) NOT NULL AFTER `cart_id`;
+
+18-05-2026 Dinesh
+CREATE TABLE `whatsapp_template_configs` (
+  `id` int(11) NOT NULL,
+  `module` varchar(100) NOT NULL,
+  `template_id` varchar(100) NOT NULL,
+  `template_name` varchar(200) NOT NULL,
+  `variable_mappings` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL CHECK (json_valid(`variable_mappings`)),
+  `user_id` varchar(100) DEFAULT NULL,
+  `isDelete` tinyint(4) NOT NULL,
+  `isActive` tinyint(4) NOT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+ALTER TABLE `whatsapp_template_configs`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `unique_module_template_user` (`module`,`template_id`,`user_id`),
+  ADD KEY `idx_template_configs_module` (`module`),
+  ADD KEY `idx_template_configs_user` (`user_id`);
+
+ALTER TABLE `whatsapp_template_configs` MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+ALTER TABLE `wrkflw_auto_assignment_of_contacts` CHANGE `text_match_description` `text_match_description` TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL;
+
+19-05-2026 Dinesh
+ALTER TABLE `inquiries` ADD `unique_key` TEXT NOT NULL COMMENT 'Google Sheet Data Uniqe Key' AFTER `static`;
+ALTER TABLE `whatsapp_template_configs` ADD `displayModule` VARCHAR(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL AFTER `module`;
+ALTER TABLE `whatsapp_template_configs` ADD INDEX(`displayModule`);
+
+ALTER TABLE `whatsapp_template_configs` DROP INDEX `unique_module_template_user`, ADD UNIQUE `unique_module_template_user` (`module`, `template_id`) USING BTREE;
+
+ALTER TABLE `small_office_a2_c2`.`whatsapp_template_configs` DROP INDEX `unique_module_template_user`, ADD UNIQUE `unique_module_template_user` (`module`) USING BTREE;
+
+UPDATE 111111expenses SET expense_date = DATE(created_date_time) WHERE expense_date = NULL OR expense_date = '0000-00-00'
+
+------------------------------------------------------------------- V3.0.12 - 19-05-2026 -------------------
+20-05-2026  Keval 
+ALTER TABLE `task_categories` ADD `is_assigned_widget` TEXT NOT NULL AFTER `visibility`;
+
+21-05-2026 Dinesh
+ALTER TABLE `wrkflw_auto_assignment_of_contacts` ADD `template_id` VARCHAR(100) NOT NULL AFTER `area_id`;
+
+26-05-2026 Keval
+CREATE TABLE `employee_payrolls` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `employee_id` INT(11) NOT NULL,
+
+  `daily_in_time` TIME NOT NULL,
+  `daily_out_time` TIME NOT NULL,
+
+  `daily_working_hours` VARCHAR(255) NOT NULL,
+  `daily_break_hours` VARCHAR(255) NOT NULL,
+  `min_present_hours` VARCHAR(255) NOT NULL,
+  `half_day_hours` VARCHAR(255) NOT NULL,
+
+  `compulsary_attendance` TINYINT(1) NOT NULL DEFAULT 0,
+  `compulsary_attendance_image` TINYINT(1) NOT NULL DEFAULT 0,
+
+  `week_off_days` VARCHAR(255) NOT NULL,
+
+  `salary_type` TINYINT(4) NOT NULL,
+  `salary_amount_type_wise` DOUBLE NOT NULL,
+
+  `min_overtime_hours` TIME NOT NULL,
+  `overtime_amount_per_hour` DOUBLE NOT NULL,
+
+  `approve_ot_hours` TIME NOT NULL,
+
+  `sandwich_rule_applied` TINYINT(4) NOT NULL,
+  `sandwich_rule_type` TINYINT(3) NOT NULL,
+
+  `bonus_type` TINYINT(3) NOT NULL,
+  `bonus_percentage` DOUBLE NOT NULL,
+
+  `performance_incentive` DOUBLE NOT NULL,
+
+  `earning_first` DOUBLE NOT NULL,
+  `earning_second` DOUBLE NOT NULL,
+  `earning_third` DOUBLE NOT NULL,
+
+  `deduction_first` DOUBLE NOT NULL,
+  `deduction_second` DOUBLE NOT NULL,
+  `deduction_third` DOUBLE NOT NULL,
+
+  `pf_percentage` DOUBLE NOT NULL,
+  `company_pf_percentage` DOUBLE NOT NULL,
+  `pm_pf_percentage` DOUBLE NOT NULL,
+
+  `tds_percentage` DOUBLE NOT NULL,
+
+  `insurance_amount` DOUBLE NOT NULL,
+  `pt_amount` DOUBLE NOT NULL,
+
+  `esi_company_side` DOUBLE NOT NULL,
+  `esi_employee_side_percentage` DOUBLE NOT NULL,
+
+  `gratuity_calculation` DOUBLE NOT NULL,
+
+  `basic_da` DOUBLE NOT NULL,
+  `hra` DOUBLE NOT NULL,
+  `ctc` DOUBLE NOT NULL,
+
+  `medical_allowance` DOUBLE NOT NULL,
+  `conveyance_allowance` DOUBLE NOT NULL,
+  `special_allowance` DOUBLE NOT NULL,
+
+  `company_masters_id` INT(11) NOT NULL,
+  `a_application_login_id` INT(11) NOT NULL,
+
+  `created_date_time` DATETIME NOT NULL,
+  `modified_date` DATETIME NOT NULL,
+
+  `s_timestemp` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+  `isDelete` TINYINT(4) NOT NULL DEFAULT 0,
+  `isActive` TINYINT(4) NOT NULL DEFAULT 1,
+
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+28-05-2026 Keval
+
+ALTER TABLE `employee_payrolls` ADD `salary_cal_month_count` TINYINT(4) NOT NULL AFTER `salary_amount_type_wise`;
+
+ALTER TABLE `employee_payrolls` CHANGE `employee_id` `employee_id` VARCHAR(250) NOT NULL;
+
+ALTER TABLE `employee_payrolls` ADD `face_ids` VARCHAR(255) NOT NULL AFTER `employee_id`;
+
+ALTER TABLE `a_application_logins` ADD `aadhar_card_number` VARCHAR(210) NOT NULL AFTER `whatsapp_api_key`, ADD `pan_card_number` VARCHAR(210) NOT NULL AFTER `aadhar_card_number`, ADD `employee_pf_no` VARCHAR(250) NOT NULL AFTER `pan_card_number`, ADD `date_of_joining` DATE NULL DEFAULT NULL AFTER `employee_pf_no`;
+
+ALTER TABLE `reminder_messages` ADD `is_reminder_app_flag` TINYINT(4) NOT NULL DEFAULT '0' AFTER `status`;
+
+29-05-2026 Dinesh
+ALTER TABLE `whatsapp_template_configs` ADD `attachment_variable_key` VARCHAR(100) NULL DEFAULT NULL COMMENT 'Variable key that resolves to a media URL for IMAGE/DOCUMENT/VIDEO template headers' AFTER `variable_mappings`;
+
+ALTER TABLE `a_cities` CHANGE `city_name` `city_name` VARCHAR(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL;
+
+29-05-2026 Keval 
+**** UPDATE print_settings
+SET setting_details = JSON_SET(setting_details, '$.qtycolumn', true)
+WHERE type BETWEEN 1 AND 9
+  AND print_version BETWEEN 1 AND 4
+  AND (
+        JSON_EXTRACT(setting_details, '$.qtycolumn') IS NULL
+        OR JSON_EXTRACT(setting_details, '$.qtycolumn') = false
+      );     
+
+01-06-2026 keval
+ALTER TABLE `leaves` ADD `hourly_leave_duration` VARCHAR(100) NOT NULL AFTER `leave_status`;
+ALTER TABLE `employee_payrolls` ADD `grace_period` VARCHAR(255) NOT NULL AFTER `half_day_hours`;
+
+03-06-2026 Dinesh
+ALTER TABLE `carts` ADD `transaction_mode` TINYINT NOT NULL AFTER `conversion_rate`;
+
+03-06-2026 Keval
+ALTER TABLE `visits` ADD `visit_column_attechments_1` TEXT NOT NULL AFTER `visit_column_radio_5`, ADD `visit_column_attechments_2` TEXT NOT NULL AFTER `visit_column_attechments_1`, ADD `visit_column_attechments_3` TEXT NOT NULL AFTER `visit_column_attechments_2`, ADD `visit_column_attechments_4` TEXT NOT NULL AFTER `visit_column_attechments_3`, ADD `visit_column_attechments_5` TEXT NOT NULL AFTER `visit_column_attechments_4`;
+
+03-06-2026 Dinesh
+ALTER TABLE `payment_types` ADD `transaction_type` TINYINT NOT NULL AFTER `payment_type_name`;
+
+
+04-06-2026 Dinesh
+ALTER TABLE `account_transactions` ADD `miracle_UniqueId` TEXT NOT NULL AFTER `reference_table`, ADD `miracle_update_date_time` DATETIME NULL AFTER `miracle_UniqueId`;
+ALTER TABLE `account_transactions` ADD `miracle_account_ledger` TEXT NOT NULL AFTER `reference_table`;
+
+
+04-06-2026 Keval
+ALTER TABLE `task_managements` ADD `task_column_attechments_1` TEXT NOT NULL AFTER `task_column_radio_5`, ADD `task_column_attechments_2` TEXT NOT NULL AFTER `task_column_attechments_1`, ADD `task_column_attechments_3` TEXT NOT NULL AFTER `task_column_attechments_2`, ADD `task_column_attechments_4` TEXT NOT NULL AFTER `task_column_attechments_3`, ADD `task_column_attechments_5` TEXT NOT NULL AFTER `task_column_attechments_4`;
+------------------------------------------------------------------- V3.0.13 - 05-06-2026 -------------------
+
+06-06-2026 Dinesh
+ALTER TABLE `whatsapp_template_configs` ADD `language` VARCHAR(100) NOT NULL AFTER `template_name`;
+
+
+09-06-2026 Dinesh
+CREATE TABLE `compensation_adjustments` (
+  `id` int(11) NOT NULL,
+  `company_masters_id` int(11) NOT NULL,
+  `a_application_login_id` int(11) NOT NULL,
+  `employee_id` int(11) NOT NULL,
+  `adjustment_type` int(11) NOT NULL,
+  `amount` double NOT NULL,
+  `hours` double NOT NULL,
+  `apply_date` date NOT NULL,
+  `remark` text NOT NULL,
+  `created_date_time` datetime NOT NULL,
+  `s_timestemp` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `isDelete` tinyint(4) NOT NULL DEFAULT 0,
+  `isActive` tinyint(4) NOT NULL DEFAULT 1,
+  `modified_date` datetime NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
+
+ALTER TABLE `compensation_adjustments` ADD PRIMARY KEY (`id`);
+
+ALTER TABLE `compensation_adjustments` MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+10-06-2026 Keval
+ALTER TABLE `carts` ADD `miracle_account_legder_adv` TEXT NOT NULL AFTER `reference_type`;
+ALTER TABLE `carts` ADD `miracle_account_legder` TEXT NOT NULL AFTER `reference_type`;
+ALTER TABLE `carts` CHANGE `miracle_account_legder_adv` `miracle_account_ledger_adv` TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL;
+ALTER TABLE `inquiries` ADD `inquiry_assigned_team_member` TEXT NOT NULL AFTER `contact_status`;
+
+13-06-2026 DInesh
+CREATE TABLE `holidays` (
+  `id` int(11) NOT NULL,
+  `company_masters_id` int(11) NOT NULL,
+  `a_application_login_id` int(11) NOT NULL,
+  `created_date_time` datetime NOT NULL,
+  `s_timestemp` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `isDelete` tinyint(4) NOT NULL DEFAULT 0,
+  `isActive` tinyint(4) NOT NULL DEFAULT 1,
+  `modified_date` datetime NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
+
+ALTER TABLE `holidays`  ADD PRIMARY KEY (`id`);
+
+ALTER TABLE `holidays`  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+13-06-2026 Deep
+ALTER TABLE `holidays` ADD `holiday_date` DATE NOT NULL AFTER `id`, ADD `holiday_remark` TEXT NOT NULL AFTER `holiday_date`;
+
+15-06-2026 DInesh
+CREATE TABLE `attendance_batch_process` (
+  `id` int(11) NOT NULL,
+  `date` date NOT NULL,
+  `employee_id` int(11) NOT NULL,
+  `company_masters_id` int(11) NOT NULL,
+  `a_application_login_id` int(11) NOT NULL,
+  `search_string` varchar(255) NOT NULL,
+  `last_updated_date` datetime NOT NULL,
+  `day_status` tinyint(4) NOT NULL,
+  `total_working_time` varchar(100) NOT NULL,
+  `early_out` varchar(100) NOT NULL,
+  `late_in` varchar(100) NOT NULL,
+  `first_in` datetime NOT NULL,
+  `last_out` datetime NOT NULL,
+  `compensation_list` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL CHECK (json_valid(`compensation_list`)),
+  `attenance_entry_list` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL CHECK (json_valid(`attenance_entry_list`)),
+  `created_date_time` datetime NOT NULL,
+  `s_timestemp` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `isDelete` tinyint(4) NOT NULL DEFAULT 0,
+  `isActive` tinyint(4) NOT NULL DEFAULT 1,
+  `modified_date` datetime NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
+
+ALTER TABLE `attendance_batch_process` ADD PRIMARY KEY (`id`);
+
+ALTER TABLE `attendance_batch_process` MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+ALTER TABLE `attendance_batch_process` ADD INDEX(`date`);
+
+ALTER TABLE `attendance_batch_process` ADD INDEX(`employee_id`);
+
+ALTER TABLE `attendance_batch_process` ADD INDEX(`isDelete`);
+
+ALTER TABLE `attendance_batch_process` ADD UNIQUE(`date`, `employee_id`, `isDelete`);
+
+CREATE TABLE `salary_registers` (
+  `id` int(11) NOT NULL,
+  `year` varchar(100) NOT NULL,
+  `month` varchar(100) NOT NULL,
+  `added_date` date NOT NULL,
+  `employee_id` int(11) NOT NULL,
+  `calculate_days` double NOT NULL,
+  `total_present_day` double NOT NULL,
+  `gross_salary` double NOT NULL,
+  `net_bank_pay` double NOT NULL,
+  `company_masters_id` int(11) NOT NULL,
+  `a_application_login_id` int(11) NOT NULL,
+  `created_date_time` datetime NOT NULL,
+  `s_timestemp` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `isDelete` tinyint(4) NOT NULL DEFAULT 0,
+  `isActive` tinyint(4) NOT NULL DEFAULT 1,
+  `modified_date` datetime NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
+
+ALTER TABLE `salary_registers` ADD PRIMARY KEY (`id`);
+
+ALTER TABLE `salary_registers` MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+16-06-2026 Dinesh
+ALTER TABLE `attendance_batch_process` CHANGE `compensation_list` `compensation_list` LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL DEFAULT '[]', CHANGE `attenance_entry_list` `attenance_entry_list` LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL DEFAULT '[]';
+
+17-06-2026 Dinesh
+CREATE TABLE `attendance_roundoff_rules` (
+  `id` int(11) NOT NULL,
+  `minutes` int(11) NOT NULL,
+  `conversion_minutes` int(11) NOT NULL,
+  `company_masters_id` int(11) NOT NULL,
+  `a_application_login_id` int(11) NOT NULL,
+  `created_date_time` datetime NOT NULL,
+  `s_timestemp` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `isDelete` tinyint(4) NOT NULL DEFAULT 0,
+  `isActive` tinyint(4) NOT NULL DEFAULT 1,
+  `modified_date` datetime NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
+
+
+INSERT INTO `attendance_roundoff_rules` (`id`, `minutes`, `conversion_minutes`, `company_masters_id`, `a_application_login_id`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`, `modified_date`) VALUES
+(1, 1, 0, 2, 2, '2026-06-17 11:20:00', '2026-06-17 05:50:00', 0, 1, '2026-06-17 11:20:00'),
+(2, 2, 0, 2, 2, '2026-06-18 11:20:00', '2026-06-18 05:50:00', 0, 1, '2026-06-18 11:20:00'),
+(3, 3, 0, 2, 2, '2026-06-19 11:20:00', '2026-06-19 05:50:00', 0, 1, '2026-06-19 11:20:00'),
+(4, 4, 0, 2, 2, '2026-06-20 11:20:00', '2026-06-20 05:50:00', 0, 1, '2026-06-20 11:20:00'),
+(5, 5, 0, 2, 2, '2026-06-21 11:20:00', '2026-06-21 05:50:00', 0, 1, '2026-06-21 11:20:00'),
+(6, 6, 0, 2, 2, '2026-06-22 11:20:00', '2026-06-22 05:50:00', 0, 1, '2026-06-22 11:20:00'),
+(7, 7, 0, 2, 2, '2026-06-23 11:20:00', '2026-06-23 05:50:00', 0, 1, '2026-06-23 11:20:00'),
+(8, 8, 0, 2, 2, '2026-06-24 11:20:00', '2026-06-24 05:50:00', 0, 1, '2026-06-24 11:20:00'),
+(9, 9, 0, 2, 2, '2026-06-25 11:20:00', '2026-06-25 05:50:00', 0, 1, '2026-06-25 11:20:00'),
+(10, 10, 0, 2, 2, '2026-06-26 11:20:00', '2026-06-26 05:50:00', 0, 1, '2026-06-26 11:20:00'),
+(11, 11, 0, 2, 2, '2026-06-27 11:20:00', '2026-06-27 05:50:00', 0, 1, '2026-06-27 11:20:00'),
+(12, 12, 0, 2, 2, '2026-06-28 11:20:00', '2026-06-28 05:50:00', 0, 1, '2026-06-28 11:20:00'),
+(13, 13, 0, 2, 2, '2026-06-29 11:20:00', '2026-06-29 05:50:00', 0, 1, '2026-06-29 11:20:00'),
+(14, 14, 0, 2, 2, '2026-06-30 11:20:00', '2026-06-30 05:50:00', 0, 1, '2026-06-30 11:20:00'),
+(15, 15, 0, 2, 2, '2026-07-01 11:20:00', '2026-07-01 05:50:00', 0, 1, '2026-07-01 11:20:00'),
+(16, 16, 0, 2, 2, '2026-07-02 11:20:00', '2026-07-02 05:50:00', 0, 1, '2026-07-02 11:20:00'),
+(17, 17, 0, 2, 2, '2026-07-03 11:20:00', '2026-07-03 05:50:00', 0, 1, '2026-07-03 11:20:00'),
+(18, 18, 0, 2, 2, '2026-07-04 11:20:00', '2026-07-04 05:50:00', 0, 1, '2026-07-04 11:20:00'),
+(19, 19, 0, 2, 2, '2026-07-05 11:20:00', '2026-07-05 05:50:00', 0, 1, '2026-07-05 11:20:00'),
+(20, 20, 0, 2, 2, '2026-07-06 11:20:00', '2026-07-06 05:50:00', 0, 1, '2026-07-06 11:20:00'),
+(21, 21, 0, 2, 2, '2026-07-07 11:20:00', '2026-07-07 05:50:00', 0, 1, '2026-07-07 11:20:00'),
+(22, 22, 0, 2, 2, '2026-07-08 11:20:00', '2026-07-08 05:50:00', 0, 1, '2026-07-08 11:20:00'),
+(23, 23, 0, 2, 2, '2026-07-09 11:20:00', '2026-07-09 05:50:00', 0, 1, '2026-07-09 11:20:00'),
+(24, 24, 0, 2, 2, '2026-07-10 11:20:00', '2026-07-10 05:50:00', 0, 1, '2026-07-10 11:20:00'),
+(25, 25, 0, 2, 2, '2026-07-11 11:20:00', '2026-07-11 05:50:00', 0, 1, '2026-07-11 11:20:00'),
+(26, 26, 0, 2, 2, '2026-07-12 11:20:00', '2026-07-12 05:50:00', 0, 1, '2026-07-12 11:20:00'),
+(27, 27, 0, 2, 2, '2026-07-13 11:20:00', '2026-07-13 05:50:00', 0, 1, '2026-07-13 11:20:00'),
+(28, 28, 0, 2, 2, '2026-07-14 11:20:00', '2026-07-14 05:50:00', 0, 1, '2026-07-14 11:20:00'),
+(29, 29, 0, 2, 2, '2026-07-15 11:20:00', '2026-07-15 05:50:00', 0, 1, '2026-07-15 11:20:00'),
+(30, 30, 0, 2, 2, '2026-07-16 11:20:00', '2026-07-16 05:50:00', 0, 1, '2026-07-16 11:20:00'),
+(31, 31, 0, 2, 2, '2026-07-17 11:20:00', '2026-07-17 05:50:00', 0, 1, '2026-07-17 11:20:00'),
+(32, 32, 0, 2, 2, '2026-07-18 11:20:00', '2026-07-18 05:50:00', 0, 1, '2026-07-18 11:20:00'),
+(33, 33, 0, 2, 2, '2026-07-19 11:20:00', '2026-07-19 05:50:00', 0, 1, '2026-07-19 11:20:00'),
+(34, 34, 0, 2, 2, '2026-07-20 11:20:00', '2026-07-20 05:50:00', 0, 1, '2026-07-20 11:20:00'),
+(35, 35, 0, 2, 2, '2026-07-21 11:20:00', '2026-07-21 05:50:00', 0, 1, '2026-07-21 11:20:00'),
+(36, 36, 0, 2, 2, '2026-07-22 11:20:00', '2026-07-22 05:50:00', 0, 1, '2026-07-22 11:20:00'),
+(37, 37, 0, 2, 2, '2026-07-23 11:20:00', '2026-07-23 05:50:00', 0, 1, '2026-07-23 11:20:00'),
+(38, 38, 0, 2, 2, '2026-07-24 11:20:00', '2026-07-24 05:50:00', 0, 1, '2026-07-24 11:20:00'),
+(39, 39, 0, 2, 2, '2026-07-25 11:20:00', '2026-07-25 05:50:00', 0, 1, '2026-07-25 11:20:00'),
+(40, 40, 0, 2, 2, '2026-07-26 11:20:00', '2026-07-26 05:50:00', 0, 1, '2026-07-26 11:20:00'),
+(41, 41, 0, 2, 2, '2026-07-27 11:20:00', '2026-07-27 05:50:00', 0, 1, '2026-07-27 11:20:00'),
+(42, 42, 0, 2, 2, '2026-07-28 11:20:00', '2026-07-28 05:50:00', 0, 1, '2026-07-28 11:20:00'),
+(43, 43, 0, 2, 2, '2026-07-29 11:20:00', '2026-07-29 05:50:00', 0, 1, '2026-07-29 11:20:00'),
+(44, 44, 0, 2, 2, '2026-07-30 11:20:00', '2026-07-30 05:50:00', 0, 1, '2026-07-30 11:20:00'),
+(45, 45, 0, 2, 2, '2026-07-31 11:20:00', '2026-07-31 05:50:00', 0, 1, '2026-07-31 11:20:00'),
+(46, 46, 0, 2, 2, '2026-08-01 11:20:00', '2026-08-01 05:50:00', 0, 1, '2026-08-01 11:20:00'),
+(47, 47, 0, 2, 2, '2026-08-02 11:20:00', '2026-08-02 05:50:00', 0, 1, '2026-08-02 11:20:00'),
+(48, 48, 0, 2, 2, '2026-08-03 11:20:00', '2026-08-03 05:50:00', 0, 1, '2026-08-03 11:20:00'),
+(49, 49, 0, 2, 2, '2026-08-04 11:20:00', '2026-08-04 05:50:00', 0, 1, '2026-08-04 11:20:00'),
+(50, 50, 60, 2, 2, '2026-08-05 11:20:00', '2026-08-05 05:50:00', 0, 1, '2026-08-05 11:20:00'),
+(51, 51, 60, 2, 2, '2026-08-06 11:20:00', '2026-08-06 05:50:00', 0, 1, '2026-08-06 11:20:00'),
+(52, 52, 60, 2, 2, '2026-08-07 11:20:00', '2026-08-07 05:50:00', 0, 1, '2026-08-07 11:20:00'),
+(53, 53, 60, 2, 2, '2026-08-08 11:20:00', '2026-08-08 05:50:00', 0, 1, '2026-08-08 11:20:00'),
+(54, 54, 60, 2, 2, '2026-08-09 11:20:00', '2026-08-09 05:50:00', 0, 1, '2026-08-09 11:20:00'),
+(55, 55, 60, 2, 2, '2026-08-10 11:20:00', '2026-08-10 05:50:00', 0, 1, '2026-08-10 11:20:00'),
+(56, 56, 60, 2, 2, '2026-08-11 11:20:00', '2026-08-11 05:50:00', 0, 1, '2026-08-11 11:20:00'),
+(57, 57, 60, 2, 2, '2026-08-12 11:20:00', '2026-08-12 05:50:00', 0, 1, '2026-08-12 11:20:00'),
+(58, 58, 60, 2, 2, '2026-08-13 11:20:00', '2026-08-13 05:50:00', 0, 1, '2026-08-13 11:20:00'),
+(59, 59, 60, 2, 2, '2026-08-14 11:20:00', '2026-08-14 05:50:00', 0, 1, '2026-08-14 11:20:00'),
+(60, 60, 60, 2, 2, '2026-08-15 11:20:00', '2026-08-15 05:50:00', 0, 1, '2026-08-15 11:20:00');
+
+ALTER TABLE `attendance_roundoff_rules` ADD PRIMARY KEY (`id`);
+
+ALTER TABLE `attendance_roundoff_rules` MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=61;
+
+ALTER TABLE `attendance_batch_process` ADD `net_working_hour` VARCHAR(100) NOT NULL AFTER `total_working_time`;
+
+17-06-2026 Dinesh
+ALTER TABLE `attendance_batch_process` ADD `overtime_hour` VARCHAR(100) NOT NULL AFTER `net_working_hour`;
+
+18-06-2026 DInesh
+ALTER TABLE `salary_registers` ADD UNIQUE(`year`, `month`, `employee_id`, `isDelete`);
+
+
+19-06-2026 Dinesh
+ALTER TABLE `salary_registers`
+    ADD COLUMN `half_day`              DOUBLE        NULL AFTER `total_present_day`,
+    ADD COLUMN `holiday`               DOUBLE        NULL AFTER `half_day`,
+    ADD COLUMN `total_week_off`        DOUBLE        NULL AFTER `holiday`,
+    ADD COLUMN `total_leave`           DOUBLE        NULL AFTER `total_week_off`,
+    ADD COLUMN `total_absent`          DOUBLE        NULL AFTER `total_leave`,
+    ADD COLUMN `total_day`             DOUBLE        NULL AFTER `total_absent`,
+    ADD COLUMN `working_hour`          DOUBLE        NULL AFTER `total_day`,
+    ADD COLUMN `compensation_amount`   JSON          NULL AFTER `working_hour`,
+    ADD COLUMN `ctc`                   DOUBLE        NULL AFTER `compensation_amount`,
+    ADD COLUMN `per_day_salary`        DOUBLE        NULL AFTER `gross_salary`,
+    ADD COLUMN `conveyance_allowance`  DOUBLE        NULL AFTER `per_day_salary`,
+    ADD COLUMN `medical_allowance`     DOUBLE        NULL AFTER `conveyance_allowance`,
+    ADD COLUMN `special_allowance`     DOUBLE        NULL AFTER `medical_allowance`,
+    ADD COLUMN `fxs_basic`             DOUBLE        NULL AFTER `special_allowance`,
+    ADD COLUMN `fxs_hra`               DOUBLE        NULL AFTER `fxs_basic`,
+    ADD COLUMN `fxs_other`             DOUBLE        NULL AFTER `fxs_hra`,
+    ADD COLUMN `fxs_total_earning`     DOUBLE        NULL AFTER `fxs_other`,
+    ADD COLUMN `dws_basic`             DOUBLE        NULL AFTER `fxs_total_earning`,
+    ADD COLUMN `dws_hra`               DOUBLE        NULL AFTER `dws_basic`,
+    ADD COLUMN `dws_other`             DOUBLE        NULL AFTER `dws_hra`,
+    ADD COLUMN `dws_total_earning`     DOUBLE        NULL AFTER `dws_other`,
+    ADD COLUMN `earn_ot_hours`         VARCHAR(100)  NULL AFTER `dws_total_earning`,
+    ADD COLUMN `earn_ot_payable_amt`   DOUBLE        NULL AFTER `earn_ot_hours`,
+    ADD COLUMN `earn_head_first`       DOUBLE        NULL AFTER `earn_ot_payable_amt`,
+    ADD COLUMN `earn_head_second`      DOUBLE        NULL AFTER `earn_head_first`,
+    ADD COLUMN `earn_head_third`       DOUBLE        NULL AFTER `earn_head_second`,
+    ADD COLUMN `bonus_amount`          DOUBLE        NULL AFTER `earn_head_third`,
+    ADD COLUMN `earn_sub_total`        DOUBLE        NULL AFTER `bonus_amount`,
+    ADD COLUMN `total_earning`         DOUBLE        NULL AFTER `earn_sub_total`,
+    ADD COLUMN `ded_emp_pf`            DOUBLE        NULL AFTER `total_earning`,
+    ADD COLUMN `ded_pradhan_mantri_pf` DOUBLE        NULL AFTER `ded_emp_pf`,
+    ADD COLUMN `ded_esi_employee`      DOUBLE        NULL AFTER `ded_pradhan_mantri_pf`,
+    ADD COLUMN `ded_esi_company`       DOUBLE        NULL AFTER `ded_esi_employee`,
+    ADD COLUMN `ded_pt`                DOUBLE        NULL AFTER `ded_esi_company`,
+    ADD COLUMN `ded_insurance`         DOUBLE        NULL AFTER `ded_pt`,
+    ADD COLUMN `ded_first`             DOUBLE        NULL AFTER `ded_insurance`,
+    ADD COLUMN `ded_second`            DOUBLE        NULL AFTER `ded_first`,
+    ADD COLUMN `ded_third`             DOUBLE        NULL AFTER `ded_second`,
+    ADD COLUMN `total_deduction`       DOUBLE        NULL AFTER `ded_third`;
+
+19-06-2026 Keval
+ALTER TABLE `carts` ADD `cash_discount` DOUBLE NOT NULL AFTER `taxable_amt`;
+ALTER TABLE `carts` ADD `cash_discount_type` TINYINT(4) NOT NULL AFTER `cash_discount`;
+
+20-06-2026 Dinesh
+INSERT INTO `a_application_pages` (`id`, `page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, 'Status Report', 'Status Report', 'status_report', 'Status Report', '0', '0', '0', '1', '2026-03-07 12:37:08', '2026-03-26 16:06:45', '0', '1');
+
+INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `extra_information`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, '1', '115', '0', '', '2026-03-07 13:07:46', '2026-03-07 17:38:18', '0', '1');
+
+INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `extra_information`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, '2', '115', '0', '', '2026-03-07 13:07:46', '2026-03-07 17:38:18', '0', '1');
+
+INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `extra_information`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, '3', '115', '0', '', '2026-03-07 13:07:46', '2026-03-07 17:38:18', '0', '1');
+
+22-06-2026 Dinesh
+ALTER TABLE `whatsapp_template_configs` ADD `attachment_source_type` VARCHAR(100) NOT NULL AFTER `attachment_variable_key`, ADD `static_attachment_url` VARCHAR(255) NOT NULL AFTER `attachment_source_type`, ADD `static_attachment_file_name` VARCHAR(100) NOT NULL AFTER `static_attachment_url`;
+
+22-06-2026 keval
+ALTER TABLE `carts` ADD `latitude` VARCHAR(255) NULL DEFAULT NULL AFTER `miracle_update_date_time`, ADD `longitude` VARCHAR(255) NULL DEFAULT NULL AFTER `latitude`;
+ALTER TABLE `carts` ADD `address_location` TEXT NOT NULL AFTER `longitude`;
+ALTER TABLE `inquiries` ADD `longitude` VARCHAR(255) NULL DEFAULT NULL AFTER `uniqe_trade_india_id`, ADD `latitude` VARCHAR(255) NULL DEFAULT NULL AFTER `longitude`;
+ALTER TABLE `inquiries` ADD `address` TEXT NOT NULL AFTER `latitude`;
+ALTER TABLE `visits` ADD `stop_longitude` VARCHAR(255) NULL DEFAULT NULL AFTER `latitude`, ADD `stop_latitude` VARCHAR(255) NULL DEFAULT NULL AFTER `stop_longitude`;
+ALTER TABLE `visits` ADD `stop_address` TEXT NOT NULL AFTER `stop_latitude`;
+ALTER TABLE `contact_masters` ADD `address_location` TEXT NOT NULL AFTER `latitude`;
+ALTER TABLE `visits` ADD `address` TEXT NOT NULL AFTER `latitude`;
+ALTER TABLE `a_application_logins` ADD `latitude` VARCHAR(255) NULL DEFAULT NULL AFTER `date_of_joining`, ADD `longitude` VARCHAR(255) NULL DEFAULT NULL AFTER `latitude`, ADD `address` TEXT NOT NULL AFTER `longitude`;
+ALTER TABLE `expenses` ADD `latitude` VARCHAR(255) NULL DEFAULT NULL AFTER `created_by`, ADD `longitude` VARCHAR(255) NULL DEFAULT NULL AFTER `latitude`, ADD `address` TEXT NOT NULL AFTER `longitude`;
+22-06-2026 Dhyey
+ALTER TABLE `company_masters` ADD `printed_number` TEXT CHARACTER SET latin1 COLLATE latin1_swedish_ci NOT NULL AFTER `company_contact`;
+
+23-06-2026 Dinesh
+ALTER TABLE `attendance_histories` ADD `address` TEXT NOT NULL AFTER `remark`, ADD `latitude` VARCHAR(100) NOT NULL AFTER `address`, ADD `longitude` VARCHAR(100) NOT NULL AFTER `latitude`;
+
+UPDATE 111company_masters set printed_number=company_contact;
+
+------------------------------------------------------------------------ V3.0.14 - 24-06-2026 -------------------
+
+24-06-2026 Dinesh
+ALTER TABLE `attendance_batch_process` ADD `leave_entry_list` JSON NOT NULL DEFAULT '[]' AFTER `attenance_entry_list`;
+
+INSERT INTO `a_application_pages` (`id`, `page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, 'Salary Process', 'Salary Process', 'salary_process', 'Salary Process', '0', '0', '0', '1', '2026-03-07 12:37:08', '2026-03-26 16:06:45', '0', '1');
+
+INSERT INTO `a_application_pages` (`id`, `page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, 'Process Attendance', 'Process Attendance', 'process_attendance', 'Process Attendance', '0', '0', '0', '1', '2026-03-07 12:37:08', '2026-03-26 16:06:45', '0', '1');
+
+INSERT INTO `a_application_pages` (`id`, `page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, 'Compensation Adjustments', 'Compensation Adjustments', 'compensation_adjustments', 'Compensation Adjustments', '0', '0', '0', '1', '2026-03-07 12:37:08', '2026-03-26 16:06:45', '0', '1');
+
+INSERT INTO `a_application_pages` (`id`, `page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, 'Holiday Master', 'Holiday Master', 'holiday_master', 'Holiday Master', '0', '0', '0', '1', '2026-03-07 12:37:08', '2026-03-26 16:06:45', '0', '1');
+
+INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `extra_information`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, '3', '116', '0', '', '2026-03-07 13:07:46', '2026-03-07 17:38:18', '0', '1'), (NULL, '2', '116', '0', '', '2026-03-07 13:07:46', '2026-03-07 17:38:18', '0', '1');
+
+INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `extra_information`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, '2', '117', '0', '', '2026-03-07 13:07:46', '2026-03-07 17:38:18', '0', '1'), (NULL, '3', '117', '0', '', '2026-03-07 13:07:46', '2026-03-07 17:38:18', '0', '1');
+
+INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `extra_information`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, '3', '118', '0', '', '2026-03-07 13:07:46', '2026-03-07 17:38:18', '0', '1'), (NULL, '2', '118', '0', '', '2026-03-07 13:07:46', '2026-03-07 17:38:18', '0', '1');
+
+INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `extra_information`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, '2', '119', '0', '', '2026-03-07 13:07:46', '2026-03-07 17:38:18', '0', '1'), (NULL, '3', '119', '0', '', '2026-03-07 13:07:46', '2026-03-07 17:38:18', '0', '1');
+
+27-06-2026 Dinesh
+UPDATE contact_message_histories SET is_reminder=1 WHERE is_reminder=0 AND id IN (SELECT reminder_messages.reference_id FROM reminder_messages WHERE reminder_messages.isDelete=0 AND reminder_messages.reference_table='contact_message_histories' AND reminder_messages.status=0);
+
+29-06-2026 Dinesh
+ALTER TABLE `attendance_batch_process` ADD COLUMN `is_sandwich_applied` TINYINT NOT NULL DEFAULT 0 AFTER `overtime_hour`;
+
+30-06-2026 Dinesh
+CREATE TABLE `day_conversions` (
+  `id` int(11) NOT NULL,
+  `description` text NOT NULL,
+  `date` date NOT NULL,
+  `adjustment_date` date NOT NULL,
+  `type_of_holiday` tinyint(4) NOT NULL,
+  `employee_id` int(11) NOT NULL,
+  `company_masters_id` int(11) NOT NULL,
+  `a_application_login_id` int(11) NOT NULL,
+  `created_date_time` datetime NOT NULL,
+  `s_timestemp` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `isDelete` tinyint(4) NOT NULL DEFAULT 0,
+  `isActive` tinyint(4) NOT NULL DEFAULT 1,
+  `modified_date` datetime NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
+
+ALTER TABLE `day_conversions` ADD PRIMARY KEY(`id`);
+
+ALTER TABLE `day_conversions` CHANGE `id` `id` INT(11) NOT NULL AUTO_INCREMENT;
+
+
+CREATE TABLE `lock_controls` (
+  `id` int(11) NOT NULL,
+  `month` int(11) NOT NULL,
+  `year` int(11) NOT NULL,
+  `company_masters_id` int(11) NOT NULL,
+  `a_application_login_id` int(11) NOT NULL,
+  `created_date_time` datetime NOT NULL,
+  `s_timestemp` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `isDelete` tinyint(4) NOT NULL DEFAULT 0,
+  `isActive` tinyint(4) NOT NULL DEFAULT 1,
+  `modified_date` datetime NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
+
+ALTER TABLE `lock_controls` ADD PRIMARY KEY(`id`);
+
+ALTER TABLE `lock_controls` CHANGE `id` `id` INT(11) NOT NULL AUTO_INCREMENT;
+
+ALTER TABLE `lock_controls` ADD UNIQUE(`month`, `year`, `isDelete`);
+ALTER TABLE `day_conversions` ADD UNIQUE(`date`, `employee_id`, `isDelete`);
+
+
+
+30-06-2026 Dinesh
+
+ --- Main Database ma -- 
+ 
+CREATE TABLE `process_locks` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `company_masters_id` INT NOT NULL,
+    `process_type` VARCHAR(50) NOT NULL,
+    `is_locked` TINYINT NOT NULL DEFAULT 0,
+    `locked_by` INT NULL,
+    `locked_at` DATETIME NULL,
+    `s_timestemp` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `isDelete` TINYINT NOT NULL DEFAULT 0,
+    `isActive` TINYINT NOT NULL DEFAULT 1,
+    `created_date_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `modified_date` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY `company_process_unique` (`company_masters_id`, `process_type`, `isDelete`)
+);
+
+01-07-2026 Dinesh
+ALTER TABLE `employee_account_transactions` ADD `reference_id` INT NOT NULL AFTER `payment_date_time`, ADD `reference_table` VARCHAR(255) NOT NULL AFTER `reference_id`;
+ALTER TABLE `salary_registers` CHANGE `year` `year` INT NOT NULL, CHANGE `month` `month` INT NOT NULL;
+ALTER TABLE `employee_account_transactions` ADD `salary_month` INT NOT NULL AFTER `reference_table`, ADD `salary_year` INT NOT NULL AFTER `salary_month`;
+
+CREATE TABLE `adjustment_types` (
+  `id` int(11) NOT NULL,
+  `method` int(11) NOT NULL,
+  `mode` int(11) NOT NULL,
+  `name` varchar(255) NOT NULL,
+  `knowledge_info` text NOT NULL,
+  `company_masters_id` int(11) NOT NULL,
+  `a_application_login_id` int(11) NOT NULL,
+  `created_date_time` datetime NOT NULL,
+  `s_timestemp` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `isDelete` tinyint(4) NOT NULL DEFAULT 0,
+  `isActive` tinyint(4) NOT NULL DEFAULT 1,
+  `modified_date` datetime NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
+
+INSERT INTO `adjustment_types` (`id`, `method`, `mode`, `name`, `knowledge_info`, `company_masters_id`, `a_application_login_id`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`, `modified_date`) VALUES
+(-26, 2, 2, 'Other Hours Deduction', 'Any other hours deduction not covered by predefined types.', 0, 0, '2026-07-01 00:00:00', '2026-06-30 18:30:00', 0, 1, '0000-00-00 00:00:00'),
+(-25, 2, 2, 'Manual Hours Deduction', 'Manual reduction of working hours.', 0, 0, '2026-07-01 00:00:00', '2026-06-30 18:30:00', 0, 1, '0000-00-00 00:00:00'),
+(-24, 2, 2, 'Unauthorized Break', 'Deduct hours for unapproved break time.', 0, 0, '2026-07-01 00:00:00', '2026-06-30 18:30:00', 0, 1, '0000-00-00 00:00:00'),
+(-23, 2, 2, 'Missing Punch Deduction', 'Deduct hours when attendance cannot be verified.', 0, 0, '2026-07-01 00:00:00', '2026-06-30 18:30:00', 0, 1, '0000-00-00 00:00:00'),
+(-22, 2, 2, 'Early Exit Hours', 'Deduct hours for leaving before shift completion.', 0, 0, '2026-07-01 00:00:00', '2026-06-30 18:30:00', 0, 1, '0000-00-00 00:00:00'),
+(-21, 2, 2, 'Late Coming Hours', 'Deduct hours for late arrival.', 0, 0, '2026-07-01 00:00:00', '2026-06-30 18:30:00', 0, 1, '0000-00-00 00:00:00'),
+(-20, 2, 2, 'Overtime Reversal', 'Remove incorrectly approved overtime hours.', 0, 0, '2026-07-01 00:00:00', '2026-06-30 18:30:00', 0, 1, '0000-00-00 00:00:00'),
+(-19, 2, 2, 'Working Hours Deduction', 'Deduct working hours due to correction or policy.', 0, 0, '2026-07-01 00:00:00', '2026-06-30 18:30:00', 0, 1, '0000-00-00 00:00:00'),
+(-18, 2, 1, 'Other Hours Credit', 'Any other hours credit not covered by predefined types.', 0, 0, '2026-07-01 00:00:00', '2026-06-30 18:30:00', 0, 1, '0000-00-00 00:00:00'),
+(-17, 2, 1, 'Manual Hours Credit', 'Manual addition of working hours.', 0, 0, '2026-07-01 00:00:00', '2026-06-30 18:30:00', 0, 1, '0000-00-00 00:00:00'),
+(-16, 2, 1, 'Overtime Credit', 'Credit approved overtime hours.', 0, 0, '2026-07-01 00:00:00', '2026-06-30 18:30:00', 0, 1, '0000-00-00 00:00:00'),
+(-15, 2, 1, 'Working Hours Credit', 'Add working hours after attendance verification.', 0, 0, '2026-07-01 00:00:00', '2026-06-30 18:30:00', 0, 1, '0000-00-00 00:00:00'),
+(-14, 1, 2, 'Other Deduction', 'Any other monetary deduction not covered by predefined types.', 0, 0, '2026-07-01 00:00:00', '2026-06-30 18:30:00', 0, 1, '0000-00-00 00:00:00'),
+(-13, 1, 2, 'Manual Deduction', 'Manual monetary deduction from salary.', 0, 0, '2026-07-01 00:00:00', '2026-06-30 18:30:00', 0, 1, '0000-00-00 00:00:00'),
+(-12, 1, 2, 'Damage Recovery', 'Recover cost of damaged or lost company property.', 0, 0, '2026-07-01 00:00:00', '2026-06-30 18:30:00', 0, 1, '0000-00-00 00:00:00'),
+(-11, 1, 2, 'Penalty', 'Deduction for disciplinary or operational reasons.', 0, 0, '2026-07-01 00:00:00', '2026-06-30 18:30:00', 0, 1, '0000-00-00 00:00:00'),
+(-10, 1, 2, 'Fine', 'Deduction due to company policy violation.', 0, 0, '2026-07-01 00:00:00', '2026-06-30 18:30:00', 0, 1, '0000-00-00 00:00:00'),
+(-9, 1, 2, 'Loan EMI', 'Deduct loan installment from salary.', 0, 0, '2026-07-01 00:00:00', '2026-06-30 18:30:00', 0, 1, '0000-00-00 00:00:00'),
+(-8, 1, 2, 'Advance Recovery', 'Deduct salary advance from payroll.', 0, 0, '2026-07-01 00:00:00', '2026-06-30 18:30:00', 0, 1, '0000-00-00 00:00:00'),
+(-7, 1, 2, 'Salary Recovery', 'Recover excess salary paid previously.', 0, 0, '2026-07-01 00:00:00', '2026-06-30 18:30:00', 0, 1, '0000-00-00 00:00:00'),
+(-6, 1, 1, 'Other Credit', 'Any other amount credit not covered by predefined types.', 0, 0, '2026-07-01 00:00:00', '2026-06-30 18:30:00', 0, 1, '0000-00-00 00:00:00'),
+(-5, 1, 1, 'Manual Credit', 'Manual monetary adjustment to increase employee earnings.', 0, 0, '2026-07-01 00:00:00', '2026-06-30 18:30:00', 0, 1, '0000-00-00 00:00:00'),
+(-4, 1, 1, 'Holiday Pay', 'Extra payment for working on holidays.', 0, 0, '2026-07-01 00:00:00', '2026-06-30 18:30:00', 0, 1, '0000-00-00 00:00:00'),
+(-3, 1, 1, 'Reimbursement', 'Repayment of approved business expenses.', 0, 0, '2026-07-01 00:00:00', '2026-06-30 18:30:00', 0, 1, '0000-00-00 00:00:00'),
+(-2, 1, 1, 'Arrear', 'Payment for previous unpaid or revised salary.', 0, 0, '2026-07-01 00:00:00', '2026-06-30 18:30:00', 0, 1, '0000-00-00 00:00:00'),
+(-1, 1, 1, 'Incentive', 'Performance-based earnings added to salary.', 0, 0, '2026-07-01 00:00:00', '2026-06-30 18:30:00', 0, 1, '0000-00-00 00:00:00');
+
+ALTER TABLE `adjustment_types` ADD PRIMARY KEY (`id`);
+
+ALTER TABLE `adjustment_types` MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+ALTER TABLE `compensation_adjustments` ADD `type_id` INT NOT NULL AFTER `employee_id`;
+
+
+
+03-07-2026 Keval
+ALTER TABLE
+    `company_masters` ADD `proforma_invoice_prefix` TEXT NOT NULL AFTER `upi_name`,
+    ADD `proforma_invoice_title` TEXT NOT NULL AFTER `proforma_invoice_prefix`,
+    ADD `proforma_invoice_doc_no` TEXT NOT NULL AFTER `proforma_invoice_title`,
+    ADD `proforma_invoice_view_color` TEXT NOT NULL AFTER `proforma_invoice_doc_no`,
+    ADD `proforma_invoice_view_formate` TINYINT(1) NOT NULL DEFAULT '1' AFTER `proforma_invoice_view_color`,
+    ADD `proforma_invoice_terms_conditions` TEXT NOT NULL AFTER `proforma_invoice_view_formate`,
+    ADD `proforma_invoice_remark` TEXT NOT NULL AFTER `proforma_invoice_terms_conditions`,
+    ADD `proforma_invoice_note` TEXT NOT NULL AFTER `proforma_invoice_remark`,
+    ADD `proforma_invoice_packing_charge_title` TEXT NOT NULL AFTER `proforma_invoice_note`,
+    ADD `proforma_invoice_transport_charge_title` TEXT NOT NULL AFTER `proforma_invoice_packing_charge_title`,
+    ADD `proforma_invoice_tcs_title` TEXT NOT NULL AFTER `proforma_invoice_transport_charge_title`,
+    ADD `proforma_invoice_tsc_percentage` DOUBLE NOT NULL AFTER `proforma_invoice_tcs_title`,
+    ADD `proforma_invoice_series_pattern` TEXT NOT NULL AFTER `proforma_invoice_tsc_percentage`,
+    ADD `proforma_invoice_effect_last_data_on_new` TINYINT(4) NOT NULL AFTER `proforma_invoice_series_pattern`,
+    ADD `proforma_invoice_sr_number_generate_flag` TINYINT(4) NOT NULL COMMENT '0 -> Auto 1 -> Manual' AFTER `proforma_invoice_effect_last_data_on_new`;
+
+
+    ALTER TABLE
+    `company_masters_vs_set_prefixes` ADD `proforma_invoice_prefix` TEXT NOT NULL AFTER `dispatch_tsc_percentage`,
+    ADD `proforma_invoice_title` TEXT NOT NULL AFTER `proforma_invoice_prefix`,
+    ADD `proforma_invoice_doc_no` TEXT NOT NULL AFTER `proforma_invoice_title`,
+    ADD `proforma_invoice_view_color` TEXT NOT NULL AFTER `proforma_invoice_doc_no`,
+    ADD `proforma_invoice_view_formate` TINYINT(4) NOT NULL AFTER `proforma_invoice_view_color`,
+    ADD `proforma_invoice_terms_conditions` TEXT NOT NULL AFTER `proforma_invoice_view_formate`,
+    ADD `proforma_invoice_remark` TEXT NOT NULL AFTER `proforma_invoice_terms_conditions`,
+    ADD `proforma_invoice_note` TEXT NOT NULL AFTER `proforma_invoice_remark`,
+    ADD `proforma_invoice_packing_charge_title` TEXT NOT NULL AFTER `proforma_invoice_note`,
+    ADD `proforma_invoice_transport_charge_title` TEXT NOT NULL AFTER `proforma_invoice_packing_charge_title`,
+    ADD `proforma_invoice_tcs_title` TEXT NOT NULL AFTER `proforma_invoice_transport_charge_title`,
+    ADD `proforma_invoice_tsc_percentage` DOUBLE NOT NULL AFTER `proforma_invoice_tcs_title`;
+
+03-07-2026 Dinesh
+CREATE TABLE `job_cards` (
+  `id` int(11) NOT NULL,
+  `contact_id` int(11) NOT NULL,
+  `order_id` int(11) NOT NULL,
+  `item_id` int(11) NOT NULL,
+  `production_qty` double NOT NULL,
+  `company_masters_id` int(11) NOT NULL,
+  `a_application_login_id` int(11) NOT NULL,
+  `created_date_time` datetime NOT NULL,
+  `s_timestemp` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `isDelete` tinyint(4) NOT NULL DEFAULT 0,
+  `isActive` tinyint(4) NOT NULL DEFAULT 1,
+  `modified_date` datetime NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
+
+ALTER TABLE `job_cards` ADD PRIMARY KEY (`id`);
+
+ALTER TABLE `job_cards` MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+
+06-07-2026 Keval
+
+*****UPDATE company_masters
+SET
+    proforma_invoice_prefix = 'PRF',
+    proforma_invoice_title = 'Proforma Invoice',
+    proforma_invoice_doc_no = '',
+    proforma_invoice_view_color = '#d3d3d3',
+    proforma_invoice_view_formate = 1,
+
+    proforma_invoice_packing_charge_title = 'Packing Forwarding charge',
+    proforma_invoice_transport_charge_title = 'Transport charge',
+    proforma_invoice_tcs_title = 'TCS',
+    proforma_invoice_tsc_percentage = 0.0001;
+
+***INSERT INTO `a_application_pages` (`id`, `page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, 'Proforma Invoice', 'Proforma Invoice', 'proforma_invoice', 'Proforma Invoice', '0', '0', '0', '1', '2026-07-06 12:37:08', '2026-07-06 16:06:45', '0', '1');
+
+***INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `extra_information`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, '2', '120', '0', '', '2026-07-06 09:21:05.000000', current_timestamp(), '0', '1'), (NULL, '3', '120', '0', '', '2026-07-06 09:21:05.000000', current_timestamp(), '0', '1');
+
+
+***INSERT INTO `print_settings`
+(
+    `id`,
+    `type`,
+    `print_version`,
+    `setting_details`,
+    `created_date_time`,
+    `modify_date_time`,
+    `modify_by`,
+    `a_application_login_id`,
+    `company_masters_id`,
+    `isDelete`,
+    `isActive`,
+    `s_timestemp`
+)
+VALUES
+(
+NULL,
+15,
+1,
+'{\"type\":15,\"print_version\":1,\"a_application_login_id\":\"0\",\"headerImage\":true,\"headerDetails\":true,\"toBuyer\":true,\"billingAddress\":true,\"shippingAddress\":true,\"gstinNo\":true,\"orderNo\":true,\"orderDateTime\":true,\"orderTimeOnly\":true,\"contactPerson\":true,\"debitCredit\":true,\"orignalDuplicate\":true,\"hsnColumn\":true,\"hsnSummery\":true,\"discountColumn\":true,\"rate\":true,\"gstColumn\":true,\"note\":true,\"bankDetails\":true,\"pageURL\":true,\"pageText\":true,\"cart_custom_feilds\":true,\"product_custom_feilds\":true,\"termsCondition\":true,\"signSignatory\":true,\"footerImage\":true,\"supplyTo\":true,\"closingBalance\":true,\"productImage\":true,\"productBottomBorder\":true,\"headerDetailsWithLogo\":true,\"headerLogoOnRightSide\":true,\"paymentQR\":true,\"productImageinColumn\":true,\"productCode\":true,\"unitName\":true,\"displayMainPage\":true,\"contactDetails\":true,\"employeeDetails\":true,\"ContactMobileNumber\":true,\"ProductSection\":true,\"ShippingLabelCustomForm\":true,\"showLinesBetweenProducts\":true,\"qtycolumn\":true}',
+CURRENT_TIMESTAMP(),
+CURRENT_TIMESTAMP(),
+0,
+0,
+0,
+0,
+1,
+CURRENT_TIMESTAMP()
+),
+
+(
+NULL,
+15,
+2,
+'{\"type\":15,\"print_version\":2,\"a_application_login_id\":\"0\",\"headerImage\":true,\"headerDetails\":true,\"toBuyer\":true,\"billingAddress\":true,\"shippingAddress\":true,\"gstinNo\":true,\"orderNo\":true,\"orderDateTime\":true,\"orderTimeOnly\":true,\"contactPerson\":true,\"debitCredit\":true,\"orignalDuplicate\":true,\"hsnColumn\":true,\"hsnSummery\":true,\"discountColumn\":true,\"rate\":true,\"gstColumn\":true,\"note\":true,\"bankDetails\":true,\"pageURL\":true,\"pageText\":true,\"cart_custom_feilds\":true,\"product_custom_feilds\":true,\"termsCondition\":true,\"signSignatory\":true,\"footerImage\":true,\"supplyTo\":true,\"closingBalance\":true,\"productImage\":true,\"productBottomBorder\":true,\"headerDetailsWithLogo\":true,\"headerLogoOnRightSide\":true,\"paymentQR\":true,\"productImageinColumn\":true,\"productCode\":true,\"unitName\":true,\"displayMainPage\":true,\"contactDetails\":true,\"employeeDetails\":true,\"ContactMobileNumber\":true,\"ProductSection\":true,\"ShippingLabelCustomForm\":true,\"showLinesBetweenProducts\":true,\"qtycolumn\":true}',
+CURRENT_TIMESTAMP(),
+CURRENT_TIMESTAMP(),
+0,
+0,
+0,
+0,
+1,
+CURRENT_TIMESTAMP()
+),
+
+(
+NULL,
+15,
+3,
+'{\"type\":15,\"print_version\":3,\"a_application_login_id\":\"0\",\"headerImage\":true,\"headerDetails\":true,\"toBuyer\":true,\"billingAddress\":true,\"shippingAddress\":true,\"gstinNo\":true,\"orderNo\":true,\"orderDateTime\":true,\"orderTimeOnly\":true,\"contactPerson\":true,\"debitCredit\":true,\"orignalDuplicate\":true,\"hsnColumn\":true,\"hsnSummery\":true,\"discountColumn\":true,\"rate\":true,\"gstColumn\":true,\"note\":true,\"bankDetails\":true,\"pageURL\":true,\"pageText\":true,\"cart_custom_feilds\":true,\"product_custom_feilds\":true,\"termsCondition\":true,\"signSignatory\":true,\"footerImage\":true,\"supplyTo\":true,\"closingBalance\":true,\"productImage\":true,\"productBottomBorder\":true,\"headerDetailsWithLogo\":true,\"headerLogoOnRightSide\":true,\"paymentQR\":true,\"productImageinColumn\":true,\"productCode\":true,\"unitName\":true,\"displayMainPage\":true,\"contactDetails\":true,\"employeeDetails\":true,\"ContactMobileNumber\":true,\"ProductSection\":true,\"ShippingLabelCustomForm\":true,\"showLinesBetweenProducts\":true,\"qtycolumn\":true}',
+CURRENT_TIMESTAMP(),
+CURRENT_TIMESTAMP(),
+0,
+0,
+0,
+0,
+1,
+CURRENT_TIMESTAMP()
+),
+
+(
+NULL,
+15,
+4,
+'{\"type\":15,\"print_version\":4,\"a_application_login_id\":\"0\",\"headerImage\":true,\"headerDetails\":true,\"toBuyer\":true,\"billingAddress\":true,\"shippingAddress\":true,\"gstinNo\":true,\"orderNo\":true,\"orderDateTime\":true,\"orderTimeOnly\":true,\"contactPerson\":true,\"debitCredit\":true,\"orignalDuplicate\":true,\"hsnColumn\":true,\"hsnSummery\":true,\"discountColumn\":true,\"rate\":true,\"gstColumn\":true,\"note\":true,\"bankDetails\":true,\"pageURL\":true,\"pageText\":true,\"cart_custom_feilds\":true,\"product_custom_feilds\":true,\"termsCondition\":true,\"signSignatory\":true,\"footerImage\":true,\"supplyTo\":true,\"closingBalance\":true,\"productImage\":true,\"productBottomBorder\":true,\"headerDetailsWithLogo\":true,\"headerLogoOnRightSide\":true,\"paymentQR\":true,\"productImageinColumn\":true,\"productCode\":true,\"unitName\":true,\"displayMainPage\":true,\"contactDetails\":true,\"employeeDetails\":true,\"ContactMobileNumber\":true,\"ProductSection\":true,\"ShippingLabelCustomForm\":true,\"showLinesBetweenProducts\":true,\"qtycolumn\":true}',
+CURRENT_TIMESTAMP(),
+CURRENT_TIMESTAMP(),
+0,
+0,
+0,
+0,
+1,
+CURRENT_TIMESTAMP()
+);
+
+06-07-2026 Dinesh
+CREATE TABLE `production_transactions` (
+  `id` int(11) NOT NULL,
+  `job_id` int(11) NOT NULL,
+  `team_member` int(11) NOT NULL,
+  `production_item_id` int(11) NOT NULL,
+  `bom_id` int(11) NOT NULL,
+  `production_qty` double NOT NULL,
+  `consumption_qty` double NOT NULL,
+  `rejection_qty` double NOT NULL,
+  `date` date NOT NULL,
+  `remark` text NOT NULL,
+  `company_masters_id` int(11) NOT NULL,
+  `a_application_login_id` int(11) NOT NULL,
+  `created_date_time` datetime NOT NULL,
+  `s_timestemp` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `isDelete` tinyint(4) NOT NULL DEFAULT 0,
+  `isActive` tinyint(4) NOT NULL DEFAULT 1,
+  `modified_date` datetime NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
+
+ALTER TABLE `production_transactions` ADD PRIMARY KEY (`id`);
+
+ALTER TABLE `production_transactions` MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+CREATE TABLE `production_transaction_items` (
+  `id` int(11) NOT NULL,
+  `job_id` int(11) NOT NULL,
+  `production_id` int(11) NOT NULL,
+  `bom_id` int(11) NOT NULL,
+  `process_id` int(11) NOT NULL,
+  `entry_type` tinyint(4) NOT NULL COMMENT '1 - Rejection | 2 - Consumption',
+  `item_id` int(11) NOT NULL,
+  `unit` text NOT NULL,
+  `qty` double NOT NULL,
+  `warehouse` int(11) NOT NULL,
+  `company_masters_id` int(11) NOT NULL,
+  `a_application_login_id` int(11) NOT NULL,
+  `created_date_time` datetime NOT NULL,
+  `s_timestemp` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `isDelete` tinyint(4) NOT NULL DEFAULT 0,
+  `isActive` tinyint(4) NOT NULL DEFAULT 1,
+  `modified_date` datetime NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
+
+ALTER TABLE `production_transaction_items` ADD PRIMARY KEY (`id`);
+
+ALTER TABLE `production_transaction_items` MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+07-07-2026 Dinesh
+ALTER TABLE `production_transactions` CHANGE `job_id` `job_id` INT(11) NULL, CHANGE `team_member` `team_member` INT(11) NULL, CHANGE `production_item_id` `production_item_id` INT(11) NULL, CHANGE `bom_id` `bom_id` INT(11) NULL, CHANGE `company_masters_id` `company_masters_id` INT(11) NULL, CHANGE `a_application_login_id` `a_application_login_id` INT(11) NULL;
+
+ALTER TABLE `production_transaction_items` CHANGE `job_id` `job_id` INT(11) NULL, CHANGE `production_id` `production_id` INT(11) NULL, CHANGE `bom_id` `bom_id` INT(11) NULL, CHANGE `process_id` `process_id` INT(11) NULL, CHANGE `entry_type` `entry_type` TINYINT(4) NULL COMMENT '1 - Rejection | 2 - Consumption', CHANGE `item_id` `item_id` INT(11) NULL, CHANGE `unit` `unit` TEXT CHARACTER SET latin1 COLLATE latin1_swedish_ci NULL, CHANGE `warehouse` `warehouse` INT(11) NULL, CHANGE `company_masters_id` `company_masters_id` INT(11) NULL, CHANGE `a_application_login_id` `a_application_login_id` INT(11) NULL;
+
+ALTER TABLE `production_transactions` ADD `finish_good_stock_adjustment_id` INT NULL AFTER `rejection_qty`, ADD `rejection_stock_adjustment_id` INT NULL AFTER `finish_good_stock_adjustment_id`, ADD `consumption_good_stock_adjustment_id` INT NULL AFTER `rejection_stock_adjustment_id`;
+
+
+07-07-2026 Keval
+
+INSERT INTO `a_application_pages` (`id`, `page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, 'Proforma Invoice Report\r\n', 'Proforma Invoice Report', 'proforma_invoice_report', '', '0', '0', '0', '1', '2026-07-07 12:03:05.000000', current_timestamp(), '0', '1');
+
+INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `extra_information`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, '2', '121', '0', '', '2026-07-07 14:53:58.000000', current_timestamp(), '0', '1'), (NULL, '3', '121', '0', '', '2026-07-07 14:53:58.000000', current_timestamp(), '0', '1');
+07-07-2026 Dinesh
+
+INSERT INTO `a_application_pages` (`id`, `page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, 'Lock Control', 'Lock Control', 'lock_control', '', '0', '0', '0', '1', '2026-07-07 12:03:05', '2026-07-07 15:34:29', '0', '1');
+
+INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `extra_information`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, '3', '122', '0', '', '2026-07-06 09:21:05', '2026-07-06 12:51:51', '0', '1'), (NULL, '2', '122', '0', '', '2026-07-06 09:21:05', '2026-07-06 12:51:51', '0', '1');
+
+INSERT INTO `a_application_pages` (`id`, `page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, 'Round Off Master', 'Round Off Master', 'round_off_master', '', '0', '0', '0', '1', '2026-07-07 12:03:05', '2026-07-07 15:34:29', '0', '1');
+
+INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `extra_information`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, '2', '123', '0', '', '2026-07-06 09:21:05', '2026-07-06 12:51:51', '0', '1'), (NULL, '3', '123', '0', '', '2026-07-06 09:21:05', '2026-07-06 12:51:51', '0', '1');
+
+INSERT INTO `a_application_pages` (`id`, `page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, 'Adjustment Type Master', 'Adjustment Type Master', 'adjustment_type_master', '', '0', '0', '0', '1', '2026-07-07 12:03:05', '2026-07-07 15:34:29', '0', '1');
+
+INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `extra_information`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, '3', '124', '0', '', '2026-07-06 09:21:05', '2026-07-06 12:51:51', '0', '1'), (NULL, '2', '124', '0', '', '2026-07-06 09:21:05', '2026-07-06 12:51:51', '0', '1');
+
+INSERT INTO `a_application_pages` (`id`, `page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, 'Day Adjustment', 'Day Adjustment', 'day_adjustment', '', '0', '0', '0', '1', '2026-07-07 12:03:05', '2026-07-07 15:34:29', '0', '1');
+
+INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `extra_information`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, '2', '125', '0', '', '2026-07-06 09:21:05', '2026-07-06 12:51:51', '0', '1'), (NULL, '3', '125', '0', '', '2026-07-06 09:21:05', '2026-07-06 12:51:51', '0', '1');
+
+INSERT INTO `a_application_pages` (`id`, `page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, 'Employee Account Outstanding Report', 'Employee Account Outstanding Report', 'employee_account_outstanding_report', '', '0', '0', '0', '1', '2026-07-07 12:03:05', '2026-07-07 15:34:29', '0', '1');
+
+INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `extra_information`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, '3', '126', '0', '', '2026-07-06 09:21:05', '2026-07-06 12:51:51', '0', '1'), (NULL, '2', '126', '0', '', '2026-07-06 09:21:05', '2026-07-06 12:51:51', '0', '1');
+
+INSERT INTO `a_application_pages` (`id`, `page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, 'Expense Detailed Report', 'Expense Detailed Report', 'expense_detailed_report', '', '0', '0', '0', '1', '2026-07-07 12:03:05', '2026-07-07 15:34:29', '0', '1');
+
+INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `extra_information`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, '2', '127', '0', '', '2013-10-25 14:05:00', '2013-10-25 18:43:00', '0', '1'), (NULL, '3', '127', '0', '', '2013-10-25 14:05:00', '2013-10-25 18:43:00', '0', '1');
+
+update 1111expenses set expense_date=DATE(created_date_time) where isDelete=0 AND expense_date is null 
+
+Deep 10-07-2026
+ALTER TABLE `job_cards` ADD `status_id` INT NOT NULL AFTER `production_qty`, ADD `label_ids` TEXT NOT NULL AFTER `status_id`, ADD `team_assign_ids` TEXT NOT NULL AFTER `label_ids`;
+
+10-07-2026 Dinesh
+ALTER TABLE `products` CHANGE `product_barcode_number` `product_barcode_number` VARCHAR(13) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL;
+
+INSERT INTO `a_application_pages` (`id`, `page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, 'Job Card', 'Job Card', 'job_card', '', '0', '0', '0', '1', '2026-07-07 12:03:05', '2026-07-07 15:34:29', '0', '1');
+
+INSERT INTO `a_application_pages` (`id`, `page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, 'Production', 'Production', 'production', '', '0', '0', '0', '1', '2026-07-07 12:03:05', '2026-07-07 15:34:29', '0', '1');
+
+INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `extra_information`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, '3', '128', '0', '', '2013-10-25 14:05:00', '2013-10-25 18:43:00', '0', '1');
+
+INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `extra_information`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, '3', '129', '0', '', '2013-10-25 14:05:00', '2013-10-25 18:43:00', '0', '1');
+
+11-07-2026 Dinesh
+CREATE TABLE `tax_masters` (
+  `id` int(11) NOT NULL,
+  `name` int(11) NOT NULL,
+  `value` double NOT NULL,
+  `company_masters_id` int(11) NOT NULL,
+  `a_application_login_id` int(11) NOT NULL,
+  `created_date_time` datetime NOT NULL,
+  `s_timestemp` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `isDelete` tinyint(4) NOT NULL DEFAULT 0,
+  `isActive` tinyint(4) NOT NULL DEFAULT 1,
+  `modified_date` datetime NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
+
+ALTER TABLE `tax_masters` ADD PRIMARY KEY (`id`);
+
+ALTER TABLE `tax_masters` MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+INSERT INTO `tax_masters` (`id`, `name`, `value`, `company_masters_id`, `a_application_login_id`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`, `modified_date`) VALUES (NULL, '5', '5', '', '', '2026-07-11 07:20:42.000000', current_timestamp(), '0', '1', current_timestamp()), (NULL, '12', '12', '', '', '2026-07-11 07:20:42.000000', current_timestamp(), '0', '1', current_timestamp()), (NULL, '18', '18', '', '', '2026-07-11 07:20:42.000000', current_timestamp(), '0', '1', current_timestamp()), (NULL, '28', '28', '', '', '2026-07-11 07:20:42.000000', current_timestamp(), '0', '1', current_timestamp()), (NULL, '40', '40', '', '', '2026-07-11 07:20:42.000000', current_timestamp(), '0', '1', current_timestamp());
+
+ALTER TABLE `tax_masters` CHANGE `name` `name` VARCHAR(255) NOT NULL;
+
+
+13-07-2026 Dinesh
+ALTER TABLE `account_transactions` ADD `amount_type` TINYINT NOT NULL COMMENT '1 -> Advanced' AFTER `reference_table`;
+
+INSERT INTO `source_types` (`id`, `company_masters_id`, `a_application_login_id`, `source_name`, `api_key`, `webhook`, `color`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`, `modified_date`) VALUES ('-21', '0', '0', 'Miracle Cust.', '', '', '#2b388f', '2026-02-25 11:48:49', '2026-02-25 16:36:13', '0', '1', '2026-02-25 16:36:13');
+
+14-07-2026 Dinesh
+ALTER TABLE `products` ADD `gst_id` INT NOT NULL AFTER `GST`;
+ALTER TABLE `products` ADD `purchase_gst_id` INT NOT NULL AFTER `purchase_gst_per`;
+
+15-07-2026 Deep
+CREATE TABLE `route_planners` (
+  `id` int(11) NOT NULL,
+  `employee_id` int(11) NOT NULL,
+  `start_date` date NOT NULL,
+  `end_date` date NOT NULL,
+  `country_id` int(11) NOT NULL,
+  `state_id` int(11) NOT NULL,
+  `city_id` int(11) NOT NULL,
+  `area_id` int(11) DEFAULT NULL,
+  `remark` text NOT NULL,
+  `company_masters_id` int(11) NOT NULL,
+  `a_application_login_id` int(11) NOT NULL,
+  `created_date_time` datetime NOT NULL,
+  `s_timestemp` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `isDelete` tinyint(4) NOT NULL DEFAULT 0,
+  `isActive` tinyint(4) NOT NULL DEFAULT 1,
+  `modified_date` datetime NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
+
+ALTER TABLE `route_planners` ADD PRIMARY KEY (`id`);
+ALTER TABLE `route_planners` MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+CREATE TABLE `route_plan_vs_contacts` (
+  `id` int(11) NOT NULL,
+  `route_id` int(11) NOT NULL,
+  `contact_id` int(11) NOT NULL,
+  `company_masters_id` int(11) NOT NULL,
+  `a_application_login_id` int(11) NOT NULL,
+  `created_date_time` datetime NOT NULL,
+  `s_timestemp` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `isDelete` tinyint(4) NOT NULL DEFAULT 0,
+  `isActive` tinyint(4) NOT NULL DEFAULT 1,
+  `modified_date` datetime NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
+
+ALTER TABLE `route_plan_vs_contacts` ADD PRIMARY KEY (`id`);
+ALTER TABLE `route_plan_vs_contacts` MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+15-07-2026 Dinesh
+UPDATE 111products SET products.gst_id =( SELECT tax_masters.id FROM tax_masters WHERE tax_masters.isDelete = 0 AND tax_masters.value = products.GST ORDER BY id DESC LIMIT 1 ) WHERE GST > 0;
+
+
+UPDATE 111products SET products.purchase_gst_id =( SELECT tax_masters.id FROM tax_masters WHERE tax_masters.isDelete = 0 AND tax_masters.value = products.purchase_gst_per ORDER BY id DESC LIMIT 1 ) WHERE purchase_gst_per > 0;
+
+
+17-07-2026 Deep
+ALTER TABLE `route_planners` ADD `status_id` INT NOT NULL AFTER `area_id`;
+
+18-07-2026 Antigravity
+ALTER TABLE `company_masters` ADD `parent_company_id` INT NULL DEFAULT NULL AFTER `dispatch_sr_number_generate_flag`;
+
+22-07-2026 Antigravity
+ALTER TABLE `contact_masters` ADD `raw_mobile_number` VARCHAR(50) NULL DEFAULT NULL AFTER `mobile_number`;
+UPDATE `contact_masters` SET `raw_mobile_number` = `mobile_number` WHERE `raw_mobile_number` IS NULL OR `raw_mobile_number` = '';
+UPDATE `contact_masters` SET `mobile_number` = CONCAT('91', TRIM(`mobile_number`)) WHERE CHAR_LENGTH(TRIM(`mobile_number`)) = 10 AND `mobile_number` NOT LIKE '91%';
+
+22-07-2026 Dinesh
+INSERT INTO `a_application_pages` (`id`, `page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, 'Target vs Incentive Report', 'Target vs Incentive Report', 'target_vs_incentive_report', '', '0', '0', '0', '1', '2026-07-07 12:03:05', '2026-07-07 15:34:29', '0', '1');
+
+INSERT INTO `a_application_pages` (`id`, `page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, 'Customer Sales Purchase Report', 'Customer Sales Purchase Report', 'customer_sales_purchase_report', '', '', '', '', '1', '2026-07-22 15:31:15.000000', current_timestamp(), '0', '1');
+
+INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `extra_information`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, '1', '130', '0', '', '2013-10-25 14:05:00', '2013-10-25 18:17:00', '0', '1'), (NULL, '2', '130', '0', '', '2013-10-25 14:05:00', '2013-10-25 18:43:00', '0', '1'), (NULL, '3', '130', '0', '', '2013-10-25 14:05:00', '2013-10-25 18:43:00', '0', '1');
+
+INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `extra_information`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, '2', '131', '0', '', '2025-11-12 14:53:39', '2025-11-12 19:24:00', '0', '1'), (NULL, '3', '131', '0', '', '2025-11-12 14:53:39', '2025-11-12 19:24:00', '0', '1');
+
+23-07-2026 DInesh
+ALTER TABLE `contact_masters` CHANGE `client_code` `client_code` VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL;

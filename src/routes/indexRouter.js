@@ -1,0 +1,195 @@
+import { Router } from "express";
+/* connected to main database with no tenant middleware */
+import applicationLoginTypeRightRouter from "./application_login/applicationLoginTypeRightRouter.js";
+import applicationPageRoutes from "./application_login/applicationPageRoutes.js";
+import userRouter from "./application_login/userRouter.js";
+import companyRouter from "./company_setup/companyRouter.js";
+import companyVsApplicationLoginRouter from "./company_setup/companyVsApplicationLoginRouter.js";
+import activationCodeMasterRouter from "./configuration/activationCodeMasterRouter.js";
+import cronJobsRouter from "./configuration/cronJobsRouter.js";
+
+/* connected to tenant database with tenant middleware */
+import contactMessageHistoryRouter from "./activities/contactMessageHistoryRouter.js";
+import contactRouter from "./activities/contactRouter.js";
+import commonRouter from "./commonRouter.js";
+import thirdPartyIntegrationRouter from "./company_setup/thirdPartyIntegrationRouter.js";
+// import axios from "axios";
+import accountTransactionRouter from "./activities/accountTransactionRouter.js";
+import callhistoryRouter from "./activities/callHistoryRouter.js";
+import reminderNotificationRouter from "./configuration/Cron Job Routes/reminderNotificationRouter.js";
+import { default as accountOutstandingReport, default as allAccountTranctionsReport } from "./dashboard/Reports/accountTranstionReportRouter.js";
+import getCallReport from './dashboard/Reports/allCallReportRouter.js';
+import getAllContactReport from "./dashboard/Reports/allContactReportRouter.js";
+import getVisitReport from './dashboard/Reports/allVisitReportRouter.js';
+import getCategorySalesPurchase from "./dashboard/Reports/categoryWiseSales&purchaseReportRouter.js";
+import getInquiryReport from "./dashboard/Reports/inquiryReportRouter.js";
+import getLableWiseReport from "./dashboard/Reports/lableWiseReportRouter.js";
+import getProductInventoryReport from "./dashboard/Reports/productInventoryReportRouter.js";
+import getProductSalesPurchase from "./dashboard/Reports/productWiseSales&PurchaseReportRouter.js";
+import getAllReminderReports from "./dashboard/Reports/reminderReportRouter.js";
+import getSourceWiseReport from "./dashboard/Reports/sourceWiseReportRouter.js";
+import getTeamAllCarts from "./dashboard/Reports/teamAllCartRouter.js";
+import getTeamAllTask from "./dashboard/Reports/teamAllTaskReportRouter.js";
+import getTeamAttendanceReport from "./dashboard/Reports/teamAttendanceReportRouter.js";
+import getTeamDayExpense from "./dashboard/Reports/teamDaywiseExpenseReportRouter.js";
+import getTeamPendingWorkReport from "./dashboard/Reports/teamPendingWorkReportRouter.js";
+import getTeamPerformanceReport from "./dashboard/Reports/teamPerformanceReportRouter.js";
+import attendanceRouter from "./hr/attendanceRouter.js";
+import categoryDelete from "./product_settings/categoryDeleteRouter.js";
+// import ConnectionRouter from "./connectionRouter.js";
+import employeeAccountTransactionRouter from "./activities/employeeAccountTransactionRouter.js";
+import inquiryRouter from "./activities/inquiryRouter.js";
+import orderRouter from "./activities/orderRouter.js";
+import quickSearchRouter from "./activities/quickSearchRouter.js";
+import reminderRouter from "./activities/reminderRouter.js";
+import routePlannerRouter from "./activities/routePlannerRouter.js";
+import stockAdjustmentRouter from "./activities/stockAdjustmentRouter.js";
+import TaskManagement from './activities/taskManagementRouter.js';
+import TaskMessageHistory from './activities/taskMessageHistoryRouter.js';
+import trackingRouter from "./activities/trackingRouter.js";
+import { default as getprintSetting, default as printSetting } from './company_setup/printSettingRouter.js';
+import currencyRouter from "./configuration/currencyRouter.js";
+import updateTenent from "./configuration/updateTenentRouter.js";
+import allInsightsRouter from "./dashboard/allInsightsRouter.js";
+import insightRouter from "./dashboard/insightRouter.js";
+import getChainContact from "./dashboard/Reports/chainContactReportRouter.js";
+import customerSalesPurchaseReportRouter from "./dashboard/Reports/customerSalesPurchaseReportRouter.js";
+import EmployeeTransactionReportRouter from "./dashboard/Reports/EmployeeTransactionReportRouter.js";
+import expenseDetailedReportRouter from "./dashboard/Reports/expenseDetailedReportRouter.js";
+import paymentTypeWiseAccountRouter from "./dashboard/Reports/paymentTypeWiseAccountRouter.js";
+import processAttendanceReportRouter from "./dashboard/Reports/processAttendanceReportRouter.js";
+import SalaryRegisterReportRouter from "./dashboard/Reports/SalaryRegisterReportRouter.js";
+import statistics from "./dashboard/Reports/statisticsRouter.js";
+import statusWiseReportRouter from "./dashboard/Reports/statusWiseReportRouter.js";
+import targetIncentiveReportRouter from "./dashboard/Reports/targetIncentiveReportRouter.js";
+import serpRouter from './dashboard/serpRoutes.js';
+import adjustmentTypeRouter from "./hr/adjustmentTypeRouter.js";
+import compensationAdjustmentRouter from "./hr/compensationAdjustmentRouter.js";
+import dayConversionRouter from "./hr/dayConversionRouter.js";
+import employeePayrollRouter from "./hr/employeePayrollRouter.js";
+import expnseTypeMasterRouter from "./hr/expnseTypeMasterRouter.js";
+import holidayRouter from "./hr/holidayRouter.js";
+import leaveRouter from "./hr/leaveRouter.js";
+import lockControlRouter from "./hr/lockControlRouter.js";
+import processAttendanceRouter from "./hr/processAttendanceRouter.js";
+import roundOfRouter from "./hr/roundOfRouter.js";
+import salaryProcessRouter from "./hr/salaryProcessRouter.js";
+import targetVsIncentiveRouter from "./hr/targetVsIncentiveRouter.js";
+import visitTypeMasterRouter from "./hr/visitTypeMasterRouter.js";
+import BillOfMaterials from "./masters/billOfmaterialsRouter.js";
+import sourceOfTypesRouter from "./masters/sourceOfTypesRouter.js";
+import getTaskTemplateDataSource from "./masters/taskTemplateRouter.js";
+import miracleRoutes from "./miracle/miracleRoutes.js";
+import onlineStoreRouter from "./online-store/onlineStoreRouter.js";
+import supportTicketRouter from "./online-store/supportTicketRouter.js";
+import customFieldFormRouter from "./other_settings/customFieldFormRouter.js";
+import getwarehouse from "./other_settings/warehouseRouter.js";
+import wrkflwAutoAssignmentContactRouter from "./other_settings/wrkflwAutoAssignmentContactRouter.js";
+import priceListItemRouter from "./product_settings/priceListItemRouter.js";
+import priceListMasterRouter from "./product_settings/priceListMasterRouter.js";
+import productBillOfMaterialRouter from "./product_settings/productBillOfMaterialRouter.js";
+import productRouter from "./product_settings/productRouter.js";
+import ProductUnitGet from "./product_settings/productUnitMasterRouter.js";
+import taxRouter from "./product_settings/taxRouter.js";
+import JobCardRouter from "./production/JobCardRouter.js";
+import statusLogRouter from "./status_log/statusLogRouter.js";
+import changeMobileNumberRouter from "./user_profile/changeMobileNumberRouter.js";
+import whatsappRoutes from "./whatsapp/whatsappRoutes.js";
+export default () => {
+  const app = Router();
+  contactRouter(app);
+  userRouter(app);
+  contactMessageHistoryRouter(app);
+  commonRouter(app);
+  thirdPartyIntegrationRouter(app);
+  inquiryRouter(app);
+  companyRouter(app);
+  companyVsApplicationLoginRouter(app);
+  productRouter(app);
+  reminderRouter(app);
+  priceListMasterRouter(app);
+  priceListItemRouter(app);
+  sourceOfTypesRouter(app);
+  accountTransactionRouter(app);
+  activationCodeMasterRouter(app);
+  orderRouter(app);
+  insightRouter(app);
+  customFieldFormRouter(app);
+  applicationLoginTypeRightRouter(app);
+  applicationPageRoutes(app);
+  trackingRouter(app);
+  attendanceRouter(app);
+  callhistoryRouter(app);
+  expnseTypeMasterRouter(app);
+  targetVsIncentiveRouter(app);
+  visitTypeMasterRouter(app);
+  cronJobsRouter(app);
+  updateTenent(app);
+  statistics(app);
+  accountOutstandingReport(app);
+  getTeamPerformanceReport(app);
+  getTeamPendingWorkReport(app);
+  getProductInventoryReport(app);
+  reminderNotificationRouter(app);
+  getTeamAttendanceReport(app);
+  getTeamAllCarts(app);
+  getProductSalesPurchase(app);
+  getCategorySalesPurchase(app);
+  categoryDelete(app);
+  getAllContactReport(app);
+  getSourceWiseReport(app);
+  getLableWiseReport(app);
+  getInquiryReport(app);
+  getTeamDayExpense(app);
+  // ConnectionRouter(app);
+  currencyRouter(app);
+  serpRouter(app);
+  getVisitReport(app);
+  getCallReport(app);
+  printSetting(app);
+  getprintSetting(app);
+  TaskManagement(app);
+  TaskMessageHistory(app);
+  getTeamAllTask(app)
+  allAccountTranctionsReport(app)
+  changeMobileNumberRouter(app)
+  wrkflwAutoAssignmentContactRouter(app)
+  getTaskTemplateDataSource(app)
+  statusLogRouter(app),
+    onlineStoreRouter(app)
+  ProductUnitGet(app)
+  getAllReminderReports(app)
+  getChainContact(app)
+  leaveRouter(app)
+  getwarehouse(app)
+  BillOfMaterials(app)
+  employeeAccountTransactionRouter(app);
+  productBillOfMaterialRouter(app);
+  stockAdjustmentRouter(app);
+  supportTicketRouter(app);
+  whatsappRoutes(app);
+  miracleRoutes(app);
+  allInsightsRouter(app);
+  quickSearchRouter(app);
+  employeePayrollRouter(app);
+  EmployeeTransactionReportRouter(app);
+  compensationAdjustmentRouter(app);
+  processAttendanceRouter(app);
+  holidayRouter(app);
+  SalaryRegisterReportRouter(app);
+  processAttendanceReportRouter(app);
+  salaryProcessRouter(app);
+  statusWiseReportRouter(app);
+  paymentTypeWiseAccountRouter(app);
+  lockControlRouter(app);
+  roundOfRouter(app);
+  JobCardRouter(app);
+  adjustmentTypeRouter(app);
+  expenseDetailedReportRouter(app);
+  dayConversionRouter(app);
+  taxRouter(app);
+  routePlannerRouter(app);
+  targetIncentiveReportRouter(app)
+  customerSalesPurchaseReportRouter(app);
+  return app;
+};
