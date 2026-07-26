@@ -7,8 +7,7 @@
   "scripts": {
     "clean": "rimraf node_modules/.cache",
     "build": "tsx src/scripts/build.js",
-    "devTemp": "cross-env NODE_ENV=development tsx watch src/index.js",
-    "dev": "echo. > D:/app.smalloffice.in/backend/logs/crm_backend.log && cross-env NODE_ENV=development nodemon >> D:/app.smalloffice.in/backend/logs/crm_backend.log 2>&1",
+    "dev": "echo. > E:/deskflowcrm/backend/logs/crm_backend.log && cross-env NODE_ENV=development nodemon >> E:/deskflowcrm/backend/logs/crm_backend.log 2>&1",
     "start": "cross-env NODE_ENV=production tsx src/index.js",
     "create:migration:master": "node src/scripts/createMigration.js master",
     "create:migration:tenant": "node src/scripts/createMigration.js tenant",

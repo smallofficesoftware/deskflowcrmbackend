@@ -1,4 +1,4 @@
-import { DATE, INTEGER, NOW, STRING, TEXT, TINYINT } from "sequelize";
+import { DATE, INTEGER, JSON, NOW, STRING, TEXT, TINYINT } from "sequelize";
 import sequelize from "../../config/sequelize.js";
 
 const miracleConfigModel = sequelize.define("miracle_configurations", {
@@ -36,6 +36,10 @@ const miracleConfigModel = sequelize.define("miracle_configurations", {
     },
     CompanyName: {
         type: STRING(255),
+    },
+    rights_config: {
+        type: JSON,
+        allowNull: true,
     },
     s_timestemp: {
         type: DATE,

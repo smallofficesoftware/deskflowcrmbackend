@@ -17,6 +17,7 @@ import { productModel } from "../../models/product_settings/productModel.js";
 import { taxModel } from "../../models/product_settings/taxModel.js";
 import { MIRACLE_LEDGER_PDF } from "../../utils/appConstants.js";
 import { createAxiosIntance } from "../../utils/miracleAxiosInstance.js";
+import { cleanHtmlText, parseMiracleRights } from "../../utils/miracleRightsHelper.js";
 import { getFinancialYearRangeWise, isValid, resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { getCompanyByLoginId } from "../commonServices.js";
 
@@ -33,6 +34,16 @@ export const syncProduct = async (req) => {
             return resError({
                 ack_msg: "Product detail not found",
             });
+        }
+
+        const rights = parseMiracleRights(mconfig?.rights_config);
+        if (rights.sync_miracle?.enabled === false) {
+            return resError({ ack_msg: "Miracle Sync is disabled in Miracle Configurations for this company" });
+        }
+
+        const productAction = getProductDb.miracle_UniqueId ? "update" : "add";
+        if (rights.sync_miracle?.product?.[productAction] === false) {
+            return resError({ ack_msg: `Miracle Sync permission denied for product.${productAction}` });
         }
         const gstCommodity = getProductDb.gst_id ? await taxModelInstance.findOne({ where: { isDelete: 0, id: getProductDb.gst_id }, attributes: ["name"], raw: true }) : "";
 
@@ -74,6 +85,8 @@ export const syncProduct = async (req) => {
             payload.action = "E";
             payload.uniqueId = getProductDb.miracle_UniqueId;
             delete payload['commnm'];
+            delete payload['hsncode'];
+            delete payload['gstper'];
             delete payload['prdstp'];
         }
 
@@ -163,6 +176,11 @@ export const syncInvoice = async (req) => {
             return resError({ ack_msg: "cart_id is required" });
         }
 
+        const rights = parseMiracleRights(mconfig?.rights_config);
+        if (rights.sync_miracle?.enabled === false) {
+            return resError({ ack_msg: "Miracle Sync is disabled in Miracle Configurations for this company" });
+        }
+
         let cartIds = [];
 
         if (Array.isArray(cart_id)) {
@@ -182,6 +200,18 @@ export const syncInvoice = async (req) => {
         const results = [];
         const successfulCartIds = []; // OPTIMIZATION: Track successful cart IDs directly
 
+        const CART_TYPE_TO_MODULE = {
+            3: "invoice",
+            4: "purchase_invoice",
+            6: "return_sales_invoice",
+            7: "return_purchase_invoice",
+            1: "quotation",
+            2: "order",
+            5: "purchase_order",
+            9: "dispatch",
+            8: "inward",
+        };
+
         for (const singleCartId of cartIds) {
             try {
                 // Get cart
@@ -192,6 +222,18 @@ export const syncInvoice = async (req) => {
 
                 if (!getCart) {
                     results.push({ cart_id: singleCartId, status: "fail", msg: "Cart not found" });
+                    continue;
+                }
+
+                const targetModule = CART_TYPE_TO_MODULE[getCart.type] || "invoice";
+                const targetAction = getCart.miracle_UniqueId ? "update" : "add";
+
+                if (rights.sync_miracle?.[targetModule]?.[targetAction] === false) {
+                    results.push({
+                        cart_id: singleCartId,
+                        status: "fail",
+                        msg: `Miracle Sync permission denied for ${targetModule}.${targetAction}`
+                    });
                     continue;
                 }
 
@@ -283,10 +325,10 @@ export const syncInvoice = async (req) => {
                         batchnm: "",
                         locnm: "",
                         qty1: Number(qty.toFixed(1)),
-                        txpaidrt: Number(total.toFixed(1)),
                         rate: Number(rate.toFixed(1)),
                         txpaidrt: Number(item_net_rate.toFixed(1)),
                         amt: Number(taxable_amount.toFixed(1)),
+                        narr: cleanHtmlText(item.item_product_description || item.item_remark || ""),
                         expdet: [
                             {
                                 expnm: "Central Tax",
@@ -317,23 +359,57 @@ export const syncInvoice = async (req) => {
                     flgcd: getCart.transaction_mode == 1 ? "C" : getCart.transaction_mode == 2 ? "D" : "",
                     invtyp: "GST",
                     taxtyp: "T",
+                    narr: cleanHtmlText(getCart.cart_remark || ""),
                     items,
-                    expdet: [{ expnm: "Round Off", expper: 0, expamt: 0 }],
+                    expdet: Number(getCart.round_off || 0) !== 0
+                        ? [{ expnm: "Round Off", expper: 0, expamt: Number(Number(getCart.round_off).toFixed(2)) }]
+                        : [],
                     ufddet: {
                         U0000001: getCart.due_date ? getCart.due_date : ""
                     }
                 };
 
-                if (getCart.transaction_mode == 1) { // case
+                if (getCart.transaction_mode == 1) { // cash
                     payload.cpacc = acc_id;
                 }
 
-                if (getCart.type != 7) {
-                    payload.billdt = getCart.cart_date;
-                }
+                // Voucher type specific required fields per Miracle API specification:
+                const cartDate = getCart.cart_date || "";
+                const cartNum = getCart.cart_number || "";
 
-                if (getCart.type == 4 || getCart.type == 7) {
-                    payload.voudt = getCart.cart_date;
+                if (getCart.type === 1) { // QS - Quotation
+                    payload.quotdt = cartDate;
+                    payload.quotno = cartNum;
+                    payload.billdt = cartDate;
+                } else if (getCart.type === 2) { // OS - Sales Order
+                    payload.orddt = cartDate;
+                    payload.ordno = cartNum;
+                    payload.billdt = cartDate;
+                } else if (getCart.type === 3) { // SS - Sales Invoice
+                    payload.billdt = cartDate;
+                } else if (getCart.type === 4) { // PP - Purchase Invoice
+                    payload.voudt = cartDate;
+                    payload.vouno = cartNum;
+                    payload.billdt = cartDate;
+                } else if (getCart.type === 5) { // OP - Purchase Order
+                    payload.orddt = cartDate;
+                    payload.billdt = cartDate;
+                } else if (getCart.type === 6) { // SR - Sales Return
+                    payload.billdt = cartDate;
+                    payload.orgbilldt = cartDate;
+                    payload.orgbillno = getCart.referance_cart_name || cartNum;
+                } else if (getCart.type === 7) { // PR - Purchase Return
+                    payload.voudt = cartDate;
+                    payload.vouno = cartNum;
+                } else if (getCart.type === 8) { // HP - Inward Challan
+                    payload.voudt = cartDate;
+                    payload.billdt = cartDate;
+                } else if (getCart.type === 9) { // HS - Dispatch Challan
+                    payload.chdt = cartDate;
+                    payload.chndt = cartDate;
+                    payload.chno = cartNum;
+                    payload.chnno = cartNum;
+                    payload.billdt = cartDate;
                 }
 
                 const api = createAxiosIntance({
@@ -449,6 +525,16 @@ export const syncContact = async (req) => {
             return resError({ ack_msg: "Contact detail not found" });
         }
 
+        const rights = parseMiracleRights(mconfig?.rights_config);
+        if (rights.sync_miracle?.enabled === false) {
+            return resError({ ack_msg: "Miracle Sync is disabled in Miracle Configurations for this company" });
+        }
+
+        const contactAction = getContactDetail.miracle_UniqueId ? "update" : "add";
+        if (rights.sync_miracle?.contact?.[contactAction] === false) {
+            return resError({ ack_msg: `Miracle Sync permission denied for contact.${contactAction}` });
+        }
+
         // let contact_name = getContactDetail.company_name ? getContactDetail.company_name + '-' + getContactDetail.person_name : getContactDetail.person_name;
         let contact_name = getContactDetail.company_name;
 
@@ -476,26 +562,31 @@ export const syncContact = async (req) => {
             state_name = stateDb?.state_name || "";
         }
 
+        const hasGstin = Boolean(getContactDetail.gst_number && String(getContactDetail.gst_number).trim().length === 15);
+        const regType = getContactDetail.gst_reg_type || (hasGstin ? "Regular" : "Unregistered");
+        const regAppDate = getContactDetail.gst_reg_date || "2017-07-01";
+
         const payload = {
             "accnm": contact_name,
-            "action": "A",
+            "action": getContactDetail.miracle_UniqueId ? "E" : "A",
+            "uniqueId": getContactDetail.miracle_UniqueId || undefined,
             "accalinm": getContactDetail.client_code,
             "accgrpnm": group_name ? group_name : "Sundry Debtors",
-            "gstin": getContactDetail.gst_number,
+            "gstin": getContactDetail.gst_number || "",
             "addr": {
-                "addr1": getContactDetail.address,
-                "addr2": getContactDetail.shipping_address,
+                "addr1": cleanHtmlText(getContactDetail.address || ""),
+                "addr2": cleanHtmlText(getContactDetail.shipping_address || ""),
                 "citynm": city_name,
                 "pincode": getContactDetail.pincode,
                 "areanm": area_name,
-                "statenm": state_name,
+                "statenm": state_name || "Gujarat",
                 "mob1": getContactDetail.mobile_number,
                 "email": getContactDetail.email_id,
             },
             "regtypedet": [
                 {
-                    "regtype": "Unregistered",
-                    "regappdt": "2017-07-01"
+                    "regtype": regType,
+                    "regappdt": regAppDate
                 }
             ]
         }
@@ -762,7 +853,8 @@ export const miracleConfigCreate = async (req) => {
         urlKey,
         baseurl,
         BranchName,
-        CompanyName
+        CompanyName,
+        rights_config
     } = req.body;
 
     const findCompanyId = await getCompanyByLoginId(a_application_login_id);
@@ -774,6 +866,8 @@ export const miracleConfigCreate = async (req) => {
             raw: true
         });
 
+        const parsedRights = parseMiracleRights(rights_config);
+
         if (isExistData) {
             const updateResult = await miracleConfigModel.update(
                 {
@@ -783,7 +877,8 @@ export const miracleConfigCreate = async (req) => {
                     urlKey,
                     baseurl,
                     BranchName,
-                    CompanyName
+                    CompanyName,
+                    rights_config: parsedRights
                 },
                 {
                     where: { company_id: findCompanyId.company_masters_id, isDelete: 0 },
@@ -811,7 +906,8 @@ export const miracleConfigCreate = async (req) => {
                     urlKey,
                     baseurl,
                     BranchName,
-                    CompanyName
+                    CompanyName,
+                    rights_config: parsedRights
                 },
             );
 
@@ -857,22 +953,38 @@ export const miracleConfigGet = async (req) => {
                 "baseurl",
                 "BranchName",
                 "CompanyName",
+                "rights_config"
             ],
+            raw: true
         });
 
         if (result) {
+            const safeRights = parseMiracleRights(result.rights_config);
             return resSuccess({
-                data: { item: result },
+                data: {
+                    item: {
+                        ...result,
+                        rights_config: safeRights
+                    }
+                },
             });
         } else {
+            const safeRights = parseMiracleRights(null);
             return resError({
                 ack_msg: "No Config found",
                 developer_msg: "Data not found",
+                data: {
+                    item: {
+                        rights_config: safeRights
+                    }
+                }
             });
         }
-    } catch (e) {
-        console.log("miracleConfigGet error", e)
-        return resBadRequest({ developer_msg: `error ${e}` });
+    } catch (error) {
+        return resBadRequest({
+            ack_msg: "Failed to fetch configuration",
+            developer_msg: `${error.message}`,
+        });
     }
 };
 
@@ -883,6 +995,11 @@ export const syncCaseBankPr = async (req) => {
 
         if (!acc_id) {
             return resError({ ack_msg: "acc_id is required" });
+        }
+
+        const rights = parseMiracleRights(mconfig?.rights_config);
+        if (rights.sync_miracle?.enabled === false) {
+            return resError({ ack_msg: "Miracle Sync is disabled in Miracle Configurations for this company" });
         }
 
         let accIds = [];
@@ -917,6 +1034,16 @@ export const syncCaseBankPr = async (req) => {
 
                 if (!getAcc) {
                     results.push({ acc_id: singleCartId, status: "fail", msg: "account not found" });
+                    continue;
+                }
+
+                const txAction = getAcc.miracle_UniqueId ? "update" : "add";
+                if (rights.sync_miracle?.account_transaction?.[txAction] === false) {
+                    results.push({
+                        acc_id: singleCartId,
+                        status: "fail",
+                        msg: `Miracle Sync permission denied for account_transaction.${txAction}`
+                    });
                     continue;
                 }
 
@@ -969,7 +1096,7 @@ export const syncCaseBankPr = async (req) => {
                     acc: con_acc_id,
                     oppacc: getAcc.miracle_account_ledger,
                     amount: Number(getAcc.amount || 0),
-                    narr: getAcc.remark,
+                    narr: cleanHtmlText(getAcc.remark || ""),
                     taxtyp: "O"
                 };
 
@@ -1968,4 +2095,235 @@ export const generateMiracleToken = async (req) => {
     return resSuccess({
         ack_msg: ""
     });
-}
+};
+
+const buildDateCondition = (dateCol, start_date, end_date, isDateOnly = false) => {
+    if (!start_date || !end_date) return {};
+    if (isDateOnly) {
+        return {
+            [dateCol]: {
+                [Op.gte]: start_date,
+                [Op.lte]: end_date,
+            }
+        };
+    } else {
+        return {
+            [dateCol]: {
+                [Op.gte]: `${start_date} 00:00:00`,
+                [Op.lte]: `${end_date} 23:59:59`,
+            }
+        };
+    }
+};
+
+export const getMiracleUnsyncedCounts = async (req) => {
+    try {
+        const { start_date, end_date } = req.body;
+        const productModelInstance = productModel(req.tenantDB);
+        const contactModelInstance = contactModel(req.tenantDB);
+        const cartModelInstance = cartModel(req.tenantDB);
+        const accountTransactionsModelInstance = accountTransactionsModel(req.tenantDB);
+
+        const unsyncedCondition = {
+            isDelete: 0,
+            [Op.or]: [
+                { miracle_UniqueId: null },
+                { miracle_UniqueId: "" }
+            ]
+        };
+
+        const prodCond = { ...unsyncedCondition, ...buildDateCondition("created_date_time", start_date, end_date) };
+        const contactCond = { ...unsyncedCondition, ...buildDateCondition("created_date_time", start_date, end_date) };
+        const accCond = { ...unsyncedCondition, ...buildDateCondition("payment_date_time", start_date, end_date) };
+        const getCartCond = (type) => ({
+            ...unsyncedCondition,
+            type,
+            ...buildDateCondition("cart_date", start_date, end_date, true)
+        });
+
+        const [
+            productCount,
+            contactCount,
+            quotationCount,
+            orderCount,
+            invoiceCount,
+            purchaseInvoiceCount,
+            purchaseOrderCount,
+            returnSalesCount,
+            returnPurchaseCount,
+            inwardCount,
+            dispatchCount,
+            accountTxCount
+        ] = await Promise.all([
+            productModelInstance.count({ where: prodCond }),
+            contactModelInstance.count({ where: contactCond }),
+            cartModelInstance.count({ where: getCartCond(1) }),
+            cartModelInstance.count({ where: getCartCond(2) }),
+            cartModelInstance.count({ where: getCartCond(3) }),
+            cartModelInstance.count({ where: getCartCond(4) }),
+            cartModelInstance.count({ where: getCartCond(5) }),
+            cartModelInstance.count({ where: getCartCond(6) }),
+            cartModelInstance.count({ where: getCartCond(7) }),
+            cartModelInstance.count({ where: getCartCond(8) }),
+            cartModelInstance.count({ where: getCartCond(9) }),
+            accountTransactionsModelInstance.count({ where: accCond }),
+        ]);
+
+        return resSuccess({
+            data: {
+                counts: {
+                    product: productCount,
+                    contact: contactCount,
+                    quotation: quotationCount,
+                    order: orderCount,
+                    invoice: invoiceCount,
+                    purchase_invoice: purchaseInvoiceCount,
+                    purchase_order: purchaseOrderCount,
+                    return_sales_invoice: returnSalesCount,
+                    return_purchase_invoice: returnPurchaseCount,
+                    inward: inwardCount,
+                    dispatch: dispatchCount,
+                    account_transaction: accountTxCount
+                }
+            }
+        });
+    } catch (error) {
+        console.error("getMiracleUnsyncedCounts error", error);
+        return resBadRequest({
+            ack_msg: "Failed to fetch unsynced counts",
+            developer_msg: error.message
+        });
+    }
+};
+
+export const bulkSyncMiracleModules = async (req) => {
+    try {
+        const { selected_modules, start_date, end_date } = req.body;
+        if (!Array.isArray(selected_modules) || selected_modules.length === 0) {
+            return resBadRequest({ ack_msg: "Select at least one module to sync." });
+        }
+
+        const productModelInstance = productModel(req.tenantDB);
+        const contactModelInstance = contactModel(req.tenantDB);
+        const cartModelInstance = cartModel(req.tenantDB);
+        const accountTransactionsModelInstance = accountTransactionsModel(req.tenantDB);
+
+        const unsyncedCondition = {
+            isDelete: 0,
+            [Op.or]: [
+                { miracle_UniqueId: null },
+                { miracle_UniqueId: "" }
+            ]
+        };
+
+        const prodCond = { ...unsyncedCondition, ...buildDateCondition("created_date_time", start_date, end_date) };
+        const contactCond = { ...unsyncedCondition, ...buildDateCondition("created_date_time", start_date, end_date) };
+        const accCond = { ...unsyncedCondition, ...buildDateCondition("payment_date_time", start_date, end_date) };
+
+        const resultsSummary = [];
+
+        const CART_TYPE_MAP = {
+            quotation: 1,
+            order: 2,
+            invoice: 3,
+            purchase_invoice: 4,
+            purchase_order: 5,
+            return_sales_invoice: 6,
+            return_purchase_invoice: 7,
+            inward: 8,
+            dispatch: 9,
+        };
+
+        for (const moduleKey of selected_modules) {
+            if (moduleKey === "product") {
+                const items = await productModelInstance.findAll({
+                    where: prodCond,
+                    attributes: ["id"],
+                    raw: true
+                });
+                let success = 0;
+                let failed = 0;
+
+                for (const item of items) {
+                    try {
+                        req.body.item_id = item.id;
+                        const res = await syncProduct(req);
+                        if (res?.ack === 1) success++;
+                        else failed++;
+                    } catch {
+                        failed++;
+                    }
+                }
+                resultsSummary.push({ module: "product", total: items.length, success, failed });
+            } else if (moduleKey === "contact") {
+                const items = await contactModelInstance.findAll({
+                    where: contactCond,
+                    attributes: ["id"],
+                    raw: true
+                });
+                let success = 0;
+                let failed = 0;
+
+                for (const item of items) {
+                    try {
+                        req.body.contact_id = item.id;
+                        req.body.group_name = "Sundry Debtors";
+                        const res = await syncContact(req);
+                        if (res?.ack === 1) success++;
+                        else failed++;
+                    } catch {
+                        failed++;
+                    }
+                }
+                resultsSummary.push({ module: "contact", total: items.length, success, failed });
+            } else if (moduleKey === "account_transaction") {
+                const items = await accountTransactionsModelInstance.findAll({
+                    where: accCond,
+                    attributes: ["id"],
+                    raw: true
+                });
+                if (items.length > 0) {
+                    req.body.acc_id = items.map(i => i.id);
+                    const res = await syncCaseBankPr(req);
+                    const success = res?.data?.filter(r => r.status === "success").length || 0;
+                    const failed = items.length - success;
+                    resultsSummary.push({ module: "account_transaction", total: items.length, success, failed });
+                } else {
+                    resultsSummary.push({ module: "account_transaction", total: 0, success: 0, failed: 0 });
+                }
+            } else if (CART_TYPE_MAP[moduleKey]) {
+                const cartType = CART_TYPE_MAP[moduleKey];
+                const cartWhere = {
+                    ...unsyncedCondition,
+                    type: cartType,
+                    ...buildDateCondition("cart_date", start_date, end_date, true)
+                };
+                const items = await cartModelInstance.findAll({
+                    where: cartWhere,
+                    attributes: ["id"],
+                    raw: true
+                });
+                if (items.length > 0) {
+                    req.body.cart_id = items.map(i => i.id);
+                    const res = await syncInvoice(req);
+                    const success = res?.data?.filter(r => r.status === "success").length || 0;
+                    const failed = items.length - success;
+                    resultsSummary.push({ module: moduleKey, total: items.length, success, failed });
+                } else {
+                    resultsSummary.push({ module: moduleKey, total: 0, success: 0, failed: 0 });
+                }
+            }
+        }
+
+        return resSuccess({
+            ack_msg: "Bulk synchronization completed.",
+            data: { results: resultsSummary }
+        });
+    } catch (error) {
+        console.error("bulkSyncMiracleModules error", error);
+        return resBadRequest({
+            ack_msg: "Failed to execute bulk sync",
+            developer_msg: error.message
+        });
+    }
+};

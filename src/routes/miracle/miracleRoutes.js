@@ -1,4 +1,4 @@
-import { createMiracleConfig, fetchContactProvider, fetchProductProvider, generateLedgerProvider, generateMiracleTokenProvider, generateOutstandingProvider, getAccountLedger, getMiracleConfig, processContactProvider, processProductProvider, syncCaseBankPrProvider, syncInvoiceProvider, syncProductProvider, webhookProvider } from "../../controllers/miracle/miracleControlles.js";
+import { bulkSyncMiracleModulesProvider, createMiracleConfig, fetchContactProvider, fetchProductProvider, generateLedgerProvider, generateMiracleTokenProvider, generateOutstandingProvider, getAccountLedger, getMiracleConfig, getMiracleUnsyncedCountsProvider, processContactProvider, processProductProvider, syncCaseBankPrProvider, syncInvoiceProvider, syncProductProvider, webhookProvider } from "../../controllers/miracle/miracleControlles.js";
 import { authenticateToken } from "../../middlewares/auth.js";
 import { checkMiracleAuth } from "../../middlewares/miracleAuth.js";
 import { tenantMiddleware } from "../../middlewares/tenantMiddleware.js";
@@ -18,4 +18,6 @@ export default (app) => {
     app.post("/contact-sync/preview", authenticateToken, tenantMiddleware, checkMiracleAuth, fetchContactProvider);
     app.post("/contact-sync/process", authenticateToken, tenantMiddleware, checkMiracleAuth, processContactProvider);
     app.post("/generate-miracle-token", authenticateToken, tenantMiddleware, checkMiracleAuth, generateMiracleTokenProvider);
+    app.post("/get-miracle-unsynced-counts", authenticateToken, tenantMiddleware, getMiracleUnsyncedCountsProvider);
+    app.post("/bulk-sync-miracle-modules", authenticateToken, tenantMiddleware, checkMiracleAuth, bulkSyncMiracleModulesProvider);
 };

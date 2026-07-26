@@ -500,6 +500,8 @@ export const addContact = async (req, res) => {
       assinged_to_price_list: req.body.assinged_to_price_list || 0,
       shipping_address: req.body.shipping_address || "",
       gst_number: req.body.gst_number || "",
+      gst_reg_type: req.body.gst_reg_type || "",
+      gst_reg_date: req.body.gst_reg_date || null,
       lable: req.body.lable || "",
       referance_contact: req.body.referance_contact || 0,
       assinged_to_work_a_application_id: req.body.a_application_login_id || "",

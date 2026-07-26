@@ -2111,3 +2111,11 @@ INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `extra_in
 
 23-07-2026 DInesh
 ALTER TABLE `contact_masters` CHANGE `client_code` `client_code` VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL;
+
+26-07-2026 Antigravity
+ALTER TABLE `miracle_configurations` ADD `rights_config` JSON NULL DEFAULT NULL AFTER `CompanyName`;
+
+26-07-2026 Antigravity
+ALTER TABLE `contact_masters` ADD `gst_reg_type` VARCHAR(50) NULL DEFAULT NULL AFTER `gst_number`, ADD `gst_reg_date` DATE NULL DEFAULT NULL AFTER `gst_reg_type`;
+
+

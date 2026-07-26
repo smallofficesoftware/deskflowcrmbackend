@@ -69,6 +69,12 @@ export const contactModel = (sequelize) => {
     gst_number: {
       type: STRING,
     },
+    gst_reg_type: {
+      type: STRING,
+    },
+    gst_reg_date: {
+      type: DATEONLY,
+    },
     status: {
       type: INTEGER,
     },

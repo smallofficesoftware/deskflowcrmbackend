@@ -14,6 +14,10 @@ import logger from "./utils/logger.js";
 import { parseSession, resError } from "./utils/sharedFunctions.js";
 
 const allowedOrigins = [
+    "http://192.168.1.223:3000",
+    "http://192.168.1.223:3001",
+    "http://192.168.1.223:5000",
+    "http://192.168.1.223:2424",
     "http://192.168.1.48:3000",
     "http://192.168.1.48:3001",
     "http://localhost:3000",
