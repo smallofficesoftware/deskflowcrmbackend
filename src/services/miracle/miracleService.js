@@ -7,6 +7,7 @@ import { cartItemModel } from "../../models/activities/cartItemsModel.js";
 import { cartModel } from "../../models/activities/cartsModel.js";
 import { contactModel } from "../../models/activities/contactModel.js";
 import { paymentTypeModel } from "../../models/activities/paymentTypeModel.js";
+import companyModel from "../../models/company_setup/companyModel.js";
 import miracleConfigModel from "../../models/company_setup/miracleConfigModel.js";
 import { areaModel } from "../../models/masters/areaModel.js";
 import { cityModel } from "../../models/masters/cityModel.js";
@@ -20,6 +21,7 @@ import { createAxiosIntance } from "../../utils/miracleAxiosInstance.js";
 import { cleanHtmlText, parseMiracleRights } from "../../utils/miracleRightsHelper.js";
 import { getFinancialYearRangeWise, isValid, resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { getCompanyByLoginId } from "../commonServices.js";
+import { insertMiracleLog } from "../activities/miracleLogService.js";
 
 export const syncProduct = async (req) => {
     try {
@@ -55,6 +57,20 @@ export const syncProduct = async (req) => {
         let category_name = category_name_db ? category_name_db.category_name : "";
         let group_name = group_name_db ? group_name_db.group_name : "";
 
+        const company_id = mconfig?.company_id || getProductDb.company_masters_id;
+        let isStkReq = "n";
+
+        if (company_id) {
+            const companyMaster = await companyModel.findOne({
+                where: { isDelete: 0, id: company_id },
+                raw: true,
+                attributes: ["is_strict_check_product_stock"]
+            });
+            if (Number(companyMaster?.is_strict_check_product_stock) === 2) {
+                isStkReq = "y";
+            }
+        }
+
         const payload = {
             action: "A",
             prdnm: getProductDb.product_name,
@@ -63,7 +79,7 @@ export const syncProduct = async (req) => {
             catnm: category_name,
             grpnm: group_name,
             slabnm: gst_,
-            uomnm: "U1",
+            uomnm: getProductDb.miracle_uom_name || "U1",
             hsncode: getProductDb.hsn_code,
             gstper: +getProductDb.GST?.toFixed(2),
             purrate: +getProductDb.purchase_rate?.toFixed(2),
@@ -75,7 +91,7 @@ export const syncProduct = async (req) => {
             ordlev: getProductDb.max_stock_quantity,
             prdstp: {
                 "isbatchstk": "",
-                "isstkreq": "y",
+                "isstkreq": isStkReq,
                 "islocstk": "",
                 "ispricelist": ""
             }
@@ -99,7 +115,6 @@ export const syncProduct = async (req) => {
         });
 
         const response = await api.post('TPA/M2/V1/Product', payload);
-
         const { UniqueId, IsError, Message, ErrorCode } = response.data || {};
 
         if (IsError) {
@@ -261,17 +276,31 @@ export const syncInvoice = async (req) => {
 
                 const productMap = new Map(products.map(p => [p.id, p]));
 
-                // Contact
+                // Contact & Company Details
                 const getContactDetail = await contactModelInstance.findOne({
                     where: { isDelete: 0, id: getCart.to_customer_id },
                     raw: true,
-                    attributes: ["miracle_UniqueId", "id"]
+                    attributes: ["miracle_UniqueId", "id", "state"]
                 });
 
                 if (!getContactDetail) {
                     results.push({ cart_id: singleCartId, status: "fail", msg: "Contact not found" });
                     continue;
                 }
+
+                const company_id = getCart.company_masters_id || req.body.mconfig?.company_id;
+                const companyMaster = company_id ? await companyModel.findOne({
+                    where: { isDelete: 0, id: company_id },
+                    raw: true,
+                    attributes: ["gst_number", "state_id"]
+                }) : null;
+
+                const companyGst = companyMaster?.gst_number ? String(companyMaster.gst_number).trim() : "";
+                const taxTypeFlag = companyGst.length > 0 ? "T" : "R";
+
+                const companyStateId = companyMaster?.state_id ? String(companyMaster.state_id) : "";
+                const contactStateId = getContactDetail?.state ? String(getContactDetail.state) : "";
+                const isSameState = (companyStateId && contactStateId) ? (companyStateId === contactStateId) : true;
 
                 let acc_id = getContactDetail.miracle_UniqueId;
 
@@ -317,30 +346,43 @@ export const syncInvoice = async (req) => {
                     const item_net_rate = Number(item.item_net_rate) || 0;
 
                     const gst_amount = (total * gst) / 100;
-                    const taxable_amount = total + gst_amount;
+                    // const taxable_amount = total + gst_amount;
+                    const taxable_amount = total;
+
+                    let itemExpdet = [];
+                    if (gst > 0) {
+                        if (isSameState) {
+                            itemExpdet = [
+                                {
+                                    expnm: "Central Tax",
+                                    expper: Number((gst / 2).toFixed(1)),
+                                    expamt: Number((gst_amount / 2).toFixed(1)),
+                                },
+                                {
+                                    expnm: "State/UT Tax",
+                                    expper: Number((gst / 2).toFixed(1)),
+                                    expamt: Number((gst_amount / 2).toFixed(1)),
+                                },
+                            ];
+                        } else {
+                            itemExpdet = [
+                                {
+                                    expnm: "Integrated Tax",
+                                    expper: Number(gst.toFixed(1)),
+                                    expamt: Number(gst_amount.toFixed(1)),
+                                },
+                            ];
+                        }
+                    }
 
                     items.push({
                         prd: PRD,
                         seqno: index + 1,
-                        batchnm: "",
-                        locnm: "",
                         qty1: Number(qty.toFixed(1)),
                         rate: Number(rate.toFixed(1)),
                         txpaidrt: Number(item_net_rate.toFixed(1)),
                         amt: Number(taxable_amount.toFixed(1)),
-                        narr: cleanHtmlText(item.item_product_description || item.item_remark || ""),
-                        expdet: [
-                            {
-                                expnm: "Central Tax",
-                                expper: Number((gst / 2).toFixed(1)),
-                                expamt: Number((gst_amount / 2).toFixed(1)),
-                            },
-                            {
-                                expnm: "State/UT Tax",
-                                expper: Number((gst / 2).toFixed(1)),
-                                expamt: Number((gst_amount / 2).toFixed(1)),
-                            },
-                        ],
+                        expdet: itemExpdet,
                     });
                 }
 
@@ -353,12 +395,7 @@ export const syncInvoice = async (req) => {
                     action: getCart.miracle_UniqueId ? "E" : "A",
                     uniqueId: getCart.miracle_UniqueId || undefined,
                     voutyp: voucherType[getCart.type],
-                    billno: getCart.cart_number,
-                    acc: getCart.transaction_mode == 1 ? getCart.miracle_account_legder : acc_id,
                     billamt: Number(getCart.grand_total || 0),
-                    flgcd: getCart.transaction_mode == 1 ? "C" : getCart.transaction_mode == 2 ? "D" : "",
-                    invtyp: "GST",
-                    taxtyp: "T",
                     narr: cleanHtmlText(getCart.cart_remark || ""),
                     items,
                     expdet: Number(getCart.round_off || 0) !== 0
@@ -376,40 +413,63 @@ export const syncInvoice = async (req) => {
                 // Voucher type specific required fields per Miracle API specification:
                 const cartDate = getCart.cart_date || "";
                 const cartNum = getCart.cart_number || "";
+                const transactionAcc = getCart.transaction_mode == 1 ? getCart.miracle_account_legder : acc_id;
+                const transactionModeFlag = getCart.transaction_mode == 1 ? "C" : getCart.transaction_mode == 2 ? "D" : "";
+                const invTyp = isSameState ? "GST" : "IGST";
+                const taxtyp = taxTypeFlag;
 
                 if (getCart.type === 1) { // QS - Quotation
+                    payload.flgcd = transactionModeFlag;
+                    payload.acc = transactionAcc;
                     payload.quotdt = cartDate;
                     payload.quotno = cartNum;
-                    payload.billdt = cartDate;
+                    payload.invtyp = invTyp;
                 } else if (getCart.type === 2) { // OS - Sales Order
+                    payload.flgcd = transactionModeFlag;
+                    payload.acc = transactionAcc;
                     payload.orddt = cartDate;
                     payload.ordno = cartNum;
-                    payload.billdt = cartDate;
+                    payload.invtyp = invTyp;
                 } else if (getCart.type === 3) { // SS - Sales Invoice
+                    payload.flgcd = transactionModeFlag;
+                    payload.acc = transactionAcc;
                     payload.billdt = cartDate;
+                    payload.billno = cartNum;
+                    payload.invtyp = invTyp;
+                    payload.taxtyp = taxtyp;
                 } else if (getCart.type === 4) { // PP - Purchase Invoice
+                    payload.flgcd = transactionModeFlag;
+                    payload.acc = transactionAcc;
                     payload.voudt = cartDate;
                     payload.vouno = cartNum;
-                    payload.billdt = cartDate;
+                    payload.invtyp = invTyp;
+                    payload.taxtyp = taxtyp;
                 } else if (getCart.type === 5) { // OP - Purchase Order
+                    payload.flgcd = transactionModeFlag;
+                    payload.acc = transactionAcc;
                     payload.orddt = cartDate;
-                    payload.billdt = cartDate;
+                    payload.invtyp = invTyp;
                 } else if (getCart.type === 6) { // SR - Sales Return
                     payload.billdt = cartDate;
+                    payload.billno = cartNum;
                     payload.orgbilldt = cartDate;
                     payload.orgbillno = getCart.referance_cart_name || cartNum;
                 } else if (getCart.type === 7) { // PR - Purchase Return
                     payload.voudt = cartDate;
                     payload.vouno = cartNum;
                 } else if (getCart.type === 8) { // HP - Inward Challan
+                    payload.flgcd = transactionModeFlag;
+                    payload.acc = transactionAcc;
                     payload.voudt = cartDate;
-                    payload.billdt = cartDate;
+                    payload.invtyp = invTyp;
+                    payload.taxtyp = taxtyp;
                 } else if (getCart.type === 9) { // HS - Dispatch Challan
+                    payload.flgcd = transactionModeFlag;
+                    payload.acc = transactionAcc;
                     payload.chdt = cartDate;
-                    payload.chndt = cartDate;
                     payload.chno = cartNum;
-                    payload.chnno = cartNum;
-                    payload.billdt = cartDate;
+                    payload.invtyp = invTyp;
+                    payload.taxtyp = taxtyp;
                 }
 
                 const api = createAxiosIntance({
@@ -536,7 +596,7 @@ export const syncContact = async (req) => {
         }
 
         // let contact_name = getContactDetail.company_name ? getContactDetail.company_name + '-' + getContactDetail.person_name : getContactDetail.person_name;
-        let contact_name = getContactDetail.company_name;
+        let contact_name = (getContactDetail.company_name + " - " + getContactDetail.mobile_number);
 
         let city_name = "";
         let area_name = "";
@@ -558,8 +618,15 @@ export const syncContact = async (req) => {
         if (getContactDetail.state) {
             const stateModelInstance = stateModel(req.tenantDB);
             const stateDb = await stateModelInstance.findOne({ where: { isDelete: 0, id: getContactDetail.state }, raw: true, attributes: ["state_name"] });
-            // FIXED: was stateDb.city_name
             state_name = stateDb?.state_name || "";
+        }
+
+        if (!getContactDetail.client_code || !String(getContactDetail.client_code).trim()) {
+            return resError({ ack_msg: `Client code does not exist for contact '${contact_name || "Detail"}'. Please enter a valid client code before syncing to Miracle.` });
+        }
+
+        if (!state_name || !state_name.trim()) {
+            return resError({ ack_msg: `State is required for contact '${contact_name || "Detail"}'. Please select a valid state.` });
         }
 
         const hasGstin = Boolean(getContactDetail.gst_number && String(getContactDetail.gst_number).trim().length === 15);
@@ -579,7 +646,7 @@ export const syncContact = async (req) => {
                 "citynm": city_name,
                 "pincode": getContactDetail.pincode,
                 "areanm": area_name,
-                "statenm": state_name || "Gujarat",
+                "statenm": state_name.trim(),
                 "mob1": getContactDetail.mobile_number,
                 "email": getContactDetail.email_id,
             },
@@ -606,7 +673,7 @@ export const syncContact = async (req) => {
 
         if (IsError) {
 
-            if (Message == 'Alias Name already Exist.') {
+            if (Message == 'Alias Name already Exist.' || Message == 'Account Name already exist.Enter another name.') {
                 const response = await api.post('TPA/M2/V1/AccountLedger', {
                     "rptfield": ["accid"],
                     "rptfilter": {
@@ -2097,23 +2164,115 @@ export const generateMiracleToken = async (req) => {
     });
 };
 
-const buildDateCondition = (dateCol, start_date, end_date, isDateOnly = false) => {
-    if (!start_date || !end_date) return {};
-    if (isDateOnly) {
-        return {
-            [dateCol]: {
+const buildUnsyncedCondition = (tenantDB, primaryDateCol, start_date, end_date, isDateOnly = false) => {
+    const unsyncedOr = [
+        { miracle_UniqueId: null },
+        { miracle_UniqueId: "" },
+        { miracle_update_date_time: null },
+        tenantDB.where(
+            tenantDB.col("modified_date"),
+            ">",
+            tenantDB.col("miracle_update_date_time")
+        )
+    ];
+
+    const baseWhere = {
+        isDelete: 0,
+        [Op.or]: unsyncedOr
+    };
+
+    if (start_date && end_date) {
+        const primaryCond = isDateOnly ? {
+            [primaryDateCol]: {
                 [Op.gte]: start_date,
                 [Op.lte]: end_date,
             }
-        };
-    } else {
-        return {
-            [dateCol]: {
+        } : {
+            [primaryDateCol]: {
                 [Op.gte]: `${start_date} 00:00:00`,
                 [Op.lte]: `${end_date} 23:59:59`,
             }
         };
+
+        const modifiedCond = {
+            modified_date: {
+                [Op.gte]: `${start_date} 00:00:00`,
+                [Op.lte]: `${end_date} 23:59:59`,
+            }
+        };
+
+        return {
+            [Op.and]: [
+                baseWhere,
+                {
+                    [Op.or]: [
+                        primaryCond,
+                        modifiedCond
+                    ]
+                }
+            ]
+        };
     }
+
+    return baseWhere;
+};
+
+const getModuleCounts = async (tenantDB, modelInstance, primaryDateCol, start_date, end_date, isDateOnly = false, type = null) => {
+    const isNewWhere = {
+        isDelete: 0,
+        [Op.or]: [
+            { miracle_UniqueId: null },
+            { miracle_UniqueId: "" },
+            { miracle_update_date_time: null }
+        ]
+    };
+
+    const isUpdateWhere = {
+        isDelete: 0,
+        miracle_UniqueId: { [Op.ne]: null, [Op.ne]: "" },
+        miracle_update_date_time: { [Op.ne]: null },
+        [Op.and]: [
+            tenantDB.where(
+                tenantDB.col("modified_date"),
+                ">",
+                tenantDB.col("miracle_update_date_time")
+            )
+        ]
+    };
+
+    if (type !== null) {
+        isNewWhere.type = type;
+        isUpdateWhere.type = type;
+    }
+
+    const applyDate = (baseCond) => {
+        if (!start_date || !end_date) return baseCond;
+        const dateCond = isDateOnly ? {
+            [primaryDateCol]: { [Op.gte]: start_date, [Op.lte]: end_date }
+        } : {
+            [primaryDateCol]: { [Op.gte]: `${start_date} 00:00:00`, [Op.lte]: `${end_date} 23:59:59` }
+        };
+        const modDateCond = {
+            modified_date: { [Op.gte]: `${start_date} 00:00:00`, [Op.lte]: `${end_date} 23:59:59` }
+        };
+        return {
+            [Op.and]: [
+                baseCond,
+                { [Op.or]: [dateCond, modDateCond] }
+            ]
+        };
+    };
+
+    const [new_count, update_count] = await Promise.all([
+        modelInstance.count({ where: applyDate(isNewWhere) }),
+        modelInstance.count({ where: applyDate(isUpdateWhere) })
+    ]);
+
+    return {
+        total: new_count + update_count,
+        new_count,
+        update_count
+    };
 };
 
 export const getMiracleUnsyncedCounts = async (req) => {
@@ -2124,66 +2283,49 @@ export const getMiracleUnsyncedCounts = async (req) => {
         const cartModelInstance = cartModel(req.tenantDB);
         const accountTransactionsModelInstance = accountTransactionsModel(req.tenantDB);
 
-        const unsyncedCondition = {
-            isDelete: 0,
-            [Op.or]: [
-                { miracle_UniqueId: null },
-                { miracle_UniqueId: "" }
-            ]
-        };
-
-        const prodCond = { ...unsyncedCondition, ...buildDateCondition("created_date_time", start_date, end_date) };
-        const contactCond = { ...unsyncedCondition, ...buildDateCondition("created_date_time", start_date, end_date) };
-        const accCond = { ...unsyncedCondition, ...buildDateCondition("payment_date_time", start_date, end_date) };
-        const getCartCond = (type) => ({
-            ...unsyncedCondition,
-            type,
-            ...buildDateCondition("cart_date", start_date, end_date, true)
-        });
-
         const [
-            productCount,
-            contactCount,
-            quotationCount,
-            orderCount,
-            invoiceCount,
-            purchaseInvoiceCount,
-            purchaseOrderCount,
-            returnSalesCount,
-            returnPurchaseCount,
-            inwardCount,
-            dispatchCount,
-            accountTxCount
+            productCounts,
+            contactCounts,
+            quotationCounts,
+            orderCounts,
+            invoiceCounts,
+            purchaseInvoiceCounts,
+            purchaseOrderCounts,
+            returnSalesCounts,
+            returnPurchaseCounts,
+            inwardCounts,
+            dispatchCounts,
+            accountTxCounts
         ] = await Promise.all([
-            productModelInstance.count({ where: prodCond }),
-            contactModelInstance.count({ where: contactCond }),
-            cartModelInstance.count({ where: getCartCond(1) }),
-            cartModelInstance.count({ where: getCartCond(2) }),
-            cartModelInstance.count({ where: getCartCond(3) }),
-            cartModelInstance.count({ where: getCartCond(4) }),
-            cartModelInstance.count({ where: getCartCond(5) }),
-            cartModelInstance.count({ where: getCartCond(6) }),
-            cartModelInstance.count({ where: getCartCond(7) }),
-            cartModelInstance.count({ where: getCartCond(8) }),
-            cartModelInstance.count({ where: getCartCond(9) }),
-            accountTransactionsModelInstance.count({ where: accCond }),
+            getModuleCounts(req.tenantDB, productModelInstance, "created_date_time", start_date, end_date),
+            getModuleCounts(req.tenantDB, contactModelInstance, "created_date_time", start_date, end_date),
+            getModuleCounts(req.tenantDB, cartModelInstance, "cart_date", start_date, end_date, true, 1),
+            getModuleCounts(req.tenantDB, cartModelInstance, "cart_date", start_date, end_date, true, 2),
+            getModuleCounts(req.tenantDB, cartModelInstance, "cart_date", start_date, end_date, true, 3),
+            getModuleCounts(req.tenantDB, cartModelInstance, "cart_date", start_date, end_date, true, 4),
+            getModuleCounts(req.tenantDB, cartModelInstance, "cart_date", start_date, end_date, true, 5),
+            getModuleCounts(req.tenantDB, cartModelInstance, "cart_date", start_date, end_date, true, 6),
+            getModuleCounts(req.tenantDB, cartModelInstance, "cart_date", start_date, end_date, true, 7),
+            getModuleCounts(req.tenantDB, cartModelInstance, "cart_date", start_date, end_date, true, 8),
+            getModuleCounts(req.tenantDB, cartModelInstance, "cart_date", start_date, end_date, true, 9),
+            getModuleCounts(req.tenantDB, accountTransactionsModelInstance, "payment_date_time", start_date, end_date),
         ]);
 
         return resSuccess({
             data: {
                 counts: {
-                    product: productCount,
-                    contact: contactCount,
-                    quotation: quotationCount,
-                    order: orderCount,
-                    invoice: invoiceCount,
-                    purchase_invoice: purchaseInvoiceCount,
-                    purchase_order: purchaseOrderCount,
-                    return_sales_invoice: returnSalesCount,
-                    return_purchase_invoice: returnPurchaseCount,
-                    inward: inwardCount,
-                    dispatch: dispatchCount,
-                    account_transaction: accountTxCount
+                    product: productCounts,
+                    contact: contactCounts,
+                    quotation: quotationCounts,
+                    order: orderCounts,
+                    invoice: invoiceCounts,
+                    purchase_invoice: purchaseInvoiceCounts,
+                    purchase_order: purchaseOrderCounts,
+                    return_sales_invoice: returnSalesCounts,
+                    return_purchase_invoice: returnPurchaseCounts,
+                    inward: inwardCounts,
+                    dispatch: dispatchCounts,
+                    account_transaction: accountTxCounts
                 }
             }
         });
@@ -2208,17 +2350,9 @@ export const bulkSyncMiracleModules = async (req) => {
         const cartModelInstance = cartModel(req.tenantDB);
         const accountTransactionsModelInstance = accountTransactionsModel(req.tenantDB);
 
-        const unsyncedCondition = {
-            isDelete: 0,
-            [Op.or]: [
-                { miracle_UniqueId: null },
-                { miracle_UniqueId: "" }
-            ]
-        };
-
-        const prodCond = { ...unsyncedCondition, ...buildDateCondition("created_date_time", start_date, end_date) };
-        const contactCond = { ...unsyncedCondition, ...buildDateCondition("created_date_time", start_date, end_date) };
-        const accCond = { ...unsyncedCondition, ...buildDateCondition("payment_date_time", start_date, end_date) };
+        const prodCond = buildUnsyncedCondition(req.tenantDB, "created_date_time", start_date, end_date);
+        const contactCond = buildUnsyncedCondition(req.tenantDB, "created_date_time", start_date, end_date);
+        const accCond = buildUnsyncedCondition(req.tenantDB, "payment_date_time", start_date, end_date);
 
         const resultsSummary = [];
 
@@ -2294,9 +2428,8 @@ export const bulkSyncMiracleModules = async (req) => {
             } else if (CART_TYPE_MAP[moduleKey]) {
                 const cartType = CART_TYPE_MAP[moduleKey];
                 const cartWhere = {
-                    ...unsyncedCondition,
+                    ...buildUnsyncedCondition(req.tenantDB, "cart_date", start_date, end_date, true),
                     type: cartType,
-                    ...buildDateCondition("cart_date", start_date, end_date, true)
                 };
                 const items = await cartModelInstance.findAll({
                     where: cartWhere,

@@ -10,6 +10,7 @@ import { taxModel } from "../../models/product_settings/taxModel.js";
 import { createAxiosIntance } from "../../utils/miracleAxiosInstance.js";
 import { parseMiracleRights } from "../../utils/miracleRightsHelper.js";
 import { resBadRequest, resSuccess } from "../../utils/sharedFunctions.js";
+import { insertMiracleLog } from "../activities/miracleLogService.js";
 
 import { accountTransactionsModel } from "../../models/activities/accountTransactionsModel.js";
 import { cartItemModel } from "../../models/activities/cartItemsModel.js";
@@ -62,6 +63,11 @@ export const WEBHOOK_EVENT_REGISTRY = {
 };
 
 export const webhookM = async (req, res) => {
+    const webhookStart = Date.now();
+    let tenantDBForLog = null;
+    let companyIdForLog = null;
+    const incomingPayload = req.body;
+
     try {
         const { companyCode } = req.params;
         const companyGet = await companyModel.findOne({
@@ -81,7 +87,9 @@ export const webhookM = async (req, res) => {
 
         const tenantId = companyGet.dataValues.a_application_login_id;
         const companyId = companyGet.dataValues.id;
+        companyIdForLog = companyId;
         req.headers["x-tenant-id"] = tenantId;
+        req.headers["x-company-id"] = companyId;
         req.body.a_application_login_id = tenantId;
 
         const runMiddleware = (middleware, req, res) => {
@@ -94,12 +102,24 @@ export const webhookM = async (req, res) => {
         };
 
         await runMiddleware(tenantMiddleware, req, res);
+        tenantDBForLog = req.tenantDB;
         await runMiddleware(checkMiracleAuth, req, res);
 
         const payload = req.body;
         const eventConfig = WEBHOOK_EVENT_REGISTRY[payload.EventType];
 
         if (!eventConfig) {
+            setImmediate(() => insertMiracleLog(tenantDBForLog, {
+                log_type: "WEBHOOK",
+                module_name: "unknown",
+                action_type: payload.EventType || "",
+                miracle_unique_id: payload.UniqueId || "",
+                status: "FAILED",
+                response_time: Date.now() - webhookStart,
+                request_payload: incomingPayload,
+                error_message: `Unsupported EventType: ${payload.EventType}`,
+                company_masters_id: companyIdForLog,
+            }));
             return resBadRequest({
                 ack_msg: `Unsupported EventType: ${payload.EventType}`,
                 developer_msg: `No handler registered for "${payload.EventType}"`,
@@ -116,6 +136,17 @@ export const webhookM = async (req, res) => {
 
         // 1. Master Webhook Switch Check
         if (!rights.webhook?.enabled) {
+            setImmediate(() => insertMiracleLog(tenantDBForLog, {
+                log_type: "WEBHOOK",
+                module_name: "all",
+                action_type: payload.EventType || "",
+                miracle_unique_id: payload.UniqueId || "",
+                status: "SKIPPED",
+                response_time: Date.now() - webhookStart,
+                request_payload: incomingPayload,
+                error_message: "Webhooks are disabled for this company",
+                company_masters_id: companyIdForLog,
+            }));
             return resSuccess({
                 ack_msg: "Webhook skipped: Webhooks are disabled for this company",
                 data: { EventType: payload.EventType, status: "disabled" },
@@ -208,6 +239,17 @@ export const webhookM = async (req, res) => {
         if (targetModule && targetAction) {
             const isAllowed = rights.webhook?.[targetModule]?.[targetAction];
             if (isAllowed === false) {
+                setImmediate(() => insertMiracleLog(tenantDBForLog, {
+                    log_type: "WEBHOOK",
+                    module_name: targetModule || "unknown",
+                    action_type: `${targetAction?.toUpperCase()} (${payload.EventType})`,
+                    miracle_unique_id: payload.UniqueId || "",
+                    status: "SKIPPED",
+                    response_time: Date.now() - webhookStart,
+                    request_payload: incomingPayload,
+                    error_message: `${targetModule}.${targetAction} is disabled in Miracle Configurations`,
+                    company_masters_id: companyIdForLog,
+                }));
                 return resSuccess({
                     ack_msg: `Webhook skipped: ${targetModule}.${targetAction} is disabled in Miracle Configurations`,
                     data: { EventType: payload.EventType, targetModule, targetAction, status: "disabled" },
@@ -220,9 +262,33 @@ export const webhookM = async (req, res) => {
             context: { req, res, tenantDB: req.tenantDB, companyId, tenantId },
         });
 
+        // Log successful webhook
+        setImmediate(() => insertMiracleLog(tenantDBForLog, {
+            log_type: "WEBHOOK",
+            module_name: targetModule || payload.EventType || "unknown",
+            action_type: targetAction ? `${targetAction.toUpperCase()} (${payload.EventType})` : payload.EventType,
+            miracle_unique_id: payload.UniqueId || "",
+            status: "SUCCESS",
+            response_time: Date.now() - webhookStart,
+            request_payload: incomingPayload,
+            response_payload: result,
+            company_masters_id: companyIdForLog,
+        }));
+
         return resSuccess({ ack_msg: "success", data: result });
     } catch (error) {
         console.log("webhookM error", error);
+        setImmediate(() => insertMiracleLog(tenantDBForLog, {
+            log_type: "WEBHOOK",
+            module_name: incomingPayload?.EventType || "unknown",
+            action_type: incomingPayload?.EventType || "",
+            miracle_unique_id: incomingPayload?.UniqueId || "",
+            status: "FAILED",
+            response_time: Date.now() - webhookStart,
+            request_payload: incomingPayload,
+            error_message: error.message,
+            company_masters_id: companyIdForLog,
+        }));
         return resBadRequest({
             ack_msg: error.message,
             developer_msg: error.message
@@ -491,9 +557,9 @@ async function createOrUpdateContactFromDetail(tenantDB, companyId, tenantId, co
         mobile_number: mob1 || "",
         email_id: email || "",
         country: "101",
-        state: stateId,
-        city: cityId,
-        area: areaId,
+        state: stateId ? String(stateId) : "",
+        city: cityId ? String(cityId) : "",
+        area: areaId ? String(areaId) : "",
         pincode: pincode || "",
         address: addr1 || "",
         shipping_address: addr2 || "",

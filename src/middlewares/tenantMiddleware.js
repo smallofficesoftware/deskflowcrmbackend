@@ -86,7 +86,7 @@ export const tenantMiddleware = async (req, res, next) => {
     // }
 
 
-    requestContext.run({ tenantDB: tenantDBInfo.sequelize, models: tenantDBInfo.models, companyId: Number(companyId) }, () => {
+    requestContext.run({ tenantDB: tenantDBInfo.sequelize, models: tenantDBInfo.models, companyId: Number(companyId), tenantId: tenantId, a_application_login_id: tenantId }, () => {
       next();
     });
   } catch (error) {
