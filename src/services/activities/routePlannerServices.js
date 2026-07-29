@@ -23,13 +23,13 @@ export const routesGet = async (req) => {
                 Sequelize.where(
                     Sequelize.fn("DATE", Sequelize.col("start_date")),
                     {
-                        [Op.gte]: startSearchDate,
+                        [Op.lte]: endSearchDate,
                     }
                 ),
                 Sequelize.where(
                     Sequelize.fn("DATE", Sequelize.col("end_date")),
                     {
-                        [Op.lte]: endSearchDate,
+                        [Op.gte]: startSearchDate,
                     }
                 )
             );
