@@ -1358,6 +1358,12 @@ export const onLoad = async (req, res) => {
     }
 
     /* ===================== COMPANY & RIGHTS ===================== */
+    // Ensure x-company-id is propagated from the JWT (set during selectWorkspace).
+    // This guarantees getCompanyByLoginId resolves the active workspace,
+    // not the fallback (oldest) company mapping.
+    if (req.user?.companyId && !req.headers["x-company-id"]) {
+      req.headers["x-company-id"] = String(req.user.companyId);
+    }
     const findCompanyId = await getCompanyByLoginId(a_application_login_id);
     const applicationLoginTypeRightModelIntance = applicationLoginTypeRightModel(req.tenantDB);
     const resultRights = await applicationLoginTypeRightModelIntance.findAll({
