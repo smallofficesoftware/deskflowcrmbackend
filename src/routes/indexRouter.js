@@ -95,6 +95,7 @@ import JobCardRouter from "./production/JobCardRouter.js";
 import statusLogRouter from "./status_log/statusLogRouter.js";
 import changeMobileNumberRouter from "./user_profile/changeMobileNumberRouter.js";
 import whatsappRoutes from "./whatsapp/whatsappRoutes.js";
+import statusWiseContactCountReportRouter from "./dashboard/Reports/statusWiseContactCountReportRouter.js";
 export default () => {
   const app = Router();
   contactRouter(app);
@@ -191,5 +192,6 @@ export default () => {
   routePlannerRouter(app);
   targetIncentiveReportRouter(app)
   customerSalesPurchaseReportRouter(app);
+  statusWiseContactCountReportRouter(app);
   return app;
 };
