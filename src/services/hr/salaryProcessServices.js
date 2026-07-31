@@ -89,6 +89,8 @@ function aggregateMonthAttendance(batchRows) {
         holiday: 0,             // PH count
         totalWeekOff: 0,        // WO count
         totalLeave: 0,           // L count
+        totalPaidLeave: 0,       // Company Pay leave count (paid_by = 1)
+        totalUnpaidLeave: 0,     // Employee Pay leave count (paid_by = 2)
         totalAbsent: 0,           // A count
         totalOvertimeMins: 0,
         netWorkingMins: 0,        // SUM of net_working_hour -> "working_hour"
@@ -112,9 +114,20 @@ function aggregateMonthAttendance(batchRows) {
             case DAY_STATUS.WOWO: // worked-on-week-off day still counts as a week-off day
                 buckets.totalWeekOff += 1;
                 break;
-            case DAY_STATUS.LEAVE:
+            case DAY_STATUS.LEAVE: {
                 buckets.totalLeave += 1;
+                let leaveList = row.leave_entry_list ?? row.leave_list;
+                if (typeof leaveList === "string") {
+                    try { leaveList = JSON.parse(leaveList); } catch { leaveList = []; }
+                }
+                const isCompanyPaid = Array.isArray(leaveList) && leaveList.some(l => Number(l.paid_by) === 1);
+                if (isCompanyPaid) {
+                    buckets.totalPaidLeave += 1;
+                } else {
+                    buckets.totalUnpaidLeave += 1;
+                }
                 break;
+            }
             case DAY_STATUS.ABSENT:
                 buckets.totalAbsent += 1;
                 break;
@@ -143,12 +156,18 @@ function aggregateMonthAttendance(batchRows) {
 // ── Core salary formula functions ────────────────────────────────────────
 
 /**
- * total_day = P + PH + WO + HD (per your definition)
- * Note: half-day contributes as a FULL day count here (you specified total_day
- * as a simple sum of day counts, separate from total_present_day's weighting).
+ * Calculates payable days (total_day) based on salary_cal_month_count setting.
+ * - Half Day (HD) counts as 0.5 day.
+ * - Company Pay Leaves (paid_by = 1) count as paid days (+1.0 day).
+ * - Mode 3 (Per Month Total Day - Week Off): Excludes week-offs from payable days since calculate_days already deducts week offs.
  */
-function calcTotalDay({ totalPresentDay, holiday, totalWeekOff, halfDay }) {
-    return totalPresentDay + holiday + totalWeekOff + halfDay;
+function calcTotalDay({ totalPresentDay, holiday, totalWeekOff, halfDay, totalPaidLeave }, calcMonthCount) {
+    const halfDayCredit = halfDay * 0.5;
+    const paidLeaveCredit = totalPaidLeave || 0;
+    if (calcMonthCount === 3) {
+        return totalPresentDay + holiday + paidLeaveCredit + halfDayCredit;
+    }
+    return totalPresentDay + holiday + totalWeekOff + paidLeaveCredit + halfDayCredit;
 }
 
 function calcCtc(payroll, salaryType) {
@@ -167,14 +186,12 @@ function calcGrossSalary(payroll) {
 }
 
 /**
- * fxs_* -- calendar pro-rated (calculate_days / 30), NOT attendance-dependent
+ * fxs_* -- fixed monthly base salary components (NOT attendance-dependent)
  */
-function calcFixedSalary(payroll, calculateDays) {
-    const ratio = calculateDays / 30;
-
-    const fxs_basic = num(payroll.basic_da) * ratio;
-    const fxs_hra = num(payroll.hra) * ratio;
-    const fxs_other = (num(payroll.conveyance_allowance) + num(payroll.medical_allowance) + num(payroll.special_allowance)) * ratio;
+function calcFixedSalary(payroll) {
+    const fxs_basic = num(payroll.basic_da);
+    const fxs_hra = num(payroll.hra);
+    const fxs_other = num(payroll.conveyance_allowance) + num(payroll.medical_allowance) + num(payroll.special_allowance);
     const fxs_total_earning = fxs_basic + fxs_hra + fxs_other;
 
     return { fxs_basic, fxs_hra, fxs_other, fxs_total_earning };
@@ -206,7 +223,7 @@ function calcPerDaySalary(fxsTotalEarning, calculateDays) {
  *   - If payroll.overtime_amount_per_hour is set: rate = that value (flat per-hour).
  *   - Else: rate = dws_basic / (calculate_days * daily_working_hours_per_day)
  */
-function calcOvertimePayable(payroll, totalOvertimeMins, dwsBasic, calculateDays) {
+function calcOvertimePayable(payroll, totalOvertimeMins, basicDa, calculateDays) {
     const overtimeHours = totalOvertimeMins / 60;
     const explicitRate = num(payroll.overtime_amount_per_hour);
 
@@ -216,7 +233,7 @@ function calcOvertimePayable(payroll, totalOvertimeMins, dwsBasic, calculateDays
     } else {
         const dailyWorkingHours = timeStrToMinutes(payroll.daily_working_hours) / 60;
         const denominator = calculateDays * dailyWorkingHours;
-        rate = denominator > 0 ? (dwsBasic / denominator) : 0;
+        rate = denominator > 0 ? (basicDa / denominator) : 0;
     }
 
     return overtimeHours * rate;
@@ -230,6 +247,9 @@ function calcBonusAmount(payroll, dwsBasic) {
 // ── Statutory deduction slabs ─────────────────────────────────────────────
 
 function calcEmployeePF(totalEarning, payroll) {
+    if (payroll.pf_percentage <= 0) {
+        return 0
+    }
     if (totalEarning >= PF_MINIMUM_BASIC_SALARY) {
         return PF_FIX_VALUE;
     }
@@ -237,6 +257,9 @@ function calcEmployeePF(totalEarning, payroll) {
 }
 
 function calcPradhanMantriPF(totalEarning, payroll) {
+    if (payroll.pm_pf_percentage <= 0) {
+        return 0
+    }
     if (totalEarning >= PF_MINIMUM_BASIC_SALARY) {
         return PF_FIX_VALUE;
     }
@@ -244,6 +267,9 @@ function calcPradhanMantriPF(totalEarning, payroll) {
 }
 
 function calcEsiEmployee(dwsTotalEarning, payroll) {
+    if (payroll.esi_employee_side_percentage <= 0) {
+        return 0
+    }
     if (dwsTotalEarning < ESI_GROSS_SALARY_LIMIT) {
         return (dwsTotalEarning * num(payroll.esi_employee_side_percentage)) / 100;
     }
@@ -251,6 +277,9 @@ function calcEsiEmployee(dwsTotalEarning, payroll) {
 }
 
 function calcEsiCompany(dwsTotalEarning, payroll) {
+    if (payroll.esi_company_side <= 0) {
+        return 0
+    }
     if (dwsTotalEarning < ESI_GROSS_SALARY_LIMIT) {
         return (dwsTotalEarning * num(payroll.esi_company_side)) / 100;
     }
@@ -258,6 +287,9 @@ function calcEsiCompany(dwsTotalEarning, payroll) {
 }
 
 function calcPt(totalEarning, payroll) {
+    if (payroll.pt_amount <= 0) {
+        return 0
+    }
     if (totalEarning >= PT_DEDUCTION_SALARY_MINIMUM_AMOUNT) {
         return PT_AMOUNT;
     }
@@ -270,21 +302,22 @@ function calculateEmployeeSalary(year, month, payroll, batchRows) {
     const calculateDays = resolveCalculateDays(year, month, payroll);
 
     const {
-        totalPresentDay, halfDay, holiday, totalWeekOff, totalLeave, totalAbsent,
+        totalPresentDay, halfDay, holiday, totalWeekOff, totalLeave, totalPaidLeave, totalUnpaidLeave, totalAbsent,
         totalOvertimeMins, netWorkingMins, compensationCredit, compensationDebit,
     } = aggregateMonthAttendance(batchRows);
 
-    const totalDay = calcTotalDay({ totalPresentDay, holiday, totalWeekOff, halfDay });
+    const calcMonthCount = parseInt(payroll.salary_cal_month_count, 10);
+    const totalDay = calcTotalDay({ totalPresentDay, holiday, totalWeekOff, halfDay, totalPaidLeave }, calcMonthCount);
 
     const salaryType = parseInt(payroll.salary_type, 10);
     const ctc = calcCtc(payroll, salaryType);
     const grossSalary = calcGrossSalary(payroll);
     const perDaySalary = calcPerDaySalary(grossSalary, calculateDays);
 
-    const fxs = calcFixedSalary(payroll, calculateDays);
+    const fxs = calcFixedSalary(payroll);
     const dws = calcDaysWorkedSalary(fxs, totalDay, calculateDays);
 
-    const earnOtPayableAmt = calcOvertimePayable(payroll, totalOvertimeMins, dws.dws_basic, calculateDays);
+    const earnOtPayableAmt = calcOvertimePayable(payroll, totalOvertimeMins, num(payroll.basic_da), calculateDays);
     const bonusAmount = calcBonusAmount(payroll, dws.dws_basic);
 
     const earnHeadFirst = num(payroll.earning_first);
@@ -315,11 +348,15 @@ function calculateEmployeeSalary(year, month, payroll, batchRows) {
         holiday,
         total_week_off: totalWeekOff,
         total_leave: totalLeave,
+        total_paid_leave: totalPaidLeave,
+        total_unpaid_leave: totalUnpaidLeave,
         total_absent: totalAbsent,
         total_day: totalDay,
         working_hour: netWorkingMins / 60, // stored as decimal hours
         compensation_amount: JSON.stringify({ credit: compensationCredit, debit: compensationDebit }),
 
+        basic_da: num(payroll.basic_da),
+        hra: num(payroll.hra),
         ctc,
         gross_salary: grossSalary,
         per_day_salary: perDaySalary,
@@ -593,8 +630,10 @@ export const getSalaryDetail = async (req) => {
             const salaryToBePaid = Math.round(num(row.net_bank_pay));
 
             salary[empId] = {
-                leave: num(row.total_leave),
-                total_working_days: (num(row.total_present_day) + num(row.half_day) + num(row.total_week_off) + num(row.total_leave) + num(row.total_absent)),
+                leave: num(row.total_unpaid_leave),
+                paid_leave: num(row.total_paid_leave),
+                unpaid_leave: num(row.total_unpaid_leave),
+                total_working_days: num(row.calculate_days),
                 payable_days: num(row.total_day),
                 basicda: +dwsBasic.toFixed(2),
                 hra: +dwsHra.toFixed(2),

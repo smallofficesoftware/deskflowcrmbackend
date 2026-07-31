@@ -16,12 +16,53 @@ import { categoryModel } from "../../models/product_settings/categoryModel.js";
 import { productGroupModel } from "../../models/product_settings/productGroupModel.js";
 import { productModel } from "../../models/product_settings/productModel.js";
 import { taxModel } from "../../models/product_settings/taxModel.js";
+import { customFieldFormModel } from "../../models/other_settings/customFieldFormModel.js";
 import { MIRACLE_LEDGER_PDF } from "../../utils/appConstants.js";
 import { createAxiosIntance } from "../../utils/miracleAxiosInstance.js";
 import { cleanHtmlText, parseMiracleRights } from "../../utils/miracleRightsHelper.js";
 import { getFinancialYearRangeWise, isValid, resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { getCompanyByLoginId } from "../commonServices.js";
 import { insertMiracleLog } from "../activities/miracleLogService.js";
+
+export const getMiracleUfdDet = async (tenantDB, companyId, formType, entityData) => {
+    try {
+        if (!tenantDB || !companyId || !formType || !entityData) return {};
+        const CFFModel = customFieldFormModel(tenantDB);
+        const whereClause = {
+            isDelete: 0,
+            company_masters_id: companyId,
+            form_type: formType,
+            third_party_field_name: { [Op.ne]: null }
+        };
+
+        if (Number(formType) === 4) {
+            whereClause[Op.or] = [
+                { product_feild_row_column: 1 },
+                { product_feild_row_column: 0 },
+                { product_feild_row_column: null }
+            ];
+        }
+
+        const customFields = await CFFModel.findAll({
+            where: whereClause,
+            attributes: ["reference_column_name", "third_party_field_name"],
+            raw: true
+        });
+
+        const ufddet = {};
+        for (const field of customFields) {
+            const key = field.third_party_field_name ? String(field.third_party_field_name).trim() : "";
+            const col = field.reference_column_name;
+            if (key && col && entityData[col] !== undefined && entityData[col] !== null && entityData[col] !== "") {
+                ufddet[key] = String(entityData[col]);
+            }
+        }
+        return ufddet;
+    } catch (err) {
+        console.error("Error building Miracle ufddet:", err);
+        return {};
+    }
+};
 
 export const syncProduct = async (req) => {
     try {
@@ -106,11 +147,17 @@ export const syncProduct = async (req) => {
             delete payload['prdstp'];
         }
 
+        const customUfddet = await getMiracleUfdDet(req.tenantDB, company_id, 4, getProductDb);
+        if (Object.keys(customUfddet).length > 0) {
+            payload.ufddet = customUfddet;
+        }
+
         const api = createAxiosIntance({
             baseURL: baseurl,
             clientId: client_id,
             apiKey: api_key,
             tenantDB: req.tenantDB,
+            companyId: company_id,
             getAuthContext: async () => req.body.mconfig
         });
 
@@ -215,6 +262,20 @@ export const syncInvoice = async (req) => {
         const results = [];
         const successfulCartIds = []; // OPTIMIZATION: Track successful cart IDs directly
 
+        const reqCompanyId = req.body.mconfig?.company_id || req.user?.company_id || null;
+
+        const api = createAxiosIntance({
+            baseURL: baseurl,
+            clientId: client_id,
+            apiKey: api_key,
+            tenantDB: req.tenantDB,
+            companyId: reqCompanyId,
+            getAuthContext: async () => req.body.mconfig
+        });
+
+        const companyCache = new Map();
+        const contactCache = new Map();
+
         const CART_TYPE_TO_MODULE = {
             3: "invoice",
             4: "purchase_invoice",
@@ -276,12 +337,18 @@ export const syncInvoice = async (req) => {
 
                 const productMap = new Map(products.map(p => [p.id, p]));
 
-                // Contact & Company Details
-                const getContactDetail = await contactModelInstance.findOne({
-                    where: { isDelete: 0, id: getCart.to_customer_id },
-                    raw: true,
-                    attributes: ["miracle_UniqueId", "id", "state"]
-                });
+                // Contact & Company Details (using request-level cache for bulk syncs)
+                let getContactDetail = contactCache.get(getCart.to_customer_id);
+                if (!getContactDetail) {
+                    getContactDetail = await contactModelInstance.findOne({
+                        where: { isDelete: 0, id: getCart.to_customer_id },
+                        raw: true,
+                        attributes: ["miracle_UniqueId", "id", "state", "gst_number"]
+                    });
+                    if (getContactDetail) {
+                        contactCache.set(getCart.to_customer_id, getContactDetail);
+                    }
+                }
 
                 if (!getContactDetail) {
                     results.push({ cart_id: singleCartId, status: "fail", msg: "Contact not found" });
@@ -289,14 +356,22 @@ export const syncInvoice = async (req) => {
                 }
 
                 const company_id = getCart.company_masters_id || req.body.mconfig?.company_id;
-                const companyMaster = company_id ? await companyModel.findOne({
-                    where: { isDelete: 0, id: company_id },
-                    raw: true,
-                    attributes: ["gst_number", "state_id"]
-                }) : null;
+                let companyMaster = null;
+                if (company_id) {
+                    if (!companyCache.has(company_id)) {
+                        const cm = await companyModel.findOne({
+                            where: { isDelete: 0, id: company_id },
+                            raw: true,
+                            attributes: ["gst_number", "state_id"]
+                        });
+                        companyCache.set(company_id, cm);
+                    }
+                    companyMaster = companyCache.get(company_id);
+                }
 
                 const companyGst = companyMaster?.gst_number ? String(companyMaster.gst_number).trim() : "";
-                const taxTypeFlag = companyGst.length > 0 ? "T" : "R";
+                const customerGst = getContactDetail?.gst_number ? String(getContactDetail.gst_number).trim() : "";
+                const taxTypeFlag = (companyGst.length > 0 && customerGst.length > 0) ? "T" : "O";
 
                 const companyStateId = companyMaster?.state_id ? String(companyMaster.state_id) : "";
                 const contactStateId = getContactDetail?.state ? String(getContactDetail.state) : "";
@@ -317,6 +392,10 @@ export const syncInvoice = async (req) => {
 
                     if (res?.ack === 1) {
                         acc_id = res.data.UniqueId;
+                        if (getContactDetail) {
+                            getContactDetail.miracle_UniqueId = acc_id;
+                            contactCache.set(getContactDetail.id, getContactDetail);
+                        }
                     } else {
                         results.push({ cart_id: singleCartId, status: "fail", msg: res?.ack_msg || "Contact Sync failed" });
                         continue;
@@ -324,6 +403,19 @@ export const syncInvoice = async (req) => {
                 }
 
                 // Items
+                const CFFModel = customFieldFormModel(req.tenantDB);
+                const itemCustomFields = await CFFModel.findAll({
+                    where: {
+                        isDelete: 0,
+                        company_masters_id: company_id,
+                        form_type: 4,
+                        product_feild_row_column: 2,
+                        third_party_field_name: { [Op.ne]: null }
+                    },
+                    attributes: ["reference_column_name", "third_party_field_name"],
+                    raw: true
+                });
+
                 const items = [];
 
                 for (let index = 0; index < getCartItem.length; index++) {
@@ -375,7 +467,16 @@ export const syncInvoice = async (req) => {
                         }
                     }
 
-                    items.push({
+                    const itemUfddet = {};
+                    for (const field of itemCustomFields) {
+                        const key = field.third_party_field_name ? String(field.third_party_field_name).trim() : "";
+                        const col = field.reference_column_name;
+                        if (key && col && item[col] !== undefined && item[col] !== null && item[col] !== "") {
+                            itemUfddet[key] = String(item[col]);
+                        }
+                    }
+
+                    const itemPayload = {
                         prd: PRD,
                         seqno: index + 1,
                         qty1: Number(qty.toFixed(1)),
@@ -383,12 +484,24 @@ export const syncInvoice = async (req) => {
                         txpaidrt: Number(item_net_rate.toFixed(1)),
                         amt: Number(taxable_amount.toFixed(1)),
                         expdet: itemExpdet,
-                    });
+                    };
+
+                    if (Object.keys(itemUfddet).length > 0) {
+                        itemPayload.ufddet = itemUfddet;
+                    }
+
+                    items.push(itemPayload);
                 }
 
                 const voucherType = {
                     3: "SS", 4: "PP", 2: "OS", 5: "OP", 6: "SR",
                     7: "PR", 1: "QS", 9: "HS", 8: "HP",
+                };
+
+                const customUfddet = await getMiracleUfdDet(req.tenantDB, company_id, getCart.type, getCart);
+                const ufddetHeaderObj = {
+                    ...customUfddet,
+                    ...(getCart.due_date ? { U0000001: getCart.due_date } : {})
                 };
 
                 const payload = {
@@ -400,11 +513,12 @@ export const syncInvoice = async (req) => {
                     items,
                     expdet: Number(getCart.round_off || 0) !== 0
                         ? [{ expnm: "Round Off", expper: 0, expamt: Number(Number(getCart.round_off).toFixed(2)) }]
-                        : [],
-                    ufddet: {
-                        U0000001: getCart.due_date ? getCart.due_date : ""
-                    }
+                        : []
                 };
+
+                if (Object.keys(ufddetHeaderObj).length > 0) {
+                    // payload.ufddet = ufddetHeaderObj;
+                }
 
                 if (getCart.transaction_mode == 1) { // cash
                     payload.cpacc = acc_id;
@@ -413,6 +527,44 @@ export const syncInvoice = async (req) => {
                 // Voucher type specific required fields per Miracle API specification:
                 const cartDate = getCart.cart_date || "";
                 const cartNum = getCart.cart_number || "";
+                let orgBillDt = cartDate;
+                let orgBillNo = getCart.referance_cart_name || cartNum;
+
+                if (getCart.type === 6 && isValid(getCart.referance_cart_id)) {
+                    let refCart = await cartModelInstance.findOne({
+                        where: { isDelete: 0, id: getCart.referance_cart_id },
+                        raw: true
+                    });
+
+                    if (refCart) {
+                        if (!isValid(refCart.miracle_UniqueId)) {
+                            const refSyncRes = await syncInvoice({
+                                ...req,
+                                body: { ...req.body, cart_id: getCart.referance_cart_id }
+                            });
+
+                            if (refSyncRes?.ack !== 1) {
+                                results.push({
+                                    cart_id: singleCartId,
+                                    status: "fail",
+                                    msg: `Referenced Invoice #${getCart.referance_cart_id} sync failed: ${refSyncRes?.ack_msg || "Unknown error"}`
+                                });
+                                continue;
+                            }
+
+                            refCart = await cartModelInstance.findOne({
+                                where: { isDelete: 0, id: getCart.referance_cart_id },
+                                raw: true
+                            });
+                        }
+
+                        if (refCart) {
+                            orgBillDt = refCart.cart_date || orgBillDt;
+                            orgBillNo = refCart.cart_number || orgBillNo;
+                        }
+                    }
+                }
+
                 const transactionAcc = getCart.transaction_mode == 1 ? getCart.miracle_account_legder : acc_id;
                 const transactionModeFlag = getCart.transaction_mode == 1 ? "C" : getCart.transaction_mode == 2 ? "D" : "";
                 const invTyp = isSameState ? "GST" : "IGST";
@@ -450,13 +602,21 @@ export const syncInvoice = async (req) => {
                     payload.orddt = cartDate;
                     payload.invtyp = invTyp;
                 } else if (getCart.type === 6) { // SR - Sales Return
+                    payload.flgcd = transactionModeFlag;
                     payload.billdt = cartDate;
+                    payload.acc = transactionAcc;
                     payload.billno = cartNum;
-                    payload.orgbilldt = cartDate;
-                    payload.orgbillno = getCart.referance_cart_name || cartNum;
+                    payload.orgbilldt = orgBillDt;
+                    payload.orgbillno = orgBillNo;
+                    payload.invtyp = invTyp;
+                    payload.taxtyp = taxtyp;
                 } else if (getCart.type === 7) { // PR - Purchase Return
+                    payload.flgcd = transactionModeFlag;
                     payload.voudt = cartDate;
+                    payload.acc = transactionAcc;
                     payload.vouno = cartNum;
+                    payload.invtyp = invTyp;
+                    payload.taxtyp = taxtyp;
                 } else if (getCart.type === 8) { // HP - Inward Challan
                     payload.flgcd = transactionModeFlag;
                     payload.acc = transactionAcc;
@@ -471,14 +631,6 @@ export const syncInvoice = async (req) => {
                     payload.invtyp = invTyp;
                     payload.taxtyp = taxtyp;
                 }
-
-                const api = createAxiosIntance({
-                    baseURL: baseurl,
-                    clientId: client_id,
-                    apiKey: api_key,
-                    tenantDB: req.tenantDB,
-                    getAuthContext: async () => req.body.mconfig
-                });
 
                 const response = await api.post('TPA/M2/V1/Voucher', payload);
                 const { UniqueId, IsError, Message, ErrorCode } = response.data || {};
@@ -633,30 +785,39 @@ export const syncContact = async (req) => {
         const regType = getContactDetail.gst_reg_type || (hasGstin ? "Regular" : "Unregistered");
         const regAppDate = getContactDetail.gst_reg_date || "2017-07-01";
 
+        const company_id_contact = getContactDetail.company_masters_id || req.body.mconfig?.company_id;
+        const customUfddetContact = await getMiracleUfdDet(req.tenantDB, company_id_contact, 1, getContactDetail);
+
         const payload = {
             "accnm": contact_name,
             "action": getContactDetail.miracle_UniqueId ? "E" : "A",
             "uniqueId": getContactDetail.miracle_UniqueId || undefined,
             "accalinm": getContactDetail.client_code,
             "accgrpnm": group_name ? group_name : "Sundry Debtors",
-            "gstin": getContactDetail.gst_number || "",
-            "addr": {
-                "addr1": cleanHtmlText(getContactDetail.address || ""),
-                "addr2": cleanHtmlText(getContactDetail.shipping_address || ""),
-                "citynm": city_name,
-                "pincode": getContactDetail.pincode,
-                "areanm": area_name,
-                "statenm": state_name.trim(),
-                "mob1": getContactDetail.mobile_number,
-                "email": getContactDetail.email_id,
-            },
-            "regtypedet": [
-                {
-                    "regtype": regType,
-                    "regappdt": regAppDate
-                }
-            ]
+            "gstin": getContactDetail.gst_number || ""
+        };
+
+        if (Object.keys(customUfddetContact).length > 0) {
+            payload.ufddet = customUfddetContact;
         }
+
+        payload.addr = {
+            "addr1": cleanHtmlText(getContactDetail.address || ""),
+            "addr2": cleanHtmlText(getContactDetail.shipping_address || ""),
+            "citynm": city_name,
+            "pincode": getContactDetail.pincode,
+            "areanm": area_name,
+            "statenm": state_name.trim(),
+            "mob1": getContactDetail.mobile_number,
+            "email": getContactDetail.email_id,
+        };
+
+        payload.regtypedet = [
+            {
+                "regtype": regType,
+                "regappdt": regAppDate
+            }
+        ];
 
         // API call
         const api = createAxiosIntance({
@@ -664,6 +825,7 @@ export const syncContact = async (req) => {
             clientId: client_id,
             apiKey: api_key,
             tenantDB: req.tenantDB,
+            companyId: company_id_contact,
             getAuthContext: async () => req.body.mconfig
         });
 

@@ -22,6 +22,51 @@ import { areaModel } from "../../models/masters/areaModel.js";
 import { cityModel } from "../../models/masters/cityModel.js";
 import { stateModel } from "../../models/masters/stateModel.js";
 import { priceListModel } from "../../models/product_settings/priceListModel.js";
+import { customFieldFormModel } from "../../models/other_settings/customFieldFormModel.js";
+import { Op } from "sequelize";
+
+const extractMiracleCustomFields = async (tenantDB, companyId, formType, ufddetPayload, rowOrColumn = null) => {
+    if (!tenantDB || !companyId || !formType || !ufddetPayload || typeof ufddetPayload !== "object") return {};
+    try {
+        const CFFModel = customFieldFormModel(tenantDB);
+        const whereClause = {
+            isDelete: 0,
+            company_masters_id: companyId,
+            form_type: formType,
+            third_party_field_name: { [Op.ne]: null }
+        };
+
+        if (Number(formType) === 4) {
+            if (rowOrColumn !== null) {
+                whereClause.product_feild_row_column = rowOrColumn;
+            } else {
+                whereClause[Op.or] = [
+                    { product_feild_row_column: 1 },
+                    { product_feild_row_column: 0 },
+                    { product_feild_row_column: null }
+                ];
+            }
+        }
+
+        const customFields = await CFFModel.findAll({
+            where: whereClause,
+            attributes: ["reference_column_name", "third_party_field_name"],
+            raw: true
+        });
+        const updates = {};
+        for (const field of customFields) {
+            const key = field.third_party_field_name ? String(field.third_party_field_name).trim() : "";
+            const col = field.reference_column_name;
+            if (key && col && ufddetPayload[key] !== undefined) {
+                updates[col] = ufddetPayload[key];
+            }
+        }
+        return updates;
+    } catch (err) {
+        console.error("Error extracting Miracle custom fields from webhook:", err);
+        return {};
+    }
+};
 
 export const WEBHOOK_EVENT_REGISTRY = {
     PA: {
@@ -410,6 +455,8 @@ async function createOrUpdateProductFromDetail(tenantDB, companyId, tenantId, pr
     const net_rate = salrate + ((salrate * gstper) / 100);
     const purchase_rate = purrate;
 
+    const customFields = await extractMiracleCustomFields(tenantDB, companyId, 4, productDetail.ufddet);
+
     const productPayload = {
         ...scope,
         product_types: 5,
@@ -429,6 +476,7 @@ async function createOrUpdateProductFromDetail(tenantDB, companyId, tenantId, pr
         max_stock_quantity: ordlev,
         miracle_UniqueId: uniqueId,
         miracle_update_date_time: new Date(),
+        ...customFields,
     };
 
     const [product, created] = await productModelInstance.findOrCreate({
@@ -550,6 +598,8 @@ async function createOrUpdateContactFromDetail(tenantDB, companyId, tenantId, co
         areaId = areaObj.id;
     }
 
+    const customFields = await extractMiracleCustomFields(tenantDB, companyId, 1, contactDetail.ufddet);
+
     const contactPayload = {
         person_name: conper1 || conper2 || accnm || "",
         company_name: accnm || "",
@@ -571,7 +621,8 @@ async function createOrUpdateContactFromDetail(tenantDB, companyId, tenantId, co
         miracle_UniqueId: uniqueId,
         miracle_update_date_time: new Date(),
         isDelete: 0,
-        isActive: 1
+        isActive: 1,
+        ...customFields,
     };
 
     const contactModelInstance = contactModel(tenantDB);
@@ -909,6 +960,8 @@ export async function handleVoucherAddOrUpdate({ payload, context }) {
     const grandTotal = Number(billamt) || calculatedTotal;
     const roundOff = Number((grandTotal - calculatedTotal).toFixed(2));
 
+    const customFields = await extractMiracleCustomFields(tenantDB, companyId, cartType, ufddet);
+
     const cartPayload = {
         type: cartType,
         cart_number: cartNumber,
@@ -933,6 +986,7 @@ export async function handleVoucherAddOrUpdate({ payload, context }) {
         miracle_UniqueId: uniqueId,
         miracle_update_date_time: new Date(),
         isDelete: 0,
+        ...customFields,
         isActive: 1
     };
 

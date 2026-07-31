@@ -20,6 +20,8 @@ export const salaryRegisterModel = (sequelize) => {
         holiday: { type: DOUBLE },
         total_week_off: { type: DOUBLE },
         total_leave: { type: DOUBLE },
+        total_paid_leave: { type: DOUBLE },
+        total_unpaid_leave: { type: DOUBLE },
         total_absent: { type: DOUBLE },
         total_day: { type: DOUBLE },
         working_hour: { type: DOUBLE },
@@ -27,6 +29,8 @@ export const salaryRegisterModel = (sequelize) => {
         compensation_amount: { type: SequelizeJSON }, // { credit, debit }
 
         // ── Salary basis ───────────────────────────────────────────────────
+        basic_da: { type: DOUBLE },
+        hra: { type: DOUBLE },
         ctc: { type: DOUBLE },
         gross_salary: { type: DOUBLE },
         per_day_salary: { type: DOUBLE },

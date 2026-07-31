@@ -2150,3 +2150,13 @@ NOTE: Run this CREATE TABLE manually on each tenant's database.
 
 28-07-2026 Antigravity
 ALTER TABLE `products` ADD `miracle_uom_name` VARCHAR(255) NULL DEFAULT NULL AFTER `miracle_update_date_time`;
+
+30-07-2026 Antigravity
+ALTER TABLE `custom_field_form_masters` ADD `third_party_field_name` VARCHAR(255) NULL DEFAULT NULL AFTER `form_type`;
+
+31-07-2026 Dinesh
+ALTER TABLE `salary_registers` 
+  ADD COLUMN `total_paid_leave` DOUBLE DEFAULT 0 AFTER `total_leave`,
+  ADD COLUMN `total_unpaid_leave` DOUBLE DEFAULT 0 AFTER `total_paid_leave`,
+  ADD COLUMN `basic_da` DOUBLE DEFAULT 0 AFTER `compensation_amount`,
+  ADD COLUMN `hra` DOUBLE DEFAULT 0 AFTER `basic_da`;

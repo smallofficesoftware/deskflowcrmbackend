@@ -83,6 +83,7 @@ export const addCustomFieldFrom = async (req) => {
       form_type: req.body.form_type,
       company_masters_id: findCompanyId.company_masters_id,
       reference_column_name: validColumn,
+      third_party_field_name: req.body.third_party_field_name ? String(req.body.third_party_field_name).trim() : null,
       created_date_time: formattedDate,
     };
 
@@ -138,6 +139,7 @@ export const getAllCustomFieldFrom = async (req) => {
         "max_limit",
         "validation_type",
         "data_sorce",
+        "third_party_field_name",
         "form_type"
       ],
       order: [["display_order", "ASC"]],
@@ -365,6 +367,7 @@ export const getAllCustomFieldFromByUsingCompany = async (req, res) => {
         "product_feild_row_column",
         "required_for",
         "data_sorce",
+        "third_party_field_name",
         "form_type",
         "a_application_login_id"
       ],
