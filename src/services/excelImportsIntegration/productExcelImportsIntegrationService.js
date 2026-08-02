@@ -282,12 +282,15 @@ export const addProductByExcelSheetV2 = async (req) => {
         const customFormFieldModelIntance = customFieldFormModel(req.tenantDB);
         const customFieldDatavaluesModelInstance = customFieldDatavaluesModel(req.tenantDB);
 
-        /** Fetch dynamic custom fields **/
-        const getCustomFormFieldR = await customFormFieldModelIntance.findAll({
+        let getCustomFormFieldR = await customFormFieldModelIntance.findAll({
             where: { form_type: 4, isDelete: 0 },
-            attributes: ["title", "reference_column_name", "data_type", "id"],
+            attributes: ["title", "reference_column_name", "data_type", "id", "applicable_modules"],
             raw: true,
         });
+
+        getCustomFormFieldR = Array.isArray(getCustomFormFieldR)
+            ? getCustomFormFieldR.filter(f => !f.applicable_modules || String(f.applicable_modules).split(",").map(m => m.trim()).includes("4"))
+            : [];
 
         const getCustomFormFieldObj = Array.isArray(getCustomFormFieldR)
             ? getCustomFormFieldR.reduce((acc, { reference_column_name, title }) => {
@@ -931,7 +934,7 @@ export const addProductByExcelSheetUpdateData = async (req) => {
         const customFieldDatavaluesModelInstance =
             customFieldDatavaluesModel(req.tenantDB);
 
-        const getCustomFormFieldR =
+        let getCustomFormFieldR =
             await customFormFieldModelIntance.findAll({
                 where: {
                     form_type: 4,
@@ -941,10 +944,15 @@ export const addProductByExcelSheetUpdateData = async (req) => {
                     "title",
                     "reference_column_name",
                     "data_type",
-                    "id"
+                    "id",
+                    "applicable_modules"
                 ],
                 raw: true,
             });
+
+        getCustomFormFieldR = Array.isArray(getCustomFormFieldR)
+            ? getCustomFormFieldR.filter(f => !f.applicable_modules || String(f.applicable_modules).split(",").map(m => m.trim()).includes("4"))
+            : [];
 
         const getCustomFormFieldObj =
             Array.isArray(getCustomFormFieldR)

@@ -25,7 +25,7 @@ import { priceListModel } from "../../models/product_settings/priceListModel.js"
 import { customFieldFormModel } from "../../models/other_settings/customFieldFormModel.js";
 import { Op } from "sequelize";
 
-const extractMiracleCustomFields = async (tenantDB, companyId, formType, ufddetPayload, rowOrColumn = null) => {
+const extractMiracleCustomFields = async (tenantDB, companyId, formType, ufddetPayload, targetModule = null) => {
     if (!tenantDB || !companyId || !formType || !ufddetPayload || typeof ufddetPayload !== "object") return {};
     try {
         const CFFModel = customFieldFormModel(tenantDB);
@@ -36,23 +36,20 @@ const extractMiracleCustomFields = async (tenantDB, companyId, formType, ufddetP
             third_party_field_name: { [Op.ne]: null }
         };
 
-        if (Number(formType) === 4) {
-            if (rowOrColumn !== null) {
-                whereClause.product_feild_row_column = rowOrColumn;
-            } else {
-                whereClause[Op.or] = [
-                    { product_feild_row_column: 1 },
-                    { product_feild_row_column: 0 },
-                    { product_feild_row_column: null }
-                ];
-            }
-        }
-
-        const customFields = await CFFModel.findAll({
+        let customFields = await CFFModel.findAll({
             where: whereClause,
-            attributes: ["reference_column_name", "third_party_field_name"],
+            attributes: ["reference_column_name", "third_party_field_name", "applicable_modules"],
             raw: true
         });
+
+        if (Number(formType) === 4) {
+            const filterMod = targetModule !== null ? String(targetModule) : "4";
+            customFields = customFields.filter(f => {
+                if (!f.applicable_modules) return true;
+                const mods = String(f.applicable_modules).split(",").map(m => m.trim());
+                return mods.includes(filterMod);
+            });
+        }
         const updates = {};
         for (const field of customFields) {
             const key = field.third_party_field_name ? String(field.third_party_field_name).trim() : "";
@@ -932,7 +929,13 @@ export async function handleVoucherAddOrUpdate({ payload, context }) {
             taxableAmt += amt;
             totalGstAmt += itemTaxAmt;
 
+            let itemCustomFields = {};
+            if (item.ufddet && typeof item.ufddet === "object") {
+                itemCustomFields = await extractMiracleCustomFields(tenantDB, companyId, 4, item.ufddet, targetFormType);
+            }
+
             cartItemsPayloads.push({
+                ...itemCustomFields,
                 cart_type: cartType,
                 currency_id: 1,
                 a_application_login_id: tenantId,
@@ -960,7 +963,19 @@ export async function handleVoucherAddOrUpdate({ payload, context }) {
     const grandTotal = Number(billamt) || calculatedTotal;
     const roundOff = Number((grandTotal - calculatedTotal).toFixed(2));
 
-    const customFields = await extractMiracleCustomFields(tenantDB, companyId, cartType, ufddet);
+    const CART_TYPE_TO_FORM_TYPE = {
+        1: 5,  // Quotation -> form_type 5
+        2: 6,  // Sales Order -> form_type 6
+        3: 7,  // Sales Invoice -> form_type 7
+        4: 8,  // Purchase Invoice -> form_type 8
+        5: 9,  // Purchase Order -> form_type 9
+        6: 10, // Return Sales Invoice -> form_type 10
+        7: 11, // Return Purchase Invoice -> form_type 11
+        8: 12, // Goods Received Note -> form_type 12
+        9: 13  // Dispatch -> form_type 13
+    };
+    const targetFormType = CART_TYPE_TO_FORM_TYPE[cartType] || cartType;
+    const customFields = await extractMiracleCustomFields(tenantDB, companyId, targetFormType, ufddet);
 
     const cartPayload = {
         type: cartType,

@@ -1248,12 +1248,15 @@ export const generateProductSampleSheet = async (req) => {
 
     const customFormFieldModelIntance = customFieldFormModel(req.tenantDB);
 
-    /** Fetch dynamic custom fields **/
-    const getCustomFormFieldR = await customFormFieldModelIntance.findAll({
+    let getCustomFormFieldR = await customFormFieldModelIntance.findAll({
       where: { form_type: 4, isDelete: 0 },
-      attributes: ["title", "reference_column_name"],
+      attributes: ["title", "reference_column_name", "applicable_modules"],
       raw: true,
     });
+
+    getCustomFormFieldR = Array.isArray(getCustomFormFieldR)
+      ? getCustomFormFieldR.filter(f => !f.applicable_modules || String(f.applicable_modules).split(",").map(m => m.trim()).includes("4"))
+      : [];
 
     const getCustomFormFieldObj = Array.isArray(getCustomFormFieldR)
       ? getCustomFormFieldR.reduce((acc, { reference_column_name, title }) => {
@@ -1380,12 +1383,15 @@ export const getExportsProducts = async (req) => {
     }
 
     /* get custome form field */
-    const customFormFieldModelIntance = customFieldFormModel(req.tenantDB);
-    const getCustomFormFieldR = await customFormFieldModelIntance.findAll({
+    let getCustomFormFieldR = await customFormFieldModelIntance.findAll({
       where: { form_type: 4, isDelete: 0 },
-      attributes: ["title", "reference_column_name"],
+      attributes: ["title", "reference_column_name", "applicable_modules"],
       raw: true
     });
+
+    getCustomFormFieldR = isValid(getCustomFormFieldR)
+      ? getCustomFormFieldR.filter(f => !f.applicable_modules || String(f.applicable_modules).split(",").map(m => m.trim()).includes("4"))
+      : [];
 
     const getCustomFormFieldObj = isValid(getCustomFormFieldR) ? getCustomFormFieldR.reduce((acc, { reference_column_name, title }) => {
       acc[reference_column_name] = title;
@@ -1538,11 +1544,15 @@ export const getExportsProductsForUpdateData = async (req) => {
     /* get custom form field */
     const customFormFieldModelIntance = customFieldFormModel(req.tenantDB);
 
-    const getCustomFormFieldR = await customFormFieldModelIntance.findAll({
+    let getCustomFormFieldR = await customFormFieldModelIntance.findAll({
       where: { form_type: 4, isDelete: 0 },
-      attributes: ["title", "reference_column_name"],
+      attributes: ["title", "reference_column_name", "applicable_modules"],
       raw: true,
     });
+
+    getCustomFormFieldR = isValid(getCustomFormFieldR)
+      ? getCustomFormFieldR.filter(f => !f.applicable_modules || String(f.applicable_modules).split(",").map(m => m.trim()).includes("4"))
+      : [];
 
     const getCustomFormFieldObj = isValid(getCustomFormFieldR)
       ? getCustomFormFieldR.reduce(

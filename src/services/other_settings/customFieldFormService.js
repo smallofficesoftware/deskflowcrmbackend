@@ -84,6 +84,7 @@ export const addCustomFieldFrom = async (req) => {
       company_masters_id: findCompanyId.company_masters_id,
       reference_column_name: validColumn,
       third_party_field_name: req.body.third_party_field_name ? String(req.body.third_party_field_name).trim() : null,
+      applicable_modules: req.body.applicable_modules ? String(req.body.applicable_modules).trim() : null,
       created_date_time: formattedDate,
     };
 
@@ -140,6 +141,7 @@ export const getAllCustomFieldFrom = async (req) => {
         "validation_type",
         "data_sorce",
         "third_party_field_name",
+        "applicable_modules",
         "form_type"
       ],
       order: [["display_order", "ASC"]],

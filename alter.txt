@@ -2160,3 +2160,10 @@ ALTER TABLE `salary_registers`
   ADD COLUMN `total_unpaid_leave` DOUBLE DEFAULT 0 AFTER `total_paid_leave`,
   ADD COLUMN `basic_da` DOUBLE DEFAULT 0 AFTER `compensation_amount`,
   ADD COLUMN `hra` DOUBLE DEFAULT 0 AFTER `basic_da`;
+
+02-08-2026 Antigravity
+ALTER TABLE `custom_field_form_masters` ADD `applicable_modules` VARCHAR(255) NULL DEFAULT NULL AFTER `third_party_field_name`;
+
+-- Backfill legacy fields for existing client databases:
+UPDATE `custom_field_form_masters` SET `applicable_modules` = '4' WHERE `form_type` = 4 AND `product_feild_row_column` = 1 AND `applicable_modules` IS NULL;
+UPDATE `custom_field_form_masters` SET `applicable_modules` = '5,6,7,8,9,10,11,12,13' WHERE `form_type` = 4 AND `product_feild_row_column` = 2 AND `applicable_modules` IS NULL;

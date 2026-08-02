@@ -35,19 +35,19 @@ export const getMiracleUfdDet = async (tenantDB, companyId, formType, entityData
             third_party_field_name: { [Op.ne]: null }
         };
 
-        if (Number(formType) === 4) {
-            whereClause[Op.or] = [
-                { product_feild_row_column: 1 },
-                { product_feild_row_column: 0 },
-                { product_feild_row_column: null }
-            ];
-        }
-
-        const customFields = await CFFModel.findAll({
+        let customFields = await CFFModel.findAll({
             where: whereClause,
-            attributes: ["reference_column_name", "third_party_field_name"],
+            attributes: ["reference_column_name", "third_party_field_name", "applicable_modules"],
             raw: true
         });
+
+        if (Number(formType) === 4) {
+            customFields = customFields.filter(f => {
+                if (!f.applicable_modules) return true;
+                const mods = String(f.applicable_modules).split(",").map(m => m.trim());
+                return mods.includes("4");
+            });
+        }
 
         const ufddet = {};
         for (const field of customFields) {
@@ -288,6 +288,18 @@ export const syncInvoice = async (req) => {
             8: "inward",
         };
 
+        const CART_TYPE_TO_FORM_TYPE = {
+            1: 5,  // Quotation -> form_type 5
+            2: 6,  // Sales Order -> form_type 6
+            3: 7,  // Sales Invoice -> form_type 7
+            4: 8,  // Purchase Invoice -> form_type 8
+            5: 9,  // Purchase Order -> form_type 9
+            6: 10, // Return Sales Invoice -> form_type 10
+            7: 11, // Return Purchase Invoice -> form_type 11
+            8: 12, // Goods Received Note (Inward) -> form_type 12
+            9: 13  // Dispatch -> form_type 13
+        };
+
         for (const singleCartId of cartIds) {
             try {
                 // Get cart
@@ -404,16 +416,21 @@ export const syncInvoice = async (req) => {
 
                 // Items
                 const CFFModel = customFieldFormModel(req.tenantDB);
-                const itemCustomFields = await CFFModel.findAll({
+                let itemCustomFields = await CFFModel.findAll({
                     where: {
                         isDelete: 0,
                         company_masters_id: company_id,
                         form_type: 4,
-                        product_feild_row_column: 2,
                         third_party_field_name: { [Op.ne]: null }
                     },
-                    attributes: ["reference_column_name", "third_party_field_name"],
+                    attributes: ["reference_column_name", "third_party_field_name", "applicable_modules"],
                     raw: true
+                });
+
+                itemCustomFields = itemCustomFields.filter(f => {
+                    if (!f.applicable_modules) return true;
+                    const mods = String(f.applicable_modules).split(",").map(m => m.trim());
+                    return mods.includes(String(targetFormType));
                 });
 
                 const items = [];
@@ -498,7 +515,8 @@ export const syncInvoice = async (req) => {
                     7: "PR", 1: "QS", 9: "HS", 8: "HP",
                 };
 
-                const customUfddet = await getMiracleUfdDet(req.tenantDB, company_id, getCart.type, getCart);
+                const targetFormType = CART_TYPE_TO_FORM_TYPE[getCart.type] || getCart.type;
+                const customUfddet = await getMiracleUfdDet(req.tenantDB, company_id, targetFormType, getCart);
                 const ufddetHeaderObj = {
                     ...customUfddet,
                     ...(getCart.due_date ? { U0000001: getCart.due_date } : {})
@@ -517,7 +535,7 @@ export const syncInvoice = async (req) => {
                 };
 
                 if (Object.keys(ufddetHeaderObj).length > 0) {
-                    // payload.ufddet = ufddetHeaderObj;
+                    payload.ufddet = ufddetHeaderObj;
                 }
 
                 if (getCart.transaction_mode == 1) { // cash
