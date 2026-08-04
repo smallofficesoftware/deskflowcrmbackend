@@ -29,27 +29,25 @@ const extractMiracleCustomFields = async (tenantDB, companyId, formType, ufddetP
     if (!tenantDB || !companyId || !formType || !ufddetPayload || typeof ufddetPayload !== "object") return {};
     try {
         const CFFModel = customFieldFormModel(tenantDB);
-        const whereClause = {
-            isDelete: 0,
-            company_masters_id: companyId,
-            form_type: formType,
-            third_party_field_name: { [Op.ne]: null }
-        };
-
         let customFields = await CFFModel.findAll({
-            where: whereClause,
-            attributes: ["reference_column_name", "third_party_field_name", "applicable_modules"],
+            where: {
+                isDelete: 0,
+                company_masters_id: companyId,
+                third_party_field_name: { [Op.ne]: null }
+            },
+            attributes: ["reference_column_name", "third_party_field_name", "applicable_modules", "form_type"],
             raw: true
         });
 
-        if (Number(formType) === 4) {
-            const filterMod = targetModule !== null ? String(targetModule) : "4";
-            customFields = customFields.filter(f => {
-                if (!f.applicable_modules) return true;
+        customFields = customFields.filter(f => {
+            const checkFormType = targetModule !== null ? targetModule : formType;
+            if (Number(f.form_type) === Number(checkFormType)) return true;
+            if (f.applicable_modules && f.applicable_modules !== "") {
                 const mods = String(f.applicable_modules).split(",").map(m => m.trim());
-                return mods.includes(filterMod);
-            });
-        }
+                return mods.includes(String(checkFormType));
+            }
+            return false;
+        });
         const updates = {};
         for (const field of customFields) {
             const key = field.third_party_field_name ? String(field.third_party_field_name).trim() : "";

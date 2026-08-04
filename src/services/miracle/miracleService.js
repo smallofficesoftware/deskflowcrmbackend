@@ -15,6 +15,7 @@ import { stateModel } from "../../models/masters/stateModel.js";
 import { categoryModel } from "../../models/product_settings/categoryModel.js";
 import { productGroupModel } from "../../models/product_settings/productGroupModel.js";
 import { productModel } from "../../models/product_settings/productModel.js";
+import { productUnitMasterModel } from "../../models/product_settings/productUnitMasterModel.js";
 import { taxModel } from "../../models/product_settings/taxModel.js";
 import { customFieldFormModel } from "../../models/other_settings/customFieldFormModel.js";
 import { MIRACLE_LEDGER_PDF } from "../../utils/appConstants.js";
@@ -28,26 +29,24 @@ export const getMiracleUfdDet = async (tenantDB, companyId, formType, entityData
     try {
         if (!tenantDB || !companyId || !formType || !entityData) return {};
         const CFFModel = customFieldFormModel(tenantDB);
-        const whereClause = {
-            isDelete: 0,
-            company_masters_id: companyId,
-            form_type: formType,
-            third_party_field_name: { [Op.ne]: null }
-        };
-
         let customFields = await CFFModel.findAll({
-            where: whereClause,
-            attributes: ["reference_column_name", "third_party_field_name", "applicable_modules"],
+            where: {
+                isDelete: 0,
+                company_masters_id: companyId,
+                third_party_field_name: { [Op.ne]: null }
+            },
+            attributes: ["reference_column_name", "third_party_field_name", "applicable_modules", "form_type"],
             raw: true
         });
 
-        if (Number(formType) === 4) {
-            customFields = customFields.filter(f => {
-                if (!f.applicable_modules) return true;
+        customFields = customFields.filter(f => {
+            if (Number(f.form_type) === Number(formType)) return true;
+            if (f.applicable_modules && f.applicable_modules !== "") {
                 const mods = String(f.applicable_modules).split(",").map(m => m.trim());
-                return mods.includes("4");
-            });
-        }
+                return mods.includes(String(formType));
+            }
+            return false;
+        });
 
         const ufddet = {};
         for (const field of customFields) {
@@ -313,6 +312,7 @@ export const syncInvoice = async (req) => {
                     continue;
                 }
 
+                const targetFormType = CART_TYPE_TO_FORM_TYPE[getCart.type] || getCart.type;
                 const targetModule = CART_TYPE_TO_MODULE[getCart.type] || "invoice";
                 const targetAction = getCart.miracle_UniqueId ? "update" : "add";
 
@@ -515,11 +515,9 @@ export const syncInvoice = async (req) => {
                     7: "PR", 1: "QS", 9: "HS", 8: "HP",
                 };
 
-                const targetFormType = CART_TYPE_TO_FORM_TYPE[getCart.type] || getCart.type;
                 const customUfddet = await getMiracleUfdDet(req.tenantDB, company_id, targetFormType, getCart);
                 const ufddetHeaderObj = {
-                    ...customUfddet,
-                    ...(getCart.due_date ? { U0000001: getCart.due_date } : {})
+                    ...customUfddet
                 };
 
                 const payload = {
@@ -1574,11 +1572,7 @@ export const fetchMiracleProducts = async (req) => {
         // ---------------------------------------------------------
         const ledgerPayload = {
             "rptfield": [
-                "prdupdt", "prdcrdt", "lastactiondt", "clqty1",
-                "iqty1", "recqty1", "opqty1", "slabnm",
-                "commnm", "hsncode", "catnm", "grpnm",
-                "prdid", "prdnm", "gstunt", "minstk", "ordlev",
-                "lprate", "lsrate", "prdmrp", "opamt"
+                ["prdnm", "prdid", "gstunt", "hsncode", "minstk", "ordlev", "lprate", "lsrate", "prdmrp", "commnm", "slabnm", "opamt", "opqty1", "recqty1", "iqty1", "clqty1", "prdcrdt", "prdupdt", "lastactiondt"]
             ]
         };
 
@@ -1732,13 +1726,7 @@ export const processProducts = async (req) => {
         // STEP 1: Fetch Base Product List from Miracle
         // ---------------------------------------------------------
         const ledgerPayload = {
-            "rptfield": [
-                "prdupdt", "prdcrdt", "lastactiondt", "clqty1",
-                "iqty1", "recqty1", "opqty1", "slabnm",
-                "commnm", "hsncode", "catnm", "grpnm",
-                "prdid", "prdnm", "gstunt", "minstk", "ordlev",
-                "lprate", "lsrate", "prdmrp", "opamt"
-            ]
+            "rptfield": ["prdnm", "prdid", "gstunt", "hsncode", "minstk", "ordlev", "lprate", "lsrate", "prdmrp", "commnm", "slabnm", "opamt", "opqty1", "recqty1", "iqty1", "clqty1", "prdcrdt", "prdupdt", "lastactiondt"]
         };
 
         const ledgerResponse = await api.post('TPA/M2/V1/ProductLedger', ledgerPayload);
@@ -1837,6 +1825,72 @@ export const processProducts = async (req) => {
             }
         }
 
+        // C. Handle Units
+        const productUnitMasterModelInstance = productUnitMasterModel(req.tenantDB);
+        const uniqueUnits = [...new Set(baseProducts.map(p => p.gstunt).filter(Boolean))];
+        let unitMap = new Map();
+
+        if (uniqueUnits.length > 0) {
+            const existingUnits = await productUnitMasterModelInstance.findAll({
+                where: { isDelete: 0, unit: { [Op.in]: uniqueUnits } },
+                raw: true
+            });
+            existingUnits.forEach(u => unitMap.set(u.unit.trim().toLowerCase(), u.id));
+
+            // Create missing units
+            const unitsToCreate = uniqueUnits
+                .filter(u => !unitMap.has(u.trim().toLowerCase()))
+                .map(u => ({
+                    unit: u,
+                    company_masters_id: company_id,
+                    a_application_login_id: loginId
+                }));
+
+            if (unitsToCreate.length > 0) {
+                await productUnitMasterModelInstance.bulkCreate(unitsToCreate);
+                // Re-fetch to get newly generated IDs
+                const allUnits = await productUnitMasterModelInstance.findAll({
+                    where: { isDelete: 0, unit: { [Op.in]: uniqueUnits } },
+                    raw: true
+                });
+                allUnits.forEach(u => unitMap.set(u.unit.trim().toLowerCase(), u.id));
+            }
+        }
+
+        // D. Handle Tax/GST Slabs
+        const taxModelInstance = taxModel(req.tenantDB);
+        const uniqueSlabs = [...new Set(baseProducts.map(p => p.slabnm).filter(Boolean))];
+        let taxMap = new Map();
+
+        if (uniqueSlabs.length > 0) {
+            const existingTaxes = await taxModelInstance.findAll({
+                where: { isDelete: 0, name: { [Op.in]: uniqueSlabs } },
+                raw: true
+            });
+            existingTaxes.forEach(t => taxMap.set(String(t.name).trim().toLowerCase(), t.id));
+
+            // Create missing tax slabs
+            const taxesToCreate = uniqueSlabs
+                .filter(s => !taxMap.has(s.trim().toLowerCase()))
+                .map(s => {
+                    const match = s.match(/\d+(\.\d+)?/);
+                    const gstVal = match ? parseFloat(match[0]) : 0;
+                    return {
+                        name: s,
+                        value: gstVal,
+                    };
+                });
+
+            if (taxesToCreate.length > 0) {
+                await taxModelInstance.bulkCreate(taxesToCreate);
+                // Re-fetch to get newly generated IDs
+                const allTaxes = await taxModelInstance.findAll({
+                    where: { isDelete: 0, name: { [Op.in]: uniqueSlabs } },
+                    raw: true
+                });
+                allTaxes.forEach(t => taxMap.set(String(t.name).trim().toLowerCase(), t.id));
+            }
+        }
 
         // ---------------------------------------------------------
         // STEP 3: Match against CRM Database & Build Payloads
@@ -1867,10 +1921,10 @@ export const processProducts = async (req) => {
             const gstPercentage = gstMatch ? parseFloat(gstMatch[0]) : 0;
 
             // Calculate Net Rate (Rate + GST amount)
-            const rate = (tp.lsrate / 1.18) || 0;
+            const rate = (tp.lsrate / ((gstPercentage / 100) + 1)) || 0;
             const calculatedNetRate = tp.lsrate;
 
-            const purchas_rate = (tp.lprate / 1.18) || 0;
+            const purchas_rate = (tp.lprate / ((gstPercentage / 100) + 1)) || 0;
             const calculatedNetPurchaseRate = tp.lprate;
 
             const mappedData = {
@@ -1881,10 +1935,12 @@ export const processProducts = async (req) => {
                 purchase_net_rate: +calculatedNetPurchaseRate.toFixed(2),
                 rate: +rate.toFixed(2),
                 net_rate: +calculatedNetRate.toFixed(2),
-                unit: "NOS-NUMBERS",
-                unit_id: 16,
-                GST: 18,
-                purchase_gst_per: 18,
+                unit: tp.gstunt || "",
+                unit_id: tp.gstunt ? (unitMap.get(tp.gstunt.trim().toLowerCase()) || 0) : 0,
+                GST: gstPercentage,
+                gst_id: tp.slabnm ? (taxMap.get(tp.slabnm.trim().toLowerCase()) || "") : "",
+                purchase_gst_per: gstPercentage,
+                purchase_gst_id: tp.slabnm ? (taxMap.get(tp.slabnm.trim().toLowerCase()) || "") : "",
                 hsn_code: tp.hsncode || "",
                 product_group_id: groupId || -1,
                 category_id: categoryId || 1,
