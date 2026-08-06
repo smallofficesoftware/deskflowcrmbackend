@@ -52,9 +52,22 @@ export const AttendanceBatchProcess = (sequelize) => {
             type: STRING(100),
             allowNull: false,
         },
+        roundoff_hours: {
+            type: STRING(100),
+            allowNull: true,
+            defaultValue: "00:00:00",
+        },
         overtime_hour: {
             type: STRING(100),
             allowNull: false,
+        },
+        regular_overtime_hour: {
+            type: STRING(100),
+            allowNull: true,
+        },
+        extra_overtime_hour: {
+            type: STRING(100),
+            allowNull: true,
         },
         is_sandwich_applied: {
             type: TINYINT,

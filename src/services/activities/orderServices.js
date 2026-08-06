@@ -4170,7 +4170,7 @@ export const pdfOrder = async (req, res) => {
     };
 
     // Product Custom form Field
-    const productFiled = await customModel.findAll({
+    let productFiled = await customModel.findAll({
       where: {
         isDelete: 0,
         company_masters_id: companyDetail.id,

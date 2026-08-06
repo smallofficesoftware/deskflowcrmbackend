@@ -112,7 +112,10 @@ export const processAttendanceGet = async (req) => {
                         "day_status",
                         "total_working_time",
                         "net_working_hour",
+                        "roundoff_hours",
                         "overtime_hour",
+                        "regular_overtime_hour",
+                        "extra_overtime_hour",
                         "early_out",
                         "late_in",
                         "first_in",
@@ -132,8 +135,23 @@ export const processAttendanceGet = async (req) => {
                     0
                 );
 
+                const roundoffSeconds = result.reduce(
+                    (sum, row) => sum + timeToSeconds(row.roundoff_hours || "00:00:00"),
+                    0
+                );
+
                 const overtimeSeconds = result.reduce(
                     (sum, row) => sum + timeToSeconds(row.overtime_hour || "00:00:00"),
+                    0
+                );
+
+                const regularOtSeconds = result.reduce(
+                    (sum, row) => sum + timeToSeconds(row.regular_overtime_hour || (row.day_status === 2 ? row.overtime_hour : "00:00:00")),
+                    0
+                );
+
+                const extraOtSeconds = result.reduce(
+                    (sum, row) => sum + timeToSeconds(row.extra_overtime_hour || (row.day_status !== 2 ? row.overtime_hour : "00:00:00")),
                     0
                 );
 
@@ -153,8 +171,11 @@ export const processAttendanceGet = async (req) => {
                 return {
                     employee_name: emp.dataValues.employee_name,
                     total_working_time_sum: secondsToTime(totalWorkingSeconds),
+                    roundoff_hour_sum: secondsToTime(roundoffSeconds),
                     net_working_hour_sum: secondsToTime(netWorkingSeconds),
                     overtime_hour_sum: secondsToTime(overtimeSeconds),
+                    regular_ot_hour_sum: secondsToTime(regularOtSeconds),
+                    extra_ot_hour_sum: secondsToTime(extraOtSeconds),
                     status_count: statusCount,
                     presentDates: result,
                 };

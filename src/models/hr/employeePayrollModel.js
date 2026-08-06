@@ -79,6 +79,16 @@ export const employeePayrollModel = (sequelize) => {
             type: DOUBLE,
         },
 
+        regular_ot_type: {
+            type: TINYINT,
+            defaultValue: 1,
+        },
+
+        extra_ot_type: {
+            type: TINYINT,
+            defaultValue: 2,
+        },
+
         approve_ot_hours: {
             type: TIME,
         },

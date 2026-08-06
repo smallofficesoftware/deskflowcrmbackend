@@ -2167,3 +2167,22 @@ ALTER TABLE `custom_field_form_masters` ADD `applicable_modules` VARCHAR(255) NU
 -- Backfill legacy fields for existing client databases:
 UPDATE `custom_field_form_masters` SET `applicable_modules` = '4' WHERE `form_type` = 4 AND `product_feild_row_column` = 1 AND `applicable_modules` IS NULL;
 UPDATE `custom_field_form_masters` SET `applicable_modules` = '5,6,7,8,9,10,11,12,13' WHERE `form_type` = 4 AND `product_feild_row_column` = 2 AND `applicable_modules` IS NULL;
+
+06-08-2026 Antigravity
+ALTER TABLE `employee_payrolls`
+  ADD COLUMN `regular_ot_type` TINYINT(4) NOT NULL DEFAULT 1 AFTER `overtime_amount_per_hour`,
+  ADD COLUMN `extra_ot_type` TINYINT(4) NOT NULL DEFAULT 2 AFTER `regular_ot_type`;
+
+ALTER TABLE `attendance_batch_process`
+  ADD COLUMN `regular_overtime_hour` VARCHAR(100) NULL AFTER `overtime_hour`,
+  ADD COLUMN `extra_overtime_hour` VARCHAR(100) NULL AFTER `regular_overtime_hour`;
+
+ALTER TABLE `salary_registers`
+  ADD COLUMN `regular_ot_hours` VARCHAR(100) NULL AFTER `earn_ot_payable_amt`,
+  ADD COLUMN `extra_ot_hours` VARCHAR(100) NULL AFTER `regular_ot_hours`,
+  ADD COLUMN `regular_ot_payable_amt` DOUBLE DEFAULT 0 AFTER `extra_ot_hours`,
+  ADD COLUMN `extra_ot_payable_amt` DOUBLE DEFAULT 0 AFTER `regular_ot_payable_amt`;
+
+ALTER TABLE `attendance_batch_process`
+  ADD COLUMN `roundoff_hours` VARCHAR(100) DEFAULT '00:00:00' AFTER `net_working_hour`;
+
