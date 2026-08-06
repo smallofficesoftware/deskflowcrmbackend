@@ -211,6 +211,14 @@ function calcDayStatus(date, first_in, last_out, total_working_hour, payroll, co
     const overtimeMins = calcOvertimeMinutes(netWorkingMins, minPresentMins, halfDayMins, minOvertimeMins);
     const overtimeHourStr = minutesToTimeStr(overtimeMins);
 
+    let regularOvertimeHourStr = "00:00:00";
+    let extraOvertimeHourStr = "00:00:00";
+    if (day_status === DAY_STATUS.HALF_DAY) {
+        regularOvertimeHourStr = overtimeHourStr;
+    } else {
+        extraOvertimeHourStr = overtimeHourStr;
+    }
+
     let late_in = null;
     if (firstInStr) {
         const datePrefix = firstInStr.slice(0, 10);
@@ -228,7 +236,16 @@ function calcDayStatus(date, first_in, last_out, total_working_hour, payroll, co
         if (actualOut.isBefore(graceOut)) early_out = minutesToTimeStr(scheduledOut.diff(actualOut, "minutes"));
     }
 
-    return { day_status, late_in, early_out, net_working_hour: netWorkingHourStr, overtime_hours: overtimeHourStr, leave_info };
+    return {
+        day_status,
+        late_in,
+        early_out,
+        net_working_hour: netWorkingHourStr,
+        overtime_hours: overtimeHourStr,
+        regular_overtime_hours: regularOvertimeHourStr,
+        extra_overtime_hours: extraOvertimeHourStr,
+        leave_info
+    };
 }
 
 // ============================================================
@@ -267,7 +284,7 @@ function resolveCalculateDays(year, month, payroll) {
 function aggregateMonthAttendance(batchRows) {
     const buckets = {
         totalPresentDay: 0, halfDay: 0, holiday: 0, totalWeekOff: 0,
-        totalLeave: 0, totalAbsent: 0, totalOvertimeMins: 0, netWorkingMins: 0,
+        totalLeave: 0, totalAbsent: 0, totalOvertimeMins: 0, regularOtMins: 0, extraOtMins: 0, netWorkingMins: 0,
         compensationCredit: 0, compensationDebit: 0,
     };
 
@@ -282,7 +299,11 @@ function aggregateMonthAttendance(batchRows) {
             case DAY_STATUS.LEAVE: buckets.totalLeave += 1; break;
             case DAY_STATUS.ABSENT: buckets.totalAbsent += 1; break;
         }
-        buckets.totalOvertimeMins += timeStrToMinutes(row.overtime_hour);
+        const regMins = timeStrToMinutes(row.regular_overtime_hour || (row.day_status === DAY_STATUS.HALF_DAY ? row.overtime_hour : "00:00:00"));
+        const extMins = timeStrToMinutes(row.extra_overtime_hour || (row.day_status !== DAY_STATUS.HALF_DAY ? row.overtime_hour : "00:00:00"));
+        buckets.regularOtMins += regMins;
+        buckets.extraOtMins += extMins;
+        buckets.totalOvertimeMins += (regMins + extMins);
         buckets.netWorkingMins += timeStrToMinutes(row.net_working_hour);
 
         let compList = row.compensation_list;
@@ -334,18 +355,24 @@ function calcPerDaySalary(fxsTotalEarning, calculateDays) {
     return calculateDays > 0 ? (fxsTotalEarning / calculateDays) : 0;
 }
 
-function calcOvertimePayable(payroll, totalOvertimeMins, dwsBasic, calculateDays) {
-    const overtimeHours = totalOvertimeMins / 60;
+function calcOvertimePayable(payroll, regularOtMins, extraOtMins, dwsBasic, calculateDays) {
+    const regularOtHours = regularOtMins / 60;
+    const extraOtHours = extraOtMins / 60;
+    const dailyWorkingHours = timeStrToMinutes(payroll.daily_working_hours) / 60;
+    const denominator = calculateDays * dailyWorkingHours;
+    const formulaRate = denominator > 0 ? (dwsBasic / denominator) : 0;
     const explicitRate = num(payroll.overtime_amount_per_hour);
-    let rate;
-    if (explicitRate > 0) {
-        rate = explicitRate;
-    } else {
-        const dailyWorkingHours = timeStrToMinutes(payroll.daily_working_hours) / 60;
-        const denominator = calculateDays * dailyWorkingHours;
-        rate = denominator > 0 ? (dwsBasic / denominator) : 0;
-    }
-    return overtimeHours * rate;
+    const regularOtType = parseInt(payroll.regular_ot_type ?? 1, 10);
+    const extraOtType = parseInt(payroll.extra_ot_type ?? 2, 10);
+
+    const regularRate = (regularOtType === 2 && explicitRate > 0) ? explicitRate : formulaRate;
+    const extraRate = (extraOtType === 2 && explicitRate > 0) ? explicitRate : formulaRate;
+
+    const regularOtPayableAmt = regularOtHours * regularRate;
+    const extraOtPayableAmt = extraOtHours * extraRate;
+    const earnOtPayableAmt = regularOtPayableAmt + extraOtPayableAmt;
+
+    return { regularOtPayableAmt, extraOtPayableAmt, earnOtPayableAmt };
 }
 
 function calcBonusAmount(payroll, dwsBasic) {
@@ -377,7 +404,7 @@ function calculateEmployeeSalary(year, month, payroll, batchRows) {
     const calculateDays = resolveCalculateDays(year, month, payroll);
     const {
         totalPresentDay, halfDay, holiday, totalWeekOff, totalLeave, totalAbsent,
-        totalOvertimeMins, netWorkingMins, compensationCredit, compensationDebit,
+        totalOvertimeMins, regularOtMins, extraOtMins, netWorkingMins, compensationCredit, compensationDebit,
     } = aggregateMonthAttendance(batchRows);
 
     const totalDay = calcTotalDay({ totalPresentDay, holiday, totalWeekOff, halfDay });
@@ -389,7 +416,7 @@ function calculateEmployeeSalary(year, month, payroll, batchRows) {
     const fxs = calcFixedSalary(payroll, calculateDays);
     const dws = calcDaysWorkedSalary(fxs, totalDay, calculateDays);
 
-    const earnOtPayableAmt = calcOvertimePayable(payroll, totalOvertimeMins, dws.dws_basic, calculateDays);
+    const { regularOtPayableAmt, extraOtPayableAmt, earnOtPayableAmt } = calcOvertimePayable(payroll, regularOtMins, extraOtMins, dws.dws_basic, calculateDays);
     const bonusAmount = calcBonusAmount(payroll, dws.dws_basic);
 
     const earnHeadFirst = num(payroll.earning_first);

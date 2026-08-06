@@ -54,6 +54,10 @@ export const salaryRegisterModel = (sequelize) => {
         // ── Earnings ─────────────────────────────────────────────────────────
         earn_ot_hours: { type: STRING(100) },
         earn_ot_payable_amt: { type: DOUBLE },
+        regular_ot_hours: { type: STRING(100) },
+        extra_ot_hours: { type: STRING(100) },
+        regular_ot_payable_amt: { type: DOUBLE },
+        extra_ot_payable_amt: { type: DOUBLE },
         earn_head_first: { type: DOUBLE },
         earn_head_second: { type: DOUBLE },
         earn_head_third: { type: DOUBLE },

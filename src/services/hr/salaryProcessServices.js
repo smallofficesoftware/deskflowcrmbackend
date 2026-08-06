@@ -93,6 +93,8 @@ function aggregateMonthAttendance(batchRows) {
         totalUnpaidLeave: 0,     // Employee Pay leave count (paid_by = 2)
         totalAbsent: 0,           // A count
         totalOvertimeMins: 0,
+        regularOtMins: 0,
+        extraOtMins: 0,
         netWorkingMins: 0,        // SUM of net_working_hour -> "working_hour"
         compensationCredit: 0,
         compensationDebit: 0,
@@ -133,7 +135,11 @@ function aggregateMonthAttendance(batchRows) {
                 break;
         }
 
-        buckets.totalOvertimeMins += timeStrToMinutes(row.overtime_hour);
+        const regMins = timeStrToMinutes(row.regular_overtime_hour || (row.day_status === DAY_STATUS.HALF_DAY ? row.overtime_hour : "00:00:00"));
+        const extMins = timeStrToMinutes(row.extra_overtime_hour || (row.day_status !== DAY_STATUS.HALF_DAY ? row.overtime_hour : "00:00:00"));
+        buckets.regularOtMins += regMins;
+        buckets.extraOtMins += extMins;
+        buckets.totalOvertimeMins += (regMins + extMins);
         buckets.netWorkingMins += timeStrToMinutes(row.net_working_hour);
 
         // compensation_list is JSON-stringified array of {adjustment_type, hours}
@@ -220,23 +226,29 @@ function calcPerDaySalary(fxsTotalEarning, calculateDays) {
 
 /**
  * Overtime payable amount.
- *   - If payroll.overtime_amount_per_hour is set: rate = that value (flat per-hour).
- *   - Else: rate = dws_basic / (calculate_days * daily_working_hours_per_day)
+ *   - Regular OT: Uses regular_ot_type (1 = Formula Rate, 2 = Flat Rate).
+ *   - Extra OT: Uses extra_ot_type (1 = Formula Rate, 2 = Flat Rate).
  */
-function calcOvertimePayable(payroll, totalOvertimeMins, basicDa, calculateDays) {
-    const overtimeHours = totalOvertimeMins / 60;
+function calcOvertimePayable(payroll, regularOtMins, extraOtMins, basicDa, calculateDays) {
+    const regularOtHours = regularOtMins / 60;
+    const extraOtHours = extraOtMins / 60;
+
+    const dailyWorkingHours = timeStrToMinutes(payroll.daily_working_hours) / 60;
+    const denominator = calculateDays * dailyWorkingHours;
+    const formulaRate = denominator > 0 ? (basicDa / denominator) : 0;
+
     const explicitRate = num(payroll.overtime_amount_per_hour);
+    const regularOtType = parseInt(payroll.regular_ot_type ?? 1, 10);
+    const extraOtType = parseInt(payroll.extra_ot_type ?? 2, 10);
 
-    let rate;
-    if (explicitRate > 0) {
-        rate = explicitRate;
-    } else {
-        const dailyWorkingHours = timeStrToMinutes(payroll.daily_working_hours) / 60;
-        const denominator = calculateDays * dailyWorkingHours;
-        rate = denominator > 0 ? (basicDa / denominator) : 0;
-    }
+    const regularRate = (regularOtType === 2 && explicitRate > 0) ? explicitRate : formulaRate;
+    const extraRate = (extraOtType === 2 && explicitRate > 0) ? explicitRate : formulaRate;
 
-    return overtimeHours * rate;
+    const regularOtPayableAmt = regularOtHours * regularRate;
+    const extraOtPayableAmt = extraOtHours * extraRate;
+    const earnOtPayableAmt = regularOtPayableAmt + extraOtPayableAmt;
+
+    return { regularOtPayableAmt, extraOtPayableAmt, earnOtPayableAmt };
 }
 
 function calcBonusAmount(payroll, dwsBasic) {
@@ -303,7 +315,7 @@ function calculateEmployeeSalary(year, month, payroll, batchRows) {
 
     const {
         totalPresentDay, halfDay, holiday, totalWeekOff, totalLeave, totalPaidLeave, totalUnpaidLeave, totalAbsent,
-        totalOvertimeMins, netWorkingMins, compensationCredit, compensationDebit,
+        totalOvertimeMins, regularOtMins, extraOtMins, netWorkingMins, compensationCredit, compensationDebit,
     } = aggregateMonthAttendance(batchRows);
 
     const calcMonthCount = parseInt(payroll.salary_cal_month_count, 10);
@@ -317,7 +329,9 @@ function calculateEmployeeSalary(year, month, payroll, batchRows) {
     const fxs = calcFixedSalary(payroll);
     const dws = calcDaysWorkedSalary(fxs, totalDay, calculateDays);
 
-    const earnOtPayableAmt = calcOvertimePayable(payroll, totalOvertimeMins, num(payroll.basic_da), calculateDays);
+    const { regularOtPayableAmt, extraOtPayableAmt, earnOtPayableAmt } = calcOvertimePayable(
+        payroll, regularOtMins, extraOtMins, num(payroll.basic_da), calculateDays
+    );
     const bonusAmount = calcBonusAmount(payroll, dws.dws_basic);
 
     const earnHeadFirst = num(payroll.earning_first);
@@ -377,6 +391,10 @@ function calculateEmployeeSalary(year, month, payroll, batchRows) {
 
         earn_ot_hours: minutesToTimeStr(totalOvertimeMins),
         earn_ot_payable_amt: earnOtPayableAmt,
+        regular_ot_hours: minutesToTimeStr(regularOtMins),
+        extra_ot_hours: minutesToTimeStr(extraOtMins),
+        regular_ot_payable_amt: regularOtPayableAmt,
+        extra_ot_payable_amt: extraOtPayableAmt,
         earn_head_first: earnHeadFirst,
         earn_head_second: earnHeadSecond,
         earn_head_third: earnHeadThird,
@@ -641,6 +659,10 @@ export const getSalaryDetail = async (req) => {
                 conv_all: +conveyanceAllowance.toFixed(2),
                 spe_all: +specialAllowance.toFixed(2),
                 overtime: +earnOtPayableAmt.toFixed(2),
+                regular_ot_hours: row.regular_ot_hours || "00:00:00",
+                regular_ot_payable_amt: +(num(row.regular_ot_payable_amt)).toFixed(2),
+                extra_ot_hours: row.extra_ot_hours || "00:00:00",
+                extra_ot_payable_amt: +(num(row.extra_ot_payable_amt)).toFixed(2),
                 others_earning: +others_earning.toFixed(2),
                 gross: +gross.toFixed(2),
                 pf: +dedEmpPf.toFixed(2),

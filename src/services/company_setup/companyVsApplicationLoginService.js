@@ -362,7 +362,10 @@ export const getByIdTeam = async (req) => {
       a_application_login_id
     );
 
+    const headerCompanyId = req.headers["x-company-id"] ? Number(req.headers["x-company-id"]) : null;
+
     let targetCompanyId =
+      headerCompanyId ||
       req.body.company_masters_id ||
       findAllApplicationLogin?.company_masters_id;
 

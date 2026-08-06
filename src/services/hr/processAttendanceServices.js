@@ -642,7 +642,7 @@ export const attendanceDetailUpdate = async (req) => {
                 if (records.length <= 0 && leave_list.length <= 0 && !isWeekOffDay && !isHolidayDay) continue;
 
                 const { first_in, last_out, total_working_hour, entries } = processAttendance(records);
-                const { day_status, late_in, early_out, net_working_hour, overtime_hours, leave_info } = calcDayStatus(
+                const { day_status, late_in, early_out, net_working_hour, roundoff_hours, overtime_hours, regular_overtime_hours, extra_overtime_hours, leave_info } = calcDayStatus(
                     date, first_in, last_out, total_working_hour, payroll, compensation_list, leave_list, holiday_list, roundoffMap
                 );
 
@@ -656,7 +656,10 @@ export const attendanceDetailUpdate = async (req) => {
                     early_out,
                     total_working_time: total_working_hour,
                     net_working_hour,
+                    roundoff_hours: roundoff_hours || "00:00:00",
                     overtime_hour: overtime_hours,
+                    regular_overtime_hour: regular_overtime_hours || "00:00:00",
+                    extra_overtime_hour: extra_overtime_hours || "00:00:00",
                     leave_entry_list: leave_info || [],
                     first_in,
                     last_out,
@@ -714,6 +717,12 @@ function buildRoundoffMap(roundoffRows) {
  * are kept unchanged (no rounding applied) so an incomplete rule set never
  * silently corrupts hours.
  */
+function formatDiffMinutesToTimeStr(mins) {
+    if (!mins || mins === 0) return "00:00:00";
+    const sign = mins < 0 ? "-" : "";
+    return sign + minutesToTimeStr(Math.abs(mins));
+}
+
 function applyRoundoff(totalMins, roundoffMap) {
     if (totalMins <= 0) return 0;
     if (!roundoffMap || roundoffMap.size === 0) return totalMins;
@@ -1006,6 +1015,8 @@ function calcDayStatus(date, first_in, last_out, total_working_hour, payroll, co
     // ── Apply company roundoff rule to working hour ────────────────────────
     const netWorkingMins = applyRoundoff(netWorkingMinsRaw, roundoffMap);
     const netWorkingHourStr = minutesToTimeStr(netWorkingMins);
+    const roundoffDiffMins = netWorkingMins - netWorkingMinsRaw;
+    const roundoffHoursStr = formatDiffMinutesToTimeStr(roundoffDiffMins);
 
     let day_status;
     if (isLeave) {
@@ -1023,6 +1034,14 @@ function calcDayStatus(date, first_in, last_out, total_working_hour, payroll, co
     const overtimeMinsRaw = calcOvertimeMinutes(netWorkingMins, minPresentMins, halfDayMins, minOvertimeMins, maxOvertimeMins);
     const overtimeMins = applyRoundoff(overtimeMinsRaw, roundoffMap);
     const overtimeHourStr = minutesToTimeStr(overtimeMins);
+
+    let regularOvertimeHourStr = "00:00:00";
+    let extraOvertimeHourStr = "00:00:00";
+    if (day_status === DAY_STATUS.HALF_DAY) {
+        regularOvertimeHourStr = overtimeHourStr;
+    } else {
+        extraOvertimeHourStr = overtimeHourStr;
+    }
 
     let late_in = null;
     if (firstInStr) {
@@ -1046,24 +1065,41 @@ function calcDayStatus(date, first_in, last_out, total_working_hour, payroll, co
         }
     }
 
-    return { day_status, late_in, early_out, net_working_hour: netWorkingHourStr, overtime_hours: overtimeHourStr, leave_info };
+    return {
+        day_status,
+        late_in,
+        early_out,
+        net_working_hour: netWorkingHourStr,
+        roundoff_hours: roundoffHoursStr,
+        overtime_hours: overtimeHourStr,
+        regular_overtime_hours: regularOvertimeHourStr,
+        extra_overtime_hours: extraOvertimeHourStr,
+        leave_info
+    };
 }
 
 /**
  * For WOWO/WOPH: all worked time is overtime, late_in/early_out don't apply
  * (there's no "scheduled" shift to be late/early against on an off-day).
  */
-function buildWorkOnOffDayResult(statusCode, total_working_hour, payroll, leave_info = []) {
+function buildWorkOnOffDayResult(statusCode, total_working_hour, payroll, leave_info = [], roundoffMap = null) {
     const rawWorkingMins = timeStrToMinutes(total_working_hour);
     const breakMins = timeStrToMinutes(payroll?.daily_break_hours);
-    const netWorkingMins = Math.max(0, rawWorkingMins - breakMins);
+    const netWorkingMinsRaw = Math.max(0, rawWorkingMins - breakMins);
+    const netWorkingMins = applyRoundoff(netWorkingMinsRaw, roundoffMap);
+    const roundoffDiffMins = netWorkingMins - netWorkingMinsRaw;
+    const roundoffHoursStr = formatDiffMinutesToTimeStr(roundoffDiffMins);
+    const otStr = minutesToTimeStr(netWorkingMins);
 
     return {
         day_status: statusCode,
         late_in: null,
         early_out: null,
-        net_working_hour: minutesToTimeStr(netWorkingMins),
-        overtime_hours: minutesToTimeStr(netWorkingMins), // all working hour = overtime
+        net_working_hour: otStr,
+        roundoff_hours: roundoffHoursStr,
+        overtime_hours: otStr, // all working hour = overtime
+        regular_overtime_hours: "00:00:00",
+        extra_overtime_hours: otStr,
         leave_info: leave_info || [],
     };
 }
@@ -1268,7 +1304,7 @@ export const getAttendanceDetail = async (req) => {
             const counts = {
                 present: 0, absent: 0, halfDay: 0, weekOff: 0, holiday: 0,
                 lateDays: 0, earlyDays: 0, leave: 0,
-                workMins: 0, officeMins: 0, otMins: 0,
+                workMins: 0, officeMins: 0, otMins: 0, regOtMins: 0, extraOtMins: 0,
             };
 
             for (let d = 1; d <= daysInMonth; d++) {
@@ -1302,9 +1338,13 @@ export const getAttendanceDetail = async (req) => {
                     weekday,
                     status: statusCode,
                     punches: buildPunchPairs(row.attenance_entry_list),
-                    actualWorkHrs: timeStrToHHMM(row.net_working_hour),
+                    actualWorkHrs: timeStrToHHMM(row.total_working_time || row.net_working_hour),
+                    roundoffHrs: timeStrToHHMM(row.roundoff_hours || "00:00:00"),
+                    netWorkHrs: timeStrToHHMM(row.net_working_hour),
                     officialWorkHrs,
                     otOs: timeStrToHHMM(row.overtime_hour),
+                    regOt: timeStrToHHMM(row.regular_overtime_hour) || (row.day_status === 2 ? timeStrToHHMM(row.overtime_hour) : ""),
+                    extraOt: timeStrToHHMM(row.extra_overtime_hour) || (row.day_status !== 2 ? timeStrToHHMM(row.overtime_hour) : ""),
                     late: timeStrToHHMM(row.late_in),
                     early: timeStrToHHMM(row.early_out),
                 });
@@ -1321,8 +1361,15 @@ export const getAttendanceDetail = async (req) => {
                 if (row.early_out) counts.earlyDays += 1;
 
                 counts.workMins += timeStrToMinutes(row.net_working_hour);
+                counts.actualWorkMins += timeStrToMinutes(row.total_working_time || row.net_working_hour);
+                counts.roundoffMins += timeStrToMinutes(row.roundoff_hours || "00:00:00");
                 counts.officeMins += timeStrToMinutes(payroll?.daily_working_hours);
                 counts.otMins += timeStrToMinutes(row.overtime_hour);
+
+                const regOt = timeStrToMinutes(row.regular_overtime_hour) || (row.day_status === 2 ? timeStrToMinutes(row.overtime_hour) : 0);
+                const extraOt = timeStrToMinutes(row.extra_overtime_hour) || (row.day_status !== 2 ? timeStrToMinutes(row.overtime_hour) : 0);
+                counts.regOtMins += regOt;
+                counts.extraOtMins += extraOt;
             }
 
             daysWise[empId] = dayList;
@@ -1334,9 +1381,13 @@ export const getAttendanceDetail = async (req) => {
                 holiday: counts.holiday,
                 lateDays: counts.lateDays,
                 earlyDays: counts.earlyDays,
+                actualWorkHrs: minutesToHHMM(counts.actualWorkMins),
+                roundoffHrs: minutesToHHMM(counts.roundoffMins),
                 workHrs: minutesToHHMM(counts.workMins),
                 officeHrs: minutesToHHMM(counts.officeMins),
                 ot: minutesToHHMM(counts.otMins),
+                regOt: minutesToHHMM(counts.regOtMins),
+                extraOt: minutesToHHMM(counts.extraOtMins),
                 leave: counts.leave,
             };
         }
