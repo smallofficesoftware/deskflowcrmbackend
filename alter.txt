@@ -2167,3 +2167,8 @@ ALTER TABLE `custom_field_form_masters` ADD `applicable_modules` VARCHAR(255) NU
 -- Backfill legacy fields for existing client databases:
 UPDATE `custom_field_form_masters` SET `applicable_modules` = '4' WHERE `form_type` = 4 AND `product_feild_row_column` = 1 AND `applicable_modules` IS NULL;
 UPDATE `custom_field_form_masters` SET `applicable_modules` = '5,6,7,8,9,10,11,12,13' WHERE `form_type` = 4 AND `product_feild_row_column` = 2 AND `applicable_modules` IS NULL;
+
+05-08-2026 Deep
+INSERT INTO `a_application_pages` (`id`, `page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (144, 'Route Planner', 'Route Planner', 'route_planner', 'Route Planner', '1', '12', '0', '1', '2026-07-25 07:26:13', '2026-07-25 12:56:13', '0', '1');
+
+INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `extra_information`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, '3', '144', '0', '', '2025-11-12 14:53:39', '2025-11-12 19:24:00', '0', '1'), (NULL, '2', '144', '0', '', '2025-11-12 14:53:39', '2025-11-12 19:24:00', '0', '1');
