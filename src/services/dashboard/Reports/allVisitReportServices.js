@@ -395,7 +395,7 @@ export const getVisitReport = async (req) => {
           visits.map(async (visit) => {
             const contact = await contactModels.findOne({
               where: { id: visit.contact_id, isDelete: 0, ...whereForContact },
-              attributes: ["person_name", "company_name"],
+              attributes: ["person_name", "company_name", "address"],
             });
 
             if (!contact) return null;
@@ -403,6 +403,7 @@ export const getVisitReport = async (req) => {
             return {
               ...visit.toJSON(),
               contactNumber: `${contact.company_name}`,
+              address: `${contact.address}`,
               customForm: CustomFormFeilds,
               visit_image: visit.visit_image
                 ? `${VISIT_IMG_LINK_EXTENDED}/${visit.visit_image}`

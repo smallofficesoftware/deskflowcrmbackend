@@ -408,44 +408,58 @@ export const assignedContactsGet = async (req) => {
 
 export const assignContactsToRoute = async (req) => {
     try {
-        const { a_application_login_id, contact_id, route_id } = req.body;
+        const { a_application_login_id, contact_ids, route_id } = req.body;
 
         const findCompanyId = await getCompanyByLoginId(a_application_login_id);
 
         const routePlanVsContactsModelInstance = routePlanVsContactsModel(req.tenantDB);
 
-        const doesExist = await routePlanVsContactsModelInstance.findOne({
-            where: {
-                route_id,
-                contact_id: Number(contact_id),
-                isDelete: 0,
-            },
-        });
+        const targetContactIds = Array.isArray(contact_ids)
+            ? contact_ids.map((id) => Number(id)).filter((id) => !isNaN(id))
+            : [];
 
-        if (doesExist) {
+        if (targetContactIds.length === 0) {
             return resError({
-                ack_msg: "Contact is assigned already",
+                ack_msg: "No contact selected to assign",
             });
         }
 
-        const insert = await routePlanVsContactsModelInstance.create(
-            {
+        const existingAssignments = await routePlanVsContactsModelInstance.findAll({
+            where: {
                 route_id,
-                contact_id: Number(contact_id),
-                a_application_login_id,
-                company_masters_id: findCompanyId.company_masters_id
-            }
-        );
+                contact_id: { [Op.in]: targetContactIds },
+                isDelete: 0,
+            },
+            raw: true,
+        });
+
+        const existingContactIdSet = new Set(existingAssignments.map((item) => Number(item.contact_id)));
+        const newContactIdsToInsert = targetContactIds.filter((id) => !existingContactIdSet.has(id));
+
+        if (newContactIdsToInsert.length === 0) {
+            return resError({
+                ack_msg: targetContactIds.length === 1 ? "Contact is assigned already" : "Selected contacts are already assigned",
+            });
+        }
+
+        const recordsToInsert = newContactIdsToInsert.map((cId) => ({
+            route_id,
+            contact_id: cId,
+            a_application_login_id,
+            company_masters_id: findCompanyId.company_masters_id,
+        }));
+
+        const insert = await routePlanVsContactsModelInstance.bulkCreate(recordsToInsert);
 
         if (!insert) {
             return resError({
-                ack_msg: "Failed to assign contact",
+                ack_msg: "Failed to assign contacts",
             });
         }
 
         return resSuccess({
-            ack_msg: "Contact assigned successfully",
-            developer_msg: "Contact assigned successfully",
+            ack_msg: targetContactIds.length === 1 ? "Contact assigned successfully" : "Contacts assigned successfully",
+            developer_msg: "Contacts assigned successfully",
         });
 
     } catch (error) {

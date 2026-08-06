@@ -3,11 +3,6 @@
 <head>
   <meta charset="UTF-8" />
   <title>Plan Purchase Invoice</title>
-
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-
   <style>
     @page { size: A4 portrait; margin: 10mm; }
     body {
@@ -101,13 +96,15 @@
   <div class="invoice">
 
     <!-- HEADER IMAGE -->
+    <% if (headerBase64) { %>
     <div class="text-center">
       <img 
-    src="data:image/png;base64,<%= headerBase64 %>"
+        src="data:image/png;base64,<%= headerBase64 %>"
         class="header-img"
         alt="DeskFlow Header"
       />
     </div>
+    <% } %>
     <hr />
     <!-- INVOICE NUMBER & DATE -->
     <div class="text-left" style="font-size:12px; margin-bottom:10px;">
@@ -230,6 +227,7 @@
     <hr />
 
     <!-- FOOTER IMAGE -->
+    <% if (footerBase64) { %>
       <div class="text-center">
         <img 
     src="data:image/png;base64,<%= footerBase64 %>"
@@ -237,6 +235,7 @@
         alt="DeskFlow Footer"
       />
       </div>
+    <% } %>
   </div>
 </body>
 </html>

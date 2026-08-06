@@ -96,6 +96,9 @@ export const PAGE_ID = {
   EXPENSE_DETAILED_REPORT: "127",
   JOB_CARD: "128",
   PRODUCTION: "129",
+  TARGET_VS_INCENTIVE_REPORT: "130",
+  CUSTOMER_SALES_PURCHASE_REPORT: "131",
+  ROUTE_PLANNER: "144",
   // Add more pages as needed
 };
 // config/googleApi.ts
