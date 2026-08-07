@@ -93,6 +93,36 @@ export const employeePayrollModel = (sequelize) => {
             type: TIME,
         },
 
+        late_in_allowed_count: {
+            type: INTEGER,
+            defaultValue: 0,
+        },
+        late_in_penalty_type: {
+            type: TINYINT,
+            defaultValue: 1,
+        },
+        late_in_penalty_value: {
+            type: DOUBLE,
+            defaultValue: 0,
+        },
+        early_out_allowed_count: {
+            type: INTEGER,
+            defaultValue: 0,
+        },
+        early_out_penalty_type: {
+            type: TINYINT,
+            defaultValue: 1,
+        },
+        early_out_penalty_value: {
+            type: DOUBLE,
+            defaultValue: 0,
+        },
+
+        hourly_leave_allowed_hours: {
+            type: STRING(100),
+            defaultValue: "0",
+        },
+
         sandwich_rule_applied: {
             type: TINYINT,
         },

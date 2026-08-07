@@ -627,6 +627,8 @@ export const attendanceDetailUpdate = async (req) => {
             const joinDate = employeeJoinDateMap.get(empId);
 
             const employeeMonthRows = []; // collect this employee's rows before sandwich pass
+            let lateInCount = 0;
+            let earlyOutCount = 0;
 
             for (const date of dateRange) {
                 if (joinDate && date < joinDate) continue;
@@ -642,9 +644,80 @@ export const attendanceDetailUpdate = async (req) => {
                 if (records.length <= 0 && leave_list.length <= 0 && !isWeekOffDay && !isHolidayDay) continue;
 
                 const { first_in, last_out, total_working_hour, entries } = processAttendance(records);
-                const { day_status, late_in, early_out, net_working_hour, roundoff_hours, overtime_hours, regular_overtime_hours, extra_overtime_hours, leave_info } = calcDayStatus(
+                let { day_status, late_in, early_out, net_working_hour, roundoff_hours, overtime_hours, regular_overtime_hours, extra_overtime_hours, leave_info } = calcDayStatus(
                     date, first_in, last_out, total_working_hour, payroll, compensation_list, leave_list, holiday_list, roundoffMap
                 );
+
+                let penaltyAdded = false;
+                if (late_in) {
+                    lateInCount++;
+                    const allowedLimit = payroll?.late_in_allowed_count ?? 0;
+                    if (payroll && lateInCount > allowedLimit) {
+                        const penaltyType = parseInt(payroll.late_in_penalty_type ?? 1, 10);
+                        const penaltyVal = Number(payroll.late_in_penalty_value ?? 0);
+                        const lateMins = timeStrToMinutes(late_in);
+
+                        let hoursDebit = 0;
+                        let amountDebit = 0;
+
+                        if (penaltyType === 1) { // 1: Fixed Given Hours Penalty
+                            hoursDebit = penaltyVal > 0 ? penaltyVal : (lateMins / 60);
+                        } else if (penaltyType === 2) { // 2: Actual Late In Duration Hours Penalty
+                            hoursDebit = (lateMins / 60);
+                        } else if (penaltyType === 3) { // 3: Fixed Given Amount Penalty (₹)
+                            amountDebit = penaltyVal;
+                        }
+
+                        if (hoursDebit > 0 || amountDebit > 0) {
+                            compensation_list.push({
+                                adjustment_type: 2,
+                                hours: hoursDebit,
+                                amount: amountDebit,
+                                type_id: 99,
+                                remark: `Late In Penalty (#${lateInCount})`
+                            });
+                            penaltyAdded = true;
+                        }
+                    }
+                }
+
+                if (early_out) {
+                    earlyOutCount++;
+                    const allowedLimit = payroll?.early_out_allowed_count ?? 0;
+                    if (payroll && earlyOutCount > allowedLimit) {
+                        const penaltyType = parseInt(payroll.early_out_penalty_type ?? 1, 10);
+                        const penaltyVal = Number(payroll.early_out_penalty_value ?? 0);
+                        const earlyMins = timeStrToMinutes(early_out);
+
+                        let hoursDebit = 0;
+                        let amountDebit = 0;
+
+                        if (penaltyType === 1) { // 1: Fixed Given Hours Penalty
+                            hoursDebit = penaltyVal > 0 ? penaltyVal : (earlyMins / 60);
+                        } else if (penaltyType === 2) { // 2: Actual Early Out Duration Hours Penalty
+                            hoursDebit = (earlyMins / 60);
+                        } else if (penaltyType === 3) { // 3: Fixed Given Amount Penalty (₹)
+                            amountDebit = penaltyVal;
+                        }
+
+                        if (hoursDebit > 0 || amountDebit > 0) {
+                            compensation_list.push({
+                                adjustment_type: 2,
+                                hours: hoursDebit,
+                                amount: amountDebit,
+                                type_id: 99,
+                                remark: `Early Out Penalty (#${earlyOutCount})`
+                            });
+                            penaltyAdded = true;
+                        }
+                    }
+                }
+
+                if (penaltyAdded) {
+                    ({ day_status, late_in, early_out, net_working_hour, roundoff_hours, overtime_hours, regular_overtime_hours, extra_overtime_hours, leave_info } = calcDayStatus(
+                        date, first_in, last_out, total_working_hour, payroll, compensation_list, leave_list, holiday_list, roundoffMap
+                    ));
+                }
 
                 employeeMonthRows.push({
                     employee_id: empId,
@@ -717,6 +790,18 @@ function buildRoundoffMap(roundoffRows) {
  * are kept unchanged (no rounding applied) so an incomplete rule set never
  * silently corrupts hours.
  */
+function calcPenaltyHourlyRate(payroll) {
+    if (!payroll) return 0;
+    const explicitRate = Number(payroll.overtime_amount_per_hour) || 0;
+    if (explicitRate > 0) return explicitRate;
+    const basicDa = Number(payroll.basic_da) || 0;
+    const dailyWorkingMins = timeStrToMinutes(payroll.daily_working_hours) || 480;
+    const dailyWorkingHours = dailyWorkingMins / 60;
+    const calculateDays = 30;
+    const denominator = calculateDays * dailyWorkingHours;
+    return denominator > 0 ? (basicDa / denominator) : 0;
+}
+
 function formatDiffMinutesToTimeStr(mins) {
     if (!mins || mins === 0) return "00:00:00";
     const sign = mins < 0 ? "-" : "";
