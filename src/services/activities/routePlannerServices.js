@@ -472,13 +472,13 @@ export const assignContactsToRoute = async (req) => {
 }
 
 export const removeContactsFromRoute = async (req) => {
-    const { id } = req.body;
+    const { ids } = req.body;
 
     try {
         const routePlanVsContactsModelInstance = routePlanVsContactsModel(req.tenantDB);
 
         const doesExistData = await routePlanVsContactsModelInstance.findOne({
-            where: { id, isDelete: "0" },
+            where: { id: ids, isDelete: "0" },
             raw: true
         });
 
@@ -494,13 +494,13 @@ export const removeContactsFromRoute = async (req) => {
                 isDelete: "1"
             },
             {
-                where: { id }
+                where: { id: ids }
             }
         );
 
         if (result) {
             return resSuccess({
-                ack_msg: "Contact removed successfully",
+                ack_msg: Array.isArray(ids) && ids.length > 1 ? "Contacts removed successfully" : "Contact removed successfully",
                 data: { item: result },
             });
         } else {

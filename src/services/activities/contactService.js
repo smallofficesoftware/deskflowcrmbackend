@@ -13,6 +13,7 @@ import { cartModel } from "../../models/activities/cartsModel.js";
 import { contactMessageHistory } from "../../models/activities/contactMessageHistoryModel.js";
 import { contactModel } from "../../models/activities/contactModel.js";
 import { inquiryModel } from "../../models/activities/inquiryModel.js";
+import { routePlanVsContactsModel } from "../../models/activities/routePlanVsContactsModel.js";
 import { reminderMessagesModel } from "../../models/activities/reminderMessagesModel.js";
 import { applicationLoginTypeRightModel } from "../../models/application_login/applicationLoginTypeRightModel.js";
 import loginModel from "../../models/application_login/loginModel.js";
@@ -102,7 +103,7 @@ export const getContactByIds = async (req) => {
 
 export const getAllContact = async (req, feed = false, onlyMyBlog = false) => {
   try {
-    let { ul, ll, labelId, sourceId, stageStatusId, request_flag, a_application_login_id, isPinByApplicationId, checkedOptionsContactassignOrNot, ids } = req.body;
+    let { ul, ll, labelId, sourceId, stageStatusId, request_flag, a_application_login_id, isPinByApplicationId, checkedOptionsContactassignOrNot, ids, route_id } = req.body;
     let masterWhere;
     const { whereClause, relevanceOrder, findCompanyId, showAllData, showPersonalData } = await buildContactWhereClause({ req, params: req.body })
     masterWhere = whereClause
@@ -128,6 +129,17 @@ export const getAllContact = async (req, feed = false, onlyMyBlog = false) => {
       masterWhere["id"] = {
         [Op.in]: ids.map(Number),
       }
+    } else if (route_id) {
+      const routePlanVsContactsModelInstance = routePlanVsContactsModel(req.tenantDB);
+      const assignedRouteContacts = await routePlanVsContactsModelInstance.findAll({
+        where: { route_id: Number(route_id), isDelete: "0" },
+        attributes: ["contact_id"],
+        raw: true
+      });
+      const routeContactIds = assignedRouteContacts.map(c => Number(c.contact_id));
+      masterWhere["id"] = {
+        [Op.in]: routeContactIds,
+      };
     }
 
     if (findCompanyId.company_flag === 1 || (findCompanyId.company_flag === 2 && showAllData)) {
