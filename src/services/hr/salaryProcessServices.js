@@ -98,6 +98,8 @@ function aggregateMonthAttendance(batchRows) {
         netWorkingMins: 0,        // SUM of net_working_hour -> "working_hour"
         compensationCredit: 0,
         compensationDebit: 0,
+        compensationAmountCredit: 0,
+        compensationAmountDebit: 0,
     };
 
     for (const row of batchRows) {
@@ -150,8 +152,14 @@ function aggregateMonthAttendance(batchRows) {
         if (Array.isArray(compList)) {
             for (const item of compList) {
                 const hrs = num(item.hours);
-                if (item.adjustment_type === 1) buckets.compensationCredit += hrs;
-                else if (item.adjustment_type === 2) buckets.compensationDebit += hrs;
+                const amt = num(item.amount);
+                if (item.adjustment_type === 1) {
+                    buckets.compensationCredit += hrs;
+                    buckets.compensationAmountCredit += amt;
+                } else if (item.adjustment_type === 2) {
+                    buckets.compensationDebit += hrs;
+                    buckets.compensationAmountDebit += amt;
+                }
             }
         }
     }
@@ -311,11 +319,12 @@ function calcPt(totalEarning, payroll) {
 // ── Main per-employee calculation ────────────────────────────────────────
 
 function calculateEmployeeSalary(year, month, payroll, batchRows) {
-    const calculateDays = resolveCalculateDays(year, month, payroll);
+const calculateDays = resolveCalculateDays(year, month, payroll);
 
     const {
         totalPresentDay, halfDay, holiday, totalWeekOff, totalLeave, totalPaidLeave, totalUnpaidLeave, totalAbsent,
         totalOvertimeMins, regularOtMins, extraOtMins, netWorkingMins, compensationCredit, compensationDebit,
+        compensationAmountCredit, compensationAmountDebit,
     } = aggregateMonthAttendance(batchRows);
 
     const calcMonthCount = parseInt(payroll.salary_cal_month_count, 10);
@@ -338,7 +347,7 @@ function calculateEmployeeSalary(year, month, payroll, batchRows) {
     const earnHeadSecond = num(payroll.earning_second);
     const earnHeadThird = num(payroll.earning_third);
 
-    const earnSubTotal = earnOtPayableAmt + bonusAmount + earnHeadFirst + earnHeadSecond + earnHeadThird;
+    const earnSubTotal = earnOtPayableAmt + bonusAmount + earnHeadFirst + earnHeadSecond + earnHeadThird + compensationAmountCredit;
     const totalEarning = earnSubTotal + dws.dws_total_earning;
 
     const dedEmpPf = calcEmployeePF(totalEarning, payroll);
@@ -351,7 +360,7 @@ function calculateEmployeeSalary(year, month, payroll, batchRows) {
     const dedSecond = num(payroll.deduction_second);
     const dedThird = num(payroll.deduction_third);
 
-    const totalDeduction = dedEmpPf + dedPradhanMantriPf + dedEsiEmployee + dedPt + dedInsurance + dedFirst + dedSecond + dedThird;
+    const totalDeduction = dedEmpPf + dedPradhanMantriPf + dedEsiEmployee + dedPt + dedInsurance + dedFirst + dedSecond + dedThird + compensationAmountDebit;
 
     const netBankPay = totalEarning - totalDeduction;
 

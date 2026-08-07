@@ -2190,3 +2190,13 @@ ALTER TABLE `salary_registers`
 
 ALTER TABLE `attendance_batch_process`
   ADD COLUMN `roundoff_hours` VARCHAR(100) DEFAULT '00:00:00' AFTER `net_working_hour`;
+
+07-08-2026 Antigravity
+ALTER TABLE `employee_payrolls`
+  ADD COLUMN `late_in_allowed_count` INT NOT NULL DEFAULT 0 AFTER `approve_ot_hours`,
+  ADD COLUMN `late_in_penalty_type` TINYINT NOT NULL DEFAULT 1 AFTER `late_in_allowed_count`,
+  ADD COLUMN `late_in_penalty_value` DOUBLE NOT NULL DEFAULT 0 AFTER `late_in_penalty_type`,
+  ADD COLUMN `early_out_allowed_count` INT NOT NULL DEFAULT 0 AFTER `late_in_penalty_value`,
+  ADD COLUMN `early_out_penalty_type` TINYINT NOT NULL DEFAULT 1 AFTER `early_out_allowed_count`,
+  ADD COLUMN `early_out_penalty_value` DOUBLE NOT NULL DEFAULT 0 AFTER `early_out_penalty_type`,
+  ADD COLUMN `hourly_leave_allowed_hours` VARCHAR(100) NOT NULL DEFAULT '0' AFTER `early_out_penalty_value`;

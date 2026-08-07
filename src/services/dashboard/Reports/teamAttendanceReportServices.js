@@ -91,6 +91,32 @@ export const getTeamAttendanceReport = async (req) => {
     req.body.a_application_login_id
   );
 
+  let targetCompanyId = findCompanyId?.company_masters_id;
+  let targetCompanyIds = targetCompanyId ? [targetCompanyId] : [];
+
+  if (targetCompanyId) {
+    const companyRecord = await companyModel.findOne({
+      where: { id: targetCompanyId, isDelete: 0 },
+      attributes: ["id", "parent_company_id"],
+      raw: true
+    });
+
+    if (companyRecord) {
+      if (companyRecord.parent_company_id) {
+        targetCompanyIds = [targetCompanyId, companyRecord.parent_company_id];
+      } else {
+        const subWorkspaces = await companyModel.findAll({
+          where: { parent_company_id: targetCompanyId, isDelete: 0 },
+          attributes: ["id"],
+          raw: true
+        });
+        if (subWorkspaces && subWorkspaces.length > 0) {
+          targetCompanyIds = [targetCompanyId, ...subWorkspaces.map(w => w.id)];
+        }
+      }
+    }
+  }
+
   // Modify the query to filter by selectedTeamMembers if provided
   let whereClause = {
     isDelete: 0,
@@ -107,7 +133,7 @@ export const getTeamAttendanceReport = async (req) => {
   if (showAllData) {
     whereClause = {
       isDelete: 0,
-      company_masters_id: findCompanyId.company_masters_id,
+      company_masters_id: { [Op.in]: targetCompanyIds },
     }
   }
   else if (showPersonalData) {
@@ -127,11 +153,13 @@ export const getTeamAttendanceReport = async (req) => {
   const companyVsApplicationLoginResult =
     await companyVsApplicationLoginModel.findAll({
       where: whereClause,
+      offset: (offset !== undefined && limit !== undefined && Number(limit) > 0) ? Number(offset) : undefined,
+      limit: (limit !== undefined && Number(limit) > 0) ? Number(limit) : undefined,
     });
 
   const companyCurrency = await companyModel.findOne({
     where: {
-      id: findCompanyId.company_masters_id,
+      id: { [Op.in]: targetCompanyIds },
       isDelete: 0,
     },
     attributes: ["currency_id"],
@@ -147,7 +175,7 @@ export const getTeamAttendanceReport = async (req) => {
 
   const leaveTypes = await LeaveTypeModel.findAll({
     where: {
-      company_masters_id: findCompanyId.company_masters_id,
+      company_masters_id: { [Op.in]: targetCompanyIds },
       isDelete: 0,
     },
     raw: true,
@@ -180,8 +208,6 @@ export const getTeamAttendanceReport = async (req) => {
         },
         attributes: [
           "username"],
-        offset, // ll -> offset
-        limit,
       });
 
 
@@ -232,7 +258,7 @@ export const getTeamAttendanceReport = async (req) => {
       const leaveData = await LMmodel.findAll({
         where: {
           a_application_login_id: item.a_application_login_id,
-          company_masters_id: findCompanyId.company_masters_id,
+          company_masters_id: { [Op.in]: targetCompanyIds },
           [Op.and]: [
             sequelize.where(
               sequelize.fn("DATE", sequelize.col("leave_date")),
@@ -291,7 +317,7 @@ export const getTeamAttendanceReport = async (req) => {
       if (req.body.request_flag === 1) {
         const viewAttendance = await AMmodel.findOne({
           where: {
-            company_masters_id: findCompanyId.company_masters_id,
+            company_masters_id: { [Op.in]: targetCompanyIds },
             a_application_login_id: item.a_application_login_id,
             isDelete: "0",
           },
