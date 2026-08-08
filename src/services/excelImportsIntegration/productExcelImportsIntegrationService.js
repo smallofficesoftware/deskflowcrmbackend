@@ -436,49 +436,52 @@ export const addProductByExcelSheetV2 = async (req) => {
             ]);
 
 
-
             const existingCodeSet = new Set(
-                existingProducts.map(p => String(p.product_code.toLowerCase()))
+                existingProducts
+                    .filter(p => p.product_code)
+                    .map(p => String(p.product_code).trim().toLowerCase())
             );
 
             const existingProductNameSet = new Map(
-                existingProducts.map(p => [String(p.product_name.toLowerCase()), p.category_id])
+                existingProducts
+                    .filter(p => p.product_name)
+                    .map(p => [String(p.product_name).trim().toLowerCase(), p.category_id])
             );
 
             const productTypesMasterListSet = new Map(
-                productTypesMasterList.map(p => [String(p.name.toLowerCase()), p.id])
+                productTypesMasterList
+                    .filter(p => p.name)
+                    .map(p => [String(p.name).trim().toLowerCase(), p.id])
             );
 
             const unitMasterListSet = new Map(
-                unitMasterList.map(p => [String(p.unit.toLowerCase()), p.id])
+                unitMasterList
+                    .filter(p => p.unit)
+                    .map(p => [String(p.unit).trim().toLowerCase(), p.id])
             );
 
             const existingCategorySet = new Map(
-                existingCategories.map(p => [
-                    String(p.category_name.toLowerCase()),
-                    p.id
-                ])
+                existingCategories
+                    .filter(p => p.category_name)
+                    .map(p => [String(p.category_name).trim().toLowerCase(), p.id])
             );
 
             const existingProductsGroupSet = new Map(
-                existingProductsGroup.map(p => [
-                    String(p.group_name.toLowerCase()),
-                    p.id
-                ])
+                existingProductsGroup
+                    .filter(p => p.group_name)
+                    .map(p => [String(p.group_name).trim().toLowerCase(), p.id])
             );
 
             const taxMasterIdGroupSet = new Map(
-                taxMasterList.map(p => [
-                    String(p.name.toLowerCase()),
-                    p.id
-                ])
+                taxMasterList
+                    .filter(p => p.name)
+                    .map(p => [String(p.name).trim().toLowerCase(), p.id])
             );
 
             const taxMasterValueGroupSet = new Map(
-                taxMasterList.map(p => [
-                    String(p.name.toLowerCase()),
-                    p.value
-                ])
+                taxMasterList
+                    .filter(p => p.name)
+                    .map(p => [String(p.name).trim().toLowerCase(), p.value])
             );
 
             const getProductIdOrFalse = (code) => {
@@ -571,14 +574,14 @@ export const addProductByExcelSheetV2 = async (req) => {
 
                 if (
                     isValid(product_code) &&
-                    existingCodeSet.has(product_code.toLowerCase())
+                    existingCodeSet.has(String(product_code).trim().toLowerCase())
                 ) {
                     productCodeDuplicateRows.push(rowNumber);
                     continue;
                 }
 
                 // ================= PRODUCT GROUP (SAFE MAP UPDATE) =================
-                const groupKey = product_group.toLowerCase();
+                const groupKey = String(product_group).trim().toLowerCase();
                 let product_group_id = existingProductsGroupSet.get(groupKey);
 
                 if (!product_group_id) {
@@ -603,7 +606,7 @@ export const addProductByExcelSheetV2 = async (req) => {
 
                 // ================= CATEGORY (SAFE MAP UPDATE) =================
 
-                const categoryKey = category_name.toLowerCase();
+                const categoryKey = String(category_name).trim().toLowerCase();
                 let category_id = existingCategorySet.get(categoryKey);
 
                 if (!category_id) {
@@ -633,7 +636,7 @@ export const addProductByExcelSheetV2 = async (req) => {
                 let GST = 0;
 
                 if (isValid(gst_id)) {
-                    const gstKey = gst_id.toLowerCase();
+                    const gstKey = String(gst_id).trim().toLowerCase();
 
                     gst_id_a = taxMasterIdGroupSet.get(gstKey);
                     if (!isValid(gst_id_a)) {
@@ -648,7 +651,7 @@ export const addProductByExcelSheetV2 = async (req) => {
                 let purchase_gst_per = 0;
 
                 if (isValid(purchase_gst_id)) {
-                    const purchaseGstKey = purchase_gst_id.toLowerCase();
+                    const purchaseGstKey = String(purchase_gst_id).trim().toLowerCase();
 
                     purchase_gst_id_a = taxMasterIdGroupSet.get(purchaseGstKey);
                     if (!isValid(purchase_gst_id_a)) {
@@ -663,7 +666,7 @@ export const addProductByExcelSheetV2 = async (req) => {
                 // ================= PRODUCT NAME DUPLICATE =================
 
                 if (
-                    existingProductNameSet.get(product_name.toLowerCase()) === category_id
+                    existingProductNameSet.get(String(product_name).trim().toLowerCase()) === category_id
                 ) {
                     productAlredyExistInGivenCategoryNames.push(rowNumber);
                     continue;
@@ -672,7 +675,7 @@ export const addProductByExcelSheetV2 = async (req) => {
                 // ================= PRODUCT TYPE =================
 
                 const product_type_id = productTypesMasterListSet.get(
-                    product_types.toLowerCase()
+                    String(product_types).trim().toLowerCase()
                 );
 
                 if (!isValid(product_type_id)) {
@@ -682,15 +685,15 @@ export const addProductByExcelSheetV2 = async (req) => {
 
                 // ================= UNIT =================
 
-                const unit_id = unitMasterListSet.get(unit.toLowerCase()) || 0;
+                const unit_id = unitMasterListSet.get(String(unit).trim().toLowerCase()) || 0;
 
                 if (!isValid(unit_id)) {
                     invalidUnitName.push(rowNumber);
                     continue;
                 }
 
-                product_inner_unit_id = isValid(product_inner_unit) ? unitMasterListSet.get(product_inner_unit.toLowerCase()) || unit_id : unit_id;
-                product_outer_unit_id = isValid(product_outer_unit) ? unitMasterListSet.get(product_outer_unit.toLowerCase()) || unit_id : unit_id;
+                product_inner_unit_id = isValid(product_inner_unit) ? unitMasterListSet.get(String(product_inner_unit).trim().toLowerCase()) || unit_id : unit_id;
+                product_outer_unit_id = isValid(product_outer_unit) ? unitMasterListSet.get(String(product_outer_unit).trim().toLowerCase()) || unit_id : unit_id;
 
 
                 // ================= RATE & GST =================
@@ -754,49 +757,107 @@ export const addProductByExcelSheetV2 = async (req) => {
 
             // Mapping arrays to messages
             const messageMap = [
-                { rows: productGrouupBlankRows, text: "Product Group name is blank." },
-                { rows: categoryBlankRows, text: "Category name is blank." },
+                { rows: productGrouupBlankRows, text: "Product group is blank." },
+                { rows: categoryBlankRows, text: "Category is blank." },
                 { rows: productTypeBlankRows, text: "Product type is blank." },
                 { rows: productNameBlankRows, text: "Product name is blank." },
-                { rows: unitBlankRows, text: "Unit name is blank." },
-                { rows: rateBlankRows, text: "Rate name is blank." },
-                { rows: gstBlankRows, text: "GST name is blank." },
-                { rows: productCodeDuplicateRows, text: "Product Code is Already Exist." },
-                { rows: invalidProductGroupNames, text: "Invalid Product Group name." },
-                { rows: invalidCategoryNames, text: "Invalid category name." },
-                { rows: invalidGstLabels, text: "Invalid GST Label." },
-                { rows: invalidPurchaseGstLabels, text: "Invalid Purchase GST Label." },
-                { rows: productAlredyExistInGivenCategoryNames, text: "Product Name Already Exist given category." },
-                { rows: productTypesInvalidNames, text: "Invalid product types." },
-                { rows: rateGstInvalidRows, text: "Invalid Rate or GST." },
-                { rows: invalidUnitName, text: "Invalid Unit." },
+                { rows: unitBlankRows, text: "Unit is blank." },
+                { rows: rateBlankRows, text: "Rate is blank." },
+                { rows: gstBlankRows, text: "GST is blank." },
+                { rows: productCodeDuplicateRows, text: "Product code is duplicate." },
+                { rows: invalidCategoryNames, text: "Invalid category." },
+                { rows: invalidGstLabels, text: "Invalid GST label." },
+                { rows: invalidPurchaseGstLabels, text: "Invalid purchase GST label." },
+                { rows: invalidProductGroupNames, text: "Invalid product group." },
+                { rows: productAlredyExistInGivenCategoryNames, text: "Product already exists in category." },
+                { rows: productTypesInvalidNames, text: "Invalid product type." },
+                { rows: invalidUnitName, text: "Invalid unit." },
+                { rows: rateGstInvalidRows, text: "Invalid rate or GST." },
             ];
 
             // Build message
             let responseMessage = messageMap
-                .map(item =>
+                .map((item) =>
                     item.rows
-                        .map(row => `Row Number <b>${row}</b> : ${item.text}.<br/>`)
+                        .map(
+                            (row) =>
+                                `Row Number <b>${row}</b> : ${item.text}<br/>`
+                        )
                         .join("")
                 )
                 .join("");
 
             if (!isValid(sanitizedData)) {
                 return resError({
-                    ack_msg: ".",
-                    developer_msg: "",
-                    data: responseMessage || ""
-
+                    ack_msg: "No valid data found.",
+                    developer_msg: "All rows were skipped due to validation errors.",
+                    data: responseMessage || "",
                 });
             }
 
-            const productInsertData = sanitizedData.map(
-                ({ category_name, ...rest }) => {
+            const processedProducts = sanitizedData.map((product) => {
+                const {
+                    product_types,
+                    category_id,
+                    product_name,
+                    product_alias,
+                    product_code,
+                    product_description,
+                    product_inner_qty,
+                    product_inner_unit,
+                    product_outer_qty,
+                    product_outer_unit,
+                    unit_id,
+                    weight_or_size,
+                    min_stock_quantity,
+                    max_stock_quantity,
+                    rate,
+                    GST,
+                    gst_id,
+                    purchase_rate,
+                    purchase_gst_per,
+                    purchase_gst_id,
+                    hsn_code,
+                    ...customFields
+                } = product;
+
+                return {
+                    company_masters_id: findCompanyId.company_masters_id,
+                    a_application_login_id,
+                    product_group_id: product.product_group_id,
+                    category_id,
+                    product_types,
+                    product_name,
+                    product_alias,
+                    product_code,
+                    product_description,
+                    product_inner_qty,
+                    product_inner_unit,
+                    product_outer_qty,
+                    product_outer_unit,
+                    unit: unit_id,
+                    weight_or_size,
+                    min_stock_quantity,
+                    max_stock_quantity,
+                    rate,
+                    GST,
+                    gst_id,
+                    purchase_rate,
+                    purchase_gst_per,
+                    purchase_gst_id,
+                    hsn_code,
+                    created_date_time: formattedDate,
+                    ...customFields,
+                };
+            });
+
+            const productInsertData = processedProducts.map(
+                (product, index) => {
+                    const product_barcode_number = Date.now() + index;
+
                     return {
-                        ...rest,
-                        created_date_time: formattedDate,
-                        a_application_login_id,
-                        company_masters_id: findCompanyId.company_masters_id,
+                        ...product,
+                        product_barcode_number,
                     };
                 }
             );
@@ -821,8 +882,14 @@ export const addProductByExcelSheetV2 = async (req) => {
 
             for (const right of userRightsList) {
                 try {
-                    const json = JSON.parse(right.a_page_id_rights_jason || "{}");
-                    if (typeof json.limit === "number" && json.limit > 0) {
+                    let json = right.a_page_id_rights_jason;
+                    if (typeof json === "string") {
+                        json = JSON.parse(json);
+                        if (typeof json === "string") {
+                            json = JSON.parse(json);
+                        }
+                    }
+                    if (typeof json?.limit === "number" && json.limit > 0) {
                         if (userList.length + processedProducts.length > json.limit) {
                             return resError({
                                 ack_msg: "Your Product Limit Exceeded",
@@ -1114,14 +1181,14 @@ export const addProductByExcelSheetUpdateData = async (req) => {
 
         const taxMasterIdGroupSet = new Map(
             taxMasterList.map(p => [
-                p.name.toLowerCase(),
+                String(p.name).toLowerCase(),
                 p.id
             ])
         );
 
         const taxMasterValueGroupSet = new Map(
             taxMasterList.map(p => [
-                p.name.toLowerCase(),
+                String(p.name).toLowerCase(),
                 p.value
             ])
         );
@@ -1158,13 +1225,13 @@ export const addProductByExcelSheetUpdateData = async (req) => {
 
             const rate = parseFloat(v.rate) || 0;
 
-            const gst_id = v.gst_id || 0;
+            const gst_id = isValid(v.gst_id) ? String(v.gst_id).trim() : "";
 
             const purchase_rate =
                 parseFloat(v.purchase_rate) || 0;
 
             const purchase_gst_id =
-                v.purchase_gst_id || 0;
+                isValid(v.purchase_gst_id) ? String(v.purchase_gst_id).trim() : "";
 
             const min_stock_quantity =
                 parseInt(v.min_stock_quantity) || 0;
@@ -1192,25 +1259,25 @@ export const addProductByExcelSheetUpdateData = async (req) => {
             let GST = 0;
             let gst_id_a = "";
             if (isValid(gst_id)) {
-                const gstKey = taxMasterIdGroupSet.get(gst_id.toLowerCase())
+                const gstKey = taxMasterIdGroupSet.get(String(gst_id).toLowerCase());
                 if (!isValid(gstKey)) {
                     gstBlankRows.push(rowNumber);
                     continue;
                 }
                 gst_id_a = gstKey;
-                GST = taxMasterValueGroupSet.get(gst_id.toLowerCase())
+                GST = taxMasterValueGroupSet.get(String(gst_id).toLowerCase()) || 0;
             }
 
             let purchase_gst_per = 0;
             let purchase_gst_id_a = "";
-            if (isValid(gst_id)) {
-                const gstKey = taxMasterIdGroupSet.get(purchase_gst_id.toLowerCase())
+            if (isValid(purchase_gst_id)) {
+                const gstKey = taxMasterIdGroupSet.get(String(purchase_gst_id).toLowerCase());
                 if (!isValid(gstKey)) {
                     purchaseGstBlankRows.push(rowNumber);
                     continue;
                 }
                 purchase_gst_id_a = gstKey;
-                purchase_gst_per = taxMasterValueGroupSet.get(purchase_gst_id.toLowerCase())
+                purchase_gst_per = taxMasterValueGroupSet.get(String(purchase_gst_id).toLowerCase()) || 0;
             }
 
             // ================= NEGATIVE VALIDATION =================
@@ -1281,6 +1348,14 @@ export const addProductByExcelSheetUpdateData = async (req) => {
             {
                 rows: productNameBlankRows,
                 text: "Product name is blank."
+            },
+            {
+                rows: gstBlankRows,
+                text: "Invalid Sales GST Label."
+            },
+            {
+                rows: purchaseGstBlankRows,
+                text: "Invalid Purchase GST Label."
             },
             {
                 rows: negativeValueRows,

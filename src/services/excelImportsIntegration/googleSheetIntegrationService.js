@@ -58,8 +58,15 @@ const normalize = (name) => {
  * Safe JSON parse with fallback
  */
 const safeJsonParse = (jsonString, fallback = null) => {
+    if (typeof jsonString === "object" && jsonString !== null) return jsonString;
     try {
-        return JSON.parse(jsonString);
+        let parsed = JSON.parse(jsonString);
+        if (typeof parsed === "string") {
+            try {
+                parsed = JSON.parse(parsed);
+            } catch (e) {}
+        }
+        return parsed;
     } catch (error) {
         console.error("JSON parse error:", error);
         return fallback;

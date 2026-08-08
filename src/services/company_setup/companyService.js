@@ -822,6 +822,31 @@ export const companyPlaneCreate = async (req) => {
       return resError({ developer_msg: "Company Plan creation issue" });
     }
 
+    // Update plan-wise rights if tenant database already exists (upgrade/renewal case)
+    try {
+      const tenantRecord = await tenantMasterModel.findOne({
+        where: {
+          company_masters_id: findCompanyId.company_masters_id,
+          isDelete: 0,
+        },
+        attributes: ["id"],
+      });
+
+      if (tenantRecord) {
+        const tenantDBInfo = await getTenantDB(a_application_login_id, findCompanyId.company_masters_id);
+        if (tenantDBInfo?.sequelize) {
+          await rightsAdd({
+            company_id: findCompanyId.company_masters_id,
+            tenantDB: tenantDBInfo.sequelize,
+            a_application_login_id,
+            plan_number: plan_number
+          });
+        }
+      }
+    } catch (rightsErr) {
+      console.error("Error adding plan rights in companyPlaneCreate:", rightsErr.message);
+    }
+
     // Skip rights update if renewing SAME plan
     if (oldPlanId && oldPlanId === plan_number) {
       return resSuccess({
@@ -2760,11 +2785,19 @@ export const TeamJoinInnerMain = async (req, res) => {
 
     for (const userRight of userRightsList) {
       try {
-        const rightsJson = JSON.parse(
-          userRight.dataValues.a_page_id_rights_jason
-        );
+        let rightsJson = userRight.dataValues.a_page_id_rights_jason;
+        if (typeof rightsJson === "string") {
+          try {
+            rightsJson = JSON.parse(rightsJson);
+            if (typeof rightsJson === "string") {
+              rightsJson = JSON.parse(rightsJson);
+            }
+          } catch (e) {
+            rightsJson = {};
+          }
+        }
 
-        if (typeof rightsJson.limit === "number") {
+        if (typeof rightsJson?.limit === "number") {
           if (rightsJson.limit > 0 && userCount >= rightsJson.limit) {
             return resError({
               ack_msg: "Your Team Member Limit Exceeded",
@@ -2901,7 +2934,7 @@ export const TeamJoinInnerMain = async (req, res) => {
           company_masters_id: company_id,
           page_id: page.id,
           page_name: page.page_name,
-          a_page_id_rights_jason: JSON.stringify(pageRights),
+          a_page_id_rights_jason: pageRights,
           created_date_time: new Date(),
         });
       }
@@ -4396,9 +4429,10 @@ const rightsAdd = async (returnValue) => {
 
     console.log("old plannnnnnnnnnn", oldPlanId);
 
+    const planIdToUse = plan_number || getAllCompanyDetail?.dataValues?.plan_id;
 
     const planPages = await planVsPageModel.findAll({
-      where: { isDelete: 0, plan_id: plan_number },
+      where: { isDelete: 0, plan_id: planIdToUse },
       attributes: ["page_id", "data_limit"],
     });
     console.log("new plan pages", planPages);
@@ -4447,13 +4481,17 @@ const rightsAdd = async (returnValue) => {
       ],
     });
 
-    if (!companyUsers.length) {
-      return resError({ developer_msg: "No users found for the company" });
-    }
+    const targetUsers = companyUsers.length > 0 ? companyUsers : [
+      {
+        company_masters_id: company_id,
+        company_flag: 1, // Owner
+        a_application_login_id: a_application_login_id,
+      }
+    ];
 
-    const upsertPromises = [];
+    const rightsToInsert = [];
 
-    for (const user of companyUsers) {
+    for (const user of targetUsers) {
       const userLoginId = user.a_application_login_id;
       const isOwner = user.company_flag === 1;
 
@@ -4463,17 +4501,15 @@ const rightsAdd = async (returnValue) => {
         );
 
         for (const removedPageId of removedPageIds) {
-          upsertPromises.push(
-            applicationLoginTypeRightModelIntance.update(
-              { isDelete: 1 },
-              {
-                where: {
-                  a_application_login_id: userLoginId,
-                  company_masters_id: company_id,
-                  page_id: removedPageId,
-                },
-              }
-            )
+          await applicationLoginTypeRightModelIntance.update(
+            { isDelete: 1 },
+            {
+              where: {
+                a_application_login_id: userLoginId,
+                company_masters_id: company_id,
+                page_id: removedPageId,
+              },
+            }
           );
         }
       }
@@ -4551,20 +4587,25 @@ const rightsAdd = async (returnValue) => {
             };
         }
 
-        upsertPromises.push(
-          applicationLoginTypeRightModelIntance.upsert({
-            a_application_login_id: userLoginId,
-            company_masters_id: company_id,
-            page_id: dataValues.id,
-            page_name: dataValues.page_name,
-            a_page_id_rights_jason: JSON.stringify(rightsJson),
-            created_date_time: formattedDateAndTime,
-          })
-        );
+        rightsToInsert.push({
+          a_application_login_id: userLoginId,
+          company_masters_id: company_id,
+          page_id: dataValues.id,
+          page_name: dataValues.page_name,
+          a_page_id_rights_jason: rightsJson,
+          created_date_time: formattedDateAndTime,
+          isDelete: 0,
+          isActive: 1,
+        });
       }
     }
 
-    await Promise.all(upsertPromises);
+    if (rightsToInsert.length > 0) {
+      await applicationLoginTypeRightModelIntance.bulkCreate(rightsToInsert, {
+        updateOnDuplicate: ["a_page_id_rights_jason", "page_name", "isDelete", "isActive", "created_date_time"],
+      });
+      console.log(`[rightsAdd] Successfully inserted ${rightsToInsert.length} plan-wise rights for company ${company_id}, plan ${planIdToUse}`);
+    }
 
     return resSuccess({
       data: "Your Plan is Created/Updated and rights refreshed",

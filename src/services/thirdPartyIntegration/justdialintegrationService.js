@@ -88,8 +88,18 @@ export const addContactByjustdialPushApi = async (req, res) => {
         // return
         for (const right of contactRightsList) {
             try {
-                const rightsJson = JSON.parse(right.a_page_id_rights_jason || "{}");
-                if (typeof rightsJson.limit === "number" && rightsJson.limit > 0) {
+                let rightsJson = right.a_page_id_rights_jason;
+                if (typeof rightsJson === "string") {
+                    try {
+                        rightsJson = JSON.parse(rightsJson);
+                        if (typeof rightsJson === "string") {
+                            rightsJson = JSON.parse(rightsJson);
+                        }
+                    } catch (e) {
+                        rightsJson = {};
+                    }
+                }
+                if (typeof rightsJson?.limit === "number" && rightsJson.limit > 0) {
                     if (currentContactCount >= rightsJson.limit) {
                         return resError({
                             ack_msg: `Limit ${rightsJson.limit} reached for Company. Current Contact In Your System: ${currentContactCount}`,
