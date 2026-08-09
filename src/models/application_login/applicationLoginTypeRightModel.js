@@ -1,6 +1,7 @@
 import {
   DATE,
   INTEGER,
+  JSON,
   STRING,
   TINYINT
 } from "sequelize";

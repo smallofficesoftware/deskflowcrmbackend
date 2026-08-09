@@ -48,6 +48,7 @@ const allowedOrigins = [
     "https://wadmin.smalloffice.in",
 ];
 const app = express();
+app.set("trust proxy", true);
 const server = http.createServer(app);
 export const io = new Server(server, {
     cors: {

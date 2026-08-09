@@ -138,3 +138,7 @@ export const WP_V2_URL = process.env.WP_V2_URL;
 
 
 export const API_LOG_ENABLE_FLAG = process.env.API_LOG_ENABLE_FLAG;
+
+export const MAINTENANCE_BYPASS_IPS = process.env.MAINTENANCE_BYPASS_IPS
+  ? process.env.MAINTENANCE_BYPASS_IPS.split(",").map((ip) => ip.trim())
+  : [];
