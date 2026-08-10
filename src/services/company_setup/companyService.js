@@ -236,12 +236,27 @@ export const getAllCompany = async (req) => {
   }
 };
 export const QRCompany = async (req) => {
-  let { a_application_login_id } = req.body;
+  let { a_application_login_id, company_masters_id } = req.body || {};
+  const activeCompanyHeader = req?.headers?.["x-company-id"];
 
   try {
+    let targetCompanyId = company_masters_id || (activeCompanyHeader ? Number(activeCompanyHeader) : null);
+
+    if (!targetCompanyId) {
+      const findCompanyId = await getCompanyByLoginId(a_application_login_id);
+      targetCompanyId = findCompanyId?.company_masters_id;
+    }
+
+    let whereClause = { isDelete: '0' };
+    if (targetCompanyId) {
+      whereClause.id = targetCompanyId;
+    } else if (a_application_login_id) {
+      whereClause.a_application_login_id = a_application_login_id;
+    }
+
     const company = await companyModel.findOne({
-      where: { a_application_login_id, isDelete: '0' },
-      attributes: ["qr_code"],
+      where: whereClause,
+      attributes: ["id", "qr_code"],
     });
 
     if (!company) {
@@ -254,10 +269,10 @@ export const QRCompany = async (req) => {
         100000000000 + Math.random() * 900000000000
       ).toString();
 
-      // Update the row
+      // Update only this specific company row
       await companyModel.update(
         { qr_code: newQrCode },
-        { where: { a_application_login_id, isDelete: '0' } }
+        { where: { id: company.id, isDelete: '0' } }
       );
 
       // Reflect it on the instance so we can return it
@@ -688,10 +703,35 @@ export const companyCreate = async (req, res) => {
             const contactModels = contactModel(tenantDB);
             const CTMModel = contactMessageHistory(tenantDB);
 
-            // Find contact
-            let contactCreate = await contactModels.findOne({
-              where: { mobile_number: company_contact },
-            });
+            // Comprehensive contact duplication check
+            const rawMobile = company_contact ? String(company_contact).trim() : "";
+            const normalizedMobile = normalizeToTenDigit(rawMobile);
+
+            const mobileConditions = [];
+            if (normalizedMobile) {
+              mobileConditions.push({ mobile_number: normalizedMobile });
+              mobileConditions.push({ raw_mobile_number: normalizedMobile });
+            }
+            if (rawMobile) {
+              mobileConditions.push({ mobile_number: rawMobile });
+              mobileConditions.push({ raw_mobile_number: rawMobile });
+            }
+            if (normalizedMobile && normalizedMobile.startsWith("91") && normalizedMobile.length === 12) {
+              const tenDigit = normalizedMobile.slice(2);
+              mobileConditions.push({ mobile_number: tenDigit });
+              mobileConditions.push({ raw_mobile_number: tenDigit });
+            }
+
+            let contactCreate = null;
+            if (mobileConditions.length > 0) {
+              contactCreate = await contactModels.findOne({
+                where: {
+                  [Op.or]: mobileConditions,
+                  company_masters_id: tenantDBFind.company_masters_id,
+                  isDelete: 0,
+                },
+              });
+            }
 
             let isNewContact = false;
 
@@ -702,12 +742,15 @@ export const companyCreate = async (req, res) => {
                 person_name: company_name,
                 email_id: company_email,
                 company_name: company_name,
-                mobile_number: company_contact,
+                mobile_number: normalizedMobile || rawMobile || "",
+                raw_mobile_number: rawMobile || "",
                 contact_status: -1,
                 a_application_login_id: tenantDBFind.a_application_login_id,
                 company_masters_id: tenantDBFind.company_masters_id,
                 assinged_to_work_a_application_id: WBSITE_LEAD_ASSIGN_ID,
                 source_type_id: -8,
+                is_read_by_a_application_login_id: "",
+                is_unread: 1,
               });
             }
             const formatted = moment().format("YYYY-MM-DD HH:mm:ss");

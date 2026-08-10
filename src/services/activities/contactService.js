@@ -1076,6 +1076,8 @@ export const addContactByQR = async (req, res) => {
     let a_company_name = companyData.dataValues.company_name;
     let a_company_id = companyData.dataValues.id;
     req.headers["x-tenant-id"] = tenantId;
+    req.headers["x-company-id"] = company_masters_id;
+    req.body.company_masters_id = company_masters_id;
     await new Promise((resolve, reject) => {
       tenantMiddleware(req, {}, (err) => {
         if (err) return reject(err);
@@ -1179,6 +1181,7 @@ export const addContactByQR = async (req, res) => {
         description: your_requirement,
         source_type_id: -12,
         is_read_by_a_application_login_id: "",
+        is_unread: 1,
         assinged_to_work_a_application_id: assinged_to_work_a_application_id
       });
       const contactEmailSendList = [];
@@ -1360,18 +1363,6 @@ export const addContactByQR = async (req, res) => {
           message_side: 2,
           message_type_id: 0,
         });
-
-        const ContactMaster = contactModel(req.tenantDB);
-        await ContactMaster.update(
-          {
-            is_read_by_a_application_login_id: a_application_login_id,
-          },
-          {
-            where: {
-              id: contactCreate.id,
-            },
-          }
-        );
       }
     }
     try {
@@ -1491,6 +1482,8 @@ export const addContactByOnlineStore = async (req, res) => {
     const tenantId = a_application_login_id;
 
     req.headers["x-tenant-id"] = tenantId;
+    req.headers["x-company-id"] = company_masters_id;
+    req.body.company_masters_id = company_masters_id;
 
     await new Promise((resolve, reject) => {
       tenantMiddleware(req, {}, (err) => {

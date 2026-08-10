@@ -2544,7 +2544,7 @@ export const getAllMainCommon = async (req) => {
 
         const activeCompanyHeader = req?.headers?.["x-company-id"];
 
-        if (table === "company_masters" && activeCompanyHeader && !whereObj.id) {
+        if (table === "company_masters" && activeCompanyHeader && !whereObj.id && !whereObj.qr_code) {
           queryOptions.where = {
             ...whereObj,
             id: Number(activeCompanyHeader),
@@ -2552,7 +2552,7 @@ export const getAllMainCommon = async (req) => {
           delete queryOptions.where.a_application_login_id;
         } else {
           if (whereObj.a_application_login_id) {
-            if (table === "company_masters" && activeCompanyHeader) {
+            if (table === "company_masters" && activeCompanyHeader && !whereObj.qr_code) {
               queryOptions.where = {
                 ...whereObj,
                 id: Number(activeCompanyHeader),
