@@ -1,4 +1,4 @@
-import { adjustmentTypesFetch, compensationAdjustmentDelete, compensationAdjustmentFetch, compensationAdjustmentInsert, compensationAdjustmentUpdate } from "../../services/hr/compensationAdjustmentServices.js";
+import { adjustmentTypesFetch, compensationAdjustmentDelete, compensationAdjustmentFetch, compensationAdjustmentInsert, compensationAdjustmentUpdate, generateCompensationAdjustmentSampleSheet, importCompensationAdjustmentByExcel } from "../../services/hr/compensationAdjustmentServices.js";
 import callServiceMethod from "../baseController.js";
 
 export const compensationAdjustmentInsertProvider = async (req, res) => {
@@ -16,4 +16,12 @@ export const compensationAdjustmentDeleteProvider = async (req, res) => {
 
 export const adjustmentTypesFetchProvider = async (req, res) => {
     await callServiceMethod(req, res, adjustmentTypesFetch(req), "adjustmentTypesFetchProvider");
+};
+
+export const generateCompensationAdjustmentSampleSheetProvider = async (req, res) => {
+    await callServiceMethod(req, res, generateCompensationAdjustmentSampleSheet(req), "generateCompensationAdjustmentSampleSheetProvider");
+};
+
+export const getExcelSheetCompensationAdjustmentProvider = async (req, res) => {
+    await callServiceMethod(req, res, importCompensationAdjustmentByExcel(req), "getExcelSheetCompensationAdjustmentProvider");
 };
