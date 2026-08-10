@@ -10,6 +10,7 @@ import {
   formatDateAndTimeCreateDateTime,
   generateFileName,
   isValid,
+  normalizeToTenDigit,
   resBadRequest,
   resError,
   resSuccess,
@@ -3873,14 +3874,36 @@ export const createCustomerSupportTicket = async (req, res) => {
     const ContactModel = contactModel(tenantDB);
 
     let contactId = null;
+    const targetMobile = recoveryMobile || phone_number || "";
+    const normalizedMobile = normalizeToTenDigit(targetMobile);
+    const rawMobile = targetMobile ? String(targetMobile).trim() : "";
 
-    const contactData = await ContactModel.findOne({
-      where: {
-        mobile_number: recoveryMobile,
-        isDelete: 0
-      },
-      attributes: ["id"]
-    });
+    const mobileConditions = [];
+    if (normalizedMobile) {
+      mobileConditions.push({ mobile_number: normalizedMobile });
+      mobileConditions.push({ raw_mobile_number: normalizedMobile });
+    }
+    if (rawMobile) {
+      mobileConditions.push({ mobile_number: rawMobile });
+      mobileConditions.push({ raw_mobile_number: rawMobile });
+    }
+    if (normalizedMobile && normalizedMobile.startsWith("91") && normalizedMobile.length === 12) {
+      const tenDigit = normalizedMobile.slice(2);
+      mobileConditions.push({ mobile_number: tenDigit });
+      mobileConditions.push({ raw_mobile_number: tenDigit });
+    }
+
+    let contactData = null;
+    if (mobileConditions.length > 0) {
+      contactData = await ContactModel.findOne({
+        where: {
+          [Op.or]: mobileConditions,
+          company_masters_id: tenantDBFind.company_masters_id,
+          isDelete: 0
+        },
+        attributes: ["id"]
+      });
+    }
 
     if (contactData) {
 
@@ -3889,9 +3912,10 @@ export const createCustomerSupportTicket = async (req, res) => {
     } else {
 
       const newContact = await ContactModel.create({
-        person_name: username,
-        company_name: getCompanyName.company_name,
-        mobile_number: recoveryMobile,
+        person_name: username || user_name || "unknown",
+        company_name: getCompanyName?.company_name || "",
+        mobile_number: normalizedMobile || rawMobile || "",
+        raw_mobile_number: rawMobile || "",
         contact_status: -1,
         company_masters_id: tenantDBFind.company_masters_id,
         a_application_login_id: tenantDBFind.a_application_login_id,
