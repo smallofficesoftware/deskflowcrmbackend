@@ -1572,7 +1572,7 @@ export const fetchMiracleProducts = async (req) => {
         // ---------------------------------------------------------
         const ledgerPayload = {
             "rptfield": [
-                ["prdnm", "prdid", "gstunt", "hsncode", "minstk", "ordlev", "lprate", "lsrate", "prdmrp", "commnm", "slabnm", "opamt", "opqty1", "recqty1", "iqty1", "clqty1", "prdcrdt", "prdupdt", "lastactiondt"]
+                "prdnm", "prdid", "gstunt", "hsncode", "minstk", "ordlev", "lprate", "lsrate", "prdmrp", "commnm", "slabnm", "opamt", "opqty1", "recqty1", "iqty1", "clqty1", "prdcrdt", "prdupdt", "lastactiondt"
             ]
         };
 
@@ -1673,6 +1673,21 @@ export const fetchMiracleProducts = async (req) => {
     }
 };
 
+let barcodeCounter = 0;
+let lastBarcodeTimestamp = 0;
+
+function generateProductBarcode() {
+    const now = Date.now();
+    if (now !== lastBarcodeTimestamp) {
+        lastBarcodeTimestamp = now;
+        barcodeCounter = 0;
+    }
+    barcodeCounter++;
+    const timestampPart = now.toString().slice(-9);
+    const counterPart = barcodeCounter.toString().padStart(4, "0");
+    return timestampPart + counterPart;
+}
+
 // --- NEW HELPER: Processes in chunks and tracks Success vs Failure per item ---
 async function processInChunksWithResults(items, chunkSize, processItem) {
     let successCount = 0;
@@ -1690,9 +1705,15 @@ async function processInChunksWithResults(items, chunkSize, processItem) {
                 successCount++;
             } else {
                 failedCount++;
+                const detailedError = result.reason?.errors?.map(e => e.message).join(', ')
+                    || result.reason?.parent?.sqlMessage
+                    || result.reason?.original?.sqlMessage
+                    || result.reason?.message
+                    || 'Unknown database error';
+                console.error("Batch item process error:", chunk[index], result.reason);
                 errors.push({
                     productId: chunk[index].miracle_UniqueId || 'Unknown',
-                    message: result.reason?.message || 'Unknown database error'
+                    message: detailedError
                 });
             }
         });
@@ -1928,6 +1949,8 @@ export const processProducts = async (req) => {
             const calculatedNetPurchaseRate = tp.lprate;
 
             const mappedData = {
+                company_masters_id: company_id,
+                a_application_login_id: loginId,
                 product_name: tp.prdnm || "",
                 product_code: tp.prdalinm || "",
                 product_alias: tp.prdalinm || "",
@@ -1942,11 +1965,12 @@ export const processProducts = async (req) => {
                 purchase_gst_per: gstPercentage,
                 purchase_gst_id: tp.slabnm ? (taxMap.get(tp.slabnm.trim().toLowerCase()) || "") : "",
                 hsn_code: tp.hsncode || "",
-                product_group_id: groupId || -1,
+                product_group_id: groupId || "",
                 category_id: categoryId || 1,
                 min_stock_quantity: tp.minstk || 0,
                 max_stock_quantity: tp.ordlev || 0,
                 product_types: 5, // finish goods
+                product_barcode_number: generateProductBarcode(),
                 miracle_UniqueId: tp.prdid,
                 miracle_update_date_time: currentTimestamp,
                 isDelete: 0
@@ -1954,7 +1978,7 @@ export const processProducts = async (req) => {
 
             if (matchedProduct) {
                 const filteredData = Object.fromEntries(
-                    Object.entries(mappedData).filter(([_, value]) => value)
+                    Object.entries(mappedData).filter(([key, value]) => value !== undefined && value !== null && value !== "" && key !== "product_barcode_number")
                 );
 
                 recordsToUpdate.push({
