@@ -4882,7 +4882,38 @@ export const createWorkspace = async (req) => {
       qr_code: newQrCode,
       isDelete: 0,
       isActive: 1,
-      a_application_login_id: ownerId
+      a_application_login_id: ownerId,
+      // Blank out third-party & API keys
+      whatsapp_authkey: "",
+      whatsapp_appkey: "",
+      india_mart_api_key: "",
+      trade_india_user_id: "",
+      trade_india_profile_id: "",
+      trade_india_key: "",
+      chatgpt_appkey: "",
+      gimini_appkey: "",
+      serp_api_key: "",
+      google_lead_sheet_for_faceBook_1: "",
+      google_lead_sheet_for_faceBook_2: "",
+      google_sheet_key_3: "",
+      google_sheet_key_4: "",
+      google_sheet_first_name: "",
+      google_sheet_second_name: "",
+      google_sheet_third_name: "",
+      google_sheet_fourth_name: "",
+      // Blank out mail / SMTP configuration
+      host_out_going_mail: "",
+      port_mail_setup: "",
+      mail_id_setup: "",
+      password_mail_setup: "",
+      pop3_host: "",
+      incoming_port: "",
+      is_email_verified: "",
+      company_otp: "",
+      // Blank out activation, invitation & referral codes
+      activation_code: "",
+      invitation_key: "",
+      referral_code_id: ""
     };
 
     const newCompany = await companyModel.create(companyBody);
