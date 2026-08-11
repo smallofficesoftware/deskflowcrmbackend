@@ -253,7 +253,7 @@ export const generateCompensationAdjustmentSampleSheet = async (req) => {
             adjustment_type: "1",
             hours: "2.5",
             amount: "500",
-            apply_date: moment().format("YYYY-MM-DD"),
+            apply_date: moment().format("DD-MM-YYYY"),
             remark: "Overtime compensation",
         };
 
@@ -492,7 +492,15 @@ export const importCompensationAdjustmentByExcel = async (req) => {
                         "DD/MM/YYYY",
                         "YYYY/MM/DD",
                         "MM/DD/YYYY",
-                        "MM-DD-YYYY"
+                        "MM-DD-YYYY",
+                        "DD-MM-YY",
+                        "DD/MM/YY",
+                        "YY-MM-DD",
+                        "YY/MM/DD",
+                        "D-M-YYYY",
+                        "D/M/YYYY",
+                        "D-M-YY",
+                        "D/M/YY"
                     ], true);
                     if (parsed.isValid()) {
                         formattedApplyDate = parsed.format("YYYY-MM-DD");
