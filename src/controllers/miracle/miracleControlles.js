@@ -1,4 +1,5 @@
-import { fetchAccountLedger, fetchContact, fetchMiracleProducts, generateLedger, generateMiracleToken, generateOustanding, miracleConfigCreate, miracleConfigGet, processContact, processProducts, syncCaseBankPr, syncInvoice, syncProduct } from "../../services/miracle/miracleService.js";
+import { bulkSyncMiracleModules, fetchAccountLedger, fetchContact, fetchMiracleProducts, generateLedger, generateMiracleToken, generateOustanding, getMiracleUnsyncedCounts, miracleConfigCreate, miracleConfigGet, processContact, processProducts, syncCaseBankPr, syncInvoice, syncProduct } from "../../services/miracle/miracleService.js";
+import { clearMiracleLogs, getMiracleLogs } from "../../services/activities/miracleLogService.js";
 import { webhookM } from "../../services/miracle/miracleWebhookService.js";
 import callServiceMethod from "../baseController.js";
 
@@ -125,5 +126,41 @@ export const generateMiracleTokenProvider = async (req, res) => {
         res,
         generateMiracleToken(req, res),
         "generateMiracleTokenProvider"
+    );
+};
+
+export const getMiracleUnsyncedCountsProvider = async (req, res) => {
+    await callServiceMethod(
+        req,
+        res,
+        getMiracleUnsyncedCounts(req, res),
+        "getMiracleUnsyncedCountsProvider"
+    );
+};
+
+export const bulkSyncMiracleModulesProvider = async (req, res) => {
+    await callServiceMethod(
+        req,
+        res,
+        bulkSyncMiracleModules(req, res),
+        "bulkSyncMiracleModulesProvider"
+    );
+};
+
+export const getMiracleLogsProvider = async (req, res) => {
+    await callServiceMethod(
+        req,
+        res,
+        getMiracleLogs(req),
+        "getMiracleLogsProvider"
+    );
+};
+
+export const clearMiracleLogsProvider = async (req, res) => {
+    await callServiceMethod(
+        req,
+        res,
+        clearMiracleLogs(req),
+        "clearMiracleLogsProvider"
     );
 };

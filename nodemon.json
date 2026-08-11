@@ -1,6 +1,7 @@
 {
     "watch": [
-        "*.js"
+        "*.js",
+        ".env*"
     ],
     "ext": "js,json",
     "ignore": [

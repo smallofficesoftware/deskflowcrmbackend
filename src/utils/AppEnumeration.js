@@ -96,6 +96,9 @@ export const PAGE_ID = {
   EXPENSE_DETAILED_REPORT: "127",
   JOB_CARD: "128",
   PRODUCTION: "129",
+  TARGET_VS_INCENTIVE_REPORT: "130",
+  CUSTOMER_SALES_PURCHASE_REPORT: "131",
+  ROUTE_PLANNER: "144",
   // Add more pages as needed
 };
 // config/googleApi.ts
@@ -126,9 +129,12 @@ export const GOOGLE_SHEET_DECLARED_COLUMN_LIST = {
   'Address': ['Address'],
   'shipping_address': ['shipping_address'],
   'gst_number': ['gst_number'],
+  'client_code': ['client_code'],
   'price_list': ['price_list'],
   'source_type': ['source_type'],
   'lable': ['lable'],
+  'longitude': ['longitude'],
+  'latitude': ['latitude'],
   'category_name': ['category_name'],
   'product_name': ['product_name'],
   'required_quantity': ['required_quantity'],

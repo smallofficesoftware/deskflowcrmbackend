@@ -36,47 +36,30 @@ export const AddTeamRights = async (req, res) => {
     const applicationLoginTypeRightModelIntance = applicationLoginTypeRightModel(req.tenantDB);
 
     const upsertPromises = permissionsData.map(async (permission) => {
-
       if (!permission.page_id || !permission.a_page_id_rights_jason) {
         throw new Error("Invalid permission data: page_id and a_page_id_rights_jason are required");
       }
 
-      // Case 1: Agar modual_name hai
-      if (permission.modual_name) {
-        permissionNames.push(permission.modual_name);
-
-        let parsedRights = permission.a_page_id_rights_jason;
-        if (typeof parsedRights === "string") {
-          try {
-            parsedRights = JSON.parse(parsedRights);
-          } catch (e) { }
-        }
-
-        return applicationLoginTypeRightModelIntance.upsert({
-          page_id: permission.page_id,
-          modual_name: permission.modual_name,
-          a_page_id_rights_jason: parsedRights,
-          a_application_login_id: Number(a_application_login_id),
-          company_masters_id: findCompanyId.company_masters_id,
-          created_date_time: formattedDateTime,
-        });
+      const pName = permission.page_name || permission.modual_name || "";
+      if (pName) {
+        permissionNames.push(pName);
       }
-      // Case 2: Agar page_name hai
-      // else if (permission.page_name) {
-      //   permissionNames.push(permission.page_name);
 
-      //   return applicationLoginTypeRightModelIntance.upsert({
-      //     page_id: permission.page_id,
-      //     page_name: permission.page_name,
-      //     a_page_id_rights_jason: JSON.stringify(permission.a_page_id_rights_jason),
-      //     a_application_login_id: Number(a_application_login_id),
-      //     company_masters_id: findCompanyId.company_masters_id,
-      //     created_date_time: formattedDateTime,
-      //   });
-      // }
-      // else {
-      //   console.log("rights not Apply");
-      // }
+      let parsedRights = permission.a_page_id_rights_jason;
+      if (typeof parsedRights === "string") {
+        try {
+          parsedRights = JSON.parse(parsedRights);
+        } catch (e) { }
+      }
+
+      return applicationLoginTypeRightModelIntance.upsert({
+        page_id: permission.page_id,
+        page_name: pName,
+        a_page_id_rights_jason: parsedRights,
+        a_application_login_id: Number(a_application_login_id),
+        company_masters_id: findCompanyId.company_masters_id,
+        created_date_time: formattedDateTime,
+      });
     });
     // Execute all upserts concurrently
     const results = await Promise.all(upsertPromises);

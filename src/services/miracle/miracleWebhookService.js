@@ -1,23 +1,67 @@
 import { checkMiracleAuth } from "../../middlewares/miracleAuth.js";
 import { tenantMiddleware } from "../../middlewares/tenantMiddleware.js";
 import companyModel from "../../models/company_setup/companyModel.js";
+import miracleConfigModel from "../../models/company_setup/miracleConfigModel.js";
 import { categoryModel } from "../../models/product_settings/categoryModel.js";
 import { productGroupModel } from "../../models/product_settings/productGroupModel.js";
 import { productModel } from "../../models/product_settings/productModel.js";
 import { productUnitMasterModel } from "../../models/product_settings/productUnitMasterModel.js";
 import { taxModel } from "../../models/product_settings/taxModel.js";
 import { createAxiosIntance } from "../../utils/miracleAxiosInstance.js";
+import { parseMiracleRights } from "../../utils/miracleRightsHelper.js";
 import { resBadRequest, resSuccess } from "../../utils/sharedFunctions.js";
+import { insertMiracleLog } from "../activities/miracleLogService.js";
 
-// Added new imports
 import { accountTransactionsModel } from "../../models/activities/accountTransactionsModel.js";
 import { cartItemModel } from "../../models/activities/cartItemsModel.js";
 import { cartModel } from "../../models/activities/cartsModel.js";
 import { contactModel } from "../../models/activities/contactModel.js";
+import { inquiryModel } from "../../models/activities/inquiryModel.js";
 import { paymentTypeModel } from "../../models/activities/paymentTypeModel.js";
 import { areaModel } from "../../models/masters/areaModel.js";
 import { cityModel } from "../../models/masters/cityModel.js";
 import { stateModel } from "../../models/masters/stateModel.js";
+import { priceListModel } from "../../models/product_settings/priceListModel.js";
+import { customFieldFormModel } from "../../models/other_settings/customFieldFormModel.js";
+import { Op } from "sequelize";
+
+const extractMiracleCustomFields = async (tenantDB, companyId, formType, ufddetPayload, targetModule = null) => {
+    if (!tenantDB || !companyId || !formType || !ufddetPayload || typeof ufddetPayload !== "object") return {};
+    try {
+        const CFFModel = customFieldFormModel(tenantDB);
+        let customFields = await CFFModel.findAll({
+            where: {
+                isDelete: 0,
+                company_masters_id: companyId,
+                third_party_field_name: { [Op.ne]: null }
+            },
+            attributes: ["reference_column_name", "third_party_field_name", "applicable_modules", "form_type"],
+            raw: true
+        });
+
+        customFields = customFields.filter(f => {
+            const checkFormType = targetModule !== null ? targetModule : formType;
+            if (Number(f.form_type) === Number(checkFormType)) return true;
+            if (f.applicable_modules && f.applicable_modules !== "") {
+                const mods = String(f.applicable_modules).split(",").map(m => m.trim());
+                return mods.includes(String(checkFormType));
+            }
+            return false;
+        });
+        const updates = {};
+        for (const field of customFields) {
+            const key = field.third_party_field_name ? String(field.third_party_field_name).trim() : "";
+            const col = field.reference_column_name;
+            if (key && col && ufddetPayload[key] !== undefined) {
+                updates[col] = ufddetPayload[key];
+            }
+        }
+        return updates;
+    } catch (err) {
+        console.error("Error extracting Miracle custom fields from webhook:", err);
+        return {};
+    }
+};
 
 export const WEBHOOK_EVENT_REGISTRY = {
     PA: {
@@ -28,6 +72,10 @@ export const WEBHOOK_EVENT_REGISTRY = {
         label: "Product Update",
         handler: handleProductAdd,
     },
+    PD: {
+        label: "Product Delete",
+        handler: handleProductDelete,
+    },
     AA: {
         label: "Contact Add",
         handler: handleContactAddOrUpdate,
@@ -35,6 +83,10 @@ export const WEBHOOK_EVENT_REGISTRY = {
     AE: {
         label: "Contact Update",
         handler: handleContactAddOrUpdate,
+    },
+    AD: {
+        label: "Contact Delete",
+        handler: handleContactDelete,
     },
     TA: {
         label: "Voucher Create",
@@ -44,14 +96,20 @@ export const WEBHOOK_EVENT_REGISTRY = {
         label: "Voucher Update",
         handler: handleVoucherAddOrUpdate,
     },
+    TD: {
+        label: "Voucher Delete",
+        handler: handleVoucherDelete,
+    },
 };
 
 export const webhookM = async (req, res) => {
+    const webhookStart = Date.now();
+    let tenantDBForLog = null;
+    let companyIdForLog = null;
+    const incomingPayload = req.body;
+
     try {
         const { companyCode } = req.params;
-        return resBadRequest({
-            ack_msg: "Company setup not found",
-        });
         const companyGet = await companyModel.findOne({
             where: {
                 qr_code: companyCode,
@@ -69,8 +127,11 @@ export const webhookM = async (req, res) => {
 
         const tenantId = companyGet.dataValues.a_application_login_id;
         const companyId = companyGet.dataValues.id;
+        companyIdForLog = companyId;
         req.headers["x-tenant-id"] = tenantId;
+        req.headers["x-company-id"] = companyId;
         req.body.a_application_login_id = tenantId;
+
         const runMiddleware = (middleware, req, res) => {
             return new Promise((resolve, reject) => {
                 middleware(req, res, (err) => {
@@ -81,17 +142,159 @@ export const webhookM = async (req, res) => {
         };
 
         await runMiddleware(tenantMiddleware, req, res);
-        // await runMiddleware(apiLogger, req, res);
+        tenantDBForLog = req.tenantDB;
         await runMiddleware(checkMiracleAuth, req, res);
 
         const payload = req.body;
         const eventConfig = WEBHOOK_EVENT_REGISTRY[payload.EventType];
 
         if (!eventConfig) {
+            setImmediate(() => insertMiracleLog(tenantDBForLog, {
+                log_type: "WEBHOOK",
+                module_name: "unknown",
+                action_type: payload.EventType || "",
+                miracle_unique_id: payload.UniqueId || "",
+                status: "FAILED",
+                response_time: Date.now() - webhookStart,
+                request_payload: incomingPayload,
+                error_message: `Unsupported EventType: ${payload.EventType}`,
+                company_masters_id: companyIdForLog,
+            }));
             return resBadRequest({
                 ack_msg: `Unsupported EventType: ${payload.EventType}`,
                 developer_msg: `No handler registered for "${payload.EventType}"`,
             });
+        }
+
+        // Fetch company Miracle configuration & rights
+        const mConfig = await miracleConfigModel.findOne({
+            where: { company_id: companyId, isDelete: "0" },
+            raw: true,
+        });
+
+        const rights = parseMiracleRights(mConfig?.rights_config);
+
+        // 1. Master Webhook Switch Check
+        if (!rights.webhook?.enabled) {
+            setImmediate(() => insertMiracleLog(tenantDBForLog, {
+                log_type: "WEBHOOK",
+                module_name: "all",
+                action_type: payload.EventType || "",
+                miracle_unique_id: payload.UniqueId || "",
+                status: "SKIPPED",
+                response_time: Date.now() - webhookStart,
+                request_payload: incomingPayload,
+                error_message: "Webhooks are disabled for this company",
+                company_masters_id: companyIdForLog,
+            }));
+            return resSuccess({
+                ack_msg: "Webhook skipped: Webhooks are disabled for this company",
+                data: { EventType: payload.EventType, status: "disabled" },
+            });
+        }
+
+        // 2. Specific Module & Action Rights Check
+        const VOUCHER_VOUTYP_TO_MODULE = {
+            SS: "invoice",
+            PP: "purchase_invoice",
+            SR: "return_sales_invoice",
+            PR: "return_purchase_invoice",
+            QS: "quotation",
+            OS: "order",
+            OP: "purchase_order",
+            HS: "dispatch",
+            HP: "inward",
+            BP: "account_transaction",
+            BR: "account_transaction",
+            CP: "account_transaction",
+            CR: "account_transaction",
+        };
+
+        const CART_TYPE_TO_MODULE = {
+            3: "invoice",
+            4: "purchase_invoice",
+            6: "return_sales_invoice",
+            7: "return_purchase_invoice",
+            1: "quotation",
+            2: "order",
+            5: "purchase_order",
+            9: "dispatch",
+            8: "inward",
+        };
+
+        let targetModule = null;
+        let targetAction = null;
+
+        if (payload.EventType === "PA") {
+            targetModule = "product";
+            targetAction = "add";
+        } else if (payload.EventType === "PE") {
+            targetModule = "product";
+            targetAction = "update";
+        } else if (payload.EventType === "PD") {
+            targetModule = "product";
+            targetAction = "delete";
+        } else if (payload.EventType === "AA") {
+            targetModule = "contact";
+            targetAction = "add";
+        } else if (payload.EventType === "AE") {
+            targetModule = "contact";
+            targetAction = "update";
+        } else if (payload.EventType === "AD") {
+            targetModule = "contact";
+            targetAction = "delete";
+        } else if (payload.EventType === "TA" || payload.EventType === "TE") {
+            targetAction = payload.EventType === "TA" ? "add" : "update";
+            try {
+                const detail = await fetchVoucherDetail(req, payload.UniqueId);
+                if (detail?.voutyp) {
+                    targetModule = VOUCHER_VOUTYP_TO_MODULE[detail.voutyp] || null;
+                }
+            } catch (err) {
+                console.error("Error fetching voucher detail for rights check:", err.message);
+            }
+        } else if (payload.EventType === "TD") {
+            targetAction = "delete";
+            const cartModelInstance = cartModel(req.tenantDB);
+            const accountTransactionsModelInstance = accountTransactionsModel(req.tenantDB);
+
+            const existingCart = await cartModelInstance.findOne({
+                where: { miracle_UniqueId: payload.UniqueId, company_masters_id: companyId, isDelete: "0" },
+                raw: true
+            });
+
+            if (existingCart) {
+                targetModule = CART_TYPE_TO_MODULE[existingCart.type] || null;
+            } else {
+                const existingTx = await accountTransactionsModelInstance.findOne({
+                    where: { miracle_UniqueId: payload.UniqueId, company_masters_id: companyId, isDelete: "0" },
+                    raw: true
+                });
+                if (existingTx) {
+                    targetModule = "account_transaction";
+                }
+            }
+        }
+
+        if (targetModule && targetAction) {
+            const isAllowed = rights.webhook?.[targetModule]?.[targetAction];
+            if (isAllowed === false) {
+                setImmediate(() => insertMiracleLog(tenantDBForLog, {
+                    log_type: "WEBHOOK",
+                    module_name: targetModule || "unknown",
+                    action_type: `${targetAction?.toUpperCase()} (${payload.EventType})`,
+                    miracle_unique_id: payload.UniqueId || "",
+                    status: "SKIPPED",
+                    response_time: Date.now() - webhookStart,
+                    request_payload: incomingPayload,
+                    error_message: `${targetModule}.${targetAction} is disabled in Miracle Configurations`,
+                    company_masters_id: companyIdForLog,
+                }));
+                return resSuccess({
+                    ack_msg: `Webhook skipped: ${targetModule}.${targetAction} is disabled in Miracle Configurations`,
+                    data: { EventType: payload.EventType, targetModule, targetAction, status: "disabled" },
+                });
+            }
         }
 
         const result = await eventConfig.handler({
@@ -99,9 +302,33 @@ export const webhookM = async (req, res) => {
             context: { req, res, tenantDB: req.tenantDB, companyId, tenantId },
         });
 
+        // Log successful webhook
+        setImmediate(() => insertMiracleLog(tenantDBForLog, {
+            log_type: "WEBHOOK",
+            module_name: targetModule || payload.EventType || "unknown",
+            action_type: targetAction ? `${targetAction.toUpperCase()} (${payload.EventType})` : payload.EventType,
+            miracle_unique_id: payload.UniqueId || "",
+            status: "SUCCESS",
+            response_time: Date.now() - webhookStart,
+            request_payload: incomingPayload,
+            response_payload: result,
+            company_masters_id: companyIdForLog,
+        }));
+
         return resSuccess({ ack_msg: "success", data: result });
     } catch (error) {
-        console.log("webhookM error", error)
+        console.log("webhookM error", error);
+        setImmediate(() => insertMiracleLog(tenantDBForLog, {
+            log_type: "WEBHOOK",
+            module_name: incomingPayload?.EventType || "unknown",
+            action_type: incomingPayload?.EventType || "",
+            miracle_unique_id: incomingPayload?.UniqueId || "",
+            status: "FAILED",
+            response_time: Date.now() - webhookStart,
+            request_payload: incomingPayload,
+            error_message: error.message,
+            company_masters_id: companyIdForLog,
+        }));
         return resBadRequest({
             ack_msg: error.message,
             developer_msg: error.message
@@ -223,6 +450,8 @@ async function createOrUpdateProductFromDetail(tenantDB, companyId, tenantId, pr
     const net_rate = salrate + ((salrate * gstper) / 100);
     const purchase_rate = purrate;
 
+    const customFields = await extractMiracleCustomFields(tenantDB, companyId, 4, productDetail.ufddet);
+
     const productPayload = {
         ...scope,
         product_types: 5,
@@ -242,6 +471,7 @@ async function createOrUpdateProductFromDetail(tenantDB, companyId, tenantId, pr
         max_stock_quantity: ordlev,
         miracle_UniqueId: uniqueId,
         miracle_update_date_time: new Date(),
+        ...customFields,
     };
 
     const [product, created] = await productModelInstance.findOrCreate({
@@ -269,6 +499,49 @@ export async function handleProductAdd({ payload, context }) {
     const { product, created } = await createOrUpdateProductFromDetail(tenantDB, companyId, tenantId, productDetail);
 
     return { UniqueId, productId: product.id, status: created ? "created" : "updated" };
+}
+
+export async function handleProductDelete({ payload, context }) {
+    const { UniqueId } = payload;
+    const { tenantDB, companyId } = context;
+
+    if (!UniqueId) {
+        throw new Error("Missing UniqueId in payload for Product Delete (PD)");
+    }
+
+    const productModelInstance = productModel(tenantDB);
+    const product = await productModelInstance.findOne({
+        where: { miracle_UniqueId: UniqueId, company_masters_id: companyId, isDelete: "0" },
+    });
+
+    if (!product) {
+        return { UniqueId, status: "not_found", message: "Product not found or already deleted" };
+    }
+
+    // Safety Check: Check if product exists in active carts or price lists
+    const cartItemModelInstance = cartItemModel(tenantDB);
+    const priceListModelInstance = priceListModel(tenantDB);
+
+    const productInCart = await cartItemModelInstance.findOne({
+        where: { item_product_id: product.id, company_masters_id: companyId, isDelete: 0 },
+    });
+
+    const productInPriceList = await priceListModelInstance.findOne({
+        where: { product_id: product.id, company_masters_id: companyId, isDelete: 0 },
+    });
+
+    if (productInCart || productInPriceList) {
+        return {
+            UniqueId,
+            productId: product.id,
+            status: "blocked",
+            message: "Cannot delete product because it exists in active cart items or price list.",
+        };
+    }
+
+    await product.update({ isDelete: 1 });
+
+    return { UniqueId, productId: product.id, status: "deleted" };
 }
 
 async function createOrUpdateContactFromDetail(tenantDB, companyId, tenantId, contactDetail) {
@@ -320,6 +593,8 @@ async function createOrUpdateContactFromDetail(tenantDB, companyId, tenantId, co
         areaId = areaObj.id;
     }
 
+    const customFields = await extractMiracleCustomFields(tenantDB, companyId, 1, contactDetail.ufddet);
+
     const contactPayload = {
         person_name: conper1 || conper2 || accnm || "",
         company_name: accnm || "",
@@ -327,9 +602,9 @@ async function createOrUpdateContactFromDetail(tenantDB, companyId, tenantId, co
         mobile_number: mob1 || "",
         email_id: email || "",
         country: "101",
-        state: stateId,
-        city: cityId,
-        area: areaId,
+        state: stateId ? String(stateId) : "",
+        city: cityId ? String(cityId) : "",
+        area: areaId ? String(areaId) : "",
         pincode: pincode || "",
         address: addr1 || "",
         shipping_address: addr2 || "",
@@ -341,7 +616,8 @@ async function createOrUpdateContactFromDetail(tenantDB, companyId, tenantId, co
         miracle_UniqueId: uniqueId,
         miracle_update_date_time: new Date(),
         isDelete: 0,
-        isActive: 1
+        isActive: 1,
+        ...customFields,
     };
 
     const contactModelInstance = contactModel(tenantDB);
@@ -370,6 +646,49 @@ export async function handleContactAddOrUpdate({ payload, context }) {
     const { contact, created } = await createOrUpdateContactFromDetail(tenantDB, companyId, tenantId, contactDetail);
 
     return { UniqueId, contactId: contact.id, status: created ? "created" : "updated" };
+}
+
+export async function handleContactDelete({ payload, context }) {
+    const { UniqueId } = payload;
+    const { tenantDB, companyId } = context;
+
+    if (!UniqueId) {
+        throw new Error("Missing UniqueId in payload for Contact Delete (AD)");
+    }
+
+    const contactModelInstance = contactModel(tenantDB);
+    const contact = await contactModelInstance.findOne({
+        where: { miracle_UniqueId: UniqueId, company_masters_id: companyId, isDelete: "0" },
+    });
+
+    if (!contact) {
+        return { UniqueId, status: "not_found", message: "Contact not found or already deleted" };
+    }
+
+    // Safety Check: Verify if contact has active carts or inquiries
+    const cartModelInstance = cartModel(tenantDB);
+    const inquiryModelInstance = inquiryModel(tenantDB);
+
+    const contactCart = await cartModelInstance.findOne({
+        where: { to_customer_id: contact.id, company_masters_id: companyId, isDelete: 0 },
+    });
+
+    const contactInquiry = await inquiryModelInstance.findOne({
+        where: { contact_master_id: contact.id, isDelete: 0 },
+    });
+
+    if (contactCart || contactInquiry) {
+        return {
+            UniqueId,
+            contactId: contact.id,
+            status: "blocked",
+            message: "Cannot delete contact because it has active carts or inquiries.",
+        };
+    }
+
+    await contact.update({ isDelete: 1 });
+
+    return { UniqueId, contactId: contact.id, status: "deleted" };
 }
 
 export async function handleAccountTransactionAddOrUpdate({ voucherDetail, tenantDB, companyId, tenantId, req }) {
@@ -608,7 +927,13 @@ export async function handleVoucherAddOrUpdate({ payload, context }) {
             taxableAmt += amt;
             totalGstAmt += itemTaxAmt;
 
+            let itemCustomFields = {};
+            if (item.ufddet && typeof item.ufddet === "object") {
+                itemCustomFields = await extractMiracleCustomFields(tenantDB, companyId, 4, item.ufddet, targetFormType);
+            }
+
             cartItemsPayloads.push({
+                ...itemCustomFields,
                 cart_type: cartType,
                 currency_id: 1,
                 a_application_login_id: tenantId,
@@ -636,6 +961,20 @@ export async function handleVoucherAddOrUpdate({ payload, context }) {
     const grandTotal = Number(billamt) || calculatedTotal;
     const roundOff = Number((grandTotal - calculatedTotal).toFixed(2));
 
+    const CART_TYPE_TO_FORM_TYPE = {
+        1: 5,  // Quotation -> form_type 5
+        2: 6,  // Sales Order -> form_type 6
+        3: 7,  // Sales Invoice -> form_type 7
+        4: 8,  // Purchase Invoice -> form_type 8
+        5: 9,  // Purchase Order -> form_type 9
+        6: 10, // Return Sales Invoice -> form_type 10
+        7: 11, // Return Purchase Invoice -> form_type 11
+        8: 12, // Goods Received Note -> form_type 12
+        9: 13  // Dispatch -> form_type 13
+    };
+    const targetFormType = CART_TYPE_TO_FORM_TYPE[cartType] || cartType;
+    const customFields = await extractMiracleCustomFields(tenantDB, companyId, targetFormType, ufddet);
+
     const cartPayload = {
         type: cartType,
         cart_number: cartNumber,
@@ -660,6 +999,7 @@ export async function handleVoucherAddOrUpdate({ payload, context }) {
         miracle_UniqueId: uniqueId,
         miracle_update_date_time: new Date(),
         isDelete: 0,
+        ...customFields,
         isActive: 1
     };
 
@@ -687,4 +1027,55 @@ export async function handleVoucherAddOrUpdate({ payload, context }) {
     await cartItemModelInstance.bulkCreate(itemsToCreate);
 
     return { UniqueId, cartId: cart.id, status: created ? "created" : "updated" };
+}
+
+export async function handleVoucherDelete({ payload, context }) {
+    const { UniqueId } = payload;
+    const { tenantDB, companyId } = context;
+
+    if (!UniqueId) {
+        throw new Error("Missing UniqueId in payload for Voucher Delete (TD)");
+    }
+
+    let deletedCartId = null;
+    let deletedTransactionId = null;
+
+    // 1. Check in Carts & Cart Items (Invoices / Bills / Orders / Quotations, etc.)
+    const cartModelInstance = cartModel(tenantDB);
+    const cartItemModelInstance = cartItemModel(tenantDB);
+
+    const cart = await cartModelInstance.findOne({
+        where: { miracle_UniqueId: UniqueId, company_masters_id: companyId, isDelete: "0" },
+    });
+
+    if (cart) {
+        await cart.update({ isDelete: 1 });
+        await cartItemModelInstance.update(
+            { isDelete: 1 },
+            { where: { cart_id: cart.id, isDelete: 0 } }
+        );
+        deletedCartId = cart.id;
+    }
+
+    // 2. Check in Account Transactions (Cash / Bank Payments & Receipts)
+    const accountTransactionsModelInstance = accountTransactionsModel(tenantDB);
+    const transaction = await accountTransactionsModelInstance.findOne({
+        where: { miracle_UniqueId: UniqueId, company_masters_id: companyId, isDelete: "0" },
+    });
+
+    if (transaction) {
+        await transaction.update({ isDelete: 1 });
+        deletedTransactionId = transaction.id;
+    }
+
+    if (!deletedCartId && !deletedTransactionId) {
+        return { UniqueId, status: "not_found", message: "Voucher / Transaction not found or already deleted" };
+    }
+
+    return {
+        UniqueId,
+        cartId: deletedCartId,
+        transactionId: deletedTransactionId,
+        status: "deleted"
+    };
 }

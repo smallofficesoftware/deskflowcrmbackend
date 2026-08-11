@@ -13,6 +13,7 @@ import { cartModel } from "../../models/activities/cartsModel.js";
 import { contactMessageHistory } from "../../models/activities/contactMessageHistoryModel.js";
 import { contactModel } from "../../models/activities/contactModel.js";
 import { inquiryModel } from "../../models/activities/inquiryModel.js";
+import { routePlanVsContactsModel } from "../../models/activities/routePlanVsContactsModel.js";
 import { reminderMessagesModel } from "../../models/activities/reminderMessagesModel.js";
 import { applicationLoginTypeRightModel } from "../../models/application_login/applicationLoginTypeRightModel.js";
 import loginModel from "../../models/application_login/loginModel.js";
@@ -102,7 +103,7 @@ export const getContactByIds = async (req) => {
 
 export const getAllContact = async (req, feed = false, onlyMyBlog = false) => {
   try {
-    let { ul, ll, labelId, sourceId, stageStatusId, request_flag, a_application_login_id, isPinByApplicationId, checkedOptionsContactassignOrNot, ids } = req.body;
+    let { ul, ll, labelId, sourceId, stageStatusId, request_flag, a_application_login_id, isPinByApplicationId, checkedOptionsContactassignOrNot, ids, route_id } = req.body;
     let masterWhere;
     const { whereClause, relevanceOrder, findCompanyId, showAllData, showPersonalData } = await buildContactWhereClause({ req, params: req.body })
     masterWhere = whereClause
@@ -128,6 +129,17 @@ export const getAllContact = async (req, feed = false, onlyMyBlog = false) => {
       masterWhere["id"] = {
         [Op.in]: ids.map(Number),
       }
+    } else if (route_id) {
+      const routePlanVsContactsModelInstance = routePlanVsContactsModel(req.tenantDB);
+      const assignedRouteContacts = await routePlanVsContactsModelInstance.findAll({
+        where: { route_id: Number(route_id), isDelete: "0" },
+        attributes: ["contact_id"],
+        raw: true
+      });
+      const routeContactIds = assignedRouteContacts.map(c => Number(c.contact_id));
+      masterWhere["id"] = {
+        [Op.in]: routeContactIds,
+      };
     }
 
     if (findCompanyId.company_flag === 1 || (findCompanyId.company_flag === 2 && showAllData)) {
@@ -500,6 +512,8 @@ export const addContact = async (req, res) => {
       assinged_to_price_list: req.body.assinged_to_price_list || 0,
       shipping_address: req.body.shipping_address || "",
       gst_number: req.body.gst_number || "",
+      gst_reg_type: req.body.gst_reg_type || "",
+      gst_reg_date: req.body.gst_reg_date || null,
       lable: req.body.lable || "",
       referance_contact: req.body.referance_contact || 0,
       assinged_to_work_a_application_id: req.body.a_application_login_id || "",
@@ -1062,6 +1076,8 @@ export const addContactByQR = async (req, res) => {
     let a_company_name = companyData.dataValues.company_name;
     let a_company_id = companyData.dataValues.id;
     req.headers["x-tenant-id"] = tenantId;
+    req.headers["x-company-id"] = company_masters_id;
+    req.body.company_masters_id = company_masters_id;
     await new Promise((resolve, reject) => {
       tenantMiddleware(req, {}, (err) => {
         if (err) return reject(err);
@@ -1165,6 +1181,7 @@ export const addContactByQR = async (req, res) => {
         description: your_requirement,
         source_type_id: -12,
         is_read_by_a_application_login_id: "",
+        is_unread: 1,
         assinged_to_work_a_application_id: assinged_to_work_a_application_id
       });
       const contactEmailSendList = [];
@@ -1346,18 +1363,6 @@ export const addContactByQR = async (req, res) => {
           message_side: 2,
           message_type_id: 0,
         });
-
-        const ContactMaster = contactModel(req.tenantDB);
-        await ContactMaster.update(
-          {
-            is_read_by_a_application_login_id: a_application_login_id,
-          },
-          {
-            where: {
-              id: contactCreate.id,
-            },
-          }
-        );
       }
     }
     try {
@@ -1477,6 +1482,8 @@ export const addContactByOnlineStore = async (req, res) => {
     const tenantId = a_application_login_id;
 
     req.headers["x-tenant-id"] = tenantId;
+    req.headers["x-company-id"] = company_masters_id;
+    req.body.company_masters_id = company_masters_id;
 
     await new Promise((resolve, reject) => {
       tenantMiddleware(req, {}, (err) => {

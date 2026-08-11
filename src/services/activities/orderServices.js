@@ -4170,7 +4170,7 @@ export const pdfOrder = async (req, res) => {
     };
 
     // Product Custom form Field
-    const productFiled = await customModel.findAll({
+    let productFiled = await customModel.findAll({
       where: {
         isDelete: 0,
         company_masters_id: companyDetail.id,
@@ -4183,7 +4183,8 @@ export const pdfOrder = async (req, res) => {
         "reference_column_name",
         "data_type",
         "display_order",
-        "product_feild_row_column"
+        "product_feild_row_column",
+        "applicable_modules"
       ],
       order: [["display_order", "ASC"]],
     });
@@ -4228,6 +4229,14 @@ export const pdfOrder = async (req, res) => {
           dynamicPrintView = companyDetail.proforma_invoice_view_formate;
         }
       }
+    }
+
+    if (customFieldsWhere.form_type) {
+      productFiled = productFiled.filter(f => {
+        if (!f.applicable_modules) return true;
+        const mods = String(f.applicable_modules).split(",").map(m => m.trim());
+        return mods.includes(String(customFieldsWhere.form_type));
+      });
     }
 
     const CartCustomFields = await customModel.findAll({

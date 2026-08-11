@@ -5,7 +5,7 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 export const __dirnameConstant = path.dirname(__filename);
 
-export const NODE_ENV = process.env.NODE_ENV || 'production';
+export const NODE_ENV = process.env.NODE_ENV || 'development';
 
 dotenv.config({
   path: path.resolve(process.cwd(), `.env.${NODE_ENV}`)
@@ -138,3 +138,7 @@ export const WP_V2_URL = process.env.WP_V2_URL;
 
 
 export const API_LOG_ENABLE_FLAG = process.env.API_LOG_ENABLE_FLAG;
+
+export const MAINTENANCE_BYPASS_IPS = process.env.MAINTENANCE_BYPASS_IPS
+  ? process.env.MAINTENANCE_BYPASS_IPS.split(",").map((ip) => ip.trim())
+  : [];

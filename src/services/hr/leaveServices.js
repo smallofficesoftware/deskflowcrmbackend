@@ -5,6 +5,8 @@ import Sequelize, { col, fn, Op, where } from "sequelize";
 import loginModel from "../../models/application_login/loginModel.js";
 import companyVsApplicationLoginModel from "../../models/company_setup/companyVsApplicationLoginModel.js";
 import { leavesModel } from "../../models/hr/leavesModel.js";
+import { employeePayrollModel } from "../../models/hr/employeePayrollModel.js";
+import { compensationAdjustmentModel } from "../../models/hr/compensationAdjustmentModel.js";
 import { LEAVE_IMG_LINK_EXTENDED } from "../../utils/appConstants.js";
 import {
     formatDateAndTimeCreateDateTime,
@@ -159,11 +161,98 @@ export const getAllLeaves = async (req) => {
         return resSuccess({
             data: { item: sanitizedContacts },
         });
-
-    } catch (e) {
-        return resBadRequest({ developer_msg: `error ${e}` });
+    } catch (error) {
+        console.log(error);
+        return resBadRequest({ ack: 0, developer_msg: error.message });
     }
 };
+
+async function syncHourlyLeaveCompensationCredit(tenantDB, companyMastersId, aApplicationLoginId, leaveDate, hourlyLeaveDurationStr) {
+    try {
+        if (!aApplicationLoginId || !leaveDate || !hourlyLeaveDurationStr || hourlyLeaveDurationStr === "00:00") return;
+
+        const payrollModel = employeePayrollModel(tenantDB);
+        const compModel = compensationAdjustmentModel(tenantDB);
+
+        const payroll = await payrollModel.findOne({
+            where: { a_application_login_id: aApplicationLoginId, isDelete: 0 }
+        });
+
+        if (!payroll || !payroll.hourly_leave_allowed_hours || String(payroll.hourly_leave_allowed_hours) === "0") {
+            return;
+        }
+
+        const allowedMins = timeStrToMinutes(String(payroll.hourly_leave_allowed_hours));
+        if (allowedMins <= 0) return;
+
+        const dateObj = moment(leaveDate, "YYYY-MM-DD");
+        const monthStart = dateObj.clone().startOf("month").format("YYYY-MM-DD");
+        const monthEnd = dateObj.clone().endOf("month").format("YYYY-MM-DD");
+
+        const existingCompList = await compModel.findAll({
+            where: {
+                a_application_login_id: aApplicationLoginId,
+                type_id: 98,
+                apply_date: { [Op.between]: [monthStart, monthEnd] },
+                isDelete: 0
+            }
+        });
+
+        let alreadyCreditedMins = 0;
+        for (const row of existingCompList) {
+            if (row.apply_date !== dateObj.format("YYYY-MM-DD")) {
+                alreadyCreditedMins += Math.round((Number(row.hours) || 0) * 60);
+            }
+        }
+
+        const remainingAllowanceMins = Math.max(0, allowedMins - alreadyCreditedMins);
+        const todayLeaveMins = timeStrToMinutes(hourlyLeaveDurationStr);
+        const creditMins = Math.min(todayLeaveMins, remainingAllowanceMins);
+        const creditHrs = Math.round((creditMins / 60) * 100) / 100;
+
+        if (creditHrs > 0) {
+            const todayStr = dateObj.format("YYYY-MM-DD");
+            const existingTodayComp = await compModel.findOne({
+                where: {
+                    a_application_login_id: aApplicationLoginId,
+                    type_id: 98,
+                    apply_date: todayStr,
+                    isDelete: 0
+                }
+            });
+
+            if (existingTodayComp) {
+                await compModel.update(
+                    { hours: creditHrs, remark: `Hourly Leave Free Credit (${creditHrs} hrs)` },
+                    { where: { id: existingTodayComp.id } }
+                );
+            } else {
+                await compModel.create({
+                    company_masters_id: companyMastersId,
+                    a_application_login_id: aApplicationLoginId,
+                    employee_id: payroll.employee_id || 0,
+                    apply_date: todayStr,
+                    adjustment_type: 1, // 1: Credit
+                    hours: creditHrs,
+                    amount: 0,
+                    type_id: 98,
+                    remark: `Hourly Leave Free Credit (${creditHrs} hrs)`
+                });
+            }
+        }
+    } catch (err) {
+        console.error("syncHourlyLeaveCompensationCredit error:", err);
+    }
+}
+
+function timeStrToMinutes(str) {
+    if (!str) return 0;
+    if (typeof str === "number") return Math.round(str * 60);
+    const parts = String(str).trim().split(":");
+    const hrs = parseInt(parts[0], 10) || 0;
+    const mins = parseInt(parts[1], 10) || 0;
+    return hrs * 60 + mins;
+}
 
 
 export const leaveCreate = async (req) => {
@@ -242,6 +331,15 @@ export const leaveCreate = async (req) => {
         });
 
         if (newLeaveData) {
+            if (leave_duration == 4) {
+                await syncHourlyLeaveCompensationCredit(
+                    req.tenantDB,
+                    findCompanyId?.company_masters_id,
+                    a_application_login_id,
+                    leave_date,
+                    hourly_leave_duration
+                );
+            }
             const ownerTokenData = await companyVsApplicationLoginModel.findAll({
                 where: {
                     isDelete: 0,
@@ -414,6 +512,15 @@ export const leaveUpdate = async (req) => {
         );
 
         if (updateLeaveResult) {
+            if (leave_duration == 4 || existingLeave?.leave_duration == 4) {
+                await syncHourlyLeaveCompensationCredit(
+                    req.tenantDB,
+                    findCompanyId?.company_masters_id,
+                    existingLeave?.a_application_login_id || a_application_login_id,
+                    leave_date || existingLeave?.leave_date,
+                    hourly_leave_duration
+                );
+            }
             const teamTokenData = await leaveModel.findAll({
                 where: {
                     id: leave_id,

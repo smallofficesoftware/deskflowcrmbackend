@@ -14,6 +14,12 @@ import logger from "./utils/logger.js";
 import { parseSession, resError } from "./utils/sharedFunctions.js";
 
 const allowedOrigins = [
+    "http://192.168.1.223:3000",
+    "http://192.168.1.223:3001",
+    "http://192.168.1.223:5000",
+    "http://192.168.1.223:2424",
+    "http://192.168.1.49:3000",
+    "http://192.168.1.49:3001",
     "http://192.168.1.48:3000",
     "http://192.168.1.48:3001",
     "http://localhost:3000",
@@ -23,6 +29,7 @@ const allowedOrigins = [
     "https://smalloffice.in",
     "https://deskflowcrm.com",
     "http://192.168.1.232",
+    "http://192.168.1.49:5000",
     "http://192.168.1.48:5000",
     "http://localhost:5000",
     "https://whatsapp.smalloffice.in",
@@ -41,6 +48,7 @@ const allowedOrigins = [
     "https://wadmin.smalloffice.in",
 ];
 const app = express();
+app.set("trust proxy", true);
 const server = http.createServer(app);
 export const io = new Server(server, {
     cors: {

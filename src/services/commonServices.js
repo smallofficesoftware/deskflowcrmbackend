@@ -144,16 +144,6 @@ export const getAllCommon = async (req) => {
 
           if (!column || value === undefined) return {};
 
-          // Special case for login ID
-          if (column === "a_application_login_id") {
-            const [firstValue] = value.split("||");
-            const findCompanyId = await getCompanyByLoginId(firstValue);
-            if (personal_flag === 0 && findCompanyId?.company_masters_id) {
-              return { company_masters_id: findCompanyId.company_masters_id };
-            } else if (personal_flag === 1) {
-              return { a_application_login_id: firstValue };
-            }
-          }
 
           // OR condition using ||
           if (value.includes("||")) {
@@ -200,19 +190,10 @@ export const getAllCommon = async (req) => {
     } else {
       if (where) {
         const whereObj = JSON.parse(where);
-        const findCompanyId = await getCompanyByLoginId(
-          whereObj.a_application_login_id
-        );
         if (request_flag === 2) {
           queryOptions.where = {
             ...whereObj,
-            company_masters_id: findCompanyId.company_masters_id,
             id: { [Op.ne]: whereObj.id },
-          };
-        } else if (findCompanyId.company_masters_id) {
-          queryOptions.where = {
-            ...whereObj,
-            company_masters_id: findCompanyId.company_masters_id,
           };
         } else {
           queryOptions.where = whereObj;
@@ -1210,7 +1191,7 @@ export const createCommon = async (req) => {
 };
 
 export const updateCommon = async (req) => {
-  const { table, where, data } = req.body;
+  let { table, where, data } = req.body;
   try {
     if (!table || !where || !data) {
       return resError({
@@ -2561,33 +2542,45 @@ export const getAllMainCommon = async (req) => {
         const whereObj = JSON.parse(where);
         let findCompanyId = null;
 
-        if (whereObj.a_application_login_id) {
-          findCompanyId = await getCompanyByLoginId(
-            whereObj.a_application_login_id
-          );
-        }
-        // return findCompanyId;
-        //Request_flag == 2 team member ne Company no data get karva mate use thay chhe
-        if (request_flag === 2 && findCompanyId?.company_masters_id) {
+        const activeCompanyHeader = req?.headers?.["x-company-id"];
 
-          queryOptions.where = {
-            id: findCompanyId.company_masters_id,
-          };
-
-        } else if (findCompanyId?.company_masters_id) {
-
+        if (table === "company_masters" && activeCompanyHeader && !whereObj.id && !whereObj.qr_code) {
           queryOptions.where = {
             ...whereObj,
-            id: findCompanyId.company_masters_id,
+            id: Number(activeCompanyHeader),
           };
-
+          delete queryOptions.where.a_application_login_id;
         } else {
+          if (whereObj.a_application_login_id) {
+            if (table === "company_masters" && activeCompanyHeader && !whereObj.qr_code) {
+              queryOptions.where = {
+                ...whereObj,
+                id: Number(activeCompanyHeader),
+              };
+              delete queryOptions.where.a_application_login_id;
+            } else {
+              findCompanyId = await getCompanyByLoginId(
+                whereObj.a_application_login_id
+              );
+            }
+          }
 
-          queryOptions.where = whereObj;
-
+          if (queryOptions.where) {
+            // Already set above for company_masters with activeCompanyHeader
+          } else if (request_flag === 2 && findCompanyId?.company_masters_id) {
+            queryOptions.where = {
+              id: findCompanyId.company_masters_id,
+            };
+          } else if (findCompanyId?.company_masters_id) {
+            queryOptions.where = {
+              ...whereObj,
+              id: findCompanyId.company_masters_id,
+            };
+          } else {
+            queryOptions.where = whereObj;
+          }
         }
       }
-      console.log("queryOptionsqueryOptions", queryOptions);
 
       if (order) {
         const orderObj = JSON.parse(order);
@@ -2605,6 +2598,38 @@ export const getAllMainCommon = async (req) => {
         ack_msg: "No Data Found",
         developer_msg: "Record(s) not found",
       });
+    }
+
+    if (table === "company_masters" && result.length > 0) {
+      const mainRecord = result[0];
+      const childData = typeof mainRecord.toJSON === "function" ? mainRecord.toJSON() : mainRecord;
+      let parentCompId = childData.parent_company_id;
+      if (!parentCompId && childData.id) {
+        const dbCheck = await companyModel.findOne({
+          where: { id: childData.id, isDelete: 0 },
+          attributes: ["parent_company_id"],
+          raw: true,
+        });
+        parentCompId = dbCheck?.parent_company_id;
+      }
+
+      if (parentCompId) {
+        const parentRecord = await companyModel.findOne({
+          where: { id: parentCompId, isDelete: 0 },
+          attributes: queryOptions.attributes,
+        });
+        if (parentRecord) {
+          const parentData = typeof parentRecord.toJSON === "function" ? parentRecord.toJSON() : parentRecord;
+          const mergedValues = { ...parentData };
+          for (const key of Object.keys(childData)) {
+            const val = childData[key];
+            if (val !== null && val !== "" && val !== undefined) {
+              mergedValues[key] = val;
+            }
+          }
+          result[0] = mergedValues;
+        }
+      }
     }
 
     return resSuccess({
@@ -2981,67 +3006,84 @@ export const commonGetCount = async (req) => {
 export const getCompanyByLoginId = async (a_application_login_id) => {
   try {
     const store = requestContext.getStore();
+    const loginId = a_application_login_id || store?.tenantId || store?.a_application_login_id;
+
     if (store && store.companyId) {
       const activeCompanyId = Number(store.companyId);
 
-      // 1. Direct mapping check
-      const directMapping = await companyVsApplicationLoginModel.findOne({
-        where: {
-          a_application_login_id: a_application_login_id,
-          company_masters_id: activeCompanyId,
-          isDelete: 0
-        },
-        attributes: ["id", "company_masters_id", "a_application_login_id", "company_flag"]
-      });
-
-      if (directMapping) {
-        return directMapping.dataValues;
-      }
-
-      // 2. Parent company inheritance check (owner or employee mapped to parent company)
-      const childCompany = await companyModel.findOne({
-        where: { id: activeCompanyId, isDelete: 0 },
-        attributes: ["parent_company_id"]
-      });
-
-      if (childCompany && childCompany.dataValues?.parent_company_id) {
-        const parentMapping = await companyVsApplicationLoginModel.findOne({
+      if (loginId) {
+        // 1. Direct mapping check
+        const directMapping = await companyVsApplicationLoginModel.findOne({
           where: {
-            a_application_login_id: a_application_login_id,
-            company_masters_id: childCompany.dataValues.parent_company_id,
+            a_application_login_id: loginId,
+            company_masters_id: activeCompanyId,
             isDelete: 0
           },
-          attributes: ["id", "company_flag"]
+          attributes: ["id", "company_masters_id", "a_application_login_id", "company_flag"]
         });
 
-        if (parentMapping) {
-          return {
-            id: parentMapping.dataValues.id,
-            company_masters_id: activeCompanyId,
-            a_application_login_id: Number(a_application_login_id),
-            company_flag: parentMapping.dataValues.company_flag
-          };
+        if (directMapping) {
+          return directMapping.dataValues;
         }
+
+        // 2. Parent company inheritance check (owner or employee mapped to parent company)
+        const childCompany = await companyModel.findOne({
+          where: { id: activeCompanyId, isDelete: 0 },
+          attributes: ["parent_company_id"]
+        });
+
+        if (childCompany && childCompany.dataValues?.parent_company_id) {
+          const parentMapping = await companyVsApplicationLoginModel.findOne({
+            where: {
+              a_application_login_id: loginId,
+              company_masters_id: childCompany.dataValues.parent_company_id,
+              isDelete: 0
+            },
+            attributes: ["id", "company_flag"]
+          });
+
+          if (parentMapping) {
+            return {
+              id: parentMapping.dataValues.id,
+              company_masters_id: activeCompanyId,
+              a_application_login_id: Number(loginId),
+              company_flag: parentMapping.dataValues.company_flag
+            };
+          }
+        }
+      }
+
+      return {
+        id: 0,
+        company_masters_id: activeCompanyId,
+        a_application_login_id: loginId ? Number(loginId) : undefined,
+        company_flag: 2
+      };
+    }
+
+    if (loginId) {
+      // Default fallback: use the most recently added mapping (highest id) for this login.
+      // ORDER BY id DESC ensures consistent and deterministic workspace resolution
+      // when no active requestContext exists (e.g., mainCommonGet which has no auth middleware).
+      const companyByLoginIdResult = await companyVsApplicationLoginModel.findOne({
+        where: { a_application_login_id: loginId, isDelete: 0 },
+        attributes: ["id", "company_masters_id", "a_application_login_id", "company_flag"],
+        order: [["id", "DESC"]],
+      });
+
+      if (companyByLoginIdResult) {
+        return companyByLoginIdResult.dataValues;
       }
     }
 
-    // Default fallback to first mapping if no active context or mapping not found
-    const companyByLoginIdResult = await companyVsApplicationLoginModel.findOne({
-      where: { a_application_login_id: a_application_login_id, isDelete: 0 },
-      attributes: ["id", "company_masters_id", "a_application_login_id", "company_flag"],
-    });
-
-    if (!companyByLoginIdResult) {
-      throw new Error("No company mapping found for this login ID");
-    }
-
-    return companyByLoginIdResult.dataValues;
+    throw new Error("No company mapping found for this login ID");
   } catch (error) {
     console.error("Error in getCompanyByLoginId:", error);
+    const store = requestContext.getStore();
     return {
       id: 0,
-      company_masters_id: 0,
-      a_application_login_id: Number(a_application_login_id),
+      company_masters_id: store?.companyId ? Number(store.companyId) : 0,
+      a_application_login_id: a_application_login_id ? Number(a_application_login_id) : undefined,
       company_flag: 2
     };
   }

@@ -279,8 +279,18 @@ export const getPermissionForWhatsAppMessage = async (req, res) => {
             attributes: ["a_page_id_rights_jason"],
         });
         if (result) {
-            const rightsJson = JSON.parse(result.dataValues.a_page_id_rights_jason);
-            return resSuccess({ data: rightsJson });
+            let rightsJson = result.dataValues.a_page_id_rights_jason;
+            if (typeof rightsJson === "string") {
+                try {
+                    rightsJson = JSON.parse(rightsJson);
+                    if (typeof rightsJson === "string") {
+                        rightsJson = JSON.parse(rightsJson);
+                    }
+                } catch (e) {
+                    rightsJson = {};
+                }
+            }
+            return resSuccess({ data: rightsJson || {} });
         } else {
             return resSuccess({ data: {} });
         }

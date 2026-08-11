@@ -58,8 +58,15 @@ const normalize = (name) => {
  * Safe JSON parse with fallback
  */
 const safeJsonParse = (jsonString, fallback = null) => {
+    if (typeof jsonString === "object" && jsonString !== null) return jsonString;
     try {
-        return JSON.parse(jsonString);
+        let parsed = JSON.parse(jsonString);
+        if (typeof parsed === "string") {
+            try {
+                parsed = JSON.parse(parsed);
+            } catch (e) {}
+        }
+        return parsed;
     } catch (error) {
         console.error("JSON parse error:", error);
         return fallback;
@@ -383,6 +390,7 @@ function validateAndNormalizeData(flattenedData, lastContactId) {
     const duplicateEntries = new Set();
     const mobileNumberCount = {};
     const gstNumberCount = {};
+    const clientCodeCount = {};
 
     // Normalize all entries
     const normalizedData = flattenedData.map((entry, index) => {
@@ -391,6 +399,9 @@ function validateAndNormalizeData(flattenedData, lastContactId) {
         let phoneNumber = entry['phone_number']?.[0];
         let description = entry['Description']?.[0];
         let dateTime = entry['DateTime']?.[0];
+        let clientCode = isValid(entry['client_code']?.[0])
+            ? String(entry['client_code'][0]).trim()
+            : entry['client_code']?.[0];
 
         mobileNumber = normalizeToTenDigit(mobileNumber);
 
@@ -410,14 +421,16 @@ function validateAndNormalizeData(flattenedData, lastContactId) {
             mobile_number: [mobileNumber, entry['mobile_number']?.[1]],
             phone_number: [phoneNumber, entry['phone_number']?.[1] || "Auto Generated"],
             Description: [description, entry['Description']?.[1]],
-            DateTime: [dateTime, entry['DateTime']?.[1]]
+            DateTime: [dateTime, entry['DateTime']?.[1]],
+            client_code: [clientCode, entry['client_code']?.[1]] // ← trimmed, same [value, label] shape
         };
     });
 
-    // Count total occurrences of each mobile/GST number
+    // Count total occurrences of each mobile/GST/client_code
     normalizedData.forEach((entry) => {
         const mobileNumber = normalizeToTenDigit(entry['mobile_number']?.[0]);
         const gstNumber = entry['gst_number']?.[0];
+        const clientCode = entry['client_code']?.[0];
 
         if (mobileNumber) {
             mobileNumberCount[mobileNumber] = (mobileNumberCount[mobileNumber] || 0) + 1;
@@ -425,20 +438,25 @@ function validateAndNormalizeData(flattenedData, lastContactId) {
         if (isValid(gstNumber)) {
             gstNumberCount[gstNumber] = (gstNumberCount[gstNumber] || 0) + 1;
         }
+        if (isValid(clientCode)) {
+            clientCodeCount[clientCode] = (clientCodeCount[clientCode] || 0) + 1;
+        }
     });
 
     // Keep the FIRST occurrence of a duplicated number, drop only the extras
     const seenMobileNumbers = new Set();
     const seenGstNumbers = new Set();
+    const seenClientCodes = new Set();
 
     const filteredData = normalizedData.filter((entry) => {
         const mobileNumber = normalizeToTenDigit(entry['mobile_number']?.[0]);
         const gstNumber = entry['gst_number']?.[0];
+        const clientCode = entry['client_code']?.[0];
 
         if (mobileNumber && mobileNumberCount[mobileNumber] > 1) {
             if (seenMobileNumbers.has(mobileNumber)) {
                 duplicateEntries.add(`mobile number: ${mobileNumber}`);
-                return false; // drop repeat, first one already kept
+                return false;
             }
             seenMobileNumbers.add(mobileNumber);
         }
@@ -449,6 +467,14 @@ function validateAndNormalizeData(flattenedData, lastContactId) {
                 return false;
             }
             seenGstNumbers.add(gstNumber);
+        }
+
+        if (isValid(clientCode) && clientCodeCount[clientCode] > 1) {
+            if (seenClientCodes.has(clientCode)) {
+                duplicateEntries.add(`client code: ${clientCode}`);
+                return false;
+            }
+            seenClientCodes.add(clientCode);
         }
 
         return true;
@@ -529,14 +555,16 @@ async function buildLookupMaps(req, a_application_login_id, company_masters_id) 
 async function batchCheckExistingContacts(
     mobileNumbers,
     gstNumbers,
+    clientCodes,                 // ← new param
     CTContactModelModel,
     a_application_login_id,
     company_masters_id
 ) {
     const validMobiles = mobileNumbers.filter(m => isValid(m));
     const validGsts = gstNumbers.filter(g => isValid(g));
+    const validClientCodes = clientCodes.filter(c => isValid(c)); // ← new
 
-    const [existingByMobile, existingByGst] = await Promise.all([
+    const [existingByMobile, existingByGst, existingByClientCode] = await Promise.all([
         validMobiles.length > 0 ? CTContactModelModel.findAll({
             where: {
                 isDelete: 0,
@@ -546,7 +574,7 @@ async function batchCheckExistingContacts(
                     { company_masters_id }
                 ]
             },
-            attributes: ["id", "mobile_number", "gst_number"],
+            attributes: ["id", "mobile_number", "gst_number", "client_code"],
             raw: true
         }) : [],
         validGsts.length > 0 ? CTContactModelModel.findAll({
@@ -558,15 +586,28 @@ async function batchCheckExistingContacts(
                     { company_masters_id }
                 ]
             },
-            attributes: ["id", "mobile_number", "gst_number"],
+            attributes: ["id", "mobile_number", "gst_number", "client_code"],
+            raw: true
+        }) : [],
+        validClientCodes.length > 0 ? CTContactModelModel.findAll({    // ← new
+            where: {
+                isDelete: 0,
+                client_code: validClientCodes,
+                [Op.or]: [
+                    { a_application_login_id },
+                    { company_masters_id }
+                ]
+            },
+            attributes: ["id", "mobile_number", "gst_number", "client_code"],
             raw: true
         }) : []
     ]);
 
     const mobileMap = new Map(existingByMobile.map(c => [c.mobile_number, c]));
     const gstMap = new Map(existingByGst.map(c => [c.gst_number, c]));
+    const clientCodeMap = new Map(existingByClientCode.map(c => [c.client_code, c])); // ← new
 
-    return { mobileMap, gstMap };
+    return { mobileMap, gstMap, clientCodeMap };
 }
 
 /**
@@ -654,12 +695,14 @@ async function processContactsForInsertion(
 
         const mobileNumber = normalizeToTenDigit(entry['mobile_number']?.[0]);
         const gstNumber = entry['gst_number']?.[0]?.trim() || null;
+        const clientCode = entry['client_code']?.[0]?.trim() || null; // ← new
 
         // Check if contact already exists
         const existingContact = existingContacts.mobileMap.get(mobileNumber);
         const existingContactGst = gstNumber ? existingContacts.gstMap.get(gstNumber) : null;
+        const existingContactClientCode = clientCode ? existingContacts.clientCodeMap.get(clientCode) : null; // ← new
 
-        const isDuplicate = !!(existingContact || existingContactGst);
+        const isDuplicate = !!(existingContact || existingContactGst || existingContactClientCode); // ← updated
 
         if (existingContact) {
             duplicateEntries.push(`Duplicate mobile: ${mobileNumber}`);
@@ -667,8 +710,13 @@ async function processContactsForInsertion(
         if (existingContactGst) {
             duplicateEntries.push(`Duplicate GST: ${gstNumber}`);
         }
+        if (existingContactClientCode) {                                     // ← new
+            duplicateEntries.push(`Duplicate Client Code: ${clientCode}`);
+        }
 
-        const contactId = isDuplicate ? (existingContact?.id || existingContactGst?.id) : undefined;
+        const contactId = isDuplicate
+            ? (existingContact?.id || existingContactGst?.id || existingContactClientCode?.id) // ← updated
+            : undefined;
 
         // Resolve IDs from lookup maps
         const productId = lookupMaps.productsMap.get(entry['product_name']?.[0]?.trim() || "");
@@ -714,6 +762,7 @@ async function processContactsForInsertion(
                     formatDateTime,
                     mobileNumber,
                     gstNumber,
+                    clientCode,          // ← new
                     sourceTypeId,
                     locationIds,
                     priceListId,
@@ -819,6 +868,7 @@ function buildContactObject(
     formatDateTime,
     mobileNumber,
     gstNumber,
+    clientCode,          // ← new param
     sourceTypeId,
     locationIds,
     priceListId,
@@ -847,6 +897,9 @@ function buildContactObject(
         area: locationIds.areaId,
         shipping_address: getFieldValue('shipping_address'),
         gst_number: gstNumber || "",
+        client_code: clientCode || "",        // ← new
+        longitude: getFieldValue('longitude'), // ← new
+        latitude: getFieldValue('latitude'),   // ← new
         assinged_to_price_list: priceListId || 0,
         company_name: getFieldValue('company_name'),
         lable: labelId || '',
@@ -1307,10 +1360,12 @@ export const addContactByGoogleSheetForFacebook = async (req) => {
         // Batch check existing contacts
         const mobileNumbers = filteredData.map(e => normalizeToTenDigit(e['mobile_number']?.[0]));
         const gstNumbers = filteredData.map(e => e['gst_number']?.[0]?.trim()).filter(Boolean);
+        const clientCodes = filteredData.map(e => e['client_code']?.[0]?.trim()).filter(Boolean); // ← new
 
         const existingContacts = await batchCheckExistingContacts(
             mobileNumbers,
             gstNumbers,
+            clientCodes,
             CTContactModelModel,
             a_application_login_id,
             company_masters_id

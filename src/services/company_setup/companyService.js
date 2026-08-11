@@ -236,12 +236,27 @@ export const getAllCompany = async (req) => {
   }
 };
 export const QRCompany = async (req) => {
-  let { a_application_login_id } = req.body;
+  let { a_application_login_id, company_masters_id } = req.body || {};
+  const activeCompanyHeader = req?.headers?.["x-company-id"];
 
   try {
+    let targetCompanyId = company_masters_id || (activeCompanyHeader ? Number(activeCompanyHeader) : null);
+
+    if (!targetCompanyId) {
+      const findCompanyId = await getCompanyByLoginId(a_application_login_id);
+      targetCompanyId = findCompanyId?.company_masters_id;
+    }
+
+    let whereClause = { isDelete: '0' };
+    if (targetCompanyId) {
+      whereClause.id = targetCompanyId;
+    } else if (a_application_login_id) {
+      whereClause.a_application_login_id = a_application_login_id;
+    }
+
     const company = await companyModel.findOne({
-      where: { a_application_login_id, isDelete: '0' },
-      attributes: ["qr_code"],
+      where: whereClause,
+      attributes: ["id", "qr_code"],
     });
 
     if (!company) {
@@ -254,10 +269,10 @@ export const QRCompany = async (req) => {
         100000000000 + Math.random() * 900000000000
       ).toString();
 
-      // Update the row
+      // Update only this specific company row
       await companyModel.update(
         { qr_code: newQrCode },
-        { where: { a_application_login_id, isDelete: '0' } }
+        { where: { id: company.id, isDelete: '0' } }
       );
 
       // Reflect it on the instance so we can return it
@@ -688,10 +703,35 @@ export const companyCreate = async (req, res) => {
             const contactModels = contactModel(tenantDB);
             const CTMModel = contactMessageHistory(tenantDB);
 
-            // Find contact
-            let contactCreate = await contactModels.findOne({
-              where: { mobile_number: company_contact },
-            });
+            // Comprehensive contact duplication check
+            const rawMobile = company_contact ? String(company_contact).trim() : "";
+            const normalizedMobile = normalizeToTenDigit(rawMobile);
+
+            const mobileConditions = [];
+            if (normalizedMobile) {
+              mobileConditions.push({ mobile_number: normalizedMobile });
+              mobileConditions.push({ raw_mobile_number: normalizedMobile });
+            }
+            if (rawMobile) {
+              mobileConditions.push({ mobile_number: rawMobile });
+              mobileConditions.push({ raw_mobile_number: rawMobile });
+            }
+            if (normalizedMobile && normalizedMobile.startsWith("91") && normalizedMobile.length === 12) {
+              const tenDigit = normalizedMobile.slice(2);
+              mobileConditions.push({ mobile_number: tenDigit });
+              mobileConditions.push({ raw_mobile_number: tenDigit });
+            }
+
+            let contactCreate = null;
+            if (mobileConditions.length > 0) {
+              contactCreate = await contactModels.findOne({
+                where: {
+                  [Op.or]: mobileConditions,
+                  company_masters_id: tenantDBFind.company_masters_id,
+                  isDelete: 0,
+                },
+              });
+            }
 
             let isNewContact = false;
 
@@ -702,12 +742,15 @@ export const companyCreate = async (req, res) => {
                 person_name: company_name,
                 email_id: company_email,
                 company_name: company_name,
-                mobile_number: company_contact,
+                mobile_number: normalizedMobile || rawMobile || "",
+                raw_mobile_number: rawMobile || "",
                 contact_status: -1,
                 a_application_login_id: tenantDBFind.a_application_login_id,
                 company_masters_id: tenantDBFind.company_masters_id,
                 assinged_to_work_a_application_id: WBSITE_LEAD_ASSIGN_ID,
                 source_type_id: -8,
+                is_read_by_a_application_login_id: "",
+                is_unread: 1,
               });
             }
             const formatted = moment().format("YYYY-MM-DD HH:mm:ss");
@@ -820,6 +863,31 @@ export const companyPlaneCreate = async (req) => {
 
     if (!resultPlanCreate) {
       return resError({ developer_msg: "Company Plan creation issue" });
+    }
+
+    // Update plan-wise rights if tenant database already exists (upgrade/renewal case)
+    try {
+      const tenantRecord = await tenantMasterModel.findOne({
+        where: {
+          company_masters_id: findCompanyId.company_masters_id,
+          isDelete: 0,
+        },
+        attributes: ["id"],
+      });
+
+      if (tenantRecord) {
+        const tenantDBInfo = await getTenantDB(a_application_login_id, findCompanyId.company_masters_id);
+        if (tenantDBInfo?.sequelize) {
+          await rightsAdd({
+            company_id: findCompanyId.company_masters_id,
+            tenantDB: tenantDBInfo.sequelize,
+            a_application_login_id,
+            plan_number: plan_number
+          });
+        }
+      }
+    } catch (rightsErr) {
+      console.error("Error adding plan rights in companyPlaneCreate:", rightsErr.message);
     }
 
     // Skip rights update if renewing SAME plan
@@ -2760,11 +2828,19 @@ export const TeamJoinInnerMain = async (req, res) => {
 
     for (const userRight of userRightsList) {
       try {
-        const rightsJson = JSON.parse(
-          userRight.dataValues.a_page_id_rights_jason
-        );
+        let rightsJson = userRight.dataValues.a_page_id_rights_jason;
+        if (typeof rightsJson === "string") {
+          try {
+            rightsJson = JSON.parse(rightsJson);
+            if (typeof rightsJson === "string") {
+              rightsJson = JSON.parse(rightsJson);
+            }
+          } catch (e) {
+            rightsJson = {};
+          }
+        }
 
-        if (typeof rightsJson.limit === "number") {
+        if (typeof rightsJson?.limit === "number") {
           if (rightsJson.limit > 0 && userCount >= rightsJson.limit) {
             return resError({
               ack_msg: "Your Team Member Limit Exceeded",
@@ -2901,7 +2977,7 @@ export const TeamJoinInnerMain = async (req, res) => {
           company_masters_id: company_id,
           page_id: page.id,
           page_name: page.page_name,
-          a_page_id_rights_jason: JSON.stringify(pageRights),
+          a_page_id_rights_jason: pageRights,
           created_date_time: new Date(),
         });
       }
@@ -4396,9 +4472,10 @@ const rightsAdd = async (returnValue) => {
 
     console.log("old plannnnnnnnnnn", oldPlanId);
 
+    const planIdToUse = plan_number || getAllCompanyDetail?.dataValues?.plan_id;
 
     const planPages = await planVsPageModel.findAll({
-      where: { isDelete: 0, plan_id: plan_number },
+      where: { isDelete: 0, plan_id: planIdToUse },
       attributes: ["page_id", "data_limit"],
     });
     console.log("new plan pages", planPages);
@@ -4447,13 +4524,17 @@ const rightsAdd = async (returnValue) => {
       ],
     });
 
-    if (!companyUsers.length) {
-      return resError({ developer_msg: "No users found for the company" });
-    }
+    const targetUsers = companyUsers.length > 0 ? companyUsers : [
+      {
+        company_masters_id: company_id,
+        company_flag: 1, // Owner
+        a_application_login_id: a_application_login_id,
+      }
+    ];
 
-    const upsertPromises = [];
+    const rightsToInsert = [];
 
-    for (const user of companyUsers) {
+    for (const user of targetUsers) {
       const userLoginId = user.a_application_login_id;
       const isOwner = user.company_flag === 1;
 
@@ -4463,17 +4544,15 @@ const rightsAdd = async (returnValue) => {
         );
 
         for (const removedPageId of removedPageIds) {
-          upsertPromises.push(
-            applicationLoginTypeRightModelIntance.update(
-              { isDelete: 1 },
-              {
-                where: {
-                  a_application_login_id: userLoginId,
-                  company_masters_id: company_id,
-                  page_id: removedPageId,
-                },
-              }
-            )
+          await applicationLoginTypeRightModelIntance.update(
+            { isDelete: 1 },
+            {
+              where: {
+                a_application_login_id: userLoginId,
+                company_masters_id: company_id,
+                page_id: removedPageId,
+              },
+            }
           );
         }
       }
@@ -4551,20 +4630,25 @@ const rightsAdd = async (returnValue) => {
             };
         }
 
-        upsertPromises.push(
-          applicationLoginTypeRightModelIntance.upsert({
-            a_application_login_id: userLoginId,
-            company_masters_id: company_id,
-            page_id: dataValues.id,
-            page_name: dataValues.page_name,
-            a_page_id_rights_jason: JSON.stringify(rightsJson),
-            created_date_time: formattedDateAndTime,
-          })
-        );
+        rightsToInsert.push({
+          a_application_login_id: userLoginId,
+          company_masters_id: company_id,
+          page_id: dataValues.id,
+          page_name: dataValues.page_name,
+          a_page_id_rights_jason: rightsJson,
+          created_date_time: formattedDateAndTime,
+          isDelete: 0,
+          isActive: 1,
+        });
       }
     }
 
-    await Promise.all(upsertPromises);
+    if (rightsToInsert.length > 0) {
+      await applicationLoginTypeRightModelIntance.bulkCreate(rightsToInsert, {
+        updateOnDuplicate: ["a_page_id_rights_jason", "page_name", "isDelete", "isActive", "created_date_time"],
+      });
+      console.log(`[rightsAdd] Successfully inserted ${rightsToInsert.length} plan-wise rights for company ${company_id}, plan ${planIdToUse}`);
+    }
 
     return resSuccess({
       data: "Your Plan is Created/Updated and rights refreshed",
@@ -4785,88 +4869,51 @@ export const createWorkspace = async (req) => {
 
     const formatDateAndTimeCreateDateTime = moment(new Date()).format("YYYY-MM-DD HH:mm:ss");
 
-    // Build child company body
+    const parentValues = typeof parentCompany.toJSON === "function" ? parentCompany.toJSON() : parentCompany;
+    delete parentValues.id;
+    delete parentValues.createdAt;
+    delete parentValues.updatedAt;
+
+    // Build child company body with all parent company details copied
     const companyBody = {
+      ...parentValues,
       company_name: workspace_name,
-      company_contact: parentCompany.company_contact,
-      printed_number: parentCompany.company_contact,
-      company_email: parentCompany.company_email,
       parent_company_id: parent_company_id,
-      invoice_prefix: "INV",
-      invoice_title: "Invoice",
-      invoice_doc_no: "",
-      invoice_view_color: "#d3d3d3",
-      invoice_view_formate: 1,
-      order_prefix: "ORD",
-      order_title: "Order",
-      order_doc_no: "",
-      order_view_color: "#d3d3d3",
-      order_view_formate: 1,
-      workorder_prefix: "WRD",
-      workorder_title: "WorkOrder",
-      workorder_doc_no: "",
-      workorder_view_color: "#d3d3d3",
-      workorder_view_formate: 1,
-      quotation_prefix: "QUO",
-      quotation_title: "Quotation",
-      quotation_doc_no: "",
-      quotation_view_color: "#d3d3d3",
-      quotation_view_formate: 1,
-      proforma_invoice_prefix: "PRF",
-      proforma_invoice_title: "Proforma Invoice",
-      proforma_invoice_doc_no: "",
-      proforma_invoice_view_color: "#d3d3d3",
-      proforma_invoice_view_formate: 1,
-      purchase_prefix: "PI",
-      purchase_title: "Purchase",
-      purchase_doc_no: "",
-      purchase_view_color: "#d3d3d3",
-      purchase_view_formate: 1,
-      purchase_ord_prefix: "PO",
-      purchase_order_title: "Purchase Order",
-      purchase_order_doc_no: "",
-      purchase_order_view_color: "#d3d3d3",
-      purchase_order_view_formate: 1,
-      return_sales_invoice_prefix: "RSI",
-      return_sales_invoice_title: "Return Sales Invoice",
-      return_sales_invoice_doc_no: "",
-      return_sales_invoice_view_color: "#d3d3d3",
-      return_sales_invoice_view_formate: 1,
-      return_purchase_invoice_prefix: "RPI",
-      return_purchase_invoice_title: "Return Purchase Invoice",
-      return_purchase_invoice_doc_no: "",
-      return_purchase_invoice_view_color: "#d3d3d3",
-      return_purchase_invoice_view_formate: 1,
-      inward_prefix: "GRN",
-      inward_title: "Inward",
-      inward_doc_no: "",
-      inward_view_color: "#d3d3d3",
-      inward_view_formate: 1,
-      dispatch_prefix: "DIS",
-      dispatch_title: "Dispatch",
-      dispatch_doc_no: "",
-      dispatch_view_color: "#d3d3d3",
-      dispatch_view_formate: 1,
-      watermark_in_print: 0,
-      view_inquiry_form_in_contact: 0,
-      same_product_multiple_in_cart: 0,
-      is_contact_validation: 0,
-      in_order_image_view: 0,
-      is_strict_check_product_stock: 0,
-      is_strict_wharehouse_wise_product_stock_check: 0,
-      is_email_verified: 0,
-      currency_id: parentCompany.currency_id,
-      address: parentCompany.address,
-      country_id: parentCompany.country_id,
-      state_id: parentCompany.state_id,
-      city_id: parentCompany.city_id,
       qr_code: newQrCode,
-      plan_id: parentCompany.plan_id,
-      plan_date: parentCompany.plan_date,
-      plan_expiry_date: parentCompany.plan_expiry_date,
       isDelete: 0,
       isActive: 1,
-      a_application_login_id: ownerId
+      a_application_login_id: ownerId,
+      // Blank out third-party & API keys
+      whatsapp_authkey: "",
+      whatsapp_appkey: "",
+      india_mart_api_key: "",
+      trade_india_user_id: "",
+      trade_india_profile_id: "",
+      trade_india_key: "",
+      chatgpt_appkey: "",
+      gimini_appkey: "",
+      serp_api_key: "",
+      google_lead_sheet_for_faceBook_1: "",
+      google_lead_sheet_for_faceBook_2: "",
+      google_sheet_key_3: "",
+      google_sheet_key_4: "",
+      google_sheet_first_name: "",
+      google_sheet_second_name: "",
+      google_sheet_third_name: "",
+      google_sheet_fourth_name: "",
+      // Blank out mail / SMTP configuration
+      host_out_going_mail: "",
+      port_mail_setup: "",
+      mail_id_setup: "",
+      password_mail_setup: "",
+      pop3_host: "",
+      incoming_port: "",
+      is_email_verified: "",
+      company_otp: "",
+      // Blank out activation, invitation & referral codes
+      activation_code: "",
+      invitation_key: "",
+      referral_code_id: ""
     };
 
     const newCompany = await companyModel.create(companyBody);

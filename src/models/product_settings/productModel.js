@@ -126,6 +126,9 @@ export const productModel = (sequelize) => {
       miracle_update_date_time: {
         type: DATE,
       },
+      miracle_uom_name: {
+        type: STRING,
+      },
       isDelete: {
         type: TINYINT,
         defaultValue: "0",

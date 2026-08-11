@@ -57,13 +57,27 @@ export const getTenantDB = async (tenantId, companyId) => {
     // if (tenantConnections[tenantId]) {
     //     return tenantConnections[tenantId];
     // }
-    const [tenant] = await globalSequelize.query(
-        "SELECT * FROM tenant_masters WHERE  company_masters_id = ?",
-        {
-            replacements: [companyId],
-            type: Sequelize.QueryTypes.SELECT,
-        }
-    );
+    let tenant = null;
+    if (companyId) {
+        const [result] = await globalSequelize.query(
+            "SELECT * FROM tenant_masters WHERE company_masters_id = ? AND isDelete = 0 LIMIT 1",
+            {
+                replacements: [companyId],
+                type: Sequelize.QueryTypes.SELECT,
+            }
+        );
+        tenant = result;
+    }
+    if (!tenant && tenantId) {
+        const [result] = await globalSequelize.query(
+            "SELECT * FROM tenant_masters WHERE a_application_login_id = ? AND isDelete = 0 ORDER BY id DESC LIMIT 1",
+            {
+                replacements: [tenantId],
+                type: Sequelize.QueryTypes.SELECT,
+            }
+        );
+        tenant = result;
+    }
 
     if (!tenant) {
         throw new Error("Tenant not found");

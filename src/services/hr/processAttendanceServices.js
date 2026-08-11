@@ -603,7 +603,7 @@ export const attendanceDetailUpdate = async (req) => {
         const groupedLeavesData = {};
         for (const record of leaveData) {
             const empId = record.a_application_login_id;
-            const date = record.leave_date;
+            const date = moment(record.leave_date).format("YYYY-MM-DD");
             if (!groupedLeavesData[empId]) groupedLeavesData[empId] = {};
             if (!groupedLeavesData[empId][date]) groupedLeavesData[empId][date] = [];
             groupedLeavesData[empId][date].push(record);
@@ -612,7 +612,7 @@ export const attendanceDetailUpdate = async (req) => {
         const groupedHolidayData = {};
         for (const record of holidayData) {
             const empId = record.a_application_login_id;
-            const date = record.holiday_date;
+            const date = moment(record.holiday_date).format("YYYY-MM-DD");
             if (!groupedHolidayData[empId]) groupedHolidayData[empId] = {};
             if (!groupedHolidayData[empId][date]) groupedHolidayData[empId][date] = [];
             groupedHolidayData[empId][date].push(record);
@@ -627,6 +627,8 @@ export const attendanceDetailUpdate = async (req) => {
             const joinDate = employeeJoinDateMap.get(empId);
 
             const employeeMonthRows = []; // collect this employee's rows before sandwich pass
+            let lateInCount = 0;
+            let earlyOutCount = 0;
 
             for (const date of dateRange) {
                 if (joinDate && date < joinDate) continue;
@@ -642,9 +644,80 @@ export const attendanceDetailUpdate = async (req) => {
                 if (records.length <= 0 && leave_list.length <= 0 && !isWeekOffDay && !isHolidayDay) continue;
 
                 const { first_in, last_out, total_working_hour, entries } = processAttendance(records);
-                const { day_status, late_in, early_out, net_working_hour, overtime_hours, leave_info } = calcDayStatus(
+                let { day_status, late_in, early_out, net_working_hour, roundoff_hours, overtime_hours, regular_overtime_hours, extra_overtime_hours, leave_info } = calcDayStatus(
                     date, first_in, last_out, total_working_hour, payroll, compensation_list, leave_list, holiday_list, roundoffMap
                 );
+
+                let penaltyAdded = false;
+                if (late_in) {
+                    lateInCount++;
+                    const allowedLimit = payroll?.late_in_allowed_count ?? 0;
+                    if (payroll && lateInCount > allowedLimit) {
+                        const penaltyType = parseInt(payroll.late_in_penalty_type ?? 1, 10);
+                        const penaltyVal = Number(payroll.late_in_penalty_value ?? 0);
+                        const lateMins = timeStrToMinutes(late_in);
+
+                        let hoursDebit = 0;
+                        let amountDebit = 0;
+
+                        if (penaltyType === 1) { // 1: Fixed Given Hours Penalty
+                            hoursDebit = penaltyVal > 0 ? penaltyVal : (lateMins / 60);
+                        } else if (penaltyType === 2) { // 2: Actual Late In Duration Hours Penalty
+                            hoursDebit = (lateMins / 60);
+                        } else if (penaltyType === 3) { // 3: Fixed Given Amount Penalty (₹)
+                            amountDebit = penaltyVal;
+                        }
+
+                        if (hoursDebit > 0 || amountDebit > 0) {
+                            compensation_list.push({
+                                adjustment_type: 2,
+                                hours: hoursDebit,
+                                amount: amountDebit,
+                                type_id: 99,
+                                remark: `Late In Penalty (#${lateInCount})`
+                            });
+                            penaltyAdded = true;
+                        }
+                    }
+                }
+
+                if (early_out) {
+                    earlyOutCount++;
+                    const allowedLimit = payroll?.early_out_allowed_count ?? 0;
+                    if (payroll && earlyOutCount > allowedLimit) {
+                        const penaltyType = parseInt(payroll.early_out_penalty_type ?? 1, 10);
+                        const penaltyVal = Number(payroll.early_out_penalty_value ?? 0);
+                        const earlyMins = timeStrToMinutes(early_out);
+
+                        let hoursDebit = 0;
+                        let amountDebit = 0;
+
+                        if (penaltyType === 1) { // 1: Fixed Given Hours Penalty
+                            hoursDebit = penaltyVal > 0 ? penaltyVal : (earlyMins / 60);
+                        } else if (penaltyType === 2) { // 2: Actual Early Out Duration Hours Penalty
+                            hoursDebit = (earlyMins / 60);
+                        } else if (penaltyType === 3) { // 3: Fixed Given Amount Penalty (₹)
+                            amountDebit = penaltyVal;
+                        }
+
+                        if (hoursDebit > 0 || amountDebit > 0) {
+                            compensation_list.push({
+                                adjustment_type: 2,
+                                hours: hoursDebit,
+                                amount: amountDebit,
+                                type_id: 99,
+                                remark: `Early Out Penalty (#${earlyOutCount})`
+                            });
+                            penaltyAdded = true;
+                        }
+                    }
+                }
+
+                if (penaltyAdded) {
+                    ({ day_status, late_in, early_out, net_working_hour, roundoff_hours, overtime_hours, regular_overtime_hours, extra_overtime_hours, leave_info } = calcDayStatus(
+                        date, first_in, last_out, total_working_hour, payroll, compensation_list, leave_list, holiday_list, roundoffMap
+                    ));
+                }
 
                 employeeMonthRows.push({
                     employee_id: empId,
@@ -656,8 +729,11 @@ export const attendanceDetailUpdate = async (req) => {
                     early_out,
                     total_working_time: total_working_hour,
                     net_working_hour,
+                    roundoff_hours: roundoff_hours || "00:00:00",
                     overtime_hour: overtime_hours,
-                    leave_list: JSON.stringify(leave_info),
+                    regular_overtime_hour: regular_overtime_hours || "00:00:00",
+                    extra_overtime_hour: extra_overtime_hours || "00:00:00",
+                    leave_entry_list: leave_info || [],
                     first_in,
                     last_out,
                     date,
@@ -714,6 +790,24 @@ function buildRoundoffMap(roundoffRows) {
  * are kept unchanged (no rounding applied) so an incomplete rule set never
  * silently corrupts hours.
  */
+function calcPenaltyHourlyRate(payroll) {
+    if (!payroll) return 0;
+    const explicitRate = Number(payroll.overtime_amount_per_hour) || 0;
+    if (explicitRate > 0) return explicitRate;
+    const basicDa = Number(payroll.basic_da) || 0;
+    const dailyWorkingMins = timeStrToMinutes(payroll.daily_working_hours) || 480;
+    const dailyWorkingHours = dailyWorkingMins / 60;
+    const calculateDays = 30;
+    const denominator = calculateDays * dailyWorkingHours;
+    return denominator > 0 ? (basicDa / denominator) : 0;
+}
+
+function formatDiffMinutesToTimeStr(mins) {
+    if (!mins || mins === 0) return "00:00:00";
+    const sign = mins < 0 ? "-" : "";
+    return sign + minutesToTimeStr(Math.abs(mins));
+}
+
 function applyRoundoff(totalMins, roundoffMap) {
     if (totalMins <= 0) return 0;
     if (!roundoffMap || roundoffMap.size === 0) return totalMins;
@@ -814,7 +908,7 @@ function isWeekOff(date, payroll) {
  */
 function timeStrToMinutes(str) {
     if (!str) return 0;
-    const parts = str.split(":").map(Number);
+    const parts = String(str).split(":").map(Number);
     const h = Number.isFinite(parts[0]) ? parts[0] : 0;
     const m = Number.isFinite(parts[1]) ? parts[1] : 0;
     return (h * 60) + m;
@@ -958,7 +1052,7 @@ function calcDayStatus(date, first_in, last_out, total_working_hour, payroll, co
 
     if (isWeekOffDay) {
         if (hasAnyWork) {
-            return buildWorkOnOffDayResult(DAY_STATUS.WOWO, total_working_hour, leave_info, roundoffMap);
+            return buildWorkOnOffDayResult(DAY_STATUS.WOWO, total_working_hour, payroll, leave_info);
         }
         return {
             day_status: DAY_STATUS.WEEK_OFF,
@@ -970,7 +1064,7 @@ function calcDayStatus(date, first_in, last_out, total_working_hour, payroll, co
 
     if (isHoliday) {
         if (hasAnyWork) {
-            return buildWorkOnOffDayResult(DAY_STATUS.WOPH, total_working_hour, leave_info, roundoffMap);
+            return buildWorkOnOffDayResult(DAY_STATUS.WOPH, total_working_hour, payroll, leave_info);
         }
         return {
             day_status: DAY_STATUS.HOLIDAY,
@@ -996,6 +1090,7 @@ function calcDayStatus(date, first_in, last_out, total_working_hour, payroll, co
     const minPresentMins = timeStrToMinutes(payroll.min_present_hours);
     const halfDayMins = timeStrToMinutes(payroll.half_day_hours);
     const minOvertimeMins = timeStrToMinutes(payroll.min_overtime_hours);
+    const maxOvertimeMins = timeStrToMinutes(payroll.approve_ot_hours);
 
     // ── Break is already excluded by processAttendance's segment summing;
     // no second break deduction here anymore. Only compensation adjusts it. ──
@@ -1005,6 +1100,8 @@ function calcDayStatus(date, first_in, last_out, total_working_hour, payroll, co
     // ── Apply company roundoff rule to working hour ────────────────────────
     const netWorkingMins = applyRoundoff(netWorkingMinsRaw, roundoffMap);
     const netWorkingHourStr = minutesToTimeStr(netWorkingMins);
+    const roundoffDiffMins = netWorkingMins - netWorkingMinsRaw;
+    const roundoffHoursStr = formatDiffMinutesToTimeStr(roundoffDiffMins);
 
     let day_status;
     if (isLeave) {
@@ -1019,9 +1116,17 @@ function calcDayStatus(date, first_in, last_out, total_working_hour, payroll, co
 
     // ── Overtime computed from the ROUNDED net working hour, then rounded
     // again independently (per your confirmed answer: round each separately) ──
-    const overtimeMinsRaw = calcOvertimeMinutes(netWorkingMins, minPresentMins, halfDayMins, minOvertimeMins);
+    const overtimeMinsRaw = calcOvertimeMinutes(netWorkingMins, minPresentMins, halfDayMins, minOvertimeMins, maxOvertimeMins);
     const overtimeMins = applyRoundoff(overtimeMinsRaw, roundoffMap);
     const overtimeHourStr = minutesToTimeStr(overtimeMins);
+
+    let regularOvertimeHourStr = "00:00:00";
+    let extraOvertimeHourStr = "00:00:00";
+    if (day_status === DAY_STATUS.HALF_DAY) {
+        regularOvertimeHourStr = overtimeHourStr;
+    } else {
+        extraOvertimeHourStr = overtimeHourStr;
+    }
 
     let late_in = null;
     if (firstInStr) {
@@ -1045,25 +1150,42 @@ function calcDayStatus(date, first_in, last_out, total_working_hour, payroll, co
         }
     }
 
-    return { day_status, late_in, early_out, net_working_hour: netWorkingHourStr, overtime_hours: overtimeHourStr, leave_info };
+    return {
+        day_status,
+        late_in,
+        early_out,
+        net_working_hour: netWorkingHourStr,
+        roundoff_hours: roundoffHoursStr,
+        overtime_hours: overtimeHourStr,
+        regular_overtime_hours: regularOvertimeHourStr,
+        extra_overtime_hours: extraOvertimeHourStr,
+        leave_info
+    };
 }
 
 /**
  * For WOWO/WOPH: all worked time is overtime, late_in/early_out don't apply
  * (there's no "scheduled" shift to be late/early against on an off-day).
  */
-function buildWorkOnOffDayResult(statusCode, first_in, last_out, total_working_hour, payroll, leave_info) {
+function buildWorkOnOffDayResult(statusCode, total_working_hour, payroll, leave_info = [], roundoffMap = null) {
     const rawWorkingMins = timeStrToMinutes(total_working_hour);
     const breakMins = timeStrToMinutes(payroll?.daily_break_hours);
-    const netWorkingMins = Math.max(0, rawWorkingMins - breakMins);
+    const netWorkingMinsRaw = Math.max(0, rawWorkingMins - breakMins);
+    const netWorkingMins = applyRoundoff(netWorkingMinsRaw, roundoffMap);
+    const roundoffDiffMins = netWorkingMins - netWorkingMinsRaw;
+    const roundoffHoursStr = formatDiffMinutesToTimeStr(roundoffDiffMins);
+    const otStr = minutesToTimeStr(netWorkingMins);
 
     return {
         day_status: statusCode,
         late_in: null,
         early_out: null,
-        net_working_hour: minutesToTimeStr(netWorkingMins),
-        overtime_hours: minutesToTimeStr(netWorkingMins), // all working hour = overtime
-        leave_info,
+        net_working_hour: otStr,
+        roundoff_hours: roundoffHoursStr,
+        overtime_hours: otStr, // all working hour = overtime
+        regular_overtime_hours: "00:00:00",
+        extra_overtime_hours: otStr,
+        leave_info: leave_info || [],
     };
 }
 
@@ -1118,7 +1240,7 @@ function calcCompensationMinutes(compensation_list) {
  *
  * Otherwise → overtime = 0
  */
-function calcOvertimeMinutes(netWorkingMins, minPresentMins, halfDayMins, minOvertimeMins) {
+function calcOvertimeMinutes(netWorkingMins, minPresentMins, halfDayMins, minOvertimeMins, maxOvertimeMins = 0) {
     let excessMins = 0;
 
     if (netWorkingMins > minPresentMins) {
@@ -1130,6 +1252,9 @@ function calcOvertimeMinutes(netWorkingMins, minPresentMins, halfDayMins, minOve
     }
 
     if (excessMins > minOvertimeMins) {
+        if (maxOvertimeMins > 0 && excessMins > maxOvertimeMins) {
+            return maxOvertimeMins;
+        }
         return excessMins;
     }
 
@@ -1264,7 +1389,7 @@ export const getAttendanceDetail = async (req) => {
             const counts = {
                 present: 0, absent: 0, halfDay: 0, weekOff: 0, holiday: 0,
                 lateDays: 0, earlyDays: 0, leave: 0,
-                workMins: 0, officeMins: 0, otMins: 0,
+                workMins: 0, officeMins: 0, otMins: 0, regOtMins: 0, extraOtMins: 0,
             };
 
             for (let d = 1; d <= daysInMonth; d++) {
@@ -1298,9 +1423,13 @@ export const getAttendanceDetail = async (req) => {
                     weekday,
                     status: statusCode,
                     punches: buildPunchPairs(row.attenance_entry_list),
-                    actualWorkHrs: timeStrToHHMM(row.net_working_hour),
+                    actualWorkHrs: timeStrToHHMM(row.total_working_time || row.net_working_hour),
+                    roundoffHrs: timeStrToHHMM(row.roundoff_hours || "00:00:00"),
+                    netWorkHrs: timeStrToHHMM(row.net_working_hour),
                     officialWorkHrs,
                     otOs: timeStrToHHMM(row.overtime_hour),
+                    regOt: timeStrToHHMM(row.regular_overtime_hour) || (row.day_status === 2 ? timeStrToHHMM(row.overtime_hour) : ""),
+                    extraOt: timeStrToHHMM(row.extra_overtime_hour) || (row.day_status !== 2 ? timeStrToHHMM(row.overtime_hour) : ""),
                     late: timeStrToHHMM(row.late_in),
                     early: timeStrToHHMM(row.early_out),
                 });
@@ -1317,8 +1446,15 @@ export const getAttendanceDetail = async (req) => {
                 if (row.early_out) counts.earlyDays += 1;
 
                 counts.workMins += timeStrToMinutes(row.net_working_hour);
+                counts.actualWorkMins += timeStrToMinutes(row.total_working_time || row.net_working_hour);
+                counts.roundoffMins += timeStrToMinutes(row.roundoff_hours || "00:00:00");
                 counts.officeMins += timeStrToMinutes(payroll?.daily_working_hours);
                 counts.otMins += timeStrToMinutes(row.overtime_hour);
+
+                const regOt = timeStrToMinutes(row.regular_overtime_hour) || (row.day_status === 2 ? timeStrToMinutes(row.overtime_hour) : 0);
+                const extraOt = timeStrToMinutes(row.extra_overtime_hour) || (row.day_status !== 2 ? timeStrToMinutes(row.overtime_hour) : 0);
+                counts.regOtMins += regOt;
+                counts.extraOtMins += extraOt;
             }
 
             daysWise[empId] = dayList;
@@ -1330,9 +1466,13 @@ export const getAttendanceDetail = async (req) => {
                 holiday: counts.holiday,
                 lateDays: counts.lateDays,
                 earlyDays: counts.earlyDays,
+                actualWorkHrs: minutesToHHMM(counts.actualWorkMins),
+                roundoffHrs: minutesToHHMM(counts.roundoffMins),
                 workHrs: minutesToHHMM(counts.workMins),
                 officeHrs: minutesToHHMM(counts.officeMins),
                 ot: minutesToHHMM(counts.otMins),
+                regOt: minutesToHHMM(counts.regOtMins),
+                extraOt: minutesToHHMM(counts.extraOtMins),
                 leave: counts.leave,
             };
         }

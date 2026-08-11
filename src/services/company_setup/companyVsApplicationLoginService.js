@@ -321,7 +321,7 @@ const companyPlaneCreateWayJoin = async ({
         company_masters_id: company_id,
         page_id: dataValues.id,
         page_name: dataValues.page_name,
-        a_page_id_rights_jason: JSON.stringify({
+        a_page_id_rights_jason: {
           view: 1,
           add: [45, 46, 47, 48].includes(dataValues.id) ? 0 : 1,
           edit: [45, 46, 47, 48].includes(dataValues.id) ? 0 : 1,
@@ -333,7 +333,7 @@ const companyPlaneCreateWayJoin = async ({
           all_data: 0,
           personal: 1,
           limit: matchingPage ? matchingPage.data_limit : "",
-        }),
+        },
         created_date_time: formattedDateAndTime,
       });
     });
@@ -362,7 +362,10 @@ export const getByIdTeam = async (req) => {
       a_application_login_id
     );
 
+    const headerCompanyId = req.headers["x-company-id"] ? Number(req.headers["x-company-id"]) : null;
+
     let targetCompanyId =
+      headerCompanyId ||
       req.body.company_masters_id ||
       findAllApplicationLogin?.company_masters_id;
 

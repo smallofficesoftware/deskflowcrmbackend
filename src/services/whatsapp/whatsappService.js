@@ -71,7 +71,9 @@ export const sendSalesPdfWhatsapp = async (req) => {
         } = resops.data;
         const contactModelInstance = contactModel(req.tenantDB);
         const contactDetailFetch = await contactModelInstance.findOne({ where: { isDelete: 0, mobile_number: normalizeToTenDigit(customer_phone) }, raw: true, attributes: ["person_name", "company_name"] });
-        const recipientName = contactDetailFetch ? `${contactDetailFetch.company_name ? contactDetailFetch.company_name + " " : ""}${contactDetailFetch.person_name}` : 'Unknown';
+        const companyName = contactDetailFetch?.company_name?.trim();
+        const personName = contactDetailFetch?.person_name?.trim();
+        const recipientName = (companyName && personName && personName !== 'Unknown') ? `${companyName} ${personName}` : (companyName || personName || 'Unknown');
 
         return await handler({
             numbers: customer_phone,
@@ -140,7 +142,9 @@ export const sendContactAllAccountPdfWhatsapp = async (req) => {
 
         const contactModelInstance = contactModel(req.tenantDB);
         const contactDetailFetch = await contactModelInstance.findOne({ where: { isDelete: 0, mobile_number: normalizeToTenDigit(resops.data.mobile_number) }, raw: true, attributes: ["person_name", "company_name"] });
-        const recipientName = contactDetailFetch ? `${contactDetailFetch.company_name ? contactDetailFetch.company_name + " " : ""}${contactDetailFetch.person_name}` : 'Unknown';
+        const companyName = contactDetailFetch?.company_name?.trim();
+        const personName = contactDetailFetch?.person_name?.trim();
+        const recipientName = (companyName && personName && personName !== 'Unknown') ? `${companyName} ${personName}` : (companyName || personName || 'Unknown');
 
         return await handler({
             numbers: [resops.data.mobile_number],
@@ -211,7 +215,9 @@ export const sendSingleAccountPdfWhatsapp = async (req) => {
 
         const contactModelInstance = contactModel(req.tenantDB);
         const contactDetailFetch = await contactModelInstance.findOne({ where: { isDelete: 0, mobile_number: normalizeToTenDigit(resops.data.mobile_number) }, raw: true, attributes: ["person_name", "company_name"] });
-        const recipientName = contactDetailFetch ? `${contactDetailFetch.company_name ? contactDetailFetch.company_name + " " : ""}${contactDetailFetch.person_name}` : 'Unknown';
+        const companyName = contactDetailFetch?.company_name?.trim();
+        const personName = contactDetailFetch?.person_name?.trim();
+        const recipientName = (companyName && personName && personName !== 'Unknown') ? `${companyName} ${personName}` : (companyName || personName || 'Unknown');
 
         return await handler({
             numbers: [resops.data.mobile_number],
@@ -280,7 +286,9 @@ export const taskSendWhatsappMessages = async (req) => {
 
         const contactModelInstance = contactModel(req.tenantDB);
         const contactDetailFetch = await contactModelInstance.findOne({ where: { isDelete: 0, mobile_number: normalizeToTenDigit(numbers) }, raw: true, attributes: ["person_name", "company_name"] });
-        const recipientName = contactDetailFetch ? `${contactDetailFetch.company_name ? contactDetailFetch.company_name + " " : ""}${contactDetailFetch.person_name}` : 'Unknown';
+        const companyName = contactDetailFetch?.company_name?.trim();
+        const personName = contactDetailFetch?.person_name?.trim();
+        const recipientName = (companyName && personName && personName !== 'Unknown') ? `${companyName} ${personName}` : (companyName || personName || 'Unknown');
 
         return await handler({
             sessionName,
@@ -345,7 +353,9 @@ export const contactAssignSendMessage = async (req, detail) => {
 
         const contactModelInstance = contactModel(req.tenantDB);
         const contactDetailFetch = await contactModelInstance.findOne({ where: { isDelete: 0, mobile_number: normalizeToTenDigit(numbers) }, raw: true, attributes: ["person_name", "company_name"] });
-        const recipientName = contactDetailFetch ? `${contactDetailFetch.company_name ? contactDetailFetch.company_name + " " : ""}${contactDetailFetch.person_name}` : 'Unknown';
+        const companyName = contactDetailFetch?.company_name?.trim();
+        const personName = contactDetailFetch?.person_name?.trim();
+        const recipientName = (companyName && personName && personName !== 'Unknown') ? `${companyName} ${personName}` : (companyName || personName || 'Unknown');
 
         return await handler({
             sessionName,
@@ -587,7 +597,9 @@ export const sendTemplateMessage = async (req) => {
 
         const contactModelInstance = contactModel(req.tenantDB);
         const contactDetailFetch = await contactModelInstance.findOne({ where: { isDelete: 0, mobile_number: normalizeToTenDigit(recipientPhone) }, raw: true, attributes: ["person_name", "company_name"] });
-        const recipientName = contactDetailFetch ? `${contactDetailFetch.company_name ? contactDetailFetch.company_name + " " : ""}${contactDetailFetch.person_name}` : 'Unknown';
+        const companyName = contactDetailFetch?.company_name?.trim();
+        const personName = contactDetailFetch?.person_name?.trim();
+        const recipientName = (companyName && personName && personName !== 'Unknown') ? `${companyName} ${personName}` : (companyName || personName || 'Unknown');
 
         let demo_media_url = null;
 
@@ -771,8 +783,18 @@ export const waCloudHook = async (req, res) => {
         });
         for (const right of contactRightsList) {
             try {
-                const rightsJson = JSON.parse(right.a_page_id_rights_jason || "{}");
-                if (typeof rightsJson.limit === "number" && rightsJson.limit > 0) {
+                let rightsJson = right.a_page_id_rights_jason;
+                if (typeof rightsJson === "string") {
+                    try {
+                        rightsJson = JSON.parse(rightsJson);
+                        if (typeof rightsJson === "string") {
+                            rightsJson = JSON.parse(rightsJson);
+                        }
+                    } catch (e) {
+                        rightsJson = {};
+                    }
+                }
+                if (typeof rightsJson?.limit === "number" && rightsJson.limit > 0) {
                     if (currentContactCount >= rightsJson.limit) {
                         return resError({
                             ack_msg: `Limit ${rightsJson.limit} reached for Company. Current Contact In Your System: ${currentContactCount}`,

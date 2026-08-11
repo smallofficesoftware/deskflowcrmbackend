@@ -51,7 +51,8 @@ import {
   MASTER_PIN,
   RAISE_SUPPORT_TICKET_FLAG,
   SUPPORT_TICKET_INFO_MESSAGE,
-  UPDATE_VERSION_MSG
+  UPDATE_VERSION_MSG,
+  MAINTENANCE_BYPASS_IPS,
 } from "../../utils/appConstants.js";
 // const whatsAppKey = "aa771918-d589-4ad1-a5b0-fca2f3abdf71";
 // const whatsappAuthKey = "s9Iz7gqyCfknn1RW0XBAklxQbwJAMHPym2JlRlAa1qNusiTjr1";
@@ -1289,16 +1290,28 @@ export const onLoad = async (req, res) => {
     const { a_application_login_id, device_id, platform } = req.body;
 
     /* ===================== MAINTENANCE ===================== */
-    const setting = await maintenanceModesModel.findOne({
-      where: { isDelete: 0 },
-    });
+    let clientIp =
+      req.headers["cf-connecting-ip"] ||
+      req.headers["x-real-ip"] ||
+      (req.headers["x-forwarded-for"] ? req.headers["x-forwarded-for"].split(",")[0].trim() : null) ||
+      req.ip ||
+      req.socket?.remoteAddress ||
+      "";
+    if (clientIp.startsWith("::ffff:")) clientIp = clientIp.replace("::ffff:", "");
+    const isIpBypassed = clientIp && MAINTENANCE_BYPASS_IPS.includes(clientIp.trim());
 
-    if (setting && setting.dataValues.is_maintenance === 1) {
-      return resError({
-        ack: -1,
-        ack_msg: "Service Unavailable. We are currently undergoing maintenance.",
-        developer_msg: "Service Unavailable. We are currently undergoing maintenance.",
+    if (!isIpBypassed) {
+      const setting = await maintenanceModesModel.findOne({
+        where: { isDelete: 0 },
       });
+
+      if (setting && setting.dataValues.is_maintenance === 1) {
+        return resError({
+          ack: -1,
+          ack_msg: "Service Unavailable. We are currently undergoing maintenance.",
+          developer_msg: "Service Unavailable. We are currently undergoing maintenance.",
+        });
+      }
     }
     // const employeePayrollInc = await employeePayrollModel(req.tenantDB)
     /* ===================== LOGIN ===================== */
@@ -1358,6 +1371,12 @@ export const onLoad = async (req, res) => {
     }
 
     /* ===================== COMPANY & RIGHTS ===================== */
+    // Ensure x-company-id is propagated from the JWT (set during selectWorkspace).
+    // This guarantees getCompanyByLoginId resolves the active workspace,
+    // not the fallback (oldest) company mapping.
+    if (req.user?.companyId && !req.headers["x-company-id"]) {
+      req.headers["x-company-id"] = String(req.user.companyId);
+    }
     const findCompanyId = await getCompanyByLoginId(a_application_login_id);
     const applicationLoginTypeRightModelIntance = applicationLoginTypeRightModel(req.tenantDB);
     const resultRights = await applicationLoginTypeRightModelIntance.findAll({

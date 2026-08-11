@@ -59,6 +59,14 @@ export const customFieldFormModel = (sequelize) => {
     form_type: {
       type: INTEGER
     },
+    third_party_field_name: {
+      type: STRING,
+      defaultValue: null
+    },
+    applicable_modules: {
+      type: STRING,
+      defaultValue: null
+    },
     isDelete: {
       type: TINYINT,
       defaultValue: "0",

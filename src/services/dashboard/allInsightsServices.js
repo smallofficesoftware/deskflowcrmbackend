@@ -1189,6 +1189,13 @@ export const getProductionInsight = async (req) => {
         });
 
         const JobModel = JobCardsModel(tenantDB);
+        const jobCount = await JobModel.count({
+            where: {
+                isDelete: 0,
+                [Op.and]: dateAnd("created_date_time", start, end),
+            },
+        });
+
         const allJob = await JobModel.findAll({
             where: {
                 isDelete: 0,
@@ -1341,7 +1348,7 @@ export const getProductionInsight = async (req) => {
                 lowStockCount,
                 highStockCount,
                 totalStockValue,
-                jobCount: allJob.length,
+                jobCount,
                 allJob: jobsWithUser,
             },
         });

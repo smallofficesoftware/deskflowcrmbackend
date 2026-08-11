@@ -43,9 +43,11 @@ export const productInventoryReport = async (req, res) => {
     }
 
 
-    const offset = ul;
-    const limit = ll;
-
+    const offset = Number(ul) || 0;
+    const limit = Number(ll) || 50;
+    const stockTypeId = (selectedStockTypeId !== null && selectedStockTypeId !== undefined && selectedStockTypeId !== "")
+      ? (typeof selectedStockTypeId === "object" ? parseInt(selectedStockTypeId.value, 10) : parseInt(selectedStockTypeId, 10))
+      : null;
 
     const findCompanyId = await getCompanyByLoginId(a_application_login_id);
     const cartItem = cartItemModel(req.tenantDB);
@@ -86,7 +88,8 @@ export const productInventoryReport = async (req, res) => {
     if (relevanceOrder && relevanceOrder.length > 0) {
       order.push(...relevanceOrder);
     }
-    const { count: totalRecords, rows: productRows } = await productModels.findAndCountAll({
+
+    const queryOptions = {
       where: {
         isDelete: 0,
         company_masters_id: findCompanyId.company_masters_id,
@@ -105,13 +108,17 @@ export const productInventoryReport = async (req, res) => {
         "purchase_net_rate",
         "purchase_rate"
       ],
-      offset, // ll -> offset
-      limit,  // ul -> limit
       raw: true,
       order: relevanceOrder
-    });
+    };
 
-    // If there are no products in the page return empty items and totalRecords
+    if (!stockTypeId) {
+      queryOptions.offset = offset;
+      queryOptions.limit = limit;
+    }
+
+    const { count: sqlTotalRecords, rows: productRows } = await productModels.findAndCountAll(queryOptions);
+
     const data = productRows.length > 0 ? productRows : [];
 
     const reportData = await Promise.all(
@@ -345,14 +352,15 @@ export const productInventoryReport = async (req, res) => {
 
         const calClosingQty = (calClosingQty1) + (inward) + (purchase) + (returnSales) + (stockAdjustmentInwardIn);
 
-        if (
-          (selectedStockTypeId === 1 && calClosingQty !== 0) ||
-          (selectedStockTypeId === 2 && calClosingQty >= 0) ||
-          (selectedStockTypeId === 3 && calClosingQty <= 0) ||
-          (selectedStockTypeId === 4 && calClosingQty <= item.max_stock_quantity) ||
-          (selectedStockTypeId === 5 && calClosingQty >= item.min_stock_quantity)
-        ) {
-          return null;
+        if (stockTypeId) {
+          const minQty = Number(item.min_stock_quantity) || 0;
+          const maxQty = Number(item.max_stock_quantity) || 0;
+
+          if (stockTypeId === 1 && calClosingQty !== 0) return null; // Zero stock
+          if (stockTypeId === 2 && calClosingQty >= 0) return null;  // Less than zero
+          if (stockTypeId === 3 && calClosingQty <= 0) return null;  // Greater than zero
+          if (stockTypeId === 4 && (maxQty === 0 || calClosingQty <= maxQty)) return null; // More than max qty
+          if (stockTypeId === 5 && (minQty > 0 ? calClosingQty >= minQty : calClosingQty > 0)) return null; // Less than min qty (Stock Alert)
         }
 
         const purchaseNetRate = parseFloat(item.purchase_net_rate) || 0;
@@ -390,8 +398,18 @@ export const productInventoryReport = async (req, res) => {
         };
       })
     );
+    const allFilteredData = reportData.filter(Boolean);
+
+    let finalItems = allFilteredData;
+    let finalTotal = sqlTotalRecords;
+
+    if (stockTypeId) {
+      finalTotal = allFilteredData.length;
+      finalItems = allFilteredData.slice(offset, offset + limit);
+    }
+
     return resSuccess({
-      data: { items: reportData.filter(Boolean), totalRecords },
+      data: { items: finalItems, totalRecords: finalTotal },
       ack_msg: "Product inventory report fetched successfully",
     });
   } catch (e) {

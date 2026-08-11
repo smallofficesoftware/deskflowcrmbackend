@@ -18,15 +18,14 @@ if (fs.existsSync(serviceAccountPath)) {
 }
 
 if (!admin.apps.length) {
-  if (!credentials) {
-    throw new Error("Firebase credentials not found or invalid.");
+  if (credentials) {
+    admin.initializeApp({
+      credential: admin.credential.cert(credentials),
+    });
+    logger.info("Firebase Admin initialized.");
+  } else {
+    logger.warn("Firebase credentials not found or invalid. Skipping Firebase Admin initialization.");
   }
-
-  admin.initializeApp({
-    credential: admin.credential.cert(credentials),
-  });
-
-  logger.info("Firebase Admin initialized.");
 }
 
 export default admin;

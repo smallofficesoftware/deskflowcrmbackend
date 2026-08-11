@@ -35,6 +35,8 @@ export const storeSupportTicketCreate = async (req, res) => {
         }
 
         req.headers["x-tenant-id"] = companyIdFind.a_application_login_id;
+        req.headers["x-company-id"] = companyIdFind.id;
+        req.body.company_masters_id = companyIdFind.id;
         await new Promise((resolve, reject) => {
             tenantMiddleware(req, res, (err) => (err ? reject(err) : resolve()));
         });
@@ -267,6 +269,8 @@ export const storeTicketCategoryGet = async (req, res) => {
             });
         }
         req.headers["x-tenant-id"] = companyIdFind.a_application_login_id;
+        req.headers["x-company-id"] = companyIdFind.id;
+        req.body.company_masters_id = companyIdFind.id;
         await new Promise((resolve, reject) => {
             tenantMiddleware(req, res, (err) => (err ? reject(err) : resolve()));
         });
@@ -327,6 +331,8 @@ export const storeTicketContactGet = async (req, res) => {
             });
         }
         req.headers["x-tenant-id"] = companyIdFind.a_application_login_id;
+        req.headers["x-company-id"] = companyIdFind.id;
+        req.body.company_masters_id = companyIdFind.id;
         await new Promise((resolve, reject) => {
             tenantMiddleware(req, res, (err) => (err ? reject(err) : resolve()));
         });
@@ -407,6 +413,8 @@ export const storeSupportTicketGet = async (req, res) => {
         }
 
         req.headers["x-tenant-id"] = companyIdFind.a_application_login_id;
+        req.headers["x-company-id"] = companyIdFind.id;
+        req.body.company_masters_id = companyIdFind.id;
         await new Promise((resolve, reject) => {
             tenantMiddleware(req, res, (err) => (err ? reject(err) : resolve()));
         });
@@ -663,6 +671,8 @@ export const storeTicketStatusLogFetch = async (req, res) => {
         }
 
         req.headers["x-tenant-id"] = companyIdFind.a_application_login_id;
+        req.headers["x-company-id"] = companyIdFind.id;
+        req.body.company_masters_id = companyIdFind.id;
         await new Promise((resolve, reject) => {
             tenantMiddleware(req, res, (err) => (err ? reject(err) : resolve()));
         });
@@ -783,6 +793,8 @@ export const storeTicketMessageGet = async (req, res) => {
         }
 
         req.headers["x-tenant-id"] = companyIdFind.a_application_login_id;
+        req.headers["x-company-id"] = companyIdFind.id;
+        req.body.company_masters_id = companyIdFind.id;
         await new Promise((resolve, reject) => {
             tenantMiddleware(req, res, (err) => (err ? reject(err) : resolve()));
         });
@@ -842,6 +854,8 @@ export const storeTicketMessageCreate = async (req, res) => {
         }
 
         req.headers["x-tenant-id"] = companyIdFind.a_application_login_id;
+        req.headers["x-company-id"] = companyIdFind.id;
+        req.body.company_masters_id = companyIdFind.id;
         await new Promise((resolve, reject) => {
             tenantMiddleware(req, res, (err) => (err ? reject(err) : resolve()));
         });

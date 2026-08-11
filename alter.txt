@@ -2111,3 +2111,92 @@ INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `extra_in
 
 23-07-2026 DInesh
 ALTER TABLE `contact_masters` CHANGE `client_code` `client_code` VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL;
+
+26-07-2026 Antigravity
+ALTER TABLE `miracle_configurations` ADD `rights_config` JSON NULL DEFAULT NULL AFTER `CompanyName`;
+
+26-07-2026 Antigravity
+ALTER TABLE `contact_masters` ADD `gst_reg_type` VARCHAR(50) NULL DEFAULT NULL AFTER `gst_number`, ADD `gst_reg_date` DATE NULL DEFAULT NULL AFTER `gst_reg_type`;
+
+28-07-2026 Antigravity
+***** CREATE TABLE `miracle_logs` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `log_type` ENUM('WEBHOOK','CRM_API','MIRACLE_OUTBOUND') NOT NULL,
+  `module_name` VARCHAR(100) NOT NULL DEFAULT '',
+  `record_id` INT(11) NULL DEFAULT NULL,
+  `action_type` VARCHAR(20) NOT NULL DEFAULT '',
+  `miracle_unique_id` VARCHAR(255) NOT NULL DEFAULT '',
+  `url` VARCHAR(500) NOT NULL DEFAULT '',
+  `method` VARCHAR(10) NOT NULL DEFAULT 'POST',
+  `status_code` INT(11) NULL DEFAULT NULL,
+  `status` ENUM('SUCCESS','FAILED','SKIPPED') NOT NULL DEFAULT 'SUCCESS',
+  `response_time` INT(11) NULL DEFAULT NULL,
+  `request_payload` LONGTEXT NULL DEFAULT NULL,
+  `response_payload` LONGTEXT NULL DEFAULT NULL,
+  `error_message` TEXT NULL DEFAULT NULL,
+  `company_masters_id` INT(11) NULL DEFAULT NULL,
+  `created_date_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `modified_date` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  INDEX `idx_log_type` (`log_type`),
+  INDEX `idx_status` (`status`),
+  INDEX `idx_module_name` (`module_name`),
+  INDEX `idx_company_masters_id` (`company_masters_id`),
+  INDEX `idx_created_date_time` (`created_date_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+NOTE: Run this CREATE TABLE manually on each tenant's database.
+      The `miracle_logs` table is per-tenant (created in each tenant DB), NOT in the main/shared DB.
+
+28-07-2026 Antigravity
+ALTER TABLE `products` ADD `miracle_uom_name` VARCHAR(255) NULL DEFAULT NULL AFTER `miracle_update_date_time`;
+
+30-07-2026 Antigravity
+ALTER TABLE `custom_field_form_masters` ADD `third_party_field_name` VARCHAR(255) NULL DEFAULT NULL AFTER `form_type`;
+
+31-07-2026 Dinesh
+ALTER TABLE `salary_registers` 
+  ADD COLUMN `total_paid_leave` DOUBLE DEFAULT 0 AFTER `total_leave`,
+  ADD COLUMN `total_unpaid_leave` DOUBLE DEFAULT 0 AFTER `total_paid_leave`,
+  ADD COLUMN `basic_da` DOUBLE DEFAULT 0 AFTER `compensation_amount`,
+  ADD COLUMN `hra` DOUBLE DEFAULT 0 AFTER `basic_da`;
+
+02-08-2026 Antigravity
+ALTER TABLE `custom_field_form_masters` ADD `applicable_modules` VARCHAR(255) NULL DEFAULT NULL AFTER `third_party_field_name`;
+
+-- Backfill legacy fields for existing client databases:
+UPDATE `custom_field_form_masters` SET `applicable_modules` = '4' WHERE `form_type` = 4 AND `product_feild_row_column` = 1 AND `applicable_modules` IS NULL;
+UPDATE `custom_field_form_masters` SET `applicable_modules` = '5,6,7,8,9,10,11,12,13' WHERE `form_type` = 4 AND `product_feild_row_column` = 2 AND `applicable_modules` IS NULL;
+
+05-08-2026 Deep
+INSERT INTO `a_application_pages` (`id`, `page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (144, 'Route Planner', 'Route Planner', 'route_planner', 'Route Planner', '1', '12', '0', '1', '2026-07-25 07:26:13', '2026-07-25 12:56:13', '0', '1');
+
+INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `extra_information`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, '3', '144', '0', '', '2025-11-12 14:53:39', '2025-11-12 19:24:00', '0', '1'), (NULL, '2', '144', '0', '', '2025-11-12 14:53:39', '2025-11-12 19:24:00', '0', '1');
+
+06-08-2026 Antigravity
+ALTER TABLE `employee_payrolls`
+  ADD COLUMN `regular_ot_type` TINYINT(4) NOT NULL DEFAULT 1 AFTER `overtime_amount_per_hour`,
+  ADD COLUMN `extra_ot_type` TINYINT(4) NOT NULL DEFAULT 2 AFTER `regular_ot_type`;
+
+ALTER TABLE `attendance_batch_process`
+  ADD COLUMN `regular_overtime_hour` VARCHAR(100) NULL AFTER `overtime_hour`,
+  ADD COLUMN `extra_overtime_hour` VARCHAR(100) NULL AFTER `regular_overtime_hour`;
+
+ALTER TABLE `salary_registers`
+  ADD COLUMN `regular_ot_hours` VARCHAR(100) NULL AFTER `earn_ot_payable_amt`,
+  ADD COLUMN `extra_ot_hours` VARCHAR(100) NULL AFTER `regular_ot_hours`,
+  ADD COLUMN `regular_ot_payable_amt` DOUBLE DEFAULT 0 AFTER `extra_ot_hours`,
+  ADD COLUMN `extra_ot_payable_amt` DOUBLE DEFAULT 0 AFTER `regular_ot_payable_amt`;
+
+ALTER TABLE `attendance_batch_process`
+  ADD COLUMN `roundoff_hours` VARCHAR(100) DEFAULT '00:00:00' AFTER `net_working_hour`;
+
+07-08-2026 Antigravity
+ALTER TABLE `employee_payrolls`
+  ADD COLUMN `late_in_allowed_count` INT NOT NULL DEFAULT 0 AFTER `approve_ot_hours`,
+  ADD COLUMN `late_in_penalty_type` TINYINT NOT NULL DEFAULT 1 AFTER `late_in_allowed_count`,
+  ADD COLUMN `late_in_penalty_value` DOUBLE NOT NULL DEFAULT 0 AFTER `late_in_penalty_type`,
+  ADD COLUMN `early_out_allowed_count` INT NOT NULL DEFAULT 0 AFTER `late_in_penalty_value`,
+  ADD COLUMN `early_out_penalty_type` TINYINT NOT NULL DEFAULT 1 AFTER `early_out_allowed_count`,
+  ADD COLUMN `early_out_penalty_value` DOUBLE NOT NULL DEFAULT 0 AFTER `early_out_penalty_type`,
+  ADD COLUMN `hourly_leave_allowed_hours` VARCHAR(100) NOT NULL DEFAULT '0' AFTER `early_out_penalty_value`;

@@ -1,6 +1,7 @@
 import moment from "moment";
 import miracleConfigModel from "../models/company_setup/miracleConfigModel.js";
 import { getCompanyByLoginId } from "../services/commonServices.js";
+import { parseMiracleRights } from "../utils/miracleRightsHelper.js";
 import { getFinancialYearRangeWise, isValid } from "../utils/sharedFunctions.js";
 
 export const checkMiracleAuth = async (req, res, next) => {
@@ -32,7 +33,8 @@ export const checkMiracleAuth = async (req, res, next) => {
                 "access_token",
                 "auth_date_time",
                 "baseurl",
-                "urlKey"
+                "urlKey",
+                "rights_config"
             ]
         });
 
@@ -48,6 +50,7 @@ export const checkMiracleAuth = async (req, res, next) => {
         // pass function to axios later
         req.body.mconfig = {
             ...config,
+            rights_config: parseMiracleRights(config.rights_config),
             company_id,
         };
 

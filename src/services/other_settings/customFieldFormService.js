@@ -83,6 +83,8 @@ export const addCustomFieldFrom = async (req) => {
       form_type: req.body.form_type,
       company_masters_id: findCompanyId.company_masters_id,
       reference_column_name: validColumn,
+      third_party_field_name: req.body.third_party_field_name ? String(req.body.third_party_field_name).trim() : null,
+      applicable_modules: req.body.applicable_modules ? String(req.body.applicable_modules).trim() : null,
       created_date_time: formattedDate,
     };
 
@@ -138,6 +140,8 @@ export const getAllCustomFieldFrom = async (req) => {
         "max_limit",
         "validation_type",
         "data_sorce",
+        "third_party_field_name",
+        "applicable_modules",
         "form_type"
       ],
       order: [["display_order", "ASC"]],
@@ -328,21 +332,27 @@ export const getAllCustomFieldFromByUsingCompany = async (req, res) => {
       attributes: ["id", "a_application_login_id"]
     });
 
-    const findCompanyId = await getCompanyByLoginId(getCompanyData.a_application_login_id);
+    if (!getCompanyData) {
+      return resError({ ack_msg: "Company not found", developer_msg: "Company not found" });
+    }
+
+    const company_masters_id = getCompanyData.id;
+    const a_application_login_id = getCompanyData.a_application_login_id;
+    const tenantId = a_application_login_id;
 
     let whereClause = {
-      company_masters_id: findCompanyId.company_masters_id,
+      company_masters_id: company_masters_id,
       isDelete: 0,
     };
 
     if (form_type) {
       whereClause.form_type = form_type;
     }
-    const company_masters_id = findCompanyId.company_masters_id;
-    const a_application_login_id = findCompanyId.a_application_login_id;
-    const tenantId = a_application_login_id;
 
+    req.headers = req.headers || {};
     req.headers["x-tenant-id"] = tenantId;
+    req.headers["x-company-id"] = company_masters_id;
+    req.body.company_masters_id = company_masters_id;
 
     await new Promise((resolve, reject) => {
       tenantMiddleware(req, {}, (err) => {
@@ -365,6 +375,7 @@ export const getAllCustomFieldFromByUsingCompany = async (req, res) => {
         "product_feild_row_column",
         "required_for",
         "data_sorce",
+        "third_party_field_name",
         "form_type",
         "a_application_login_id"
       ],
@@ -422,15 +433,9 @@ export const getAllCustomFieldDatavalueforQrByinquiryy = async (req, res) => {
       });
     }
 
-    // 3) Resolve company via login id
-    const findCompanyId = await getCompanyByLoginId(getCompanyData.a_application_login_id);
-    if (!findCompanyId || !findCompanyId.a_application_login_id) {
-      return resError({
-        ack: 0,
-        ack_msg: "Company not found for provided login id",
-        developer_msg: `getCompanyByLoginId returned invalid result for login id: ${getCompanyData.a_application_login_id}`,
-      });
-    }
+    const company_masters_id = getCompanyData.id;
+    const a_application_login_id = getCompanyData.a_application_login_id;
+    const tenantId = a_application_login_id;
 
     // 4) Normalize custom_field_master_id to an array of positive integers
     const ids = Array.isArray(custom_field_master_id)
@@ -453,12 +458,11 @@ export const getAllCustomFieldDatavalueforQrByinquiryy = async (req, res) => {
     }
 
     // 5) Set tenant header and run tenant middleware
-    const a_application_login_id = findCompanyId.a_application_login_id;
-    const tenantId = a_application_login_id;
-
     // attach tenant header
     req.headers = req.headers || {};
     req.headers["x-tenant-id"] = tenantId;
+    req.headers["x-company-id"] = company_masters_id;
+    req.body.company_masters_id = company_masters_id;
 
     // assume tenantMiddleware(req, res, next)
     await new Promise((resolve, reject) => {
