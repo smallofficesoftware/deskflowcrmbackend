@@ -649,7 +649,8 @@ export const attendanceDetailUpdate = async (req) => {
                 );
 
                 let penaltyAdded = false;
-                if (late_in) {
+                // ── Late-in penalty: skip on LEAVE / WOWO / WOPH days ─────────────
+                if (late_in && day_status !== DAY_STATUS.LEAVE && day_status !== DAY_STATUS.WOWO && day_status !== DAY_STATUS.WOPH) {
                     lateInCount++;
                     const allowedLimit = payroll?.late_in_allowed_count ?? 0;
                     if (payroll && lateInCount > allowedLimit) {
@@ -681,7 +682,8 @@ export const attendanceDetailUpdate = async (req) => {
                     }
                 }
 
-                if (early_out) {
+                // ── Early-out penalty: skip on LEAVE / WOWO / WOPH days ───────────
+                if (early_out && day_status !== DAY_STATUS.LEAVE && day_status !== DAY_STATUS.WOWO && day_status !== DAY_STATUS.WOPH) {
                     earlyOutCount++;
                     const allowedLimit = payroll?.early_out_allowed_count ?? 0;
                     if (payroll && earlyOutCount > allowedLimit) {
@@ -1128,8 +1130,15 @@ function calcDayStatus(date, first_in, last_out, total_working_hour, payroll, co
         extraOvertimeHourStr = overtimeHourStr;
     }
 
+    // ── late_in / early_out only apply on normal working days ─────────────
+    // Skip for LEAVE, WOWO (Work On Week Off) and WOPH (Work On Public Holiday)
+    // as the employee has no obligation to arrive/leave at scheduled times.
+    const skipLateEarly = day_status === DAY_STATUS.LEAVE ||
+        day_status === DAY_STATUS.WOWO ||
+        day_status === DAY_STATUS.WOPH;
+
     let late_in = null;
-    if (firstInStr) {
+    if (firstInStr && !skipLateEarly) {
         const datePrefix = firstInStr.slice(0, 10);
         const scheduledIn = moment(`${datePrefix} ${payroll.daily_in_time}`, "YYYY-MM-DD HH:mm:ss");
         const graceIn = scheduledIn.clone().add(gracePeriodMins, "minutes");
@@ -1140,7 +1149,7 @@ function calcDayStatus(date, first_in, last_out, total_working_hour, payroll, co
     }
 
     let early_out = null;
-    if (lastOutStr) {
+    if (lastOutStr && !skipLateEarly) {
         const datePrefix = lastOutStr.slice(0, 10);
         const scheduledOut = moment(`${datePrefix} ${payroll.daily_out_time}`, "YYYY-MM-DD HH:mm:ss");
         const graceOut = scheduledOut.clone().subtract(gracePeriodMins, "minutes");
