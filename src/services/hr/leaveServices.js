@@ -7,6 +7,7 @@ import companyVsApplicationLoginModel from "../../models/company_setup/companyVs
 import { leavesModel } from "../../models/hr/leavesModel.js";
 import { employeePayrollModel } from "../../models/hr/employeePayrollModel.js";
 import { compensationAdjustmentModel } from "../../models/hr/compensationAdjustmentModel.js";
+import { AdjustmentTypes } from "../../models/hr/adjustmentTypes.js";
 import { LEAVE_IMG_LINK_EXTENDED } from "../../utils/appConstants.js";
 import {
     formatDateAndTimeCreateDateTime,
@@ -173,6 +174,7 @@ async function syncHourlyLeaveCompensationCredit(tenantDB, companyMastersId, aAp
 
         const payrollModel = employeePayrollModel(tenantDB);
         const compModel = compensationAdjustmentModel(tenantDB);
+        const AdjustmentTypesModel = AdjustmentTypes(tenantDB);
 
         const payroll = await payrollModel.findOne({
             where: { a_application_login_id: aApplicationLoginId, isDelete: 0 }
@@ -181,6 +183,18 @@ async function syncHourlyLeaveCompensationCredit(tenantDB, companyMastersId, aAp
         if (!payroll || !payroll.hourly_leave_allowed_hours || String(payroll.hourly_leave_allowed_hours) === "0") {
             return;
         }
+
+        // ── Look up "Other Hours Credit" type dynamically ─────────────────────
+        const otherHoursCreditType = await AdjustmentTypesModel.findOne({
+            where: { name: "Other Hours Credit", isDelete: 0, company_masters_id: companyMastersId }
+        });
+
+        if (!otherHoursCreditType) {
+            console.warn(`syncHourlyLeaveCompensationCredit: "Other Hours Credit" adjustment type not found for company ${companyMastersId}. Skipping credit.`);
+            return;
+        }
+
+        const hoursCreditTypeId = otherHoursCreditType.id;
 
         const allowedMins = timeStrToMinutes(String(payroll.hourly_leave_allowed_hours));
         if (allowedMins <= 0) return;
@@ -192,7 +206,7 @@ async function syncHourlyLeaveCompensationCredit(tenantDB, companyMastersId, aAp
         const existingCompList = await compModel.findAll({
             where: {
                 a_application_login_id: aApplicationLoginId,
-                type_id: 98,
+                type_id: hoursCreditTypeId,
                 apply_date: { [Op.between]: [monthStart, monthEnd] },
                 isDelete: 0
             }
@@ -215,7 +229,7 @@ async function syncHourlyLeaveCompensationCredit(tenantDB, companyMastersId, aAp
             const existingTodayComp = await compModel.findOne({
                 where: {
                     a_application_login_id: aApplicationLoginId,
-                    type_id: 98,
+                    type_id: hoursCreditTypeId,
                     apply_date: todayStr,
                     isDelete: 0
                 }
@@ -223,7 +237,7 @@ async function syncHourlyLeaveCompensationCredit(tenantDB, companyMastersId, aAp
 
             if (existingTodayComp) {
                 await compModel.update(
-                    { hours: creditHrs, remark: `Hourly Leave Free Credit (${creditHrs} hrs)` },
+                    { hours: creditHrs, type_id: hoursCreditTypeId, remark: `Hourly Leave Free Credit (${creditHrs} hrs)` },
                     { where: { id: existingTodayComp.id } }
                 );
             } else {
@@ -232,10 +246,10 @@ async function syncHourlyLeaveCompensationCredit(tenantDB, companyMastersId, aAp
                     a_application_login_id: aApplicationLoginId,
                     employee_id: payroll.employee_id || 0,
                     apply_date: todayStr,
-                    adjustment_type: 1, // 1: Credit
+                    adjustment_type: 1, // 1: Credit Hours
                     hours: creditHrs,
                     amount: 0,
-                    type_id: 98,
+                    type_id: hoursCreditTypeId,
                     remark: `Hourly Leave Free Credit (${creditHrs} hrs)`
                 });
             }
@@ -248,7 +262,13 @@ async function syncHourlyLeaveCompensationCredit(tenantDB, companyMastersId, aAp
 function timeStrToMinutes(str) {
     if (!str) return 0;
     if (typeof str === "number") return Math.round(str * 60);
-    const parts = String(str).trim().split(":");
+    const strVal = String(str).trim();
+    // If no colon → treat as decimal hours (e.g. "1.5" → 90 mins, "2" → 120 mins)
+    if (!strVal.includes(":")) {
+        const asNum = parseFloat(strVal);
+        return isNaN(asNum) ? 0 : Math.round(asNum * 60);
+    }
+    const parts = strVal.split(":");
     const hrs = parseInt(parts[0], 10) || 0;
     const mins = parseInt(parts[1], 10) || 0;
     return hrs * 60 + mins;
