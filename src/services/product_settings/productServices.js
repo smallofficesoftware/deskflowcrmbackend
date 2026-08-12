@@ -1568,6 +1568,8 @@ export const getExportsProductsForUpdateData = async (req) => {
 
     const excelColumnDefineArray = {
       id: "product_id",
+      product_group: "product_group",
+      product_category: "product_category",
       product_name: "product_name",
       product_alias: "product_alias",
       product_code: "Product Code",
@@ -1601,6 +1603,22 @@ export const getExportsProductsForUpdateData = async (req) => {
     const productsList = await productCustom.findAll({
       where: whereClause,
       order,
+      attributes: {
+        include: [
+          [
+            Sequelize.literal(
+              "(SELECT categories.category_name FROM categories WHERE categories.id = products.category_id AND products.isDelete=0)"
+            ),
+            "category_name",
+          ],
+          [
+            Sequelize.literal(
+              "(SELECT product_groups.group_name FROM product_groups WHERE product_groups.id = products.product_group_id AND product_groups.isDelete=0)"
+            ),
+            "group_name",
+          ],
+        ],
+      },
     });
 
     const [taxMasterList] = await Promise.all([
@@ -1624,6 +1642,8 @@ export const getExportsProductsForUpdateData = async (req) => {
       const sanitized = sanitizeObjectOfNull(productItem.toJSON());
       sanitized['gst_id'] = sanitized['gst_id'] ? taxMasterIdGroupSet.get(Number(sanitized['gst_id'])) : ''
       sanitized['purchase_gst_id'] = sanitized['purchase_gst_id'] ? taxMasterIdGroupSet.get(Number(sanitized['purchase_gst_id'])) : ''
+      sanitized['product_group'] = sanitized['group_name'] || ''
+      sanitized['product_category'] = sanitized['category_name'] || ''
       let objectTemp = {};
 
       Object.keys(excelColumnDefineArrayDy).map((k) => {

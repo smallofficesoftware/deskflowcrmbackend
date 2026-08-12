@@ -1630,7 +1630,7 @@ export const onLoad = async (req, res) => {
 
       return resSuccess({
         data: {
-          item: findLogin,
+          item: { ...findLogin, ...findItShouldPayornot },
           findCompanyId,
           expiryDays: expiryDays,
           companyDetails: companyResult,
