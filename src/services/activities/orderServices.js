@@ -1070,11 +1070,8 @@ export const orderList = async (req) => {
 
     if (searchTerm && searchTerm !== "undefined") {
       whereClause = {
-        a_application_login_id: a_application_login_id,
+        ...whereClause,
         [Op.or]: [{ cart_number: { [Op.like]: `%${searchTerm}%` } }],
-        isDelete: "0",
-        to_customer_id: contact_master_id,
-        type: order_type,
       };
     }
 
@@ -3714,6 +3711,7 @@ export const covertOrderSystem = async (req, res) => {
         miracle_account_ledger_adv: "",
         miracle_UniqueId: "",
         miracle_update_date_time: null,
+        due_date: '0000-00-00'
       };
       const resultCart = await CATModel.create(cartBody);
 
@@ -3958,6 +3956,7 @@ export const covertOrderSystem = async (req, res) => {
         miracle_account_ledger_adv: "",
         miracle_UniqueId: "",
         miracle_update_date_time: null,
+        due_date: '0000-00-00'
       };
 
       const resultCart = await CATModel.create(cartBody);
