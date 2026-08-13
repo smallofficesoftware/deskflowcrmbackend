@@ -94,9 +94,9 @@ export const getTeamAllCarts = async (req) => {
     let whereClause = { isDelete: 0 };
 
     if (showAllData) {
-      whereClause = { company_masters_id: findCompanyId.company_masters_id };
+      whereClause = { isDelete: 0, company_masters_id: findCompanyId.company_masters_id };
     } else if (showPersonalData) {
-      whereClause = { a_application_login_id: req.body.a_application_login_id };
+      whereClause = { isDelete: 0, a_application_login_id: req.body.a_application_login_id };
     }
 
     // Stage status filter
@@ -570,9 +570,9 @@ export const OrderDetailsProductIteamWise = async (req) => {
     let whereClause = { isDelete: 0 };
 
     if (showAllData) {
-      whereClause = { company_masters_id: findCompanyId.company_masters_id };
+      whereClause = { isDelete: 0, company_masters_id: findCompanyId.company_masters_id };
     } else if (showPersonalData) {
-      whereClause = { a_application_login_id: req.body.a_application_login_id };
+      whereClause = { isDelete: 0, a_application_login_id: req.body.a_application_login_id };
     }
 
     // Stage status filter
@@ -941,9 +941,9 @@ export const getDailySalesInvoiceReport = async (req) => {
     let whereClause = { isDelete: 0 };
 
     if (showAllData) {
-      whereClause = { company_masters_id: findCompanyId.company_masters_id };
+      whereClause = { isDelete: 0, company_masters_id: findCompanyId.company_masters_id };
     } else if (showPersonalData) {
-      whereClause = { a_application_login_id: req.body.a_application_login_id };
+      whereClause = { isDelete: 0, a_application_login_id: req.body.a_application_login_id };
     }
 
     // Stage status filter
