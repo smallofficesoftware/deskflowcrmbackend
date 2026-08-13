@@ -17,6 +17,7 @@ import { taskManagementModel } from "../models/activities/taskManagementModel.js
 import { taskMessageHistroyModel } from "../models/activities/taskMessageHistroyModel.js";
 import { trackingModel } from "../models/activities/trackingModel.js";
 import { userAppTrackModel } from "../models/application_login/userAppTrackModel.js";
+import { userColumnPreferenceModel } from "../models/application_login/userColumnPreferenceModel.js";
 import { attendanceModel } from "../models/hr/attendanceModel.js";
 import { departmentModel } from "../models/hr/departmentModel.js";
 import { employeePayrollModel } from "../models/hr/employeePayrollModel.js";
@@ -144,6 +145,7 @@ export const getTenantDB = async (tenantId, companyId) => {
         task_templete_datasources: taskTemplateDatasource(tenantSequelize),
         product_unit_masters: productUnitMasterModel(tenantSequelize),
         user_app_tracks: userAppTrackModel(tenantSequelize),
+        user_column_preferences: userColumnPreferenceModel(tenantSequelize),
         warehouses: wareHouseModel(tenantSequelize),
         bill_of_materials_masters: billOfMaterialsModel(tenantSequelize),
         process_masters: processMastersModel(tenantSequelize),
