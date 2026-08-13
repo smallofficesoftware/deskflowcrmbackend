@@ -60,7 +60,12 @@ export const io = new Server(server, {
 
 // try {
 // registerGlobalErrorHandlers();
-app.use(express.json({ limit: '50mb' }));
+app.use(express.json({
+    limit: '50mb',
+    verify: (req, res, buf) => {
+        req.rawBody = buf;
+    },
+}));
 app.use(
     cors({
         origin: function (origin, callback) {
