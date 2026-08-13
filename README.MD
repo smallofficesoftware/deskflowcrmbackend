@@ -53,7 +53,19 @@ Free — no paid GitHub plan needed, webhooks work on every plan/repo visibility
 
 1. GitHub sends a `push` event to `POST https://demobackend.smalloffice.in/webhook/github-dev-deploy` on every push (any branch).
 2. The route (`src/routes/webhook/githubDeployWebhookRouter.js`) verifies the request really came from GitHub via the `X-Hub-Signature-256` header (HMAC-SHA256 with a shared secret), ignores anything that isn't a push to `refs/heads/dev`, then runs `scripts/deploy-dev.sh <backend|frontend>` in the background (immediately returns 200 so GitHub doesn't time out).
-3. `deploy-dev.sh` does, for whichever app changed: `git fetch` + `git reset --hard origin/dev` → `npm install` → (backend only) run pending master+tenant migrations → `pm2 restart <app>`. Logs to `backend/logs/deploy-dev.log`.
+3. `deploy-dev.sh` does `git fetch` + `git reset --hard origin/dev` → `npm install`, then:
+   - **backend**: runs pending master+tenant migrations (`NODE_ENV=DEMO`) → `pm2 restart deskflowcrm-backend`.
+   - **frontend**: `npm run build` (no restart needed — nginx's `root` points at `demo.smalloffice.in/build`, serving the fresh build directly on the next request).
+
+   Logs to `backend/logs/deploy-dev.log`.
+
+Backend runs as `NODE_ENV=DEMO` (its own `.env.DEMO`, not `.env.development`) via pm2:
+```
+pm2 start "npx cross-env NODE_ENV=DEMO tsx src/index.js" --name deskflowcrm-backend
+```
+(`cross-env` is used because `NODE_ENV=DEMO pm2 start ...` alone does **not** reliably pass the var into the process pm2 spawns.)
+
+Frontend has no pm2 process at all — it's a static build served by nginx directly from `/var/www/demo.smalloffice.in/build`.
 
 ## One-time server setup (Ubuntu 24.04, on `demobackend.smalloffice.in`)
 
@@ -61,19 +73,14 @@ Free — no paid GitHub plan needed, webhooks work on every plan/repo visibility
    ```
    openssl rand -hex 20
    ```
-2. **Add it to the backend's env file** on the server (`.env.development` or whichever `NODE_ENV` file the running process loads):
+2. **Add it to `backend/.env.DEMO`** on the server:
    ```
    GITHUB_WEBHOOK_SECRET=<the secret from step 1>
    ```
-   Restart the backend once (`pm2 restart <backend-app-name>`) after adding it.
-3. **Set the pm2 process names** — `scripts/deploy-dev.sh` already defaults to the real server paths (`BACKEND_DIR=/var/www/demobackend.smalloffice.in`, `FRONTEND_DIR=/var/www/demo.smalloffice.in`), but the pm2 process names are still placeholders. Either edit the top of `scripts/deploy-dev.sh` directly:
-   ```
-   PM2_BACKEND_NAME=<pm2 process name for backend>
-   PM2_FRONTEND_NAME=<pm2 process name for frontend>
-   ```
-   or export `PM2_BACKEND_NAME` / `PM2_FRONTEND_NAME` (and `BACKEND_DIR` / `FRONTEND_DIR` if they ever differ) as env vars before starting the backend process — the script reads from the environment first, falling back to the defaults above.
+   Restart the backend once (`pm2 restart deskflowcrm-backend`) after adding it.
+3. **Confirm the paths/pm2 name in `scripts/deploy-dev.sh`** match reality — they default to `BACKEND_DIR=/var/www/demobackend.smalloffice.in`, `FRONTEND_DIR=/var/www/demo.smalloffice.in`, `PM2_BACKEND_NAME=deskflowcrm-backend`, `BACKEND_NODE_ENV=DEMO`. Override any of them via env vars before starting the backend process if they ever change, instead of editing the script.
 4. **Make sure the script is executable**: `chmod +x scripts/deploy-dev.sh` (already committed with the executable bit set, but re-check after any manual edit).
-5. **Make sure the deploy user can run `git`, `npm`, and `pm2` without a password prompt** — the backend process (running as whatever user runs `pm2`) needs write access to both repo directories and permission to run `pm2 restart`.
+5. **Make sure the deploy user can run `git`, `npm`, and `pm2` without a password prompt** — the backend process (running as whatever user runs `pm2`, currently `root`) needs write access to both repo directories and permission to run `pm2 restart`.
 
 ## GitHub webhook setup (do this once per repo — both `deskflowcrmbackend` and `deskflowcrmfrontend`)
 
