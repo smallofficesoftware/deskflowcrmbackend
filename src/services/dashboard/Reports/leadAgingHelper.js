@@ -15,6 +15,8 @@ const ACTIVITY_SOURCE_SQL = {
   purchase_order: `SELECT to_customer_id AS cid, created_date_time AS activity_date FROM carts WHERE company_masters_id = :companyId AND isDelete = 0 AND type = 5 AND to_customer_id IS NOT NULL`,
 };
 
+export const ACTIVITY_SOURCE_KEYS = Object.keys(ACTIVITY_SOURCE_SQL);
+
 const BUCKET_DAYS = { 7: 7, 15: 15, 30: 30, "7": 7, "15": 15, "30": 30 };
 
 // bucket: "7" | "15" | "30" | "never"

@@ -16,6 +16,10 @@ import { customFieldFormModel } from "../../../models/other_settings/customField
 import { PAGE_ID } from "../../../utils/AppEnumeration.js";
 import { resError, resSuccess } from "../../../utils/sharedFunctions.js";
 import { getCompanyByLoginId } from "../../commonServices.js";
+import {
+  ACTIVITY_SOURCE_KEYS,
+  getContactIdsByLastActivity,
+} from "./leadAgingHelper.js";
 
 export const getAllContactReport = async (req) => {
   try {
@@ -34,7 +38,9 @@ export const getAllContactReport = async (req) => {
       labelwiseContactShowAndOrNot,
       ul,
       ll,
-      is_archive
+      is_archive,
+      leadAgingBucket,
+      leadAgingActivityTypes,
     } = req.body;
 
     let deleted_flag = req.body?.deleted_flag || 0;
@@ -464,6 +470,21 @@ export const getAllContactReport = async (req) => {
               : [0],
         };
       }
+    }
+
+    if (leadAgingBucket) {
+      const agingContactIds = await getContactIdsByLastActivity(
+        req.tenantDB,
+        findCompanyId.company_masters_id,
+        leadAgingActivityTypes?.length ? leadAgingActivityTypes : ACTIVITY_SOURCE_KEYS,
+        leadAgingBucket
+      );
+
+      const agingIn = { [Op.in]: agingContactIds.length > 0 ? agingContactIds : [0] };
+
+      whereClause.id = whereClause.id
+        ? { [Op.and]: [whereClause.id, agingIn] }
+        : agingIn;
     }
 
     let dateFilter = {};
