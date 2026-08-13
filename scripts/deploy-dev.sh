@@ -6,7 +6,7 @@
 BACKEND_DIR="${BACKEND_DIR:-/var/www/demobackend.smalloffice.in}"
 FRONTEND_DIR="${FRONTEND_DIR:-/var/www/demo.smalloffice.in}"
 PM2_BACKEND_NAME="${PM2_BACKEND_NAME:-deskflowcrm-backend}"
-PM2_FRONTEND_NAME="${PM2_FRONTEND_NAME:-deskflowcrm-frontend}"
+BACKEND_NODE_ENV="${BACKEND_NODE_ENV:-DEMO}"
 
 LOG_DIR="$(dirname "$0")/../logs"
 mkdir -p "$LOG_DIR"
@@ -25,7 +25,8 @@ deploy_backend() {
 
   npm install >> "$LOG_FILE" 2>&1
 
-  NODE_ENV=development npm run migrate:all:up:dev >> "$LOG_FILE" 2>&1
+  NODE_ENV="$BACKEND_NODE_ENV" node src/scripts/runMigrations.js master migration up >> "$LOG_FILE" 2>&1
+  NODE_ENV="$BACKEND_NODE_ENV" node src/scripts/runMigrations.js tenant migration up >> "$LOG_FILE" 2>&1
 
   pm2 restart "$PM2_BACKEND_NAME" >> "$LOG_FILE" 2>&1
   log "=== Backend deploy done ==="
@@ -39,8 +40,9 @@ deploy_frontend() {
   git reset --hard origin/dev >> "$LOG_FILE" 2>&1
 
   npm install >> "$LOG_FILE" 2>&1
+  npm run build >> "$LOG_FILE" 2>&1
 
-  pm2 restart "$PM2_FRONTEND_NAME" >> "$LOG_FILE" 2>&1
+  # No restart needed -- nginx serves the rebuilt static files directly.
   log "=== Frontend deploy done ==="
 }
 
