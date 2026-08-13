@@ -5,7 +5,9 @@ import { generateTimeBasedPrefixedUUID } from "../helpers/uuidHelper.js";
 
 const profileStorage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, "media-folder/profile_photo/temp");
+    const storagePath = "media-folder/profile_photo/temp";
+    fs.ensureDirSync(storagePath);
+    cb(null, storagePath);
   },
   filename: function (req, file, cb) {
     cb(null, Date.now() + path.extname(file.originalname));
@@ -85,7 +87,9 @@ export const attendanceImageUpload = multer({
 const attachmentStorage = multer.diskStorage({
   destination: async (req, file, cb) => {
     try {
-      cb(null, "media-folder/contact_history_attachment/temp"); // Specify the directory to store the file
+      const storagePath = "media-folder/contact_history_attachment/temp";
+      fs.ensureDirSync(storagePath);
+      cb(null, storagePath); // Specify the directory to store the file
     } catch (err) {
       cb(err);
     }
@@ -97,7 +101,9 @@ const attachmentStorage = multer.diskStorage({
 const attachmentStorageTaskChat = multer.diskStorage({
   destination: async (req, file, cb) => {
     try {
-      cb(null, "media-folder/task_history_attachment/temp"); // Specify the directory to store the file
+      const storagePath = "media-folder/task_history_attachment/temp";
+      fs.ensureDirSync(storagePath);
+      cb(null, storagePath); // Specify the directory to store the file
     } catch (err) {
       cb(err);
     }
@@ -280,6 +286,7 @@ const bomPath = path.join(
   "media-folder",
   "product_bom"
 );
+fs.ensureDirSync(bomPath);
 
 // Storage config
 const storage = multer.diskStorage({
@@ -316,7 +323,9 @@ export const uploadBOM = multer({
 
 const companyStorage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, "media-folder/company_image/temp"); // Directory where uploaded files will be stored
+    const storagePath = "media-folder/company_image/temp";
+    fs.ensureDirSync(storagePath);
+    cb(null, storagePath); // Directory where uploaded files will be stored
   },
   filename: function (req, file, cb) {
     cb(null, Date.now() + path.extname(file.originalname)); // Unique filename with timestamp
@@ -405,7 +414,9 @@ export const companyUpload = multer({
 //
 const visitingCardStorage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, "media-folder/visiting_card_image/temp"); // Directory where uploaded files will be stored
+    const storagePath = "media-folder/visiting_card_image/temp";
+    fs.ensureDirSync(storagePath);
+    cb(null, storagePath); // Directory where uploaded files will be stored
   },
   filename: function (req, file, cb) {
     cb(null, Date.now() + path.extname(file.originalname)); // Unique filename with timestamp
@@ -456,7 +467,9 @@ export const visitingCard = multer({
 
 const visitStorage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, "media-folder/visit_image");
+    const storagePath = "media-folder/visit_image";
+    fs.ensureDirSync(storagePath);
+    cb(null, storagePath);
   },
   filename: function (req, file, cb) {
     cb(null, Date.now() + path.extname(file.originalname));
@@ -523,7 +536,9 @@ export const visitUpload = multer({
 
 const taskStorage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, "media-folder/task_attechment");
+    const storagePath = "media-folder/task_attechment";
+    fs.ensureDirSync(storagePath);
+    cb(null, storagePath);
   },
   filename: function (req, file, cb) {
     cb(null, Date.now() + path.extname(file.originalname));
@@ -588,7 +603,9 @@ export const taskUpload = multer({
 
 const storeStorage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, "media-folder/store_ticket_attachment");
+    const storagePath = "media-folder/store_ticket_attachment";
+    fs.ensureDirSync(storagePath);
+    cb(null, storagePath);
   },
   filename: function (req, file, cb) {
     cb(null, Date.now() + path.extname(file.originalname));
@@ -663,7 +680,9 @@ export const callHistoryUpload = multer({
 
 const wpStorage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, "media-folder/whatsapp_chat_media");
+    const storagePath = "media-folder/whatsapp_chat_media";
+    fs.ensureDirSync(storagePath);
+    cb(null, storagePath);
   },
   filename: function (req, file, cb) {
     cb(null, Date.now() + path.extname(file.originalname)); // Unique filename with timestamp
