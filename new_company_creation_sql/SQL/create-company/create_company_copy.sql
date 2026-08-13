@@ -116,6 +116,7 @@ CREATE TABLE `lock_controls` LIKE smalloffice_sample_tenant.lock_controls;
 CREATE TABLE `route_planners` LIKE smalloffice_sample_tenant.route_planners;
 CREATE TABLE `route_plan_vs_contacts` LIKE smalloffice_sample_tenant.route_plan_vs_contacts;
 CREATE TABLE `miracle_logs` LIKE smalloffice_sample_tenant.miracle_logs;
+CREATE TABLE `user_column_preferences` LIKE smalloffice_sample_tenant.user_column_preferences;
 
 CREATE TABLE `adjustment_types` LIKE smalloffice_sample_tenant.adjustment_types;
 ALTER TABLE `adjustment_types`  DISABLE KEYS;

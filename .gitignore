@@ -32,6 +32,9 @@ firebaseAdminSDK.json
 .env
 .env*.local
 
+# Runtime-generated uploads
+media-folder/
+
 # Build output
 dist/
 build/

@@ -4598,21 +4598,22 @@ export const pdfOrder = async (req, res) => {
 <div style="text-align: center; padding: 0px;">
   <img src="${headerImage}" style="width: 99.4%; margin: 0px; padding: 0px;"/>
 </div>`
-                    : // ✅ CASE 2: Header details are ON with calculated height
+                    : // ✅ CASE 2: Header details are ON, sized by content (table auto-height)
                     settingDetails.headerDetails
                       ? `
-<div style="display: flex; justify-content: center; align-items: center; flex-direction: column; width: 99.4%; height: 100%;">
-  <div style="display: flex; justify-content: center; align-items: center; border: 1px solid black; text-align: center; background-color: ${dynamicColor}; width: 99%; padding: 5px;">
-    <strong style="font-size: 12pt;">${companyDetail.company_name}</strong>
-  </div>
-  <div style="display: flex; justify-content: center; align-items: center; border: 1px solid black; border-top: 0px; border-bottom: 0px; text-align: center; width: 99%;padding:5px 5px;  flex: 1;">
-    <div style="display: inline-block; text-align: center; line-height: 2.5; font-size: 7pt;">
-      <div style="margin-bottom: 3px;width:100%;">
-      <strong>Address:</strong> ${companyDetail.address}</div>
-      <div><strong>Mo.:</strong> ${companyDetail.printed_number} <strong>Email:</strong> ${companyDetail.company_email} <strong>GSTIN:</strong> ${companyDetail.gst_number} <strong>State:</strong> ${companyStateName}</div>
-    </div>
-  </div>
-</div>`
+<table style="width: 99.4%; margin: 0 auto; border-collapse: collapse;">
+  <tr>
+    <td style="border: 1px solid black; text-align: center; background-color: ${dynamicColor}; padding: 5px;">
+      <strong style="font-size: 12pt;">${companyDetail.company_name}</strong>
+    </td>
+  </tr>
+  <tr>
+    <td style="border: 1px solid black; border-top: 0px; text-align: center; padding: 5px; line-height: 1.6; font-size: 7pt;">
+      <strong>Address:</strong> ${companyDetail.address}<br>
+      <strong>Mo.:</strong> ${companyDetail.printed_number} <strong>Email:</strong> ${companyDetail.company_email} <strong>GSTIN:</strong> ${companyDetail.gst_number} <strong>State:</strong> ${companyStateName}
+    </td>
+  </tr>
+</table>`
                       : // ✅ CASE 3: Header Details With Logo Leftside
                       settingDetails.headerDetailsWithLogo && settingDetails.headerLogoOnRightSide == false
                         ? `
