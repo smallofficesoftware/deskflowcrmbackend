@@ -1,5 +1,5 @@
 import { decryptRequestForMultipart } from "../../middlewares/payloadSecurity.js";
-import { AllSupportTicketCategory, AllSupportTicketGet, AllTaskCountGet, AllTaskDelete, AllTaskGet, AllTaskUpdate, archiveTasks, assignReadUnreadTask, completeStickeyNote, convertSupportTicketToTasks, createAllTask, createCustomerSupportTicket, createStickeyNote, deleteStickeyNote, editStickeyNote, generateTaskSampleSheet, getStickeyNotesData, supportTicketMessageCreate, supportTicketMessageGet, taskCategoryGet, unarchiveTasks, widgetAdd } from "../../services/activities/taskManagementServices.js";
+import { AllSupportTicketCategory, AllSupportTicketGet, AllTaskCountGet, AllTaskDelete, AllTaskGet, AllTaskUpdate, archiveTasks, assignReadUnreadTask, completeStickeyNote, convertSupportTicketToTasks, createAllTask, createCustomerSupportTicket, createStickeyNote, deleteStickeyNote, editStickeyNote, generateTaskSampleSheet, getStickeyNotesData, getTeamMemberTaskWorkload, supportTicketMessageCreate, supportTicketMessageGet, taskCategoryGet, unarchiveTasks, widgetAdd } from "../../services/activities/taskManagementServices.js";
 import callServiceMethod from "../baseController.js";
 
 export const AllTask = async (req, res) => {
@@ -23,6 +23,10 @@ export const deleteAllTask = async (req, res) => {
 
 export const getTaskCount = async (req, res) => {
   await callServiceMethod(req, res, AllTaskCountGet(req), "AllTaskCountGet");
+};
+
+export const getTeamMemberWorkload = async (req, res) => {
+  await callServiceMethod(req, res, getTeamMemberTaskWorkload(req), "getTeamMemberTaskWorkload");
 };
 
 export const archiveAllTask = async (req, res) => {
