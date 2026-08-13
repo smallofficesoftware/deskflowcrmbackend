@@ -455,12 +455,19 @@ export const getTeamAllCarts = async (req) => {
       })
     );
 
+    // De-duplicate by cart id -- a team member can appear more than once in
+    // companyVsApplicationLoginResult (duplicate membership rows), which
+    // would otherwise fetch and count the same cart multiple times.
+    const dedupedCartsWithUser = Array.from(
+      new Map(allCartsWithUser.map((cart) => [cart.id, cart])).values()
+    );
+
     // Final sort by sr_by_number (in case multiple users have same sr_by_number)
-    allCartsWithUser.sort((a, b) => b.sr_by_number - a.sr_by_number);
+    dedupedCartsWithUser.sort((a, b) => b.sr_by_number - a.sr_by_number);
 
     // Apply pagination
-    const total = allCartsWithUser.length;
-    const paginatedData = allCartsWithUser.slice(ul, ul + ll);
+    const total = dedupedCartsWithUser.length;
+    const paginatedData = dedupedCartsWithUser.slice(ul, ul + ll);
 
     // Type names
     const types = {
