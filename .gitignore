@@ -35,6 +35,9 @@ firebaseAdminSDK.json
 # Runtime-generated uploads
 media-folder/
 
+# Runtime-generated reports
+tenant_schema_diff_report_*.txt
+
 # Build output
 dist/
 build/
