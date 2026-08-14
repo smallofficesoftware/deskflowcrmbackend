@@ -22,6 +22,9 @@ export const jobCardsFetch = async (req) => {
     try {
         const { ul = 0, ll = 30, a_application_login_id, labelOptions, statusOptions, assignedTeamOptions, createdTeamOptions, labelAndOr, searchTerm } = req.body;
 
+        const limit = Number.isInteger(Number(ll)) && Number(ll) > 0 ? Number(ll) : 30;
+        const offset = Number.isInteger(Number(ul)) && Number(ul) >= 0 ? Number(ul) : 0;
+
         const JobCardsModelInstance = JobCardsModel(req.tenantDB);
         const ContactModelInstance = contactModel(req.tenantDB);
         const CartModelInstance = cartModel(req.tenantDB);
@@ -194,8 +197,8 @@ export const jobCardsFetch = async (req) => {
 
         const jobCardsData = await JobCardsModelInstance.findAll({
             where: whereClause,
-            limit: parseInt(ll),
-            offset: parseInt(ul),
+            limit,
+            offset,
             order: [['created_date_time', 'DESC']],
             raw: true,
             attributes: {
