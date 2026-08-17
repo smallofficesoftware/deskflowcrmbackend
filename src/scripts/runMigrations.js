@@ -46,27 +46,20 @@ const spawnCommandStream = (cmd, argsArray, cwd = process.cwd()) =>
 
 const makeTempConfigContent = (tenant, dialect) => {
     const host = tenant.db_host || tenant.dbHost || tenant.host;
+    const envBlock = `{
+    username: "${tenant.db_user}",
+    password: "${tenant.db_password}",
+    database: "${tenant.db_name}",
+    host: "${host}",
+    dialect: "${dialect}",
+    timezone: "+05:30",
+    define: { timestamps: false },
+    logging: false
+  }`;
     return `module.exports = {
-  development: {
-    username: "${tenant.db_user}",
-    password: "${tenant.db_password}",
-    database: "${tenant.db_name}",
-    host: "${host}",
-    dialect: "${dialect}",
-    timezone: "+05:30",
-    define: { timestamps: false },
-    logging: false
-  },
-  production: {
-    username: "${tenant.db_user}",
-    password: "${tenant.db_password}",
-    database: "${tenant.db_name}",
-    host: "${host}",
-    dialect: "${dialect}",
-    timezone: "+05:30",
-    define: { timestamps: false },
-    logging: false
-  }
+  development: ${envBlock},
+  production: ${envBlock},
+  "${NODE_ENV}": ${envBlock}
 };\n`;
 };
 
