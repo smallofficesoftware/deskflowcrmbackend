@@ -8,6 +8,7 @@ import logger from './logger.js';
 const tempDir = path.join(process.cwd(), 'src', 'config', 'temp-tenants');
 const migrationsPath = `migration/tenant/migrations`;
 const seedersPath = `migration/tenant/seeders`;
+const NODE_ENV = process.env.NODE_ENV || 'production';
 
 // Ensure temp directory exists
 const ensureTempDir = async () => {
@@ -57,27 +58,20 @@ const spawnCommandStream = (cmd, argsArray, cwd = process.cwd()) =>
 
 const makeTempConfigContent = (tenant, dialect = 'mysql') => {
     const host = tenant.db_host || tenant.dbHost || tenant.host;
+    const envBlock = `{
+    username: "${tenant.db_user}",
+    password: "${tenant.db_password}",
+    database: "${tenant.db_name}",
+    host: "${host}",
+    dialect: "${dialect}",
+    timezone: "+05:30",
+    define: { timestamps: false },
+    logging: false
+  }`;
     return `module.exports = {
-  development: {
-    username: "${tenant.db_user}",
-    password: "${tenant.db_password}",
-    database: "${tenant.db_name}",
-    host: "${host}",
-    dialect: "${dialect}",
-    timezone: "+05:30",
-    define: { timestamps: false },
-    logging: false
-  },
-  production: {
-    username: "${tenant.db_user}",
-    password: "${tenant.db_password}",
-    database: "${tenant.db_name}",
-    host: "${host}",
-    dialect: "${dialect}",
-    timezone: "+05:30",
-    define: { timestamps: false },
-    logging: false
-  }
+  development: ${envBlock},
+  production: ${envBlock},
+  "${NODE_ENV}": ${envBlock}
 };\n`;
 };
 
