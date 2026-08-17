@@ -551,7 +551,9 @@ export const syncInvoice = async (req) => {
                 }
 
                 // Voucher type specific required fields per Miracle API specification:
-                const cartDate = getCart.cart_date || "";
+                const cartDate = (getCart.update_Date_time && moment(getCart.update_Date_time).isValid())
+                    ? moment(getCart.update_Date_time).format("YYYY-MM-DD")
+                    : (getCart.cart_date || "");
                 const cartNum = getCart.cart_number || "";
                 let orgBillDt = cartDate;
                 let orgBillNo = getCart.referance_cart_name || cartNum;
@@ -585,7 +587,9 @@ export const syncInvoice = async (req) => {
                         }
 
                         if (refCart) {
-                            orgBillDt = refCart.cart_date || orgBillDt;
+                            orgBillDt = (refCart.update_Date_time && moment(refCart.update_Date_time).isValid())
+                                ? moment(refCart.update_Date_time).format("YYYY-MM-DD")
+                                : (refCart.cart_date || orgBillDt);
                             orgBillNo = refCart.cart_number || orgBillNo;
                         }
                     }
