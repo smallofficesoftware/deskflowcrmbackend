@@ -3869,6 +3869,7 @@ export const covertOrderSystem = async (req, res) => {
       // Initialize cart totals
       let calculatedTaxableAmt = 0;
       let calculatedGstAmt = 0;
+      let calculatedTcsAmt = 0;
       let calculatedGrandTotal = 0;
 
       // Filter and update items based on remaining quantity for dispatch conversion
