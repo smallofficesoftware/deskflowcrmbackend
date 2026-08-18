@@ -871,6 +871,20 @@ const visibleColCount = visibleDynamicColumns.length;
             </tr>
             <% } %>
 
+            <% if (cart.cash_discount && cart.cash_discount !== 0) { 
+                const packingVal = parseFloat(cart.packing_forwarding_charge || 0);
+                const transportVal = parseFloat(cart.transport_charge || 0);
+                const totalVal = parseFloat(cart.total_amt || 0);
+                const grossVal = totalVal + packingVal + transportVal;
+                const cashDiscAmt = cart.cash_discount_type == 1 ? (grossVal * parseFloat(cart.cash_discount)) / 100 : parseFloat(cart.cash_discount);
+                const cashDiscLabel = cart.cash_discount_type == 1 ? `Cash Discount (${cart.cash_discount}%)` : "Cash Discount";
+            %>
+            <tr>
+              <td style="font-weight: bold;<%= productDescBorderStyle %>"><%= cashDiscLabel %></td>
+              <td class="amount-column now-rap-white-space" style="text-align: right;<%= productDescBorderStyle %>"><%= currency%> <%= formatNum(cashDiscAmt, 2)%></td>
+            </tr>
+            <% } %>
+
             <tr>
               <td style="font-weight: bold;<%= productDescBorderStyle %>">Total Taxable Amount</td>
               <td class="amount-column now-rap-white-space" style="text-align: right;<%= productDescBorderStyle %>"><%= currency%> <%= formatNum(cart.taxable_amt, 2)%></td>
