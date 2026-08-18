@@ -17,9 +17,7 @@ const ACTIVITY_SOURCE_SQL = {
 
 export const ACTIVITY_SOURCE_KEYS = Object.keys(ACTIVITY_SOURCE_SQL);
 
-const BUCKET_DAYS = { 7: 7, 15: 15, 30: 30, "7": 7, "15": 15, "30": 30 };
-
-// bucket: "7" | "15" | "30" | "never"
+// bucket: "never" (legacy) | "0" (never contacted) | positive integer = aging days
 export const getContactIdsByLastActivity = async (
   tenantDB,
   companyId,
@@ -36,7 +34,7 @@ export const getContactIdsByLastActivity = async (
     .map((t) => ACTIVITY_SOURCE_SQL[t])
     .join(" UNION ALL ");
 
-  if (bucket === "never") {
+  if (bucket === "never" || Number(bucket) === 0) {
     const rows = await tenantDB.query(
       `SELECT cm.id AS id
        FROM contact_masters cm
@@ -54,9 +52,9 @@ export const getContactIdsByLastActivity = async (
     return rows.map((r) => r.id);
   }
 
-  const days = BUCKET_DAYS[bucket];
+  const days = Number(bucket);
 
-  if (!days) return [];
+  if (!Number.isInteger(days) || days <= 0) return [];
 
   const rows = await tenantDB.query(
     `SELECT cid FROM (
