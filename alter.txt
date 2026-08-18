@@ -2218,3 +2218,87 @@ CREATE TABLE `user_column_preferences` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 ALTER TABLE `user_column_preferences` ADD INDEX(`a_application_login_id`, `report_key`);
+
+18-08-2026 Dhaval
+CREATE TABLE `document_print_templates` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `company_masters_id` INT(11) NOT NULL,
+  `doc_type` VARCHAR(255) NOT NULL,
+  `template_name` VARCHAR(255) NOT NULL,
+  `draft_template_json` LONGTEXT NOT NULL,
+  `published_template_json` LONGTEXT NOT NULL,
+  `has_unpublished_changes` TINYINT(4) NOT NULL DEFAULT 0,
+  `is_default` TINYINT(4) NOT NULL DEFAULT 0,
+  `display_order` INT(11) NOT NULL DEFAULT 0,
+  `created_date_time` DATETIME NOT NULL,
+  `modified_date` DATETIME NULL,
+  `modify_by` INT(11) NULL,
+  `s_timestemp` VARCHAR(255) NULL,
+  `isDelete` TINYINT(4) NOT NULL DEFAULT 0,
+  `isActive` TINYINT(4) NOT NULL DEFAULT 1,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+ALTER TABLE `document_print_templates` ADD INDEX(`company_masters_id`, `doc_type`);
+
+18-08-2026 Dhaval
+CREATE TABLE `document_print_template_versions` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `document_template_id` INT(11) NOT NULL,
+  `version_number` INT(11) NOT NULL,
+  `template_json` LONGTEXT NOT NULL,
+  `change_note` VARCHAR(255) NULL,
+  `modify_by` INT(11) NULL,
+  `created_date_time` DATETIME NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+ALTER TABLE `document_print_template_versions` ADD INDEX(`document_template_id`);
+
+18-08-2026 Dhaval
+CREATE TABLE `audit_logs` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `company_masters_id` INT(11) NOT NULL,
+  `a_application_login_id` INT(11) NOT NULL,
+  `module_key` VARCHAR(255) NOT NULL,
+  `action` VARCHAR(255) NOT NULL,
+  `entity_type` VARCHAR(255) NOT NULL,
+  `entity_id` INT(11) NULL,
+  `details` TEXT NULL,
+  `created_date_time` DATETIME NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+ALTER TABLE `audit_logs` ADD INDEX(`company_masters_id`, `module_key`, `entity_type`, `entity_id`);
+ALTER TABLE `audit_logs` ADD INDEX(`created_date_time`);
+
+18-08-2026 Dhaval
+CREATE TABLE `company_feature_flags` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `company_masters_id` INT(11) NOT NULL,
+  `feature_key` VARCHAR(255) NOT NULL,
+  `is_enabled` TINYINT(4) NOT NULL DEFAULT 0,
+  `created_date_time` DATETIME NOT NULL,
+  `modified_date` DATETIME NULL,
+  `modify_by` INT(11) NULL,
+  `isDelete` TINYINT(4) NOT NULL DEFAULT 0,
+  `isActive` TINYINT(4) NOT NULL DEFAULT 1,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+ALTER TABLE `company_feature_flags` ADD UNIQUE INDEX(`company_masters_id`, `feature_key`);
+
+18-08-2026 Dhaval
+CREATE TABLE `system_document_templates` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `doc_type` VARCHAR(255) NOT NULL,
+  `template_name` VARCHAR(255) NOT NULL,
+  `description` VARCHAR(255) NULL,
+  `template_json` LONGTEXT NOT NULL,
+  `display_order` INT(11) NOT NULL DEFAULT 0,
+  `isDelete` TINYINT(4) NOT NULL DEFAULT 0,
+  `isActive` TINYINT(4) NOT NULL DEFAULT 1,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+ALTER TABLE `system_document_templates` ADD INDEX(`doc_type`);
