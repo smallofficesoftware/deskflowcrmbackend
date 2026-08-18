@@ -3655,9 +3655,39 @@ export const covertOrderSystem = async (req, res) => {
           });
         }
 
-        // Calculate grand_total = taxable_amt + gst_amt + tcs_amt
+        const packingCharge = parseFloat(baseCart.packing_forwarding_charge || 0);
+        const transportCharge = parseFloat(baseCart.transport_charge || 0);
+        const grossTaxable = calculatedTaxableAmt + packingCharge + transportCharge;
 
-        calculatedGrandTotal = calculatedTaxableAmt + calculatedGstAmt + calculatedTcsAmt;
+        const cashDiscount = parseFloat(baseCart.cash_discount || 0);
+        const cashDiscountType = parseInt(baseCart.cash_discount_type || 1);
+        let cashDiscountAmount = 0;
+        let discountRatio = 0;
+        if (cashDiscount > 0 && grossTaxable > 0) {
+          if (cashDiscountType === 1) {
+            cashDiscountAmount = (grossTaxable * cashDiscount) / 100;
+            discountRatio = Math.min(cashDiscount / 100, 1);
+          } else {
+            cashDiscountAmount = Math.min(cashDiscount, grossTaxable);
+            discountRatio = Math.min(cashDiscount / grossTaxable, 1);
+          }
+        }
+
+        const packingGst = packingCharge * (PACKING_FORWARDING_CHARGE_GST / 100);
+        const transportGst = transportCharge * (TRANSPORT_CHARGE__GST / 100);
+        const baseGst = (parseFloat(baseCart.gst_amt || 0) > 0 || gst_amt > 0)
+          ? (calculatedGstAmt + packingGst + transportGst)
+          : 0;
+        const finalGst = baseGst * (1 - discountRatio);
+        const finalTaxable = Math.max(0, grossTaxable - cashDiscountAmount);
+        const tcsRate = parseFloat(baseCart.tcs_percentage || 0) / 100;
+        const hasTcs = parseFloat(baseCart.tcs_amt || 0) > 0;
+        const finalTcs = hasTcs ? (finalTaxable + finalGst) * tcsRate : 0;
+
+        calculatedTaxableAmt = finalTaxable;
+        calculatedGstAmt = finalGst;
+        calculatedTcsAmt = finalTcs;
+        calculatedGrandTotal = finalTaxable + finalGst + finalTcs;
       } else {
         // Normal multi-cart merge without remaining qty logic
         let mergedTaxableAmt = 0;
@@ -3711,7 +3741,7 @@ export const covertOrderSystem = async (req, res) => {
         miracle_account_ledger_adv: "",
         miracle_UniqueId: "",
         miracle_update_date_time: null,
-        due_date: '0000-00-00'
+        due_date: null
       };
       const resultCart = await CATModel.create(cartBody);
 
@@ -3839,6 +3869,7 @@ export const covertOrderSystem = async (req, res) => {
       // Initialize cart totals
       let calculatedTaxableAmt = 0;
       let calculatedGstAmt = 0;
+      let calculatedTcsAmt = 0;
       let calculatedGrandTotal = 0;
 
       // Filter and update items based on remaining quantity for dispatch conversion
@@ -3921,13 +3952,45 @@ export const covertOrderSystem = async (req, res) => {
           });
         }
 
-        // Calculate grand_total = taxable_amt + gst_amt
-        calculatedGrandTotal = calculatedTaxableAmt + calculatedGstAmt;
+        const packingCharge = parseFloat(findCart.dataValues.packing_forwarding_charge || 0);
+        const transportCharge = parseFloat(findCart.dataValues.transport_charge || 0);
+        const grossTaxable = calculatedTaxableAmt + packingCharge + transportCharge;
+
+        const cashDiscount = parseFloat(findCart.dataValues.cash_discount || 0);
+        const cashDiscountType = parseInt(findCart.dataValues.cash_discount_type || 1);
+        let cashDiscountAmount = 0;
+        let discountRatio = 0;
+        if (cashDiscount > 0 && grossTaxable > 0) {
+          if (cashDiscountType === 1) {
+            cashDiscountAmount = (grossTaxable * cashDiscount) / 100;
+            discountRatio = Math.min(cashDiscount / 100, 1);
+          } else {
+            cashDiscountAmount = Math.min(cashDiscount, grossTaxable);
+            discountRatio = Math.min(cashDiscount / grossTaxable, 1);
+          }
+        }
+
+        const packingGst = packingCharge * (PACKING_FORWARDING_CHARGE_GST / 100);
+        const transportGst = transportCharge * (TRANSPORT_CHARGE__GST / 100);
+        const baseGst = (parseFloat(findCart.dataValues.gst_amt || 0) > 0 || gst_amt > 0)
+          ? (calculatedGstAmt + packingGst + transportGst)
+          : 0;
+        const finalGst = baseGst * (1 - discountRatio);
+        const finalTaxable = Math.max(0, grossTaxable - cashDiscountAmount);
+        const tcsRate = parseFloat(findCart.dataValues.tcs_percentage || 0) / 100;
+        const hasTcs = parseFloat(findCart.dataValues.tcs_amt || 0) > 0;
+        const finalTcs = hasTcs ? (finalTaxable + finalGst) * tcsRate : 0;
+
+        calculatedTaxableAmt = finalTaxable;
+        calculatedGstAmt = finalGst;
+        calculatedTcsAmt = finalTcs;
+        calculatedGrandTotal = finalTaxable + finalGst + finalTcs;
       } else {
         // Normal single cart conversion - use existing values
         calculatedTaxableAmt = parseFloat(findCart.dataValues.taxable_amt || 0);
         calculatedGstAmt = parseFloat(findCart.dataValues.gst_amt || 0);
-        calculatedGrandTotal = calculatedTaxableAmt + calculatedGstAmt;
+        calculatedTcsAmt = parseFloat(findCart.dataValues.tcs_amt || 0);
+        calculatedGrandTotal = calculatedTaxableAmt + calculatedGstAmt + calculatedTcsAmt;
       }
 
       // Round off grand total
@@ -3948,6 +4011,7 @@ export const covertOrderSystem = async (req, res) => {
         advance_payment: 0,
         taxable_amt: calculatedTaxableAmt,
         gst_amt: calculatedGstAmt,
+        tcs_amt: calculatedTcsAmt,
         grand_total: roundedGrandTotal,
         round_off: roundOffValue,
         stock_type: 0,
@@ -3956,7 +4020,7 @@ export const covertOrderSystem = async (req, res) => {
         miracle_account_ledger_adv: "",
         miracle_UniqueId: "",
         miracle_update_date_time: null,
-        due_date: '0000-00-00'
+        due_date: null
       };
 
       const resultCart = await CATModel.create(cartBody);
