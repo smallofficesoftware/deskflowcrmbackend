@@ -1,5 +1,5 @@
 import moment from "moment";
-import { Op } from "sequelize";
+import Sequelize, { Op } from "sequelize";
 import { getUserRights } from "../../../helpers/rightsHelper.js";
 import { contactModel } from "../../../models/activities/contactModel.js";
 import { reminderMessagesModel } from "../../../models/activities/reminderMessagesModel.js";
@@ -16,22 +16,23 @@ export const getTeamReminderReport = async (req) => {
             selectedDates = [],
             selectedTeamMembers = [],
             globalSearch = "",
-            selectedContactId
+            selectedContactId,
+            referenceWiseContact = 1,
+            typeFilter = "due",
         } = req.body;
 
         // ────────────────────────────────────────────────
         // Date range filter
         // ────────────────────────────────────────────────
-        let dateFilter = {};
+        const baseDateConditions = [];
         if (selectedDates.length === 2) {
             const startDate = moment(selectedDates[0]).startOf('day').toDate();
             const endDate = moment(selectedDates[1]).endOf('day').toDate();
-
-            dateFilter = {
+            baseDateConditions.push({
                 reminder_data_time: {
                     [Op.between]: [startDate, endDate],
                 },
-            };
+            });
         }
 
         // ────────────────────────────────────────────────
@@ -69,32 +70,32 @@ export const getTeamReminderReport = async (req) => {
             tenentId: req.tenantDB
         });
 
-        let whereClause = {
+        let baseWhereClause = {
             isDelete: 0,
             is_reminder_app_flag: 0
         };
 
         if (showAllData) {
-            whereClause.company_masters_id = companyId;
+            baseWhereClause.company_masters_id = companyId;
         } else if (showPersonalData) {
-            whereClause.a_application_login_id = a_application_login_id;
+            baseWhereClause.a_application_login_id = a_application_login_id;
         } else {
             // No rights → return empty
             return resSuccess({
-                data: { data: [] },
+                data: { data: [], counts: { due: 0, future: 0, complete: 0, all: 0 } },
                 ack_msg: "No data access rights",
             });
         }
 
         // Filter by assigned team members (if provided)
         if (Array.isArray(selectedTeamMembers) && selectedTeamMembers.length > 0) {
-            whereClause.assigned_to = {
+            baseWhereClause.assigned_to = {
                 [Op.in]: selectedTeamMembers.map(String),   // assuming IDs are strings/numbers
             };
         }
         if (selectedContactId && referenceWiseContact == 1) {
 
-            whereClause.contact_masters_id = selectedContactId;
+            baseWhereClause.contact_masters_id = selectedContactId;
 
         } else if (selectedContactId && referenceWiseContact == 2) {
 
@@ -113,23 +114,100 @@ export const getTeamReminderReport = async (req) => {
                 (item) => item.id
             );
 
-            whereClause.contact_masters_id = {
+            baseWhereClause.contact_masters_id = {
                 [Op.in]: contactIds,
             };
         }
 
+        const currentDate = new Date();
+        let whereClause = { ...baseWhereClause };
+        const andConditions = [...baseDateConditions];
+
+        if (typeFilter === "due") {
+            andConditions.push({
+                status: { [Op.ne]: 1 },
+                reminder_data_time: { [Op.lt]: currentDate },
+            });
+        } else if (typeFilter === "future") {
+            andConditions.push({
+                status: { [Op.ne]: 1 },
+                completed_date_time: { [Op.or]: [null, ""] },
+                reminder_data_time: { [Op.gt]: currentDate },
+            });
+        } else if (typeFilter === "complete") {
+            andConditions.push({
+                status: 1,
+            });
+        }
+
+        if (andConditions.length > 0) {
+            whereClause[Op.and] = andConditions;
+        }
+
+        const reminderModel = reminderMessagesModel(req.tenantDB);
+
+        const [dueCount, futureCount, completeCount, allCount] = await Promise.all([
+            reminderModel.count({
+                where: {
+                    ...baseWhereClause,
+                    [Op.and]: [
+                        ...baseDateConditions,
+                        {
+                            status: { [Op.ne]: 1 },
+                            reminder_data_time: { [Op.lt]: currentDate },
+                        },
+                    ],
+                },
+            }),
+            reminderModel.count({
+                where: {
+                    ...baseWhereClause,
+                    [Op.and]: [
+                        ...baseDateConditions,
+                        {
+                            status: { [Op.ne]: 1 },
+                            completed_date_time: { [Op.or]: [null, ""] },
+                            reminder_data_time: { [Op.gt]: currentDate },
+                        },
+                    ],
+                },
+            }),
+            reminderModel.count({
+                where: {
+                    ...baseWhereClause,
+                    [Op.and]: [
+                        ...baseDateConditions,
+                        {
+                            status: 1,
+                        },
+                    ],
+                },
+            }),
+            reminderModel.count({
+                where: {
+                    ...baseWhereClause,
+                    [Op.and]: baseDateConditions,
+                },
+            }),
+        ]);
+
+        const orderClause =
+            typeFilter === "future"
+                ? [["reminder_data_time", "ASC"]]
+                : typeFilter === "complete"
+                ? [["completed_date_time", "DESC"]]
+                : [["reminder_data_time", "DESC"]];
+
         // ────────────────────────────────────────────────
         // Fetch reminders
         // ────────────────────────────────────────────────
-        const reminderModel = reminderMessagesModel(req.tenantDB);   // ← your reminder table model
 
         const remindersRaw = await reminderModel.findAll({
             where: {
                 ...whereClause,
-                ...dateFilter,
                 ...fullTextSearchCondition,
             },
-            order: [["created_date_time", "DESC"]],   // or ["id", "DESC"]
+            order: orderClause,
             limit,
             offset,
             raw: true,   // we'll enrich manually
@@ -156,10 +234,12 @@ export const getTeamReminderReport = async (req) => {
                     createdByName = user?.username || `ID ${reminder.a_application_login_id}`;
                 }
 
-                // Status logic (as per your description)
+                // Status logic
                 let statusText = "Due";
                 if (reminder.status === 1) {
                     statusText = "Completed";
+                } else if (new Date(reminder.reminder_data_time) > currentDate) {
+                    statusText = "Upcoming";
                 }
 
                 return {
@@ -185,6 +265,12 @@ export const getTeamReminderReport = async (req) => {
             data: {
                 data: enrichedReminders,
                 total: enrichedReminders.length,   // or run separate count query if needed
+                counts: {
+                    due: dueCount,
+                    future: futureCount,
+                    complete: completeCount,
+                    all: allCount,
+                },
             },
             ack_msg: "Reminder report fetched successfully",
         });
