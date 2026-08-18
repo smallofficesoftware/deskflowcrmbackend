@@ -846,10 +846,21 @@ export const AllTaskGet = async (req, res) => {
         ? task.is_read_by_a_application_login_id.split(",").map(id => id.trim()).filter(Boolean)
         : [];
 
+      const platform_x = req.body?.platform_x || "";
+      let mobile_number = task.contact_person_number;
+      if (platform_x == '1') {
+        mobile_number =
+          task.contact_person_number &&
+            !String(task.contact_person_number).startsWith("+")
+            ? `+${task.contact_person_number}`
+            : task.contact_person_number;
+      }
+
       const isUnread = !readList.includes(String(a_application_login_id)) ? 1 : 0;
 
       return {
         ...task,
+        contact_person_number: mobile_number,
         task_fromdate:
           task.task_fromdate && task.task_fromdate !== "0000-00-00"
             ? moment(task.task_fromdate).format("DD-MM-YYYY hh:mm A")

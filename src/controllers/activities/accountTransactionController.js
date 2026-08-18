@@ -3,8 +3,10 @@ import {
   accountTransactionById,
   allAccountTransactionOfContactPDF,
   createAccountTransaction,
+  generateAccountTransactionSampleSheet,
   getAllAccountTransactions,
   getAllAccountTransactionsForOnlineStore,
+  importAccountTransactionByExcel,
   updateAccountTransaction
 } from "../../services/activities/accountTransactionServices.js";
 import callServiceMethod from "../baseController.js";
@@ -74,5 +76,23 @@ export const allContactAccountTransactionPDF = async (req, res) => {
     res,
     allAccountTransactionOfContactPDF(req),
     "allAccountTransactionOfContact"
+  );
+};
+
+export const generateAccountTransactionSampleSheetProvider = async (req, res) => {
+  await callServiceMethod(
+    req,
+    res,
+    generateAccountTransactionSampleSheet(req, res),
+    "generateAccountTransactionSampleSheetProvider"
+  );
+};
+
+export const getExcelSheetAccountTransactionProvider = async (req, res) => {
+  await callServiceMethod(
+    req,
+    res,
+    importAccountTransactionByExcel(req),
+    "getExcelSheetAccountTransactionProvider"
   );
 };

@@ -2544,7 +2544,7 @@ export const getAllMainCommon = async (req) => {
 
         const activeCompanyHeader = req?.headers?.["x-company-id"];
 
-        if (table === "company_masters" && activeCompanyHeader && !whereObj.id && !whereObj.qr_code) {
+        if (table === "company_masters" && activeCompanyHeader && !whereObj.qr_code) {
           queryOptions.where = {
             ...whereObj,
             id: Number(activeCompanyHeader),

@@ -217,6 +217,16 @@ export const getAllCompany = async (req) => {
       };
     });
 
+    const activeCompanyId = req.headers?.["x-company-id"] || req.store?.companyId;
+    if (activeCompanyId && enrichedResult.length > 0) {
+      const activeNum = Number(activeCompanyId);
+      enrichedResult.sort((a, b) => {
+        if (a.id === activeNum) return -1;
+        if (b.id === activeNum) return 1;
+        return 0;
+      });
+    }
+
     if (companyResult)
       return resSuccess({
         ack_msg: "Company Fetch Successfully",
@@ -2284,8 +2294,13 @@ export const demoBook = async (req, res) => {
     const contactModels = contactModel(tenantDB);
     const CTMModel = contactMessageHistory(tenantDB);
 
+    const normalizedMobile = normalizeToTenDigit(contact_number);
+
     let contactCreate = await contactModels.findOne({
-      where: { mobile_number: contact_number },
+      where: {
+        mobile_number: normalizedMobile,
+        isDelete: 0,
+      },
     });
 
     let isNewContact = false;
@@ -2296,7 +2311,7 @@ export const demoBook = async (req, res) => {
         person_name: name,
         email_id: email,
         company_name: business_category,
-        mobile_number: normalizeToTenDigit(contact_number),
+        mobile_number: normalizedMobile,
         contact_status: -1,
         a_application_login_id: tenantDBFind.a_application_login_id,
         company_masters_id: tenantDBFind.company_masters_id,

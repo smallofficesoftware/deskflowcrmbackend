@@ -104,6 +104,25 @@ export const createAxiosIntance = ({
         // ✅ RESPONSE INTERCEPTOR (ERROR)
         async (error) => {
             const { config, response } = error;
+
+            // 🔄 Auto-retry on 401 Unauthorized by force-refreshing token
+            if (response?.status === 401 && config && !config._retry && getAuthContext) {
+                config._retry = true;
+                try {
+                    const auth = await getAuthContext();
+                    if (auth) {
+                        const newToken = await getValidAccessToken(auth, true);
+                        if (newToken) {
+                            config.headers = config.headers || {};
+                            config.headers.Authorization = `Bearer ${newToken}`;
+                            return instance(config);
+                        }
+                    }
+                } catch (retryErr) {
+                    console.log("[miracleAxiosInstance] Token refresh retry failed:", retryErr.message);
+                }
+            }
+
             const responseTime = Date.now() - (config?.metadata?.startTime || Date.now());
             const fullUrl = `${config?.baseURL || ""}${config?.url || ""}`;
             const moduleName = inferModuleFromUrl(config?.url);
@@ -152,4 +171,4 @@ export const createAxiosIntance = ({
     );
 
     return instance;
-};
+};
