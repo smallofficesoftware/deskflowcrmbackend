@@ -3741,7 +3741,7 @@ export const covertOrderSystem = async (req, res) => {
         miracle_account_ledger_adv: "",
         miracle_UniqueId: "",
         miracle_update_date_time: null,
-        due_date: '0000-00-00'
+        due_date: null
       };
       const resultCart = await CATModel.create(cartBody);
 
@@ -4020,7 +4020,7 @@ export const covertOrderSystem = async (req, res) => {
         miracle_account_ledger_adv: "",
         miracle_UniqueId: "",
         miracle_update_date_time: null,
-        due_date: '0000-00-00'
+        due_date: null
       };
 
       const resultCart = await CATModel.create(cartBody);
