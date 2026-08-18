@@ -236,9 +236,10 @@ export const addContactFromTradeIndia = async (req) => {
 
         const countriesDataSet = new Map(countriesData.map((entry) => [entry.country_name, entry.id]));
 
-        const statesDataSet = new Map(statesData.map((entry) => [entry.state_name, entry.id]));
+        // Store full objects so fallback can read country_id / state_id from child records
+        const statesDataSet = new Map(statesData.map((entry) => [entry.state_name, entry]));
 
-        const cityDataSet = new Map(cityData.map((entry) => [entry.city_name, entry.id]));
+        const cityDataSet = new Map(cityData.map((entry) => [entry.city_name, entry]));
 
         // Step 9: Filter out existing leads (duplication or rfi_id, mobile_number) and add extra columns 
         const whatsappEmailSendTeamPersonList = [];
@@ -247,15 +248,34 @@ export const addContactFromTradeIndia = async (req) => {
                 .filter((entry) => !existingColumn3Set.has(String(entry.column_3).trim()) && !contactMobileNumberSet.has(String(entry.mobile_number).trim()))
                 .map(async (entry) => {
                     const { description, ...restEntry } = entry;
-                    const country = countriesDataSet.get(entry.country?.trim()) || "";
-                    const state = statesDataSet.get(entry.state?.trim()) || "";
-                    const city = cityDataSet.get(entry.city?.trim()) || "";
+
+                    // Resolve IDs from pre-fetched maps
+                    let countryId = countriesDataSet.get(entry.country?.trim()) || 0;
+                    const stateObj = statesDataSet.get(entry.state?.trim()) || null;
+                    const cityObj  = cityDataSet.get(entry.city?.trim())   || null;
+
+                    let stateId = stateObj ? stateObj.id : 0;
+                    let cityId  = cityObj  ? cityObj.id  : 0;
+
+                    // --- Cascading fallback logic ---
+                    // Fallback 1: state found but country not found → derive country from state
+                    if (stateId && !countryId) {
+                        countryId = stateObj.country_id || 0;
+                    }
+
+                    // Fallback 2: city found but state/country not found → derive from city
+                    if (cityId && (!stateId || !countryId)) {
+                        if (!stateId)   stateId   = cityObj.state_id   || 0;
+                        if (!countryId) countryId = cityObj.country_id || 0;
+                    }
+                    // --- End fallback ---
+
                     /* Contact Assignement */
                     const contactAssignedIds = await autoAssignmentContactIdsGet(req, {
                         source_type_id: source_type_id,
-                        country_id: country,
-                        state_id: state,
-                        city_id: city,
+                        country_id: countryId,
+                        state_id: stateId,
+                        city_id: cityId,
                         area_id: null,
                         description: description
                     });
@@ -274,9 +294,9 @@ export const addContactFromTradeIndia = async (req) => {
                     /* Contact Assignement */
                     return {
                         ...restEntry,
-                        country,
-                        state,
-                        city,
+                        country: countryId,
+                        state: stateId,
+                        city: cityId,
                         assinged_to_work_a_application_id: contactAssignedIdsStr || req.body.a_application_login_id,
                     }
                 })
@@ -776,9 +796,10 @@ export const addContactFromTradeIndiaBuyLeads = async (req) => {
 
         const countriesDataSet = new Map(countriesData.map((entry) => [entry.country_name, entry.id]));
 
-        const statesDataSet = new Map(statesData.map((entry) => [entry.state_name, entry.id]));
+        // Store full objects so fallback can read country_id / state_id from child records
+        const statesDataSet = new Map(statesData.map((entry) => [entry.state_name, entry]));
 
-        const cityDataSet = new Map(cityData.map((entry) => [entry.city_name, entry.id]));
+        const cityDataSet = new Map(cityData.map((entry) => [entry.city_name, entry]));
 
         // Step 9: Filter out existing leads (duplication or lead_id, mobile_number) and add extra columns 
         const whatsappEmailSendTeamPersonList = [];
@@ -787,19 +808,37 @@ export const addContactFromTradeIndiaBuyLeads = async (req) => {
                 .filter((entry) => !existingColumn3Set.has(String(entry.column_4).trim()) && !contactMobileNumberSet.has(String(entry.mobile_number).trim()))
                 .map(async (entry) => {
                     const { description, ...restEntry } = entry;
-                    const country = countriesDataSet.get(entry?.country?.trim()) || "";
-                    const state = statesDataSet.get(entry?.state?.trim()) || "";
-                    const city = cityDataSet.get(entry?.city?.trim()) || "";
+
+                    // Resolve IDs from pre-fetched maps
+                    let countryId = countriesDataSet.get(entry?.country?.trim()) || 0;
+                    const stateObj = statesDataSet.get(entry?.state?.trim()) || null;
+                    const cityObj  = cityDataSet.get(entry?.city?.trim())   || null;
+
+                    let stateId = stateObj ? stateObj.id : 0;
+                    let cityId  = cityObj  ? cityObj.id  : 0;
+
+                    // --- Cascading fallback logic ---
+                    // Fallback 1: state found but country not found → derive country from state
+                    if (stateId && !countryId) {
+                        countryId = stateObj.country_id || 0;
+                    }
+
+                    // Fallback 2: city found but state/country not found → derive from city
+                    if (cityId && (!stateId || !countryId)) {
+                        if (!stateId)   stateId   = cityObj.state_id   || 0;
+                        if (!countryId) countryId = cityObj.country_id || 0;
+                    }
+                    // --- End fallback ---
+
                     /* Contact Assignement */
                     const contactAssignedIds = await autoAssignmentContactIdsGet(req, {
                         source_type_id: source_type_id,
-                        country_id: country,
-                        state_id: state,
-                        city_id: city,
+                        country_id: countryId,
+                        state_id: stateId,
+                        city_id: cityId,
                         area_id: null,
                         description: description
                     });
-                    console.log("Error Log 1", contactAssignedIds);
                     const contactAssignedIdsStr = isValid(contactAssignedIds?.data?.assignedIds) ? contactAssignedIds?.data?.assignedIds?.join(",") : "";
 
                     if (contactAssignedIds?.data?.isWhatsappEmailSendEnabled && (contactAssignedIds?.data?.assignedIds?.length == 1 || isValid(contactAssignedIds?.data?.template_id))) {
@@ -814,9 +853,9 @@ export const addContactFromTradeIndiaBuyLeads = async (req) => {
                     /* Contact Assignement */
                     return {
                         ...restEntry,
-                        country,
-                        state,
-                        city,
+                        country: countryId,
+                        state: stateId,
+                        city: cityId,
                         assinged_to_work_a_application_id: contactAssignedIdsStr || req.body.a_application_login_id,
                     }
                 })

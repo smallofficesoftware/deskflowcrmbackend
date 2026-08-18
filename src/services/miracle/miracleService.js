@@ -35,7 +35,7 @@ export const getMiracleUfdDet = async (tenantDB, companyId, formType, entityData
                 company_masters_id: companyId,
                 third_party_field_name: { [Op.ne]: null }
             },
-            attributes: ["reference_column_name", "third_party_field_name", "applicable_modules", "form_type"],
+            attributes: ["reference_column_name", "third_party_field_name", "applicable_modules", "form_type", "data_type"],
             raw: true
         });
 
@@ -53,7 +53,12 @@ export const getMiracleUfdDet = async (tenantDB, companyId, formType, entityData
             const key = field.third_party_field_name ? String(field.third_party_field_name).trim() : "";
             const col = field.reference_column_name;
             if (key && col && entityData[col] !== undefined && entityData[col] !== null && entityData[col] !== "") {
-                ufddet[key] = String(entityData[col]);
+                const val = String(entityData[col]).trim();
+                const dataType = Number(field.data_type);
+                if ((dataType === 4 || dataType === 5) && (val === "0000-00-00" || val === "0000-00-00 00:00:00" || val.startsWith("0000-00-00"))) {
+                    continue;
+                }
+                ufddet[key] = val;
             }
         }
         return ufddet;
@@ -423,7 +428,7 @@ export const syncInvoice = async (req) => {
                         form_type: 4,
                         third_party_field_name: { [Op.ne]: null }
                     },
-                    attributes: ["reference_column_name", "third_party_field_name", "applicable_modules"],
+                    attributes: ["reference_column_name", "third_party_field_name", "applicable_modules", "data_type"],
                     raw: true
                 });
 
@@ -489,7 +494,12 @@ export const syncInvoice = async (req) => {
                         const key = field.third_party_field_name ? String(field.third_party_field_name).trim() : "";
                         const col = field.reference_column_name;
                         if (key && col && item[col] !== undefined && item[col] !== null && item[col] !== "") {
-                            itemUfddet[key] = String(item[col]);
+                            const val = String(item[col]).trim();
+                            const dataType = Number(field.data_type);
+                            if ((dataType === 4 || dataType === 5) && (val === "0000-00-00" || val === "0000-00-00 00:00:00" || val.startsWith("0000-00-00"))) {
+                                continue;
+                            }
+                            itemUfddet[key] = val;
                         }
                     }
 
@@ -541,7 +551,9 @@ export const syncInvoice = async (req) => {
                 }
 
                 // Voucher type specific required fields per Miracle API specification:
-                const cartDate = getCart.cart_date || "";
+                const cartDate = (getCart.update_Date_time && moment(getCart.update_Date_time).isValid())
+                    ? moment(getCart.update_Date_time).format("YYYY-MM-DD")
+                    : (getCart.cart_date || "");
                 const cartNum = getCart.cart_number || "";
                 let orgBillDt = cartDate;
                 let orgBillNo = getCart.referance_cart_name || cartNum;
@@ -575,7 +587,9 @@ export const syncInvoice = async (req) => {
                         }
 
                         if (refCart) {
-                            orgBillDt = refCart.cart_date || orgBillDt;
+                            orgBillDt = (refCart.update_Date_time && moment(refCart.update_Date_time).isValid())
+                                ? moment(refCart.update_Date_time).format("YYYY-MM-DD")
+                                : (refCart.cart_date || orgBillDt);
                             orgBillNo = refCart.cart_number || orgBillNo;
                         }
                     }

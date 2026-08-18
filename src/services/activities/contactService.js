@@ -93,8 +93,12 @@ export const getContactByIds = async (req) => {
         ]
       }
     });
+    const findContactJson = findContact ? findContact.toJSON() : null;
+    if (findContactJson && findContactJson.mobile_number && !String(findContactJson.mobile_number).startsWith('+')) {
+      findContactJson.mobile_number = `+${findContactJson.mobile_number}`;
+    }
     return resSuccess({
-      data: findContact,
+      data: findContactJson,
     });
   } catch (e) {
     throw e;
@@ -383,9 +387,18 @@ export const getAllContact = async (req, feed = false, onlyMyBlog = false) => {
         const finalName = `${isValid(sanitized.assinged_to_work_a_application_id) && createORassignName ? "Assign to: " : "Created by: "}${createORassignName || ""}`
 
         const assined_team_person_list = assignedNameList ? `Assign to: ${assignedNameList}` : "";
-
+        const platform_x = req.body?.platform_x || "";
+        let mobile_number = sanitized.mobile_number;
+        if (platform_x == '1') {
+          mobile_number =
+            sanitized.mobile_number &&
+              !String(sanitized.mobile_number).startsWith("+")
+              ? `+${sanitized.mobile_number}`
+              : sanitized.mobile_number;
+        }
         return {
           ...sanitized,
+          mobile_number: mobile_number,
           created_date_time: sanitized.created_date_time ? formatDateAndTimeCreateDateTime(sanitized.created_date_time) : "",
           is_unread: isUnread,
           teamMemberName: finalName || "",
@@ -2305,6 +2318,9 @@ export const singleContactGet = async (req, res) => {
 
     const sanitizedContact = {
       ...sanitized,
+      mobile_number: sanitized.mobile_number && !String(sanitized.mobile_number).startsWith('+')
+        ? `+${sanitized.mobile_number}`
+        : sanitized.mobile_number,
       created_date_time: sanitized.created_date_time
         ? formatDateAndTimeCreateDateTime(
           sanitized.created_date_time

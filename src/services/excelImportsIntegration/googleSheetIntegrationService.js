@@ -649,13 +649,18 @@ async function batchFetchLocationIds(entries, req) {
         }) : []
     ]);
 
-    // Build lookup maps
+    // Build lookup maps (storing full objects so fallback can read parent IDs)
     const countryMap = new Map(countryData.map(c => [c.country_name, c]));
-    const stateMap = new Map(stateData.map(s => [`${s.state_name}_${s.country_id}`, s]));
-    const cityMap = new Map(cityData.map(c => [`${c.city_name}_${c.state_id}`, c]));
-    const areaMap = new Map(areaData.map(a => [`${a.area_name}_${a.city_id}`, a]));
+    const stateMap   = new Map(stateData.map(s => [`${s.state_name}_${s.country_id}`, s]));
+    const cityMap    = new Map(cityData.map(c => [`${c.city_name}_${c.state_id}`, c]));
+    const areaMap    = new Map(areaData.map(a => [`${a.area_name}_${a.city_id}`, a]));
 
-    return { countryMap, stateMap, cityMap, areaMap };
+    // Secondary maps keyed by name only (for fallback when parent is unknown)
+    const stateByNameMap = new Map(stateData.map(s => [s.state_name, s]));
+    const cityByNameMap  = new Map(cityData.map(c => [c.city_name, c]));
+    const areaByNameMap  = new Map(areaData.map(a => [a.area_name, a]));
+
+    return { countryMap, stateMap, cityMap, areaMap, stateByNameMap, cityByNameMap, areaByNameMap };
 }
 
 // ==================== CONTACT PROCESSING ====================
@@ -827,24 +832,26 @@ function resolveLocationIds(entry, locationMaps) {
     let countryId = 0, stateId = 0, cityId = 0, areaId = 0;
 
     const countryName = entry['Country']?.[0];
+    const stateName   = entry['State']?.[0];
+    const cityName    = entry['City']?.[0];
+    const areaName    = entry['Area']?.[0];
+
+    // Primary resolution (strict hierarchy: country → state → city → area)
     if (countryName) {
         const country = locationMaps.countryMap.get(countryName);
         if (country) {
             countryId = country.id;
 
-            const stateName = entry['State']?.[0];
             if (stateName) {
                 const state = locationMaps.stateMap.get(`${stateName}_${countryId}`);
                 if (state) {
                     stateId = state.id;
 
-                    const cityName = entry['City']?.[0];
                     if (cityName) {
                         const city = locationMaps.cityMap.get(`${cityName}_${stateId}`);
                         if (city) {
                             cityId = city.id;
 
-                            const areaName = entry['Area']?.[0];
                             if (areaName) {
                                 const area = locationMaps.areaMap.get(`${areaName}_${cityId}`);
                                 if (area) areaId = area.id;
@@ -855,6 +862,54 @@ function resolveLocationIds(entry, locationMaps) {
             }
         }
     }
+
+    // --- Cascading fallback logic ---
+    // Fallback 1: state name provided but country was not found/given
+    //             → look up state by name alone and derive country from it
+    if (stateName && !stateId) {
+        const state = locationMaps.stateByNameMap?.get(stateName);
+        if (state) {
+            stateId = state.id;
+            if (!countryId) countryId = state.country_id || 0;
+        }
+    } else if (stateId && !countryId) {
+        // State found inside country block but countryId still 0
+        const state = locationMaps.stateByNameMap?.get(stateName);
+        if (!countryId) countryId = state?.country_id || 0;
+    }
+
+    // Fallback 2: city name provided but city was not resolved
+    //             → look up city by name alone and derive state + country
+    if (cityName && !cityId) {
+        const city = locationMaps.cityByNameMap?.get(cityName);
+        if (city) {
+            cityId = city.id;
+            if (!stateId)   stateId   = city.state_id   || 0;
+            if (!countryId) countryId = city.country_id || 0;
+        }
+    } else if (cityId && (!stateId || !countryId)) {
+        const city = locationMaps.cityByNameMap?.get(cityName);
+        if (!stateId)   stateId   = city?.state_id   || 0;
+        if (!countryId) countryId = city?.country_id || 0;
+    }
+
+    // Fallback 3: area name provided but area was not resolved
+    //             → look up area by name alone and derive city + state + country
+    if (areaName && !areaId) {
+        const area = locationMaps.areaByNameMap?.get(areaName);
+        if (area) {
+            areaId = area.id;
+            if (!cityId)    cityId    = area.city_id    || 0;
+            if (!stateId)   stateId   = area.state_id   || 0;
+            if (!countryId) countryId = area.country_id || 0;
+        }
+    } else if (areaId && (!cityId || !stateId || !countryId)) {
+        const area = locationMaps.areaByNameMap?.get(areaName);
+        if (!cityId)    cityId    = area?.city_id    || 0;
+        if (!stateId)   stateId   = area?.state_id   || 0;
+        if (!countryId) countryId = area?.country_id || 0;
+    }
+    // --- End fallback ---
 
     return { countryId, stateId, cityId, areaId };
 }

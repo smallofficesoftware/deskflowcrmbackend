@@ -181,9 +181,10 @@ export const addContactByIndiaMart = async (req) => {
 
         const countriesDataSet = new Map(countriesData.map((entry) => [entry.country_iso, entry.id]));
 
-        const statesDataSet = new Map(statesData.map((entry) => [entry.state_name, entry.id]));
+        // Store full objects so fallback can read country_id / state_id from child records
+        const statesDataSet = new Map(statesData.map((entry) => [entry.state_name, entry]));
 
-        const cityDataSet = new Map(cityData.map((entry) => [entry.city_name, entry.id]));
+        const cityDataSet = new Map(cityData.map((entry) => [entry.city_name, entry]));
 
         // Step 9: Filter out existing leads
         const currentDataMobileNumberCheckSet = new Set();
@@ -214,16 +215,34 @@ export const addContactByIndiaMart = async (req) => {
                 })
                 .map(async (entry) => {
                     const { description, ...restEntry } = entry;
-                    const country = countriesDataSet.get(entry.country?.trim()) || 0;
-                    const state = statesDataSet.get(entry.state?.trim()) || 0;
-                    const city = cityDataSet.get(entry.city?.trim()) || 0;
+
+                    // Resolve IDs from pre-fetched maps
+                    let countryId = countriesDataSet.get(entry.country?.trim()) || 0;
+                    const stateObj = statesDataSet.get(entry.state?.trim()) || null;
+                    const cityObj  = cityDataSet.get(entry.city?.trim())   || null;
+
+                    let stateId = stateObj ? stateObj.id : 0;
+                    let cityId  = cityObj  ? cityObj.id  : 0;
+
+                    // --- Cascading fallback logic ---
+                    // Fallback 1: state found but country not found → derive country from state
+                    if (stateId && !countryId) {
+                        countryId = stateObj.country_id || 0;
+                    }
+
+                    // Fallback 2: city found but state/country not found → derive from city
+                    if (cityId && (!stateId || !countryId)) {
+                        if (!stateId)   stateId   = cityObj.state_id   || 0;
+                        if (!countryId) countryId = cityObj.country_id || 0;
+                    }
+                    // --- End fallback ---
 
                     /* Contact Assignment */
                     const contactAssignedIds = await autoAssignmentContactIdsGet(req, {
                         source_type_id,
-                        country_id: country,
-                        state_id: state,
-                        city_id: city,
+                        country_id: countryId,
+                        state_id: stateId,
+                        city_id: cityId,
                         area_id: null,
                         description: description
                     });
@@ -242,8 +261,9 @@ export const addContactByIndiaMart = async (req) => {
 
                     return {
                         ...restEntry,
-                        country,
-                        state,
+                        country: countryId,
+                        state: stateId,
+                        city: cityId,  // Fix: was missing — city is now saved
                         assinged_to_work_a_application_id: contactAssignedIdsStr || req.body.a_application_login_id,
                     };
                 })
@@ -719,9 +739,10 @@ export const addContactByIndiaMartPushApi = async (req, res) => {
 
         const countriesDataSet = new Map(countriesData.map((entry) => [entry.country_iso, entry.id]));
 
-        const statesDataSet = new Map(statesData.map((entry) => [entry.state_name, entry.id]));
+        // Store full objects so fallback can read country_id / state_id from child records
+        const statesDataSet = new Map(statesData.map((entry) => [entry.state_name, entry]));
 
-        const cityDataSet = new Map(cityData.map((entry) => [entry.city_name, entry.id]));
+        const cityDataSet = new Map(cityData.map((entry) => [entry.city_name, entry]));
 
         // Step 9: Filter out existing leads
         const whatsappEmailSendTeamPersonList = [];
@@ -729,15 +750,34 @@ export const addContactByIndiaMartPushApi = async (req, res) => {
             .filter((entry) => !existingColumn1Set.has(String(entry.column_1).trim()) && !contactMobileNumberSet.has(String(entry.mobile_number).trim()))
             .map(async (entry) => {
                 const { description, ...restEntry } = entry;
-                const country = countriesDataSet.get(entry.country?.trim()) || 0;
-                const state = statesDataSet.get(entry.state?.trim()) || 0;
-                const city = cityDataSet.get(entry.city?.trim()) || 0;
+
+                // Resolve IDs from pre-fetched maps
+                let countryId = countriesDataSet.get(entry.country?.trim()) || 0;
+                const stateObj = statesDataSet.get(entry.state?.trim()) || null;
+                const cityObj  = cityDataSet.get(entry.city?.trim())   || null;
+
+                let stateId = stateObj ? stateObj.id : 0;
+                let cityId  = cityObj  ? cityObj.id  : 0;
+
+                // --- Cascading fallback logic ---
+                // Fallback 1: state found but country not found → derive country from state
+                if (stateId && !countryId) {
+                    countryId = stateObj.country_id || 0;
+                }
+
+                // Fallback 2: city found but state/country not found → derive from city
+                if (cityId && (!stateId || !countryId)) {
+                    if (!stateId)   stateId   = cityObj.state_id   || 0;
+                    if (!countryId) countryId = cityObj.country_id || 0;
+                }
+                // --- End fallback ---
+
                 /* Contact Assignement */
                 const contactAssignedIds = await autoAssignmentContactIdsGet(req, {
                     source_type_id: source_type_id,
-                    country_id: country,
-                    state_id: state,
-                    city_id: city,
+                    country_id: countryId,
+                    state_id: stateId,
+                    city_id: cityId,
                     area_id: null,
                     description: description
                 });
@@ -755,9 +795,9 @@ export const addContactByIndiaMartPushApi = async (req, res) => {
                 /* Contact Assignement */
                 return {
                     ...restEntry,
-                    country,
-                    state,
-                    city,
+                    country: countryId,
+                    state: stateId,
+                    city: cityId,
                     assinged_to_work_a_application_id: contactAssignedIdsStr || findIndiaMartApiKey.dataValues.a_application_login_id,
                 }
             }));

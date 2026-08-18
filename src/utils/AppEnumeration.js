@@ -210,8 +210,8 @@ export const STOCK_IN_OUT_ACCESSIBILITY = {
   1: 0, //quotation
   2: 0, //order
   3: 1,  //invoice
-  4: 2, //purchase_order
-  5: 0, //order_purchase
+  4: 2, //purchase_order // Purchase Invoice
+  5: 0, //order_purchase // Purchase Order
   6: 2, //return_sales_invoice
   7: 1, //return_purchase_invoice
   8: 2, //inward

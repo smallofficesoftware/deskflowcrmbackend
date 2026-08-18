@@ -63,7 +63,7 @@ export const getCustomerSalesPurchaseReport = async (req) => {
         let cartWhere = {
             isDelete: 0,
             company_masters_id: companyId,
-            type: { [Op.in]: [3, 4] },
+            type: { [Op.in]: [3, 5] },
             to_customer_id: { [Op.ne]: null },
             ...dateFilter,
         };
@@ -111,7 +111,7 @@ export const getCustomerSalesPurchaseReport = async (req) => {
             const amount = parseFloat(row.totalAmount || 0);
             if (row.type === 3) {
                 data.totalSales += amount;
-            } else if (row.type === 4) {
+            } else if (row.type === 5 || row.type === 4) {
                 data.totalPurchase += amount;
             }
         });

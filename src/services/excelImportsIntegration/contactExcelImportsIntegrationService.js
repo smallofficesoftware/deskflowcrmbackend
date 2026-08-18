@@ -586,6 +586,55 @@ export const addContactByExcelSheet = async (req) => {
                     }
                 }
 
+                // --- Cascading fallback logic ---
+                // Fallback 1: state name given but country could not be matched → try resolving
+                //             state independently and derive country from it
+                if (!countryId && !stateId && entry[6]) {
+                    const stateName = toTitleCase(entry[6].toString().trim());
+                    const state = await CTstateModel.findOne({ where: { state_name: stateName } });
+                    if (state) {
+                        stateId   = state.id;
+                        countryId = state.country_id || 0;
+                    }
+                } else if (stateId && !countryId) {
+                    // State was found (inside country block above) but country_id still 0 — derive
+                    const state = await CTstateModel.findOne({ where: { id: stateId }, attributes: ['country_id'] });
+                    countryId = state?.country_id || 0;
+                }
+
+                // Fallback 2: city name given but state/country missing → resolve city independently
+                if (!cityId && entry[7]) {
+                    const cityName = toTitleCase(entry[7].toString().trim());
+                    const city = await CTcityModel.findOne({ where: { city_name: cityName } });
+                    if (city) {
+                        cityId = city.id;
+                        if (!stateId)   stateId   = city.state_id   || 0;
+                        if (!countryId) countryId = city.country_id || 0;
+                    }
+                } else if (cityId && (!stateId || !countryId)) {
+                    const city = await CTcityModel.findOne({ where: { id: cityId }, attributes: ['state_id', 'country_id'] });
+                    if (!stateId)   stateId   = city?.state_id   || 0;
+                    if (!countryId) countryId = city?.country_id || 0;
+                }
+
+                // Fallback 3: area name given but city/state/country missing → resolve area independently
+                if (!areaId && entry[8]) {
+                    const areaName = toTitleCase(entry[8].toString().trim());
+                    const area = await CTareaModel.findOne({ where: { area_name: areaName } });
+                    if (area) {
+                        areaId = area.id;
+                        if (!cityId)    cityId    = area.city_id    || 0;
+                        if (!stateId)   stateId   = area.state_id   || 0;
+                        if (!countryId) countryId = area.country_id || 0;
+                    }
+                } else if (areaId && (!cityId || !stateId || !countryId)) {
+                    const area = await CTareaModel.findOne({ where: { id: areaId }, attributes: ['city_id', 'state_id', 'country_id'] });
+                    if (!cityId)    cityId    = area?.city_id    || 0;
+                    if (!stateId)   stateId   = area?.state_id   || 0;
+                    if (!countryId) countryId = area?.country_id || 0;
+                }
+                // --- End fallback ---
+
                 // Handle category creation
                 let categoryId = -1;
                 const rawCategoryName = entry[15] ? entry[15].toString().trim() : "";
