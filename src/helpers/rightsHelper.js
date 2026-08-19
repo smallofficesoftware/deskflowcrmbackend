@@ -27,7 +27,7 @@ export const getUserRights = async ({
 
         if (!rights || !rights.a_page_id_rights_jason) return output;
 
-        const parsed = JSON.parse(rights.a_page_id_rights_jason);
+        const parsed = rights.a_page_id_rights_jason;
 
         output.showAllData = parsed?.all_data == 1;
         output.showPersonalData = parsed?.personal == 1;
