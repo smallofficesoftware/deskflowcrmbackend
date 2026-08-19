@@ -980,6 +980,11 @@ export const addProductByExcelSheetUpdateData = async (req) => {
 
         const definedColumnStatic = {
             "product_id": "id",
+            "product_group": "product_group",
+            "Product Group": "product_group",
+            "product_category": "category_name",
+            "Product Category": "category_name",
+            "category_name": "category_name",
             "product_name": "product_name",
             "product_alias": "product_alias",
             "Product Code": "product_code",
@@ -1157,19 +1162,35 @@ export const addProductByExcelSheetUpdateData = async (req) => {
 
         const CTproductModel = productModel(req.tenantDB);
         const taxModelInstance = taxModel(req.tenantDB);
+        const CTcategoryModel = categoryModel(req.tenantDB);
+        const CTProductGroupModel = productGroupModel(req.tenantDB);
 
-
-        const existingProducts = await CTproductModel.findAll({
-            where: {
-                company_masters_id:
-                    findCompanyId.company_masters_id,
-                isDelete: 0,
-            },
-            attributes: ["id"],
-            raw: true,
-        });
-
-        const [taxMasterList] = await Promise.all([
+        const [existingCategories, existingProductGroups, existingProducts, taxMasterList] = await Promise.all([
+            CTcategoryModel.findAll({
+                where: {
+                    company_masters_id: findCompanyId.company_masters_id,
+                    isDelete: 0,
+                },
+                attributes: ["id", "category_name", "group_id"],
+                raw: true,
+            }),
+            CTProductGroupModel.findAll({
+                where: {
+                    company_masters_id: findCompanyId.company_masters_id,
+                    isDelete: 0,
+                },
+                attributes: ["id", "group_name"],
+                raw: true,
+            }),
+            CTproductModel.findAll({
+                where: {
+                    company_masters_id:
+                        findCompanyId.company_masters_id,
+                    isDelete: 0,
+                },
+                attributes: ["id"],
+                raw: true,
+            }),
             taxModelInstance.findAll({
                 where: {
                     isDelete: 0,
@@ -1178,6 +1199,13 @@ export const addProductByExcelSheetUpdateData = async (req) => {
                 attributes: ["name", "id", "value"]
             }),
         ]);
+
+        const existingProductsGroupSet = new Map(
+            existingProductGroups.map((g) => [
+                String(g.group_name).trim().toLowerCase(),
+                g.id,
+            ])
+        );
 
         const taxMasterIdGroupSet = new Map(
             taxMasterList.map(p => [
@@ -1205,6 +1233,9 @@ export const addProductByExcelSheetUpdateData = async (req) => {
         let gstBlankRows = [];
         let purchaseGstBlankRows = [];
         let negativeValueRows = [];
+        let invalidProductGroupRows = [];
+        let invalidCategoryRows = [];
+        let categoryGroupMismatchRows = [];
 
         const sanitizedData = [];
 
@@ -1238,6 +1269,51 @@ export const addProductByExcelSheetUpdateData = async (req) => {
 
             const max_stock_quantity =
                 parseInt(v.max_stock_quantity) || 0;
+
+            const product_group = isValid(v.product_group)
+                ? v.product_group.toString().trim()
+                : "";
+
+            const category_name = isValid(v.category_name)
+                ? v.category_name.toString().trim()
+                : "";
+
+            let product_group_id = undefined;
+            if (isValid(product_group)) {
+                const groupKey = String(product_group).trim().toLowerCase();
+                product_group_id = existingProductsGroupSet.get(groupKey);
+
+                if (!product_group_id) {
+                    invalidProductGroupRows.push(rowNumber);
+                    continue;
+                }
+            }
+
+            let category_id = undefined;
+            if (isValid(category_name)) {
+                const categoryKey = String(category_name).trim().toLowerCase();
+                const matchedCategories = existingCategories.filter(
+                    (c) => String(c.category_name).trim().toLowerCase() === categoryKey
+                );
+
+                if (matchedCategories.length === 0) {
+                    invalidCategoryRows.push(rowNumber);
+                    continue;
+                }
+
+                if (product_group_id !== undefined) {
+                    const matchForGroup = matchedCategories.find(
+                        (c) => Number(c.group_id) === Number(product_group_id)
+                    );
+                    if (!matchForGroup) {
+                        categoryGroupMismatchRows.push(rowNumber);
+                        continue;
+                    }
+                    category_id = matchForGroup.id;
+                } else {
+                    category_id = matchedCategories[0].id;
+                }
+            }
 
             // ================= VALIDATIONS =================
 
@@ -1322,7 +1398,12 @@ export const addProductByExcelSheetUpdateData = async (req) => {
 
                 min_stock_quantity,
                 max_stock_quantity,
+                ...(product_group_id !== undefined && { product_group_id }),
+                ...(category_id !== undefined && { category_id }),
             };
+            delete objCreated.product_group;
+            delete objCreated.category_name;
+            delete objCreated.product_category;
 
             const sanitizedRow = processRowDynamic(
                 objCreated,
@@ -1360,6 +1441,18 @@ export const addProductByExcelSheetUpdateData = async (req) => {
             {
                 rows: negativeValueRows,
                 text: "Negative values are not allowed."
+            },
+            {
+                rows: invalidProductGroupRows,
+                text: "Product Group not found."
+            },
+            {
+                rows: invalidCategoryRows,
+                text: "Product Category not found."
+            },
+            {
+                rows: categoryGroupMismatchRows,
+                text: "Product Category does not belong to the given Product Group."
             },
         ];
 

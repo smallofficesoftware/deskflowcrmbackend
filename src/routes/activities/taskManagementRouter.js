@@ -1,4 +1,4 @@
-import { AllTask, archiveAllTask, convertSupportTicketAllTask, CreateSupportTicket, createSupportTicketMessage, deleteAllTask, generateTaskSampleSheetProvider, getAllTask, getSupportTicket, getSupportTicketCategory, getSupportTicketMessage, getTaskCategory, getTaskCount, readUnreadTask, stickyNotesComplateData, stickyNotesCreateData, stickyNotesDeleteData, stickyNotesGet, stickyNotesUpdateData, unarchiveAllTask, updateAllTask, WidgetAddRemove } from "../../controllers/activities/taskManagementController.js";
+import { AllTask, archiveAllTask, convertSupportTicketAllTask, CreateSupportTicket, createSupportTicketMessage, deleteAllTask, generateTaskSampleSheetProvider, getAllTask, getSupportTicket, getSupportTicketCategory, getSupportTicketMessage, getTaskCategory, getTaskCount, getTeamMemberWorkload, readUnreadTask, stickyNotesComplateData, stickyNotesCreateData, stickyNotesDeleteData, stickyNotesGet, stickyNotesUpdateData, unarchiveAllTask, updateAllTask, WidgetAddRemove } from "../../controllers/activities/taskManagementController.js";
 import { authenticateToken } from "../../middlewares/auth.js";
 import { supportChatUpload, taskUpload } from "../../middlewares/multer.js";
 import { tenantMiddleware } from "../../middlewares/tenantMiddleware.js";
@@ -9,6 +9,7 @@ export default (app) => {
   app.post("/update-task", authenticateToken, tenantMiddleware, taskUpload, updateAllTask);
   app.post("/deleteTask", authenticateToken, tenantMiddleware, deleteAllTask);
   app.post("/get-Task-count", authenticateToken, tenantMiddleware, getTaskCount);
+  app.post("/get-team-member-task-workload", authenticateToken, tenantMiddleware, getTeamMemberWorkload);
   app.post("/archiveTask", authenticateToken, tenantMiddleware, archiveAllTask);
   app.post("/unarchive-Task", authenticateToken, tenantMiddleware, unarchiveAllTask);
   app.post("/covert-supportticket-task", authenticateToken, tenantMiddleware, convertSupportTicketAllTask);

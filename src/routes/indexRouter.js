@@ -3,6 +3,8 @@ import { Router } from "express";
 import applicationLoginTypeRightRouter from "./application_login/applicationLoginTypeRightRouter.js";
 import applicationPageRoutes from "./application_login/applicationPageRoutes.js";
 import userRouter from "./application_login/userRouter.js";
+import userColumnPreferenceRouter from "./application_login/userColumnPreferenceRouter.js";
+import githubDeployWebhookRouter from "./webhook/githubDeployWebhookRouter.js";
 import companyRouter from "./company_setup/companyRouter.js";
 import companyVsApplicationLoginRouter from "./company_setup/companyVsApplicationLoginRouter.js";
 import activationCodeMasterRouter from "./configuration/activationCodeMasterRouter.js";
@@ -100,6 +102,8 @@ export default () => {
   const app = Router();
   contactRouter(app);
   userRouter(app);
+  userColumnPreferenceRouter(app);
+  githubDeployWebhookRouter(app);
   contactMessageHistoryRouter(app);
   commonRouter(app);
   thirdPartyIntegrationRouter(app);

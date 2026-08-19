@@ -316,7 +316,7 @@ export const getAllInsight = async (req) => {
     const cartWhere = {
       isDelete: "0",
       type: { [Op.in]: [1, 2, 3] },
-      [Op.and]: [...chartAnd, dateAnd("cart_date", start, end)],
+      [Op.and]: [...chartAnd, dateAnd("update_Date_time", start, end)],
     };
     const rows = await CATModel.findAll({
       where: cartWhere,
@@ -387,7 +387,7 @@ export const getAllInsight = async (req) => {
       });
       const whereClauseSales = {
         isDelete: "0",
-        [Op.and]: [...salesAnd, dateAnd("cart_date", start, end)],
+        [Op.and]: [...salesAnd, dateAnd("update_Date_time", start, end)],
       };
       const [count, sum] = await Promise.all([
         CATModel.count({ where: { ...whereClauseSales, type } }),

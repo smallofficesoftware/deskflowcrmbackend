@@ -8,7 +8,8 @@ export const __dirnameConstant = path.dirname(__filename);
 export const NODE_ENV = process.env.NODE_ENV || 'development';
 
 dotenv.config({
-  path: path.resolve(process.cwd(), `.env.${NODE_ENV}`)
+  path: path.resolve(process.cwd(), `.env.${NODE_ENV}`),
+  override: true,
 });
 
 export const PORT = process.env.PORT;

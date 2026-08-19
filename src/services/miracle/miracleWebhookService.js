@@ -1,3 +1,4 @@
+import moment from "moment";
 import { checkMiracleAuth } from "../../middlewares/miracleAuth.js";
 import { tenantMiddleware } from "../../middlewares/tenantMiddleware.js";
 import companyModel from "../../models/company_setup/companyModel.js";
@@ -9,7 +10,7 @@ import { productUnitMasterModel } from "../../models/product_settings/productUni
 import { taxModel } from "../../models/product_settings/taxModel.js";
 import { createAxiosIntance } from "../../utils/miracleAxiosInstance.js";
 import { parseMiracleRights } from "../../utils/miracleRightsHelper.js";
-import { resBadRequest, resSuccess } from "../../utils/sharedFunctions.js";
+import { normalizeToTenDigit, resBadRequest, resSuccess } from "../../utils/sharedFunctions.js";
 import { insertMiracleLog } from "../activities/miracleLogService.js";
 
 import { accountTransactionsModel } from "../../models/activities/accountTransactionsModel.js";
@@ -107,7 +108,6 @@ export const webhookM = async (req, res) => {
     let tenantDBForLog = null;
     let companyIdForLog = null;
     const incomingPayload = req.body;
-
     try {
         const { companyCode } = req.params;
         const companyGet = await companyModel.findOne({
@@ -131,6 +131,8 @@ export const webhookM = async (req, res) => {
         req.headers["x-tenant-id"] = tenantId;
         req.headers["x-company-id"] = companyId;
         req.body.a_application_login_id = tenantId;
+        req.body.company_id = companyId;
+        req.body.company_masters_id = companyId;
 
         const runMiddleware = (middleware, req, res) => {
             return new Promise((resolve, reject) => {
@@ -146,6 +148,8 @@ export const webhookM = async (req, res) => {
         await runMiddleware(checkMiracleAuth, req, res);
 
         const payload = req.body;
+
+        console.log("payloadsfsdf", payload);
         const eventConfig = WEBHOOK_EVENT_REGISTRY[payload.EventType];
 
         if (!eventConfig) {
@@ -345,7 +349,16 @@ async function fetchProductDetail(req, uniqueId) {
         clientId: client_id,
         apiKey: api_key,
         tenantDB: req.tenantDB,
-        getAuthContext: async () => req.body.mconfig
+        getAuthContext: async () => {
+            if (req.body?.mconfig?.company_id) {
+                const freshConfig = await miracleConfigModel.findOne({
+                    where: { company_id: req.body.mconfig.company_id, isDelete: "0" },
+                    raw: true
+                });
+                if (freshConfig) req.body.mconfig = { ...req.body.mconfig, ...freshConfig };
+            }
+            return req.body?.mconfig;
+        }
     });
 
     const response = await api.get(`TPA/M2/V1/GetProduct?id=${uniqueId}`);
@@ -364,7 +377,16 @@ async function fetchContactDetail(req, uniqueId) {
         clientId: client_id,
         apiKey: api_key,
         tenantDB: req.tenantDB,
-        getAuthContext: async () => req.body.mconfig
+        getAuthContext: async () => {
+            if (req.body?.mconfig?.company_id) {
+                const freshConfig = await miracleConfigModel.findOne({
+                    where: { company_id: req.body.mconfig.company_id, isDelete: "0" },
+                    raw: true
+                });
+                if (freshConfig) req.body.mconfig = { ...req.body.mconfig, ...freshConfig };
+            }
+            return req.body?.mconfig;
+        }
     });
 
     const response = await api.get(`TPA/M2/V1/GetAccount?id=${uniqueId}`);
@@ -383,7 +405,16 @@ async function fetchVoucherDetail(req, uniqueId) {
         clientId: client_id,
         apiKey: api_key,
         tenantDB: req.tenantDB,
-        getAuthContext: async () => req.body.mconfig
+        getAuthContext: async () => {
+            if (req.body?.mconfig?.company_id) {
+                const freshConfig = await miracleConfigModel.findOne({
+                    where: { company_id: req.body.mconfig.company_id, isDelete: "0" },
+                    raw: true
+                });
+                if (freshConfig) req.body.mconfig = { ...req.body.mconfig, ...freshConfig };
+            }
+            return req.body?.mconfig;
+        }
     });
 
     const response = await api.get(`TPA/M2/V1/GetVoucher?id=${uniqueId}`);
@@ -599,7 +630,7 @@ async function createOrUpdateContactFromDetail(tenantDB, companyId, tenantId, co
         person_name: conper1 || conper2 || accnm || "",
         company_name: accnm || "",
         client_code: accalinm || "",
-        mobile_number: mob1 || "",
+        mobile_number: normalizeToTenDigit(mob1) || "",
         email_id: email || "",
         country: "101",
         state: stateId ? String(stateId) : "",
@@ -621,13 +652,34 @@ async function createOrUpdateContactFromDetail(tenantDB, companyId, tenantId, co
     };
 
     const contactModelInstance = contactModel(tenantDB);
-    const [contact, created] = await contactModelInstance.findOrCreate({
-        where: { miracle_UniqueId: uniqueId, company_masters_id: companyId, isDelete: "0" },
-        defaults: contactPayload
+    let contact = await contactModelInstance.findOne({
+        where: { miracle_UniqueId: uniqueId, isDelete: "0" },
     });
+    let created = false;
 
-    if (!created) {
+    if (!contact) {
+        const searchConditions = [];
+        const normMobile = normalizeToTenDigit(mob1);
+        if (normMobile) searchConditions.push({ mobile_number: normMobile });
+        if (accalinm) searchConditions.push({ client_code: accalinm });
+        if (gstin) searchConditions.push({ gst_number: gstin });
+
+        if (searchConditions.length > 0) {
+            contact = await contactModelInstance.findOne({
+                where: {
+                    company_masters_id: companyId,
+                    isDelete: "0",
+                    [Op.or]: searchConditions
+                }
+            });
+        }
+    }
+
+    if (contact) {
         await contact.update(contactPayload);
+    } else {
+        contact = await contactModelInstance.create(contactPayload);
+        created = true;
     }
 
     return { contact, created };
@@ -803,6 +855,12 @@ export async function handleVoucherAddOrUpdate({ payload, context }) {
         voutyp,
         voudt,
         vouno,
+        quotdt,
+        quotno,
+        orddt,
+        ordno,
+        chdt,
+        chno,
         docdt,
         billno,
         acc,
@@ -819,9 +877,46 @@ export async function handleVoucherAddOrUpdate({ payload, context }) {
     };
 
     const cartType = VOUCHER_TYPE_TO_CART_TYPE[voutyp] || 0;
-    const cartNumber = billno || vouno || "";
-    const cartDate = billdt || voudt || docdt || null;
+    const CART_TYPE_TO_FORM_TYPE = {
+        1: 5,  // Quotation -> form_type 5
+        2: 6,  // Sales Order -> form_type 6
+        3: 7,  // Sales Invoice -> form_type 7
+        4: 8,  // Purchase Invoice -> form_type 8
+        5: 9,  // Purchase Order -> form_type 9
+        6: 10, // Return Sales Invoice -> form_type 10
+        7: 11, // Return Purchase Invoice -> form_type 11
+        8: 12, // Goods Received Note -> form_type 12
+        9: 13  // Dispatch -> form_type 13
+    };
+    const targetFormType = CART_TYPE_TO_FORM_TYPE[cartType] || cartType;
+
+    const rawCartDate = billdt || quotdt || orddt || chdt || voudt || docdt;
+    const cartDate = rawCartDate && moment(rawCartDate).isValid() ? moment(rawCartDate).format("YYYY-MM-DD") : moment().format("YYYY-MM-DD");
     const dueDate = ufddet?.U0000001 || null;
+
+    let rawCartNum = billno || quotno || ordno || chno || vouno || voucherDetail.BillNo || voucherDetail.QuotNo || voucherDetail.OrdNo || voucherDetail.ChNo || voucherDetail.VouNo || "";
+
+    if (!rawCartNum && typeof voucherDetail === "object") {
+        const numberKeys = ["billno", "quotno", "ordno", "chno", "vouno", "docno", "srno"];
+        for (const k of Object.keys(voucherDetail)) {
+            if (numberKeys.includes(k.toLowerCase()) && voucherDetail[k]) {
+                rawCartNum = voucherDetail[k];
+                break;
+            }
+        }
+    }
+
+    if (typeof rawCartNum === "number") rawCartNum = String(rawCartNum);
+    let cartNumber = String(rawCartNum || "").trim();
+
+    const cartModelInstance = cartModel(tenantDB);
+    const existingCart = await cartModelInstance.findOne({
+        where: { miracle_UniqueId: uniqueId, company_masters_id: companyId, isDelete: "0" }
+    });
+
+    if ((!cartNumber || cartNumber === "0") && existingCart && existingCart.cart_number) {
+        cartNumber = existingCart.cart_number;
+    }
 
     let transactionMode = 0;
     if (flgcd === "C") {
@@ -961,18 +1056,6 @@ export async function handleVoucherAddOrUpdate({ payload, context }) {
     const grandTotal = Number(billamt) || calculatedTotal;
     const roundOff = Number((grandTotal - calculatedTotal).toFixed(2));
 
-    const CART_TYPE_TO_FORM_TYPE = {
-        1: 5,  // Quotation -> form_type 5
-        2: 6,  // Sales Order -> form_type 6
-        3: 7,  // Sales Invoice -> form_type 7
-        4: 8,  // Purchase Invoice -> form_type 8
-        5: 9,  // Purchase Order -> form_type 9
-        6: 10, // Return Sales Invoice -> form_type 10
-        7: 11, // Return Purchase Invoice -> form_type 11
-        8: 12, // Goods Received Note -> form_type 12
-        9: 13  // Dispatch -> form_type 13
-    };
-    const targetFormType = CART_TYPE_TO_FORM_TYPE[cartType] || cartType;
     const customFields = await extractMiracleCustomFields(tenantDB, companyId, targetFormType, ufddet);
 
     const cartPayload = {
@@ -1003,7 +1086,6 @@ export async function handleVoucherAddOrUpdate({ payload, context }) {
         isActive: 1
     };
 
-    const cartModelInstance = cartModel(tenantDB);
     const [cart, created] = await cartModelInstance.findOrCreate({
         where: { miracle_UniqueId: uniqueId, company_masters_id: companyId, isDelete: "0" },
         defaults: cartPayload

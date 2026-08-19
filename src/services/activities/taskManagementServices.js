@@ -846,10 +846,21 @@ export const AllTaskGet = async (req, res) => {
         ? task.is_read_by_a_application_login_id.split(",").map(id => id.trim()).filter(Boolean)
         : [];
 
+      const platform_x = req.body?.platform_x || "";
+      let mobile_number = task.contact_person_number;
+      if (platform_x == '1') {
+        mobile_number =
+          task.contact_person_number &&
+            !String(task.contact_person_number).startsWith("+")
+            ? `+${task.contact_person_number}`
+            : task.contact_person_number;
+      }
+
       const isUnread = !readList.includes(String(a_application_login_id)) ? 1 : 0;
 
       return {
         ...task,
+        contact_person_number: mobile_number,
         task_fromdate:
           task.task_fromdate && task.task_fromdate !== "0000-00-00"
             ? moment(task.task_fromdate).format("DD-MM-YYYY hh:mm A")
@@ -2580,6 +2591,84 @@ export const AllTaskCountGet = async (req, res) => {
       ack_msg: "Server error",
       developer_msg: error.message,
     });
+  }
+};
+
+const TASK_PRIORITY_KEYS = { 1: "low", 2: "medium", 3: "high", 4: "critical" };
+
+export const getTeamMemberTaskWorkload = async (req) => {
+  const { a_application_login_id, team_member_ids } = req.body;
+
+  try {
+    const findCompanyId = await getCompanyByLoginId(a_application_login_id);
+    if (!findCompanyId?.company_masters_id) {
+      return resError({ ack_msg: "Company not found" });
+    }
+
+    const memberIds = (Array.isArray(team_member_ids) ? team_member_ids : [])
+      .map((id) => parseInt(id, 10))
+      .filter((id) => !isNaN(id));
+
+    if (memberIds.length === 0) {
+      return resSuccess({ ack_msg: "Workload Get", data: { item: {} } });
+    }
+
+    const TaskModel = taskManagementModel(req.tenantDB);
+
+    const assignedCondition = {
+      [Op.or]: [
+        { a_application_login_id: { [Op.in]: memberIds } },
+        ...memberIds.map((id) =>
+          Sequelize.literal(`FIND_IN_SET(${id}, assigned_team_member)`)
+        ),
+      ],
+    };
+
+    const rows = await TaskModel.findAll({
+      where: {
+        company_masters_id: findCompanyId.company_masters_id,
+        isDelete: "0",
+        is_archive: "0",
+        task_template: "0",
+        is_not_visible: "0",
+        is_support_ticket: "0",
+        status: { [Op.ne]: -6 },
+        ...assignedCondition,
+      },
+      attributes: ["task_priority", "a_application_login_id", "assigned_team_member"],
+      raw: true,
+    });
+
+    const workload = {};
+    memberIds.forEach((id) => {
+      workload[id] = { low: 0, medium: 0, high: 0, critical: 0, total: 0 };
+    });
+
+    rows.forEach((row) => {
+      const priorityKey = TASK_PRIORITY_KEYS[row.task_priority] || null;
+      if (!priorityKey) return;
+
+      const assignedIds = (row.assigned_team_member || "")
+        .split(",")
+        .map((v) => parseInt(v, 10))
+        .filter((v) => !isNaN(v));
+
+      if (row.a_application_login_id && !assignedIds.includes(row.a_application_login_id)) {
+        assignedIds.push(parseInt(row.a_application_login_id, 10));
+      }
+
+      memberIds.forEach((id) => {
+        if (assignedIds.includes(id)) {
+          workload[id][priorityKey] += 1;
+          workload[id].total += 1;
+        }
+      });
+    });
+
+    return resSuccess({ ack_msg: "Workload Get", data: { item: workload } });
+  } catch (error) {
+    console.error("Error in getTeamMemberTaskWorkload:", error);
+    return resError({ ack_msg: "Server error", developer_msg: error.message });
   }
 };
 

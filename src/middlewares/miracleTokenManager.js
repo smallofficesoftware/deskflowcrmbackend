@@ -15,9 +15,10 @@ export const getValidAccessToken = async ({
     client_id,
     api_key,
     urlKey
-}) => {
+}, forceRefresh = false) => {
 
     const isExpired =
+        forceRefresh ||
         !access_token ||
         isTimeExceeded(auth_date_time, TOKEN_VALIDITY_MINUTES - BUFFER_MINUTES);
 
@@ -74,7 +75,7 @@ function isTimeExceeded(inputDateTime, minutes) {
     const givenTime = moment(inputDateTime, 'YYYY-MM-DD HH:mm:ss', true);
 
     if (!givenTime.isValid()) {
-        throw new Error('Invalid datetime format');
+        return true;
     }
 
     return now.isAfter(givenTime.add(minutes, 'minutes'));

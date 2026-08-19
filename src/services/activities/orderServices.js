@@ -1070,11 +1070,8 @@ export const orderList = async (req) => {
 
     if (searchTerm && searchTerm !== "undefined") {
       whereClause = {
-        a_application_login_id: a_application_login_id,
+        ...whereClause,
         [Op.or]: [{ cart_number: { [Op.like]: `%${searchTerm}%` } }],
-        isDelete: "0",
-        to_customer_id: contact_master_id,
-        type: order_type,
       };
     }
 
@@ -3658,9 +3655,39 @@ export const covertOrderSystem = async (req, res) => {
           });
         }
 
-        // Calculate grand_total = taxable_amt + gst_amt + tcs_amt
+        const packingCharge = parseFloat(baseCart.packing_forwarding_charge || 0);
+        const transportCharge = parseFloat(baseCart.transport_charge || 0);
+        const grossTaxable = calculatedTaxableAmt + packingCharge + transportCharge;
 
-        calculatedGrandTotal = calculatedTaxableAmt + calculatedGstAmt + calculatedTcsAmt;
+        const cashDiscount = parseFloat(baseCart.cash_discount || 0);
+        const cashDiscountType = parseInt(baseCart.cash_discount_type || 1);
+        let cashDiscountAmount = 0;
+        let discountRatio = 0;
+        if (cashDiscount > 0 && grossTaxable > 0) {
+          if (cashDiscountType === 1) {
+            cashDiscountAmount = (grossTaxable * cashDiscount) / 100;
+            discountRatio = Math.min(cashDiscount / 100, 1);
+          } else {
+            cashDiscountAmount = Math.min(cashDiscount, grossTaxable);
+            discountRatio = Math.min(cashDiscount / grossTaxable, 1);
+          }
+        }
+
+        const packingGst = packingCharge * (PACKING_FORWARDING_CHARGE_GST / 100);
+        const transportGst = transportCharge * (TRANSPORT_CHARGE__GST / 100);
+        const baseGst = (parseFloat(baseCart.gst_amt || 0) > 0 || gst_amt > 0)
+          ? (calculatedGstAmt + packingGst + transportGst)
+          : 0;
+        const finalGst = baseGst * (1 - discountRatio);
+        const finalTaxable = Math.max(0, grossTaxable - cashDiscountAmount);
+        const tcsRate = parseFloat(baseCart.tcs_percentage || 0) / 100;
+        const hasTcs = parseFloat(baseCart.tcs_amt || 0) > 0;
+        const finalTcs = hasTcs ? (finalTaxable + finalGst) * tcsRate : 0;
+
+        calculatedTaxableAmt = finalTaxable;
+        calculatedGstAmt = finalGst;
+        calculatedTcsAmt = finalTcs;
+        calculatedGrandTotal = finalTaxable + finalGst + finalTcs;
       } else {
         // Normal multi-cart merge without remaining qty logic
         let mergedTaxableAmt = 0;
@@ -3714,6 +3741,7 @@ export const covertOrderSystem = async (req, res) => {
         miracle_account_ledger_adv: "",
         miracle_UniqueId: "",
         miracle_update_date_time: null,
+        due_date: null
       };
       const resultCart = await CATModel.create(cartBody);
 
@@ -3841,6 +3869,7 @@ export const covertOrderSystem = async (req, res) => {
       // Initialize cart totals
       let calculatedTaxableAmt = 0;
       let calculatedGstAmt = 0;
+      let calculatedTcsAmt = 0;
       let calculatedGrandTotal = 0;
 
       // Filter and update items based on remaining quantity for dispatch conversion
@@ -3923,13 +3952,45 @@ export const covertOrderSystem = async (req, res) => {
           });
         }
 
-        // Calculate grand_total = taxable_amt + gst_amt
-        calculatedGrandTotal = calculatedTaxableAmt + calculatedGstAmt;
+        const packingCharge = parseFloat(findCart.dataValues.packing_forwarding_charge || 0);
+        const transportCharge = parseFloat(findCart.dataValues.transport_charge || 0);
+        const grossTaxable = calculatedTaxableAmt + packingCharge + transportCharge;
+
+        const cashDiscount = parseFloat(findCart.dataValues.cash_discount || 0);
+        const cashDiscountType = parseInt(findCart.dataValues.cash_discount_type || 1);
+        let cashDiscountAmount = 0;
+        let discountRatio = 0;
+        if (cashDiscount > 0 && grossTaxable > 0) {
+          if (cashDiscountType === 1) {
+            cashDiscountAmount = (grossTaxable * cashDiscount) / 100;
+            discountRatio = Math.min(cashDiscount / 100, 1);
+          } else {
+            cashDiscountAmount = Math.min(cashDiscount, grossTaxable);
+            discountRatio = Math.min(cashDiscount / grossTaxable, 1);
+          }
+        }
+
+        const packingGst = packingCharge * (PACKING_FORWARDING_CHARGE_GST / 100);
+        const transportGst = transportCharge * (TRANSPORT_CHARGE__GST / 100);
+        const baseGst = (parseFloat(findCart.dataValues.gst_amt || 0) > 0 || gst_amt > 0)
+          ? (calculatedGstAmt + packingGst + transportGst)
+          : 0;
+        const finalGst = baseGst * (1 - discountRatio);
+        const finalTaxable = Math.max(0, grossTaxable - cashDiscountAmount);
+        const tcsRate = parseFloat(findCart.dataValues.tcs_percentage || 0) / 100;
+        const hasTcs = parseFloat(findCart.dataValues.tcs_amt || 0) > 0;
+        const finalTcs = hasTcs ? (finalTaxable + finalGst) * tcsRate : 0;
+
+        calculatedTaxableAmt = finalTaxable;
+        calculatedGstAmt = finalGst;
+        calculatedTcsAmt = finalTcs;
+        calculatedGrandTotal = finalTaxable + finalGst + finalTcs;
       } else {
         // Normal single cart conversion - use existing values
         calculatedTaxableAmt = parseFloat(findCart.dataValues.taxable_amt || 0);
         calculatedGstAmt = parseFloat(findCart.dataValues.gst_amt || 0);
-        calculatedGrandTotal = calculatedTaxableAmt + calculatedGstAmt;
+        calculatedTcsAmt = parseFloat(findCart.dataValues.tcs_amt || 0);
+        calculatedGrandTotal = calculatedTaxableAmt + calculatedGstAmt + calculatedTcsAmt;
       }
 
       // Round off grand total
@@ -3950,6 +4011,7 @@ export const covertOrderSystem = async (req, res) => {
         advance_payment: 0,
         taxable_amt: calculatedTaxableAmt,
         gst_amt: calculatedGstAmt,
+        tcs_amt: calculatedTcsAmt,
         grand_total: roundedGrandTotal,
         round_off: roundOffValue,
         stock_type: 0,
@@ -3958,6 +4020,7 @@ export const covertOrderSystem = async (req, res) => {
         miracle_account_ledger_adv: "",
         miracle_UniqueId: "",
         miracle_update_date_time: null,
+        due_date: null
       };
 
       const resultCart = await CATModel.create(cartBody);
@@ -4599,21 +4662,22 @@ export const pdfOrder = async (req, res) => {
 <div style="text-align: center; padding: 0px;">
   <img src="${headerImage}" style="width: 99.4%; margin: 0px; padding: 0px;"/>
 </div>`
-                    : // ✅ CASE 2: Header details are ON with calculated height
+                    : // ✅ CASE 2: Header details are ON, sized by content (table auto-height)
                     settingDetails.headerDetails
                       ? `
-<div style="display: flex; justify-content: center; align-items: center; flex-direction: column; width: 99.4%; height: 100%;">
-  <div style="display: flex; justify-content: center; align-items: center; border: 1px solid black; text-align: center; background-color: ${dynamicColor}; width: 99%; padding: 5px;">
-    <strong style="font-size: 12pt;">${companyDetail.company_name}</strong>
-  </div>
-  <div style="display: flex; justify-content: center; align-items: center; border: 1px solid black; border-top: 0px; border-bottom: 0px; text-align: center; width: 99%;padding:5px 5px;  flex: 1;">
-    <div style="display: inline-block; text-align: center; line-height: 2.5; font-size: 7pt;">
-      <div style="margin-bottom: 3px;width:100%;">
-      <strong>Address:</strong> ${companyDetail.address}</div>
-      <div><strong>Mo.:</strong> ${companyDetail.printed_number} <strong>Email:</strong> ${companyDetail.company_email} <strong>GSTIN:</strong> ${companyDetail.gst_number} <strong>State:</strong> ${companyStateName}</div>
-    </div>
-  </div>
-</div>`
+<table style="width: 99.4%; margin: 0 auto; border-collapse: collapse;">
+  <tr>
+    <td style="border: 1px solid black; text-align: center; background-color: ${dynamicColor}; padding: 5px;">
+      <strong style="font-size: 12pt;">${companyDetail.company_name}</strong>
+    </td>
+  </tr>
+  <tr>
+    <td style="border: 1px solid black; border-top: 0px; text-align: center; padding: 5px; line-height: 1.6; font-size: 7pt;">
+      <strong>Address:</strong> ${companyDetail.address}<br>
+      <strong>Mo.:</strong> ${companyDetail.printed_number} <strong>Email:</strong> ${companyDetail.company_email} <strong>GSTIN:</strong> ${companyDetail.gst_number} <strong>State:</strong> ${companyStateName}
+    </td>
+  </tr>
+</table>`
                       : // ✅ CASE 3: Header Details With Logo Leftside
                       settingDetails.headerDetailsWithLogo && settingDetails.headerLogoOnRightSide == false
                         ? `

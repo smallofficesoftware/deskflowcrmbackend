@@ -2,6 +2,7 @@ import Sequelize from "sequelize";
 import {
   formatDateAndTimeCreateDateTime,
   formatDateCustom,
+  normalizeToTenDigit,
   resBadRequest,
   resError,
   resSuccess,
@@ -9,11 +10,14 @@ import {
 } from "../../utils/sharedFunctions.js";
 // import { formatDateTimeSendDataBase } from "../utils/dateTime.js";
 
+import { randomUUID } from "crypto";
 import ejs from "ejs";
 import fs from "fs";
+import moment from "moment";
 import path from "path";
 import pdf from "pdf-creator-node";
 import { col, fn, Op } from "sequelize";
+import XLSX from "xlsx";
 import { getTenantDB } from "../../config/dbManager.js";
 import { getUserRights } from "../../helpers/rightsHelper.js";
 import { tenantMiddleware } from "../../middlewares/tenantMiddleware.js";
@@ -29,8 +33,9 @@ import currencyModel from "../../models/configuration/currencyModel.js";
 import { cityModel } from "../../models/masters/cityModel.js";
 import { countryModel } from "../../models/masters/countryModel.js";
 import { stateModel } from "../../models/masters/stateModel.js";
-import { __dirnameConstant, PDF_LINK_EXTENDED_Account_TRANSACTION } from '../../utils/appConstants.js';
+import { __dirnameConstant, EXPORTS_LINK_EXTENDED, PDF_LINK_EXTENDED_Account_TRANSACTION } from '../../utils/appConstants.js';
 import { PAGE_ID } from "../../utils/AppEnumeration.js";
+import { exportData } from "../../utils/exporter.js";
 import { getCompanyByLoginId, getCompanyDetailByLoginId } from "../commonServices.js";
 import { sendMultipleNotification } from "../company_setup/thirdPartyIntegrationService.js";
 
@@ -1483,4 +1488,332 @@ export const allAccountTransactionOfContactPDF = async (req, res) => {
     console.error(error);
     return resBadRequest({ developer_msg: `error ${error}` });
   }
-}
+};
+
+export const generateAccountTransactionSampleSheet = async (req, res) => {
+  try {
+    const { a_application_login_id } = req.body;
+    const companyDetail = await getCompanyByLoginId(a_application_login_id);
+
+    const fileName = `sample_account_transaction_sheet_${randomUUID()}`;
+    const format = "xlsx";
+    const outputDir = `media-folder/exports/account_transactions/${companyDetail.company_masters_id}`;
+    const uploadDir = path.resolve(process.cwd(), outputDir);
+
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+
+    const excelColumnDefineArray = {
+      client_code: "0001",
+      type: "Credit",
+      payment_by: "Cash",
+      amount: "1000",
+      payment_date_time: moment().format("YYYY-MM-DD HH:mm:ss"),
+      remark: "Sample account transaction",
+    };
+
+    const data = [excelColumnDefineArray];
+
+    const colorColumns = {
+      client_code: "FFFF0000",
+      type: "FFFF0000",
+      payment_by: "FFFF0000",
+      amount: "FFFF0000",
+    };
+
+    const savedPath = await exportData(data, {
+      format,
+      fileName,
+      columns: null,
+      headers: null,
+      autoDownload: false,
+      outputDir: uploadDir,
+      colorColumns,
+    });
+
+    const fileUrl = `${EXPORTS_LINK_EXTENDED}account_transactions/${companyDetail.company_masters_id}/${savedPath.file_name}`;
+
+    return resSuccess({
+      data: { fileUrl, fileName: savedPath.file_name },
+    });
+  } catch (error) {
+    console.error("generateAccountTransactionSampleSheet Error:", error);
+    return resBadRequest({
+      ack_msg: "Something went wrong",
+      developer_msg: `Error: ${error.message}`,
+    });
+  }
+};
+
+export const importAccountTransactionByExcel = async (req) => {
+  try {
+    if (!req.file) {
+      return resBadRequest({
+        ack_msg: "No file uploaded",
+        developer_msg: "Please upload an Excel file",
+      });
+    }
+
+    const { a_application_login_id } = req.body;
+    if (!a_application_login_id) {
+      return resBadRequest({
+        ack_msg: "Missing authentication details",
+        developer_msg: "a_application_login_id is required",
+      });
+    }
+
+    const findCompanyId = await getCompanyByLoginId(a_application_login_id);
+    if (!findCompanyId || !findCompanyId.company_masters_id) {
+      return resBadRequest({
+        ack_msg: "Invalid company ID",
+        developer_msg: "Could not retrieve company ID",
+      });
+    }
+
+    const tenantDB = req.tenantDB;
+    const accountTransaction = accountTransactionsModel(tenantDB);
+    const contactMaster = contactModel(tenantDB);
+    const paymentTypeModelFn = paymentTypeModel(tenantDB);
+    const ContactMSG = contactMessageHistory(tenantDB);
+
+    // Check User Approval Rights
+    let isApproveRight = false;
+    const applicationLoginTypeRightModelIntance = applicationLoginTypeRightModel(tenantDB);
+    const userRightsList = await applicationLoginTypeRightModelIntance.findOne({
+      where: {
+        company_masters_id: findCompanyId.company_masters_id,
+        a_application_login_id: a_application_login_id,
+        isDelete: 0,
+        page_id: PAGE_ID.ACCOUNT_HISTORY,
+      },
+      attributes: ["a_page_id_rights_jason"],
+    });
+    if (userRightsList?.a_page_id_rights_jason) {
+      try {
+        const rights = JSON.parse(userRightsList.a_page_id_rights_jason);
+        if (Number(rights.approve) === 1) {
+          isApproveRight = true;
+        }
+      } catch (err) {
+        console.error("Rights JSON parse error:", err);
+      }
+    }
+
+    // Fetch user details for history entry
+    const loggedInUser = await loginModel.findOne({
+      where: { id: a_application_login_id, isDelete: 0 },
+      attributes: ["username"],
+    });
+
+    // Load Contacts & Payment Types for lookup
+    const contacts = await contactMaster.findAll({
+      where: { company_masters_id: findCompanyId.company_masters_id, isDelete: 0 },
+      attributes: ["id", "person_name", "company_name", "mobile_number", "client_code"],
+      raw: true,
+    });
+
+    const paymentTypes = await paymentTypeModelFn.findAll({
+      where: {
+        isDelete: 0,
+        [Op.or]: [
+          { company_masters_id: 0 },
+          { company_masters_id: findCompanyId.company_masters_id },
+        ],
+      },
+      raw: true,
+    });
+
+    const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    const data = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+    if (!data || data.length < 2) {
+      return resError({
+        ack_msg: "No data found in Excel sheet",
+        developer_msg: "Excel is empty",
+      });
+    }
+
+    const headers = data[0].map((c) => (c ? c.toString().trim().toLowerCase() : ""));
+    const colIndex = {};
+    headers.forEach((col, i) => {
+      colIndex[col] = i;
+    });
+
+    const rows = data.slice(1);
+    let errorRows = [];
+    let finalData = [];
+    const now = new Date();
+    const formattedNowStr = moment(now).format("YYYY-MM-DD HH:mm:ss");
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const rowNumber = i + 2;
+
+      if (!row || row.length === 0 || row.every((c) => c === null || c === undefined || c === "")) {
+        continue;
+      }
+
+      const rawClientCode = row[colIndex["client_code"]];
+      const rawType = row[colIndex["type"]];
+      const rawPaymentBy = row[colIndex["payment_by"]] ?? row[colIndex["mode"]];
+      const rawAmount = row[colIndex["amount"]];
+      const rawPaymentDate = row[colIndex["payment_date_time"]] ?? row[colIndex["payment_date"]];
+      const rawRemark = row[colIndex["remark"]];
+
+      // Match Contact by Client Code
+      const cleanCode = rawClientCode ? rawClientCode.toString().trim().toLowerCase() : null;
+      if (!cleanCode) {
+        errorRows.push(`Row ${rowNumber}: Missing client_code`);
+        continue;
+      }
+
+      let matchedContact = contacts.find((c) => {
+        if (cleanCode && c.client_code && c.client_code.toString().trim().toLowerCase() === cleanCode) return true;
+        return false;
+      });
+
+      if (!matchedContact) {
+        errorRows.push(`Row ${rowNumber}: Contact not found for client code '${rawClientCode}'`);
+        continue;
+      }
+
+      // Validate Type (Credit | Debit)
+      if (rawType === undefined || rawType === null || rawType.toString().trim() === "") {
+        errorRows.push(`Row ${rowNumber}: Missing type (Must be 'Credit' or 'Debit')`);
+        continue;
+      }
+
+      const typeStr = rawType.toString().trim().toLowerCase();
+      let typeVal = 0;
+      if (typeStr === "1" || typeStr === "credit" || typeStr === "cr" || typeStr === "receipt") {
+        typeVal = 1;
+      } else if (typeStr === "2" || typeStr === "debit" || typeStr === "dr" || typeStr === "payment") {
+        typeVal = 2;
+      } else {
+        errorRows.push(`Row ${rowNumber}: Invalid type '${rawType}'. Must be 'Credit' or 'Debit'`);
+        continue;
+      }
+
+      // Validate Amount
+      const amountVal = Number(rawAmount);
+      if (!rawAmount || isNaN(amountVal) || amountVal <= 0) {
+        errorRows.push(`Row ${rowNumber}: Invalid amount '${rawAmount}' (Must be greater than 0)`);
+        continue;
+      }
+
+      // Match Payment Type from Database (payment_by)
+      if (!rawPaymentBy || rawPaymentBy.toString().trim() === "") {
+        errorRows.push(`Row ${rowNumber}: Missing payment_by`);
+        continue;
+      }
+
+      const modeStr = rawPaymentBy.toString().trim().toLowerCase();
+      const foundPaymentType = paymentTypes.find(
+        (pt) => pt.payment_type_name && pt.payment_type_name.toString().trim().toLowerCase() === modeStr
+      );
+
+      if (!foundPaymentType) {
+        errorRows.push(`Row ${rowNumber}: Invalid payment_by '${rawPaymentBy}'. Payment type not found in system.`);
+        continue;
+      }
+
+      const modeVal = foundPaymentType.id;
+      const paymentTypeName = foundPaymentType.payment_type_name;
+
+      // Format Date
+      let paymentDateTime = moment().format("YYYY-MM-DD HH:mm:ss");
+      if (rawPaymentDate) {
+        if (typeof rawPaymentDate === "number") {
+          const parsedDate = XLSX.SSF.parse_date_code(rawPaymentDate);
+          paymentDateTime = `${parsedDate.y}-${String(parsedDate.m).padStart(2, "0")}-${String(parsedDate.d).padStart(2, "0")} ${String(parsedDate.H || 0).padStart(2, "0")}:${String(parsedDate.M || 0).padStart(2, "0")}:${String(parsedDate.S || 0).padStart(2, "0")}`;
+        } else {
+          const parsed = moment(rawPaymentDate.toString().trim(), [
+            "YYYY-MM-DD HH:mm:ss",
+            "DD-MM-YYYY HH:mm:ss",
+            "YYYY-MM-DD",
+            "DD-MM-YYYY",
+            "DD/MM/YYYY HH:mm:ss",
+            "DD/MM/YYYY",
+          ]);
+          if (parsed.isValid()) {
+            paymentDateTime = parsed.format("YYYY-MM-DD HH:mm:ss");
+          }
+        }
+      }
+
+      finalData.push({
+        contact_masters_id: matchedContact.id,
+        a_application_login_id,
+        company_masters_id: findCompanyId.company_masters_id,
+        type: typeVal,
+        mode: modeVal,
+        payment_type_name: paymentTypeName,
+        amount: amountVal,
+        payment_date_time: paymentDateTime,
+        remark: rawRemark ? rawRemark.toString().trim() : "",
+        approve_by_a_application_login_id: isApproveRight ? a_application_login_id : 0,
+        approve_date_time: isApproveRight ? now : "",
+      });
+    }
+
+    if (!finalData.length) {
+      return resError({
+        ack_msg: "No valid transaction data to import",
+        developer_msg: errorRows.join("<br/>"),
+        data: errorRows.join("<br/>"),
+      });
+    }
+
+    for (const item of finalData) {
+      const createdEntry = await accountTransaction.create({
+        contact_masters_id: item.contact_masters_id,
+        a_application_login_id: item.a_application_login_id,
+        company_masters_id: item.company_masters_id,
+        type: item.type,
+        mode: item.mode,
+        amount: item.amount,
+        payment_date_time: item.payment_date_time,
+        remark: item.remark,
+        approve_by_a_application_login_id: item.approve_by_a_application_login_id,
+        approve_date_time: item.approve_date_time,
+      });
+
+      // If approved, create message history entry
+      if (isApproveRight && createdEntry) {
+        const transactionTypeLabel = item.type === 1 ? "Credit" : "Debit";
+        const msgBody = {
+          contact_masters_id: item.contact_masters_id,
+          a_application_login_id,
+          company_masters_id: findCompanyId.company_masters_id,
+          msg_account_transaction_id: createdEntry.id,
+          description:
+            `<b>Account History</b><br>` +
+            `# ${createdEntry.id}<br>` +
+            `Payment Type: ${transactionTypeLabel}<br>` +
+            `<b>₹${item.amount.toFixed(2)} By ${item.payment_type_name}</b><br>` +
+            `${item.payment_date_time}<br>` +
+            (item.remark ? `<i>${item.remark}</i><br>` : ""),
+          created_date_time: formattedNowStr,
+          message_side: 1,
+          message_type_id: 0,
+          application_login_name: loggedInUser?.username || null,
+        };
+        await ContactMSG.create(msgBody);
+      }
+    }
+
+    return resSuccess({
+      ack_msg: `Successfully imported ${finalData.length} account transactions.${isApproveRight ? " All transactions approved automatically." : ""}`,
+      data: errorRows.length ? errorRows.join("<br/>") : "",
+    });
+  } catch (error) {
+    console.error("importAccountTransactionByExcel Error:", error);
+    return resError({
+      ack_msg: "Import failed",
+      developer_msg: error.message,
+    });
+  }
+};

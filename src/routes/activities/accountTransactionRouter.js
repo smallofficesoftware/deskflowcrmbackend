@@ -4,10 +4,13 @@ import {
   allAccountTransactionsOnlineStore,
   allContactAccountTransactionPDF,
   createAccountTransactions,
+  generateAccountTransactionSampleSheetProvider,
+  getExcelSheetAccountTransactionProvider,
   PDFaccountv1,
   updateAccountTransactions
 } from "../../controllers/activities/accountTransactionController.js";
 import { authenticateToken } from "../../middlewares/auth.js";
+import { uploadExcelSheet } from "../../middlewares/multer.js";
 import { tenantMiddleware } from "../../middlewares/tenantMiddleware.js";
 
 export default (app) => {
@@ -56,5 +59,18 @@ export default (app) => {
     authenticateToken,
     tenantMiddleware,
     allContactAccountTransactionPDF
+  );
+  app.post(
+    "/generate-account-transaction-sample-sheet",
+    authenticateToken,
+    tenantMiddleware,
+    generateAccountTransactionSampleSheetProvider
+  );
+  app.post(
+    "/excel-sheet-account-transaction",
+    authenticateToken,
+    tenantMiddleware,
+    uploadExcelSheet.single("file"),
+    getExcelSheetAccountTransactionProvider
   );
 };

@@ -158,7 +158,10 @@ export const tenantMiddleware = async (req, res, next) => {
     const tenantDBInfo = await getTenantDB(tenantId, companyId);
     req.tenantDB = tenantDBInfo.sequelize;
     req.models = tenantDBInfo.models;
-
+    if (req) {
+      if (!req.body || typeof req.body !== "object") req.body = {};
+      req.body.platform_x = req.headers?.['is_api_from_app'] || "";
+    }
     requestContext.run({ tenantDB: tenantDBInfo.sequelize, models: tenantDBInfo.models, companyId: Number(companyId), tenantId: tenantId, a_application_login_id: tenantId }, () => {
       next();
     });
