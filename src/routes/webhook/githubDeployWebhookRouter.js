@@ -9,6 +9,7 @@ const DEPLOY_SCRIPT = path.join(process.cwd(), "scripts", "deploy-dev.sh");
 const REPO_TO_APP = {
   deskflowcrmbackend: "backend",
   deskflowcrmfrontend: "frontend",
+  deskflowadminpanel: "adminpanel",
 };
 
 const verifySignature = (req) => {
