@@ -1157,6 +1157,68 @@ export const newCompanyStep = async (req, res) => {
 };
 
 
+const REFERENCE_TENANT_DB_NAME = "smalloffice_sample_tenant";
+
+// Runtime safety net, no manual step required: after create_company_copy.sql
+// runs, compare the reference tenant's table list against what actually
+// landed in the brand-new company DB and structure-clone anything still
+// missing (a table someone added without ever touching the .sql file).
+// Best-effort — never blocks company creation. This does NOT replace
+// keeping create_company_copy.sql up to date (that file also carries the
+// curated data-copy tables and ordering); it only guarantees a company is
+// never left missing a table entirely, even if the file was never updated.
+const ensureAllReferenceTablesCloned = async (dbName) => {
+  let sequelizeConn = null;
+
+  try {
+    sequelizeConn = new Sequelize(dbConfig.DB, dbConfig.USER, dbConfig.PASSWORD, {
+      host: dbConfig.HOST,
+      dialect: dbConfig.dialect,
+      timezone: "+05:30",
+      define: { timestamps: false },
+      logging: false,
+    });
+
+    const [referenceRows] = await sequelizeConn.query(
+      `SELECT TABLE_NAME AS table_name FROM information_schema.tables WHERE table_schema = :refDb AND table_type = 'BASE TABLE'`,
+      { replacements: { refDb: REFERENCE_TENANT_DB_NAME } }
+    );
+    const [existingRows] = await sequelizeConn.query(
+      `SELECT TABLE_NAME AS table_name FROM information_schema.tables WHERE table_schema = :dbName AND table_type = 'BASE TABLE'`,
+      { replacements: { dbName } }
+    );
+
+    const existingSet = new Set(existingRows.map((r) => r.table_name));
+    const missingTables = referenceRows
+      .map((r) => r.table_name)
+      .filter((t) => !existingSet.has(t));
+
+    if (missingTables.length === 0) return;
+
+    logger.warn(
+      `ensureAllReferenceTablesCloned: ${missingTables.length} table(s) missing from ${dbName} (not covered by create_company_copy.sql yet) — cloning structure-only: ${missingTables.join(", ")}`
+    );
+
+    for (const table of missingTables) {
+      await sequelizeConn.query(
+        `CREATE TABLE \`${dbName}\`.\`${table}\` LIKE ${REFERENCE_TENANT_DB_NAME}.\`${table}\`;`
+      );
+    }
+
+    logger.info(`ensureAllReferenceTablesCloned: cloned ${missingTables.length} missing table(s) into ${dbName}`);
+  } catch (e) {
+    logger.error(`ensureAllReferenceTablesCloned: failed for ${dbName}: ${e.message || e}`);
+  } finally {
+    if (sequelizeConn) {
+      try {
+        await sequelizeConn.close();
+      } catch (closeError) {
+        logger.error(`ensureAllReferenceTablesCloned: error closing connection: ${closeError.message || closeError}`);
+      }
+    }
+  }
+};
+
 const executeSQLFile = async (
   dbName,
   sqlFileName,
@@ -1245,6 +1307,8 @@ const executeSQLFile = async (
 
     await mysqlSequelize.close();
     logger.info(`Database creation completed for: ${dbName}`);
+
+    await ensureAllReferenceTablesCloned(dbName);
 
     // Check if tenant migrations and seeders should run
     if (ENABLE_TENANT_MIGRATIONS_ON_COMPANY_CREATE) {
