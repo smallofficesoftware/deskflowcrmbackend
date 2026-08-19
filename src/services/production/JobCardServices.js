@@ -353,9 +353,9 @@ export const jobCardsDetails = async (req) => {
         console.log(`[DEBUG 1] Job Card found:`, { id: jobCard.id, item_id: jobCard.item_id || jobCard.order_item_id, order_id: jobCard.order_id });
 
         // 2. Fetch Contact Detail
-        const contact = await ContactModelInstance.findOne({ 
-            where: { id: jobCard.contact_id, isDelete: 0 }, 
-            raw: true 
+        const contact = await ContactModelInstance.findOne({
+            where: { id: jobCard.contact_id, isDelete: 0 },
+            raw: true
         });
 
         const contactDetail = {
@@ -370,15 +370,15 @@ export const jobCardsDetails = async (req) => {
 
         // 3. Fetch Item & Order Detail (Supports both item_id and order_item_id)
         const targetItemId = jobCard.item_id || jobCard.order_item_id;
-        
-        const item = await CartItemModelInstance.findOne({ 
-            where: { id: targetItemId, isDelete: 0 }, 
-            raw: true 
+
+        const item = await CartItemModelInstance.findOne({
+            where: { id: targetItemId, isDelete: 0 },
+            raw: true
         });
 
-        const cart = await CartModelInstance.findOne({ 
-            where: { id: jobCard.order_id, isDelete: 0 }, 
-            raw: true 
+        const cart = await CartModelInstance.findOne({
+            where: { id: jobCard.order_id, isDelete: 0 },
+            raw: true
         });
 
         console.log(`[DEBUG 2] Item Found:`, item ? item.item_product_name : "NULL");
@@ -462,12 +462,12 @@ export const jobCardsDetails = async (req) => {
                     const formatMaterial = (m) => {
                         const mId = Number(m.item_id || m.material_id);
                         const productInfo = productMap.get(mId);
-                        
+
                         const availableQty = Number(stockMap[mId]) || 0;
                         const unit = productInfo?.unit || unitMap[mId] || m.unit || "";
-                        
+
                         const bomPerUnitQty = Number(m.qty) || 0;
-                        const requiredQty = (bomPerUnitQty/bom.qty) * prodQty;
+                        const requiredQty = (bomPerUnitQty / bom.qty) * prodQty;
 
                         return {
                             material_id: mId,
@@ -660,9 +660,9 @@ export const submitUnifiedProductionEntry = async (req) => {
 
         const productionMaster = await productionTransactionModelInstance.create({
             job_id,
-            team_member: team_member_id || null,
-            production_item_id: order_item_id || null,
-            bom_id: null,
+            team_member: team_member_id || "",
+            production_item_id: order_item_id || "",
+            bom_id: "",
             production_qty: produced_qty,
             consumption_qty: totalConsumption,
             rejection_qty: totalRejection,
@@ -681,11 +681,11 @@ export const submitUnifiedProductionEntry = async (req) => {
         const formatProdItem = (item, entryType) => ({
             job_id,
             production_id: productionId,
-            bom_id: null,
+            bom_id: "",
             process_id: item.process_id,
             entry_type: entryType,
             item_id: item.material_id,
-            unit: null,
+            unit: "",
             qty: item.qty,
             warehouse: item.warehouse_id,
             a_application_login_id
