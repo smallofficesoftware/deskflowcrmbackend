@@ -10,6 +10,7 @@
     "dev": "echo. > ./logs/crm_backend.log && cross-env NODE_ENV=development nodemon >> ./logs/crm_backend.log 2>&1",
     "start": "cross-env NODE_ENV=production tsx src/index.js",
     "check:tenant:schema-drift": "cross-env NODE_ENV=development node src/scripts/checkTenantSchemaDrift.js",
+    "sync:create-company-sql": "cross-env NODE_ENV=development node src/scripts/syncCreateCompanySql.js",
     "create:migration:master": "node src/scripts/createMigration.js master",
     "create:migration:tenant": "node src/scripts/createMigration.js tenant",
     "create:seed:master": "node src/scripts/createSeed.js master",
