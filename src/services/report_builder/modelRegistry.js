@@ -121,6 +121,21 @@ export const MODEL_REGISTRY = {
         },
       },
     },
+    // Inbound filter — "contacts that have a matching row in another
+    // table" (relations only go outbound: this row -> its lookup row).
+    // Confirmed real shape in allContactReportServices.js: filters
+    // cart_items by cart_type + item_product_id, collects distinct
+    // contact_master_id, then WHERE id IN (...) on contacts. childFilters
+    // are validated against cart_items' OWN already-registered column
+    // whitelist below — not a duplicate list to maintain.
+    inboundFilters: {
+      hasOrderedProduct: {
+        label: "Has Ordered Product",
+        childModelKey: "cart_items",
+        childForeignKey: "contact_master_id",
+        parentKey: "id",
+      },
+    },
   },
 
   carts: {

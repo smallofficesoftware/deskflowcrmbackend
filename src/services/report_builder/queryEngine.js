@@ -221,7 +221,22 @@ export const runQueryReport = async (definition, req) => {
     // merged into the flat userWhere object the way {col: {op: val}} can. ----
     const userWhere = {};
     const csvWhereClauses = [];
+    const inboundFilterSpecs = []; // {column, childFilters} — resolved after this loop, needs an await
     for (const f of filters) {
+      // Inbound filter — "base rows with a matching child row" (e.g.
+      // "contacts who ordered product X"), discriminated by the presence of
+      // childFilters (a separate namespace from effectiveColumns, so no
+      // collision risk with a real column of the same key). Confirmed real
+      // shape by reading allContactReportServices.js: filters cart_items by
+      // cart_type + item_product_id, collects distinct contact_master_id,
+      // then WHERE id IN (...) on the base query — resolved below, same
+      // two-query pattern this codebase already uses everywhere else.
+      if (Array.isArray(f.childFilters)) {
+        const inboundDef = registryEntry.inboundFilters && registryEntry.inboundFilters[f.column];
+        if (!inboundDef) throw new Error(`Inbound filter "${f.column}" is not whitelisted for this report source`);
+        inboundFilterSpecs.push({ inboundDef, childFilters: f.childFilters });
+        continue;
+      }
       const columnDef = effectiveColumns[f.column];
       if (columnDef && columnDef.type === "csv") {
         if (!columnDef.filterable) throw new Error(`Column "${f.column}" is not filterable`);
@@ -230,6 +245,31 @@ export const runQueryReport = async (definition, req) => {
         continue;
       }
       Object.assign(userWhere, buildFilterCondition(columnDef, f.column, f));
+    }
+
+    // ---- Resolve inbound filters — one query per filter against the
+    // ALREADY-REGISTERED child table (reusing its own column whitelist for
+    // childFilters validation, not a duplicate whitelist), collecting
+    // distinct parent ids. [0] sentinel on empty match (never a real id) —
+    // same convention allContactReportServices.js itself uses, avoids a
+    // malformed empty Op.in. ----
+    for (const { inboundDef, childFilters } of inboundFilterSpecs) {
+      const childRegistryEntry = getRegisteredModel(inboundDef.childModelKey);
+      if (!childRegistryEntry) throw new Error(`Inbound filter child table "${inboundDef.childModelKey}" is not registered`);
+      const childWhere = { isDelete: 0 };
+      for (const cf of childFilters) {
+        const childColumnDef = childRegistryEntry.columns[cf.column];
+        Object.assign(childWhere, buildFilterCondition(childColumnDef, cf.column, cf));
+      }
+      const ChildModel = childRegistryEntry.getModel(req.tenantDB);
+      const matchedChildRows = await ChildModel.findAll({
+        where: childWhere,
+        attributes: [inboundDef.childForeignKey],
+        group: [inboundDef.childForeignKey],
+        raw: true,
+      });
+      const parentIds = matchedChildRows.map((r) => r[inboundDef.childForeignKey]).filter((v) => v !== null && v !== undefined);
+      userWhere[inboundDef.parentKey] = { [Op.in]: parentIds.length > 0 ? parentIds : [0] };
     }
 
     // ---- rights-based scope — fail closed, never fall back to unscoped ----
