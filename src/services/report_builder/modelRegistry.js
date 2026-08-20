@@ -509,32 +509,48 @@ export const getRegisteredModel = (modelKey) => MODEL_REGISTRY[modelKey];
 // exposed under their own `relations` array (not flattened into the base
 // `columns` array) so the frontend can render them as a separate "Related:
 // X" sub-group and never send them through the filter/group-by pickers.
-export const listModelRegistry = () =>
-  Object.entries(MODEL_REGISTRY).map(([key, entry]) => ({
-    key,
-    label: entry.label,
-    columns: Object.entries(entry.columns).map(([columnKey, columnDef]) => ({
-      key: columnKey,
-      ...columnDef,
-    })),
-    relations: entry.relations
-      ? Object.entries(entry.relations).map(([relKey, relDef]) => ({
-          key: relKey,
-          label: relDef.label,
-          columns: Object.entries(relDef.columns).map(([columnKey, columnDef]) => ({
-            key: `${relKey}.${columnKey}`,
+//
+// tenantDB/company_masters_id are optional so this stays callable without
+// company context (e.g. a future admin-facing "what tables exist" view) —
+// when passed, each table with a customFieldFormType gets that company's
+// real custom fields merged in (same resolveDynamicColumns() queryEngine.js
+// uses per run), each tagged `dynamic: true` so the frontend can show them
+// distinctly from the fixed columns.
+export const listModelRegistry = async (tenantDB, company_masters_id) =>
+  Promise.all(
+    Object.entries(MODEL_REGISTRY).map(async ([key, entry]) => {
+      const dynamicColumns =
+        tenantDB && company_masters_id && entry.customFieldFormType
+          ? await resolveDynamicColumns(tenantDB, company_masters_id, entry.customFieldFormType)
+          : {};
+
+      return {
+        key,
+        label: entry.label,
+        columns: [
+          ...Object.entries(entry.columns).map(([columnKey, columnDef]) => ({
+            key: columnKey,
             ...columnDef,
           })),
-        }))
-      : [],
-    // listModelRegistry() has no company context (it's a static list, no
-    // tenantDB/company_masters_id available) — dynamic per-company custom
-    // fields cannot appear here. A definition CAN still reference one by
-    // its real reference_column_name (queryEngine.js resolves + validates
-    // it per request via resolveDynamicColumns below); the frontend column
-    // picker just won't show it as a checkbox yet. Known gap, not silent —
-    // flagged here, not worked around.
-  }));
+          ...Object.entries(dynamicColumns).map(([columnKey, columnDef]) => ({
+            key: columnKey,
+            dynamic: true,
+            ...columnDef,
+          })),
+        ],
+        relations: entry.relations
+          ? Object.entries(entry.relations).map(([relKey, relDef]) => ({
+              key: relKey,
+              label: relDef.label,
+              columns: Object.entries(relDef.columns).map(([columnKey, columnDef]) => ({
+                key: `${relKey}.${columnKey}`,
+                ...columnDef,
+              })),
+            }))
+          : [],
+      };
+    }),
+  );
 
 // Infers a UI-facing type from the physical slot column's own name suffix
 // (e.g. "cntc_column_number_3" -> "number") rather than needing the

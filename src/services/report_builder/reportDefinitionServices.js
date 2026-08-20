@@ -12,11 +12,22 @@ const now = () => moment(new Date()).format("YYYY-MM-DD HH:mm:ss");
 
 const asJsonString = (value) => (typeof value === "string" ? value : JSON.stringify(value));
 
-// No company/login scoping needed — this is a static whitelist, not
-// tenant data. Build routes only (same gate as create/list) since it's
-// only useful to someone building a definition, not running one.
-export const getModelRegistry = async () => {
-  return resSuccess({ data: { item: listModelRegistry() } });
+// Mostly a static whitelist, not tenant data — company_masters_id is
+// resolved only so listModelRegistry() can merge in THIS company's real
+// dynamic custom-field columns (contacts/inquiries/visits/task_managements)
+// alongside the fixed ones. Build routes only (same gate as create/list)
+// since it's only useful to someone building a definition, not running one.
+export const getModelRegistry = async (req) => {
+  const { a_application_login_id } = req.body || {};
+  if (!a_application_login_id) {
+    return resError({ developer_msg: "a_application_login_id is required" });
+  }
+  const findCompanyId = await getCompanyByLoginId(a_application_login_id);
+  if (!findCompanyId) {
+    return resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" });
+  }
+  const item = await listModelRegistry(req.tenantDB, findCompanyId.company_masters_id);
+  return resSuccess({ data: { item } });
 };
 
 export const getPluginRegistry = async () => {
