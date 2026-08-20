@@ -90,11 +90,34 @@ export const runQueryReport = async (definition, req) => {
     const filters = JSON.parse(definition.filters_json || "[]");
     const groupBy = JSON.parse(definition.group_by_json || "[]");
 
-    // ---- SELECT / aggregate list, whitelisted only ----
-    const attributes = [];
+    // ---- Split base-table columns from whitelisted relation columns
+    // (dotted "relKey.colKey", e.g. "customer.person_name") — relation
+    // columns are select/display only in v1: no aggregate, never used for
+    // filter/group-by (those loops below never look at registryEntry.relations
+    // at all, so a relation column simply isn't a valid filter/group-by
+    // target — same "throws like any unwhitelisted column" behavior). ----
+    const baseColumns = [];
+    const relationColumns = [];
     for (const c of columns) {
+      if (c.column.includes(".")) {
+        const [relKey, relColKey] = c.column.split(".");
+        const relDef = registryEntry.relations && registryEntry.relations[relKey];
+        if (!relDef) throw new Error(`Relation "${relKey}" is not whitelisted for this report source`);
+        if (!relDef.columns[relColKey]) throw new Error(`Relation column "${c.column}" is not whitelisted`);
+        if (c.aggregate) throw new Error(`Relation column "${c.column}" does not support aggregates`);
+        relationColumns.push({ relKey, relColKey });
+      } else {
+        baseColumns.push(c);
+      }
+    }
+
+    // ---- SELECT / aggregate list, whitelisted only ----
+    const explicitlySelectedBaseColumns = new Set();
+    const attributes = [];
+    for (const c of baseColumns) {
       const columnDef = registryEntry.columns[c.column];
       if (!columnDef) throw new Error(`Column "${c.column}" is not whitelisted for this report source`);
+      explicitlySelectedBaseColumns.add(c.column);
       if (c.aggregate) {
         const fnName = ALLOWED_AGGREGATES[c.aggregate];
         if (!fnName) throw new Error(`Aggregate "${c.aggregate}" is not allowed`);
@@ -104,6 +127,20 @@ export const runQueryReport = async (definition, req) => {
         attributes.push([fn(fnName, col(c.column)), c.alias || `${c.aggregate}_${c.column}`]);
       } else {
         attributes.push(c.column);
+      }
+    }
+
+    // ---- Inject FK columns needed by referenced relations (so the merge
+    // step below has a join key to work with), even if the user didn't
+    // explicitly select the FK column itself for display. Tracked so it
+    // can be stripped back out after the merge. ----
+    const usedRelationKeys = [...new Set(relationColumns.map((c) => c.relKey))];
+    const injectedFkColumns = [];
+    for (const relKey of usedRelationKeys) {
+      const foreignKey = registryEntry.relations[relKey].foreignKey;
+      if (!explicitlySelectedBaseColumns.has(foreignKey) && !injectedFkColumns.includes(foreignKey)) {
+        injectedFkColumns.push(foreignKey);
+        attributes.push(foreignKey);
       }
     }
 
@@ -159,6 +196,44 @@ export const runQueryReport = async (definition, req) => {
       }),
       timeoutGuard,
     ]);
+
+    // ---- Whitelisted relations — one batched query per relation + a JS
+    // Map merge, matching this codebase's own existing join convention
+    // (see customerSalesPurchaseReportServices.js) rather than a Sequelize
+    // `include` (no association is declared anywhere in this codebase).
+    // Skipped entirely when there are no rows or no relation columns were
+    // requested — never fires a query with an empty Op.in. ----
+    if (rows.length > 0) {
+      for (const relKey of usedRelationKeys) {
+        const relDef = registryEntry.relations[relKey];
+        const relColKeys = relationColumns.filter((c) => c.relKey === relKey).map((c) => c.relColKey);
+        const distinctFkValues = [...new Set(rows.map((r) => r[relDef.foreignKey]).filter((v) => v !== null && v !== undefined))];
+
+        const relMap = new Map();
+        if (distinctFkValues.length > 0) {
+          const RelatedModel = relDef.getModel(req.tenantDB);
+          const relatedRows = await RelatedModel.findAll({
+            where: { [relDef.targetKey]: { [Op.in]: distinctFkValues }, isDelete: 0 },
+            attributes: [relDef.targetKey, ...relColKeys],
+            raw: true,
+          });
+          relatedRows.forEach((rr) => relMap.set(rr[relDef.targetKey], rr));
+        }
+
+        rows.forEach((r) => {
+          const relatedRow = relMap.get(r[relDef.foreignKey]);
+          relColKeys.forEach((relColKey) => {
+            r[`${relKey}.${relColKey}`] = relatedRow ? relatedRow[relColKey] ?? null : null;
+          });
+        });
+      }
+    }
+
+    // FK columns injected only to support a relation join, never explicitly
+    // selected by the user, don't belong in the result they asked for.
+    if (injectedFkColumns.length > 0) {
+      rows.forEach((r) => injectedFkColumns.forEach((fk) => delete r[fk]));
+    }
 
     return resSuccess({
       data: { rows, row_count: rows.length, duration_ms: Date.now() - startedAt },
