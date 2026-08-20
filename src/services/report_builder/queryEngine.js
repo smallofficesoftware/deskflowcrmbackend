@@ -1,8 +1,8 @@
-import { col, fn, Op } from "sequelize";
+import { col, fn, Op, where as sequelizeWhere } from "sequelize";
 import { getUserRights } from "../../helpers/rightsHelper.js";
 import { resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { getCompanyByLoginId } from "../commonServices.js";
-import { getRegisteredModel } from "./modelRegistry.js";
+import { getRegisteredModel, resolveDynamicColumns } from "./modelRegistry.js";
 
 const HARD_ROW_LIMIT = 5000; // absolute ceiling regardless of what's requested
 const DEFAULT_ROW_LIMIT = 500;
@@ -86,6 +86,12 @@ export const runQueryReport = async (definition, req) => {
       tenentId: req.tenantDB,
     });
 
+    // Per-company dynamic custom-field columns, merged into a LOCAL copy —
+    // MODEL_REGISTRY's static entry is never mutated. {} for every table
+    // without customFieldFormType (the common case).
+    const dynamicColumns = await resolveDynamicColumns(req.tenantDB, resolvedCompanyId, registryEntry.customFieldFormType);
+    const effectiveColumns = { ...registryEntry.columns, ...dynamicColumns };
+
     const columns = JSON.parse(definition.columns_json || "[]");
     const filters = JSON.parse(definition.filters_json || "[]");
     const groupBy = JSON.parse(definition.group_by_json || "[]");
@@ -115,7 +121,7 @@ export const runQueryReport = async (definition, req) => {
     const explicitlySelectedBaseColumns = new Set();
     const attributes = [];
     for (const c of baseColumns) {
-      const columnDef = registryEntry.columns[c.column];
+      const columnDef = effectiveColumns[c.column];
       if (!columnDef) throw new Error(`Column "${c.column}" is not whitelisted for this report source`);
       explicitlySelectedBaseColumns.add(c.column);
       if (c.aggregate) {
@@ -147,15 +153,29 @@ export const runQueryReport = async (definition, req) => {
     // ---- GROUP BY, whitelisted only ----
     const group = [];
     for (const g of groupBy) {
-      const columnDef = registryEntry.columns[g];
+      const columnDef = effectiveColumns[g];
       if (!columnDef || !columnDef.groupable) throw new Error(`Column "${g}" is not groupable`);
       group.push(g);
     }
 
-    // ---- user-supplied filters, whitelisted columns/operators, bound values only ----
+    // ---- user-supplied filters, whitelisted columns/operators, bound values only.
+    // A "csv" column (contacts.lable, task_managements.label_id — CSV-of-ids,
+    // confirmed by reading the models, not a scalar FK) only supports
+    // "findInSet", built via Sequelize's fn()/col()/where() — a bound-value
+    // function call, not string-interpolated SQL, same safety class as every
+    // other operator here. Pushed into its own array because it can't be
+    // merged into the flat userWhere object the way {col: {op: val}} can. ----
     const userWhere = {};
+    const csvWhereClauses = [];
     for (const f of filters) {
-      Object.assign(userWhere, buildFilterCondition(registryEntry.columns[f.column], f.column, f));
+      const columnDef = effectiveColumns[f.column];
+      if (columnDef && columnDef.type === "csv") {
+        if (!columnDef.filterable) throw new Error(`Column "${f.column}" is not filterable`);
+        if (f.op !== "findInSet") throw new Error(`Operator "${f.op}" is not allowed on CSV column "${f.column}"`);
+        csvWhereClauses.push(sequelizeWhere(fn("FIND_IN_SET", String(f.value), col(f.column)), { [Op.gt]: 0 }));
+        continue;
+      }
+      Object.assign(userWhere, buildFilterCondition(columnDef, f.column, f));
     }
 
     // ---- rights-based scope — fail closed, never fall back to unscoped ----
@@ -169,11 +189,15 @@ export const runQueryReport = async (definition, req) => {
     }
 
     // ---- tenant/company scope injected LAST so a filter can never override it ----
-    const where = {
+    const baseWhere = {
       ...userWhere,
       ...rightsWhere,
       isDelete: 0,
     };
+    // csvWhereClauses (sequelize.where(fn(...)) instances) can't merge into
+    // a plain object the way {col: {op: val}} fragments can — combined via
+    // Op.and instead. Flat shape (unchanged from before) when there are none.
+    const where = csvWhereClauses.length > 0 ? { [Op.and]: [baseWhere, ...csvWhereClauses] } : baseWhere;
 
     const requestedLimit = Number(req.body.limit) || DEFAULT_ROW_LIMIT;
     const limit = Math.min(Math.max(requestedLimit, 1), HARD_ROW_LIMIT);
@@ -207,7 +231,23 @@ export const runQueryReport = async (definition, req) => {
       for (const relKey of usedRelationKeys) {
         const relDef = registryEntry.relations[relKey];
         const relColKeys = relationColumns.filter((c) => c.relKey === relKey).map((c) => c.relColKey);
-        const distinctFkValues = [...new Set(rows.map((r) => r[relDef.foreignKey]).filter((v) => v !== null && v !== undefined))];
+        const isCsv = relDef.matchMode === "csv";
+
+        // csv: each row's FK column is "3,7,12" — split every row's value
+        // and flatten into one distinct id set for a single batched fetch
+        // (never split-then-fetch-per-row — same "one query, not N+1" rule
+        // as the scalar case below).
+        const splitCsv = (raw) =>
+          String(raw ?? "")
+            .split(",")
+            .map((v) => v.trim())
+            .filter(Boolean)
+            .map(Number)
+            .filter((n) => !Number.isNaN(n));
+
+        const distinctFkValues = isCsv
+          ? [...new Set(rows.flatMap((r) => splitCsv(r[relDef.foreignKey])))]
+          : [...new Set(rows.map((r) => r[relDef.foreignKey]).filter((v) => v !== null && v !== undefined))];
 
         const relMap = new Map();
         if (distinctFkValues.length > 0) {
@@ -221,10 +261,20 @@ export const runQueryReport = async (definition, req) => {
         }
 
         rows.forEach((r) => {
-          const relatedRow = relMap.get(r[relDef.foreignKey]);
-          relColKeys.forEach((relColKey) => {
-            r[`${relKey}.${relColKey}`] = relatedRow ? relatedRow[relColKey] ?? null : null;
-          });
+          if (isCsv) {
+            const ids = splitCsv(r[relDef.foreignKey]);
+            relColKeys.forEach((relColKey) => {
+              r[`${relKey}.${relColKey}`] = ids
+                .map((id) => relMap.get(id)?.[relColKey])
+                .filter((v) => v !== undefined && v !== null)
+                .join(", ");
+            });
+          } else {
+            const relatedRow = relMap.get(r[relDef.foreignKey]);
+            relColKeys.forEach((relColKey) => {
+              r[`${relKey}.${relColKey}`] = relatedRow ? relatedRow[relColKey] ?? null : null;
+            });
+          }
         });
       }
     }

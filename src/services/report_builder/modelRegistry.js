@@ -15,6 +15,14 @@
 // codebase). v1 is select/display only: relation columns are never
 // filterable/groupable/aggregatable, enforced by simply not appearing in
 // those column lists.
+//
+// A relation with `matchMode: "csv"` points at a column storing a
+// comma-separated list of ids (e.g. contacts.lable, task_managements.label_id
+// — confirmed by reading the models directly, not a real scalar FK) —
+// queryEngine.js splits/joins per row instead of a plain Map.get. A base
+// column with `type: "csv"` supports exactly one filter operator,
+// "findInSet", built via Sequelize's own fn()/col() (bound value, not
+// string-interpolated SQL — same safety class as every other operator here).
 import { accountTransactionsModel } from "../../models/activities/accountTransactionsModel.js";
 import { callhistoryModel } from "../../models/activities/callhistoryModel.js";
 import { cartItemModel } from "../../models/activities/cartItemsModel.js";
@@ -30,9 +38,11 @@ import currencyModel from "../../models/configuration/currencyModel.js";
 import { expenseTypeModel } from "../../models/hr/expenseTypeModel.js";
 import { expensesModel } from "../../models/hr/expensesModel.js";
 import { salaryRegisterModel } from "../../models/hr/salaryRegisterModel.js";
+import { labelModel } from "../../models/masters/labelModel.js";
 import { sourceTypesModel } from "../../models/masters/sourceTypeMode.js";
 import { stagestatusModel } from "../../models/masters/stagestatusModel.js";
 import { taskCategoryModel } from "../../models/masters/taskCategoryModel.js";
+import { customFieldFormModel } from "../../models/other_settings/customFieldFormModel.js";
 import { categoryModel } from "../../models/product_settings/categoryModel.js";
 import { productModel } from "../../models/product_settings/productModel.js";
 
@@ -58,12 +68,20 @@ export const MODEL_REGISTRY = {
   contacts: {
     label: "Contacts",
     getModel: (tenantDB) => contactModel(tenantDB),
+    // form_type: 1 (confirmed in customFieldFormService.js's getColumnName —
+    // 1 -> cntc_column_*) — enables per-company dynamic custom-field columns,
+    // resolved fresh per request by queryEngine.js, merged into the static
+    // whitelist below (never mutating it). See resolveDynamicColumns().
+    customFieldFormType: 1,
     columns: {
       person_name: { label: "Contact Name", type: "string", filterable: true, sortable: true, groupable: false },
       company_name: { label: "Company Name", type: "string", filterable: true, sortable: true, groupable: true },
       mobile_number: { label: "Mobile", type: "string", filterable: true, sortable: false, groupable: false },
       contact_status: { label: "Status", type: "lookup", filterable: true, sortable: false, groupable: true },
       source_type_id: { label: "Source Type", type: "lookup", filterable: true, sortable: false, groupable: true },
+      // CSV-of-ids (confirmed in contactModel.js — not a scalar FK). Only
+      // "findInSet" is a valid operator; see queryEngine.js.
+      lable: { label: "Labels (has label)", type: "csv", filterable: true, sortable: false, groupable: false },
       // Already plain display strings on the row itself, not FK ids — no
       // relation needed (confirmed by reading contactModel.js in full).
       country: { label: "Country", type: "string", filterable: true, sortable: false, groupable: true },
@@ -90,6 +108,16 @@ export const MODEL_REGISTRY = {
         targetKey: "id",
         columns: {
           name: { label: "Status Name", type: "string" },
+        },
+      },
+      label: {
+        label: "Labels",
+        matchMode: "csv",
+        foreignKey: "lable",
+        getModel: (tenantDB) => labelModel(tenantDB),
+        targetKey: "id",
+        columns: {
+          lable_name: { label: "Label Names", type: "string" },
         },
       },
     },
@@ -170,6 +198,9 @@ export const MODEL_REGISTRY = {
   task_managements: {
     label: "Tasks",
     getModel: (tenantDB) => taskManagementModel(tenantDB),
+    // form_type: 14 (getColumnName -> task_column_*). 15 also maps to tasks
+    // (support-ticket sub-type) — not distinguished here, a known simplification.
+    customFieldFormType: 14,
     columns: {
       task_title: { label: "Task Title", type: "string", filterable: true, sortable: true, groupable: false },
       task_priority: { label: "Priority", type: "lookup", filterable: true, sortable: false, groupable: true },
@@ -177,11 +208,24 @@ export const MODEL_REGISTRY = {
       // Plain fixed-code TINYINT (confirmed in taskManagementModel.js), not
       // an FK to stage_status_masters — no relation needed/possible.
       status: { label: "Status", type: "lookup", filterable: true, sortable: false, groupable: true },
+      // CSV-of-ids (confirmed in taskManagementModel.js). Only "findInSet"
+      // is a valid operator; see queryEngine.js.
+      label_id: { label: "Labels (has label)", type: "csv", filterable: true, sortable: false, groupable: false },
       task_enddate: { label: "Due Date", type: "date", filterable: true, sortable: true, groupable: false },
       created_date_time: { label: "Created Date", type: "date", filterable: true, sortable: true, groupable: false },
       ...COUNT_COLUMN,
     },
     relations: {
+      label: {
+        label: "Labels",
+        matchMode: "csv",
+        foreignKey: "label_id",
+        getModel: (tenantDB) => labelModel(tenantDB),
+        targetKey: "id",
+        columns: {
+          lable_name: { label: "Label Names", type: "string" },
+        },
+      },
       category: {
         label: "Category",
         foreignKey: "task_category_id",
@@ -207,15 +251,29 @@ export const MODEL_REGISTRY = {
   inquiries: {
     label: "Inquiries",
     getModel: (tenantDB) => inquiryModel(tenantDB),
+    // form_type: 2 (getColumnName -> column_*).
+    customFieldFormType: 2,
     columns: {
       description: { label: "Description", type: "string", filterable: true, sortable: false, groupable: false },
       qty: { label: "Quantity", type: "number", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
       contact_status: { label: "Status", type: "lookup", filterable: true, sortable: false, groupable: true },
       source_type_id: { label: "Source Type", type: "lookup", filterable: true, sortable: false, groupable: true },
+      // Plain INTEGER FK (confirmed in inquiryModel.js — unlike contacts.lable
+      // / task_managements.label_id, this one is scalar, not CSV).
+      label_id: { label: "Label", type: "lookup", filterable: true, sortable: false, groupable: true },
       inquiry_date_time: { label: "Inquiry Date", type: "date", filterable: true, sortable: true, groupable: false },
       ...COUNT_COLUMN,
     },
     relations: {
+      label: {
+        label: "Label",
+        foreignKey: "label_id",
+        getModel: (tenantDB) => labelModel(tenantDB),
+        targetKey: "id",
+        columns: {
+          lable_name: { label: "Label Name", type: "string" },
+        },
+      },
       contact: {
         label: "Contact",
         foreignKey: "contact_master_id",
@@ -299,6 +357,8 @@ export const MODEL_REGISTRY = {
   visits: {
     label: "Visits",
     getModel: (tenantDB) => visitsModel(tenantDB),
+    // form_type: 3 (getColumnName -> visit_column_*).
+    customFieldFormType: 3,
     columns: {
       person_name: { label: "Person Name", type: "string", filterable: true, sortable: true, groupable: false },
       remark: { label: "Remark", type: "string", filterable: true, sortable: false, groupable: false },
@@ -467,4 +527,55 @@ export const listModelRegistry = () =>
           })),
         }))
       : [],
+    // listModelRegistry() has no company context (it's a static list, no
+    // tenantDB/company_masters_id available) — dynamic per-company custom
+    // fields cannot appear here. A definition CAN still reference one by
+    // its real reference_column_name (queryEngine.js resolves + validates
+    // it per request via resolveDynamicColumns below); the frontend column
+    // picker just won't show it as a checkbox yet. Known gap, not silent —
+    // flagged here, not worked around.
   }));
+
+// Infers a UI-facing type from the physical slot column's own name suffix
+// (e.g. "cntc_column_number_3" -> "number") rather than needing the
+// data_type id -> name lookup table customFieldFormService.js uses — the
+// suffix is already embedded in reference_column_name, so this stays a
+// pure string check, no extra query. Attachment slots are excluded (not a
+// queryable/filterable value).
+function inferCustomFieldType(referenceColumnName) {
+  if (/_number_|_decimal_/.test(referenceColumnName)) return "number";
+  if (/_date_and_time_|_date_/.test(referenceColumnName)) return "date";
+  if (/_switch_|_dropdown_|_radio_/.test(referenceColumnName)) return "lookup";
+  if (/_attechments_/.test(referenceColumnName)) return null; // not queryable
+  return "string"; // text / text_area / default
+}
+
+// Per-company, per-module dynamic column whitelist — resolved fresh on
+// every request (never cached across companies, never mutates
+// MODEL_REGISTRY). Still a real whitelist: every column name/type comes
+// from custom_field_form_masters rows scoped to this exact company, never
+// from user input directly. Returns {} for a table with no
+// customFieldFormType (the common case — most tables skip this entirely).
+export async function resolveDynamicColumns(tenantDB, company_masters_id, formType) {
+  if (!formType) return {};
+  const CustomFieldForm = customFieldFormModel(tenantDB);
+  const rows = await CustomFieldForm.findAll({
+    where: { company_masters_id, form_type: formType, isDelete: 0 },
+    attributes: ["reference_column_name", "title"],
+    raw: true,
+  });
+  const columns = {};
+  for (const row of rows) {
+    const type = inferCustomFieldType(row.reference_column_name);
+    if (!type) continue;
+    columns[row.reference_column_name] = {
+      label: row.title,
+      type,
+      filterable: true,
+      sortable: false,
+      groupable: type === "lookup",
+      ...(type === "number" ? { aggregatable: ["sum", "avg", "min", "max"] } : {}),
+    };
+  }
+  return columns;
+}
