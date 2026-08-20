@@ -1,6 +1,7 @@
 import {
   createReportDefinition,
   deleteReportDefinition,
+  getMetricsRegistry,
   getModelRegistry,
   getPluginRegistry,
   listReportDefinitions,
@@ -17,6 +18,10 @@ export const getModelRegistryController = async (req, res) => {
 
 export const getPluginRegistryController = async (req, res) => {
   await callServiceMethod(req, res, getPluginRegistry(req), "getPluginRegistry");
+};
+
+export const getMetricsRegistryController = async (req, res) => {
+  await callServiceMethod(req, res, getMetricsRegistry(req), "getMetricsRegistry");
 };
 
 export const createReportDefinitionController = async (req, res) => {

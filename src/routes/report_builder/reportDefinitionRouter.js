@@ -3,6 +3,7 @@ import {
   deleteReportDefinitionController,
   exportReportExcelController,
   exportReportPdfController,
+  getMetricsRegistryController,
   getModelRegistryController,
   getPluginRegistryController,
   listReportDefinitionsController,
@@ -46,6 +47,7 @@ export default (app) => {
   // Build routes — feature flag + owner+PIN gate.
   app.post("/report-definitions/model-registry", authenticateToken, tenantMiddleware, requireReportBuilderFlag, requireReportPin, getModelRegistryController);
   app.post("/report-definitions/plugin-registry", authenticateToken, tenantMiddleware, requireReportBuilderFlag, requireReportPin, getPluginRegistryController);
+  app.post("/report-definitions/metrics-registry", authenticateToken, tenantMiddleware, requireReportBuilderFlag, requireReportPin, getMetricsRegistryController);
   app.post("/report-definitions/create", authenticateToken, tenantMiddleware, requireReportBuilderFlag, requireReportPin, createReportDefinitionController);
   app.post("/report-definitions/list", authenticateToken, tenantMiddleware, requireReportBuilderFlag, requireReportPin, listReportDefinitionsController);
   app.post("/report-definitions/:id/update", authenticateToken, tenantMiddleware, requireReportBuilderFlag, requireReportPin, updateReportDefinitionController);

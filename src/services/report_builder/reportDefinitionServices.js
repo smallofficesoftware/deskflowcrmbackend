@@ -4,6 +4,8 @@ import { reportRunModel } from "../../models/report_builder/reportRunModel.js";
 import { PAGE_ID } from "../../utils/AppEnumeration.js";
 import { resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { getCompanyByLoginId } from "../commonServices.js";
+import { runCompositeReport } from "./compositeEngine.js";
+import { getRegisteredMetric, listMetricsRegistry } from "./metricsRegistry.js";
 import { getRegisteredModel, listModelRegistry } from "./modelRegistry.js";
 import { getRegisteredPlugin, listPluginRegistry } from "./pluginRegistry.js";
 import { runQueryReport } from "./queryEngine.js";
@@ -34,6 +36,10 @@ export const getPluginRegistry = async () => {
   return resSuccess({ data: { item: listPluginRegistry() } });
 };
 
+export const getMetricsRegistry = async () => {
+  return resSuccess({ data: { item: listMetricsRegistry() } });
+};
+
 export const createReportDefinition = async (req) => {
   try {
     const { a_application_login_id, name, type = "query", model_key, plugin_key, columns_json, filters_json, group_by_json } = req.body || {};
@@ -51,6 +57,26 @@ export const createReportDefinition = async (req) => {
       // rights) — never invented fresh, matches the original doc's rule
       // that wrapping a plugin doesn't change its rights.
       page_id = plugin.page_id;
+    } else if (type === "composite") {
+      // columns_json holds the metric KEYS array for this type — same
+      // "shape varies by type" precedent filters_json already has between
+      // query-type ([{column,op,value}]) and plugin-type ({paramKey:value}).
+      let metricKeys;
+      try {
+        metricKeys = typeof columns_json === "string" ? JSON.parse(columns_json) : columns_json;
+      } catch {
+        return resError({ developer_msg: "columns_json must be a JSON array of metric keys for composite reports" });
+      }
+      if (!Array.isArray(metricKeys) || metricKeys.length === 0) {
+        return resError({ developer_msg: "At least one metric is required" });
+      }
+      const unknown = metricKeys.find((k) => !getRegisteredMetric(k));
+      if (unknown) {
+        return resError({ ack_msg: "Unknown metric", developer_msg: `metric "${unknown}" is not whitelisted` });
+      }
+      // No existing page fits "an arbitrary set of per-member metrics" —
+      // shares Report Builder's own page/rights, same as query-type.
+      page_id = PAGE_ID.REPORT_BUILDER;
     } else {
       if (!getRegisteredModel(model_key)) {
         return resError({ ack_msg: "Unknown report source", developer_msg: `model_key "${model_key}" is not whitelisted` });
@@ -215,6 +241,9 @@ export const runDefinitionByType = async (definition, req, res) => {
       data: { rows, row_count: Array.isArray(rows) ? rows.length : 0, duration_ms: Date.now() - startedAt },
       ack_msg: result?.ack_msg,
     });
+  }
+  if (definition.type === "composite") {
+    return runCompositeReport(definition, req);
   }
   return runQueryReport(definition, req);
 };
