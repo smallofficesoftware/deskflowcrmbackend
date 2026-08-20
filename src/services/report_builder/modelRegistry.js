@@ -444,6 +444,7 @@ export const MODEL_REGISTRY = {
         columns: {
           person_name: { label: "Contact Name", type: "string" },
           company_name: { label: "Company Name", type: "string" },
+          mobile_number: { label: "Mobile", type: "string" },
         },
       },
     },
