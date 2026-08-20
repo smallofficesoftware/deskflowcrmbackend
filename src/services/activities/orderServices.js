@@ -20,6 +20,7 @@ import Sequelize, { Op } from "sequelize";
 import { getUserRights } from "../../helpers/rightsHelper.js";
 import { isFeatureEnabled } from "../company_setup/featureFlagServices.js";
 import { generateQuotationPdf } from "../pdfmeEngine/generateDocument.js";
+import { generateShippingLabelPdf } from "../pdfmeEngine/shippingLabelGenerate.js";
 import { sniffImageMime } from "../pdfmeEngine/imageOverlay.js";
 import { tenantMiddleware } from "../../middlewares/tenantMiddleware.js";
 import { accountTransactionsModel } from "../../models/activities/accountTransactionsModel.js";
@@ -5900,32 +5901,6 @@ export const fetchShippingLabelPrint = async (req, res) => {
       dynamicTerms = company.sales_invoice_terms_conditions;
     }
 
-    //QR (ONLY sr_number)
-    let qrSvg = "";
-    if (cart.sr_by_number) {
-      qrSvg = await QRCode.toString(cart.sr_by_number.toString(), {
-        type: "svg",
-      });
-    }
-
-    //Create folder
-    const htmlTemplate = fs.readFileSync(
-      path.join(__dirnameConstant, "../views/ShippingLabel/shippingLabel.ejs"),
-      "utf-8"
-    );
-
-    //Render HTML
-    const renderedHtml = ejs.render(htmlTemplate, {
-      cart,
-      items,
-      company,
-      qrSvg,
-      printSetting,
-      matchedCartFields,
-      customFields,
-      dynamicTerms,
-    });
-
     //Create folder
     const uploadDir = path.resolve(
       __dirnameConstant,
@@ -5943,21 +5918,73 @@ export const fetchShippingLabelPrint = async (req, res) => {
     //Public path
     const pdfPath = `${company.id}/${fileName}`;
 
-    //Generate PDF
-    const document = {
-      html: renderedHtml,
-      data: {},
-      path: fullPath,
-      type: "",
-    };
+    // pdfme Document Designer — same per-company opt-in as §5's cart-doc
+    // path (orderServices.js:4810). Shipping label isn't Designer-customizable
+    // yet (shippingLabelTemplate.js is a fixed port, not a document_print_templates
+    // row), so this only decides which renderer produces the bytes.
+    const documentDesignerEnabled = await isFeatureEnabled(company.id, "document_designer");
 
-    const options = {
-      format: "A5",
-      orientation: "portrait",
-      border: "5mm",
-    };
+    if (documentDesignerEnabled) {
+      let qrDataUri = "";
+      if (cart.sr_by_number) {
+        qrDataUri = await QRCode.toDataURL(cart.sr_by_number.toString(), {
+          margin: 1,
+          color: { dark: "#000000", light: "#FFFFFF" },
+        });
+      }
 
-    await pdf.create(document, options);
+      const buffer = await generateShippingLabelPdf({
+        cart,
+        company,
+        items,
+        qrDataUri,
+        dynamicTerms,
+        showProductSection: !!printSetting?.ProductSection,
+      });
+
+      fs.writeFileSync(fullPath, buffer);
+    } else {
+      //QR (ONLY sr_number)
+      let qrSvg = "";
+      if (cart.sr_by_number) {
+        qrSvg = await QRCode.toString(cart.sr_by_number.toString(), {
+          type: "svg",
+        });
+      }
+
+      const htmlTemplate = fs.readFileSync(
+        path.join(__dirnameConstant, "../views/ShippingLabel/shippingLabel.ejs"),
+        "utf-8"
+      );
+
+      //Render HTML
+      const renderedHtml = ejs.render(htmlTemplate, {
+        cart,
+        items,
+        company,
+        qrSvg,
+        printSetting,
+        matchedCartFields,
+        customFields,
+        dynamicTerms,
+      });
+
+      //Generate PDF
+      const document = {
+        html: renderedHtml,
+        data: {},
+        path: fullPath,
+        type: "",
+      };
+
+      const options = {
+        format: "A5",
+        orientation: "portrait",
+        border: "5mm",
+      };
+
+      await pdf.create(document, options);
+    }
 
     //Response
     return resSuccess({

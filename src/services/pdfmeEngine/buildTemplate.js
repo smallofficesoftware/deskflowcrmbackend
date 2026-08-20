@@ -79,15 +79,18 @@ export function shiftFieldY(field, deltaY) {
 // duplicate still resolve to the correct real data: duplicating a field
 // copies EVERY property including this one, so the copy keeps pointing at
 // the original data key regardless of what it gets renamed to afterward.
-function textField(overrides) {
+// Exported so other doc-shape builders (e.g. shippingLabelTemplate.js, whose
+// layout isn't the shared invoice shape below) can build fields against the
+// same real plugin defaultSchema instead of duplicating this logic.
+export function textField(overrides) {
   return { ...plugins.text.propPanel.defaultSchema, dataSource: overrides.name, ...overrides };
 }
 
-function imageField(overrides) {
+export function imageField(overrides) {
   return { ...plugins.image.propPanel.defaultSchema, dataSource: overrides.name, ...overrides };
 }
 
-function tableField(overrides) {
+export function tableField(overrides) {
   const base = plugins.table.propPanel.defaultSchema;
   return {
     ...base,

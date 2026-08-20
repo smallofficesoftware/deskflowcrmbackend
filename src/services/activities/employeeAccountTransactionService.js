@@ -23,6 +23,9 @@ import currencyModel from "../../models/configuration/currencyModel.js";
 import { __dirnameConstant, PDF_LINK_EXTENDED_EMP_Account_TRANSACTION } from '../../utils/appConstants.js';
 import { PAGE_ID } from "../../utils/AppEnumeration.js";
 import { getCompanyByLoginId, getCompanyDetailByLoginId } from "../commonServices.js";
+import { isFeatureEnabled } from "../company_setup/featureFlagServices.js";
+import { generateAccountStatementPdf } from "../pdfmeEngine/accountStatementGenerate.js";
+import { generateAccountTransactionPdf } from "../pdfmeEngine/accountTransactionGenerate.js";
 
 
 
@@ -752,15 +755,6 @@ export const allAccountTransactionOfEmployeePDF = async (req, res) => {
         const fromDate = rowsWithBalance.length > 0 ? rowsWithBalance[0].payment_date : "";
         const toDate = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 
-        let dynamicPrintView = 1;
-        const htmlTemplate = fs.readFileSync(
-            path.join(
-                __dirnameConstant,
-                `../views/account/allAccountTransactionofEmployeeV${dynamicPrintView}.ejs`
-            ),
-            "utf-8"
-        );
-
         const printSettingModels = printSettingModel(req.tenantDB);
 
         const printSettings = await printSettingModels.findOne({
@@ -774,20 +768,6 @@ export const allAccountTransactionOfEmployeePDF = async (req, res) => {
 
         const settingDetails = JSON.parse(printSettings?.dataValues?.setting_details || "{}");
 
-        const renderedHtml = await ejs.render(htmlTemplate,
-            {
-                companyData,
-                employeeData,
-                rowsWithBalance,
-                totalCredit,
-                totalDebit,
-                lastRowBalance,
-                fromDate,
-                toDate,
-                backendUrl: process.env.BACKEND_OF_SMALL_OFFICE_CRM_END_POINT || "",
-                settingDetails: settingDetails,
-            });
-
         const uploadDir = path.resolve(
             __dirnameConstant,
             `../../media-folder/empAccountTransaction/${companyData.id.toString()}`
@@ -797,34 +777,80 @@ export const allAccountTransactionOfEmployeePDF = async (req, res) => {
             fs.mkdirSync(uploadDir, { recursive: true });
         }
 
-
-        const options = {
-            format: "A4",
-            orientation: "portrait",
-            border: "15mm",
-            footer: {
-                height: "5mm",
-                contents: {
-                    default: `<span style="color: #444;">{{page}}</span>/<span>{{pages}}</span>`,
-                },
-            },
-        };
-
-        const filePath = path.join(uploadDir, `emp_account_statement_${Date.now()}.pdf`);
-
-        const pdfPath = `${companyData.id.toString()}/emp_account_statement_${Date.now()}.pdf`;
-
-
-        const document = {
-            html: renderedHtml,
-            data: {},
-            path: filePath,
-            type: "",
-        };
-
+        const fileNameOnly = `emp_account_statement_${Date.now()}.pdf`;
+        const filePath = path.join(uploadDir, fileNameOnly);
+        const pdfPath = `${companyData.id.toString()}/${fileNameOnly}`;
         const fileLinkPath = PDF_LINK_EXTENDED_EMP_Account_TRANSACTION + pdfPath;
 
-        await pdf.create(document, options);
+        // pdfme Document Designer — same per-company opt-in as orderServices.js's
+        // §5 cart-doc path. This statement isn't Designer-customizable yet
+        // (accountStatementTemplate.js is a fixed port), just a renderer switch.
+        const documentDesignerEnabled = await isFeatureEnabled(companyData.id, "document_designer");
+
+        if (documentDesignerEnabled) {
+            const entityLines = [];
+            if (employeeData?.username) entityLines.push(employeeData.username);
+            if (employeeData?.recovery_mobile) entityLines.push(`Mo. ${employeeData.recovery_mobile}`);
+            if (employeeData?.recovery_email) entityLines.push(employeeData.recovery_email);
+
+            const buffer = await generateAccountStatementPdf({
+                companyData,
+                contactData: null,
+                rowsWithBalance,
+                totalCredit,
+                totalDebit,
+                lastRowBalance,
+                fromDate,
+                toDate,
+                settingDetails,
+                entityLines,
+            });
+            fs.writeFileSync(filePath, buffer);
+        } else {
+            let dynamicPrintView = 1;
+            const htmlTemplate = fs.readFileSync(
+                path.join(
+                    __dirnameConstant,
+                    `../views/account/allAccountTransactionofEmployeeV${dynamicPrintView}.ejs`
+                ),
+                "utf-8"
+            );
+
+            const renderedHtml = await ejs.render(htmlTemplate,
+                {
+                    companyData,
+                    employeeData,
+                    rowsWithBalance,
+                    totalCredit,
+                    totalDebit,
+                    lastRowBalance,
+                    fromDate,
+                    toDate,
+                    backendUrl: process.env.BACKEND_OF_SMALL_OFFICE_CRM_END_POINT || "",
+                    settingDetails: settingDetails,
+                });
+
+            const options = {
+                format: "A4",
+                orientation: "portrait",
+                border: "15mm",
+                footer: {
+                    height: "5mm",
+                    contents: {
+                        default: `<span style="color: #444;">{{page}}</span>/<span>{{pages}}</span>`,
+                    },
+                },
+            };
+
+            const document = {
+                html: renderedHtml,
+                data: {},
+                path: filePath,
+                type: "",
+            };
+
+            await pdf.create(document, options);
+        }
 
         if (!fs.existsSync(filePath)) {
             console.error("PDF file was not created at:", filePath);
@@ -973,15 +999,6 @@ export const employeePDFaccountv1 = async (req, res) => {
             payment_type_name = paymentType?.payment_type_name || null;
         }
 
-        let dynamicPrintView = 1;
-        const htmlTemplate = fs.readFileSync(
-            path.join(
-                __dirnameConstant,
-                `../views/account/employeeAccountPDFv${dynamicPrintView}.ejs`
-            ),
-            "utf-8"
-        );
-
         const printSettingModels = printSettingModel(req.tenantDB);
 
         const printSettings = await printSettingModels.findOne({
@@ -995,45 +1012,94 @@ export const employeePDFaccountv1 = async (req, res) => {
 
         const settingDetails = JSON.parse(printSettings?.dataValues?.setting_details || "{}");
 
-
-        const renderedHtml = ejs.render(htmlTemplate, {
-            companyDetails: companyDetail,
-            accountTransactions: accountTransaction,
-            title: accountTransaction.type === 1 ? "Credit Account Transaction" : "Debit Account Transaction",
-            employeeDetails: employeeDetails,
-            payment_type_name,
-            currencySymbol: "₹",
-            formatNumber: AccountTransactionformatNumber,
-            formatDateAndTime: AccountTransactionformatDateAndTime,
-            numberToWordsCurrency: AccountTransactionnumberToWordsCurrency,
-            remarkToHtml: AccountTransactionremarkToHtml,
-            settingDetails: settingDetails
-        });
         const uploadDir = path.resolve(
             __dirnameConstant,
             `../../media-folder/empAccountTransaction/${companyDetail.id.toString()}`
         );
-        const filePath = path.join(uploadDir, `emp_account_transaction_${Date.now()}.pdf`);
-        const pdfPath = `emp_account_transaction_${Date.now()}.pdf`;
-        const fileLinkPath = PDF_LINK_EXTENDED_EMP_Account_TRANSACTION + companyDetail.id.toString() + "/" + pdfPath;
-        const document = {
-            html: renderedHtml,
-            data: {},
-            path: filePath,
-            type: "",
-        };
-        const options = {
-            format: "A5",
-            orientation: "portrait",
-            border: "10mm",
-            footer: {
-                height: "5mm",
-                contents: {
-                    default: `<span style="color: #444;">{{page}}</span>/<span>{{pages}}</span>`, // page numbers
+        const fileNameOnly = `emp_account_transaction_${Date.now()}.pdf`;
+        const filePath = path.join(uploadDir, fileNameOnly);
+        const fileLinkPath = PDF_LINK_EXTENDED_EMP_Account_TRANSACTION + companyDetail.id.toString() + "/" + fileNameOnly;
+
+        // pdfme Document Designer — same per-company opt-in as orderServices.js's
+        // §5 cart-doc path. This receipt isn't Designer-customizable yet
+        // (accountTransactionTemplate.js is a fixed port), just a renderer switch.
+        const documentDesignerEnabled = await isFeatureEnabled(companyDetail.id, "document_designer");
+
+        if (documentDesignerEnabled) {
+            if (!fs.existsSync(uploadDir)) {
+                fs.mkdirSync(uploadDir, { recursive: true });
+            }
+            // recovery_mobile/recovery_email (loginModel's real column names)
+            // — the EJS this replaces checks employeeDetails?.recover_mobile,
+            // which doesn't exist on loginModel (confirmed against
+            // loginModel.js) and so never actually renders live today. Using
+            // the real field name here rather than porting that dead field.
+            const employeePairs = [
+                { label: "Employee Name:", value: employeeDetails?.username || "-" },
+                employeeDetails?.recovery_mobile ? { label: "Mobile No:", value: employeeDetails.recovery_mobile } : null,
+                employeeDetails?.recovery_email ? { label: "Email:", value: employeeDetails.recovery_email } : null,
+            ].filter(Boolean);
+
+            const buffer = await generateAccountTransactionPdf({
+                companyDetails: companyDetail,
+                accountTransactions: accountTransaction,
+                contactDetails: null,
+                payment_type_name,
+                settingDetails,
+                currencySymbol: "₹",
+                formattedAmount: AccountTransactionformatNumber(accountTransaction.amount),
+                formattedDate: accountTransaction.payment_date_time ? AccountTransactionformatDateAndTime(accountTransaction.payment_date_time) : "-",
+                entityLabel: "Employee Name:",
+                entitySectionTitle: "Employee Details",
+                entityShowKey: "employeeDetails",
+                entityPairs: employeePairs,
+                entityName: employeeDetails?.username || "-",
+                remarkColor: "#000000",
+            });
+            fs.writeFileSync(filePath, buffer);
+        } else {
+            let dynamicPrintView = 1;
+            const htmlTemplate = fs.readFileSync(
+                path.join(
+                    __dirnameConstant,
+                    `../views/account/employeeAccountPDFv${dynamicPrintView}.ejs`
+                ),
+                "utf-8"
+            );
+
+            const renderedHtml = ejs.render(htmlTemplate, {
+                companyDetails: companyDetail,
+                accountTransactions: accountTransaction,
+                title: accountTransaction.type === 1 ? "Credit Account Transaction" : "Debit Account Transaction",
+                employeeDetails: employeeDetails,
+                payment_type_name,
+                currencySymbol: "₹",
+                formatNumber: AccountTransactionformatNumber,
+                formatDateAndTime: AccountTransactionformatDateAndTime,
+                numberToWordsCurrency: AccountTransactionnumberToWordsCurrency,
+                remarkToHtml: AccountTransactionremarkToHtml,
+                settingDetails: settingDetails
+            });
+
+            const document = {
+                html: renderedHtml,
+                data: {},
+                path: filePath,
+                type: "",
+            };
+            const options = {
+                format: "A5",
+                orientation: "portrait",
+                border: "10mm",
+                footer: {
+                    height: "5mm",
+                    contents: {
+                        default: `<span style="color: #444;">{{page}}</span>/<span>{{pages}}</span>`, // page numbers
+                    },
                 },
-            },
-        };
-        await pdf.create(document, options);
+            };
+            await pdf.create(document, options);
+        }
         return resSuccess({
             ack_msg: "Pdf generated",
             data: { fileLinkPath, mobile_number: employeeDetails.recovery_mobile, sessionName: `a${accountTransaction.a_application_login_id}_c${companyDetail.id}` },
