@@ -120,6 +120,23 @@ export const MODEL_REGISTRY = {
           lable_name: { label: "Label Names", type: "string" },
         },
       },
+      // One-to-many self-relation — this contact's own id matched against
+      // OTHER contacts' referance_contact (a real scalar INTEGER FK,
+      // confirmed in contactModel.js — not CSV). Shallow: direct children
+      // only, one level, matching the real shape confirmed by reading
+      // chainContactReportService.js in full (it doesn't recurse deeper
+      // either). child_count uses countOf instead of joining values.
+      children: {
+        label: "Referred Contacts",
+        matchMode: "reverse",
+        foreignKey: "id",
+        getModel: (tenantDB) => contactModel(tenantDB),
+        targetKey: "referance_contact",
+        columns: {
+          person_name: { label: "Child Names", type: "string" },
+          child_count: { label: "Child Count", type: "number", countOf: true },
+        },
+      },
     },
     // Inbound filter — "contacts that have a matching row in another
     // table" (relations only go outbound: this row -> its lookup row).

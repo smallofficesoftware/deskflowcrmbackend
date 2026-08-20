@@ -385,11 +385,19 @@ export const runQueryReport = async (definition, req) => {
         const relDef = registryEntry.relations[relKey];
         const relColKeys = relationColumns.filter((c) => c.relKey === relKey).map((c) => c.relColKey);
         const isCsv = relDef.matchMode === "csv";
+        // "reverse" — one-to-many, e.g. contacts.children (a self-relation:
+        // this row's own id -> OTHER rows' referance_contact pointing back
+        // at it). Confirmed real, shallow (one level, not deep recursion)
+        // shape by reading chainContactReportService.js. foreignKey is this
+        // row's own linking column (usually "id"); targetKey is the CHILD
+        // table's column that points back — same field NAMES as the
+        // one-to-one case above, just matched in the opposite direction.
+        const isReverse = relDef.matchMode === "reverse";
 
         // csv: each row's FK column is "3,7,12" — split every row's value
         // and flatten into one distinct id set for a single batched fetch
         // (never split-then-fetch-per-row — same "one query, not N+1" rule
-        // as the scalar case below).
+        // as the scalar/reverse cases).
         const distinctFkValues = isCsv
           ? [...new Set(rows.flatMap((r) => splitCsv(r[relDef.foreignKey])))]
           : [...new Set(rows.map((r) => r[relDef.foreignKey]).filter((v) => v !== null && v !== undefined))];
@@ -397,16 +405,38 @@ export const runQueryReport = async (definition, req) => {
         const relMap = new Map();
         if (distinctFkValues.length > 0) {
           const RelatedModel = relDef.getModel(req.tenantDB);
+          // "reverse" needs every matching child row (to join/count all of
+          // them per parent), not one row per targetKey value — fetched
+          // ungrouped, grouped into arrays in JS below instead.
+          const nonCountRelColKeys = isReverse ? relColKeys.filter((k) => !relDef.columns[k].countOf) : relColKeys;
           const relatedRows = await RelatedModel.findAll({
             where: { [relDef.targetKey]: { [Op.in]: distinctFkValues }, isDelete: 0 },
-            attributes: [relDef.targetKey, ...relColKeys],
+            attributes: [relDef.targetKey, ...nonCountRelColKeys],
             raw: true,
           });
-          relatedRows.forEach((rr) => relMap.set(rr[relDef.targetKey], rr));
+          if (isReverse) {
+            relatedRows.forEach((rr) => {
+              const key = rr[relDef.targetKey];
+              if (!relMap.has(key)) relMap.set(key, []);
+              relMap.get(key).push(rr);
+            });
+          } else {
+            relatedRows.forEach((rr) => relMap.set(rr[relDef.targetKey], rr));
+          }
         }
 
         rows.forEach((r) => {
-          if (isCsv) {
+          if (isReverse) {
+            const children = relMap.get(r[relDef.foreignKey]) || [];
+            relColKeys.forEach((relColKey) => {
+              r[`${relKey}.${relColKey}`] = relDef.columns[relColKey].countOf
+                ? children.length
+                : children
+                    .map((c) => c[relColKey])
+                    .filter((v) => v !== undefined && v !== null && v !== "")
+                    .join(", ");
+            });
+          } else if (isCsv) {
             const ids = splitCsv(r[relDef.foreignKey]);
             relColKeys.forEach((relColKey) => {
               r[`${relKey}.${relColKey}`] = ids
