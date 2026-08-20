@@ -504,6 +504,9 @@ export const MODEL_REGISTRY = {
     getModel: (tenantDB) => expensesModel(tenantDB),
     columns: {
       amount: { label: "Amount", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      // Confirmed real column in expenseDetailedReportServices.js — the
+      // approved/passed amount, separate from the claimed amount.
+      pass_amount: { label: "Passed Amount", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
       expense_date: { label: "Expense Date", type: "date", filterable: true, sortable: true, groupable: false },
       expense_status: { label: "Status", type: "lookup", filterable: true, sortable: false, groupable: true },
       remark: { label: "Remark", type: "string", filterable: true, sortable: false, groupable: false },
