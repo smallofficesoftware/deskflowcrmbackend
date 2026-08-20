@@ -104,6 +104,10 @@ export const runCompositeReport = async (definition, req) => {
           company_masters_id: resolvedCompanyId,
           isDelete: 0,
           [metric.dimensionColumn]: { [Op.in]: memberIds },
+          // Fixed equality condition (e.g. carts.type = 1 for
+          // "Quotations only") — server-authored in metricsRegistry.js,
+          // never from report_definitions input.
+          ...(metric.filter ? { [metric.filter.column]: metric.filter.value } : {}),
         },
         group: [metric.dimensionColumn],
         raw: true,

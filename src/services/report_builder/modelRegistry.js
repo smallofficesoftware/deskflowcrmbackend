@@ -35,6 +35,7 @@ import { taskManagementModel } from "../../models/activities/taskManagementModel
 import { visitsModel } from "../../models/activities/visitModel.js";
 import loginModel from "../../models/application_login/loginModel.js";
 import currencyModel from "../../models/configuration/currencyModel.js";
+import { attendanceModel } from "../../models/hr/attendanceModel.js";
 import { expenseTypeModel } from "../../models/hr/expenseTypeModel.js";
 import { expensesModel } from "../../models/hr/expensesModel.js";
 import { salaryRegisterModel } from "../../models/hr/salaryRegisterModel.js";
@@ -616,6 +617,29 @@ export const MODEL_REGISTRY = {
           recovery_mobile: { label: "Mobile", type: "string" },
           aadhar_card_number: { label: "Aadhar Number", type: "string" },
           pan_card_number: { label: "PAN Number", type: "string" },
+        },
+      },
+    },
+  },
+
+  attendance: {
+    label: "Attendance",
+    getModel: (tenantDB) => attendanceModel(tenantDB),
+    columns: {
+      // 1=check-in, 2=check-out (confirmed in attendanceServices.js) — each
+      // row is a punch event, not a daily present/absent summary.
+      attendance_status: { label: "Punch Type", type: "lookup", filterable: true, sortable: false, groupable: true },
+      check_in_out_date_time: { label: "Punch Date/Time", type: "date", filterable: true, sortable: true, groupable: false },
+      ...COUNT_COLUMN,
+    },
+    relations: {
+      employee: {
+        label: "Employee",
+        foreignKey: "a_application_login_id",
+        getModel: () => loginModel,
+        targetKey: "id",
+        columns: {
+          username: { label: "Employee", type: "string" },
         },
       },
     },
