@@ -225,6 +225,14 @@ export const MODEL_REGISTRY = {
       // CSV-of-ids (confirmed in taskManagementModel.js). Only "findInSet"
       // is a valid operator; see queryEngine.js.
       label_id: { label: "Labels (has label)", type: "csv", filterable: true, sortable: false, groupable: false },
+      // CSV-of-login-ids (confirmed TEXT column, and confirmed real usage —
+      // teamAllTaskReportServices.js resolves it via FIND_IN_SET + per-id
+      // getLoginDetailById calls). matchMode:"csv" + master-DB getModel are
+      // both already-proven machinery (contacts.lable / carts.currency
+      // respectively) — this relation needed no new engine code, just this
+      // registration. Corrects an earlier wrong "needs a plugin" verdict on
+      // this specific piece.
+      assigned_team_member: { label: "Assigned To (has member)", type: "csv", filterable: true, sortable: false, groupable: false },
       task_enddate: { label: "Due Date", type: "date", filterable: true, sortable: true, groupable: false },
       created_date_time: { label: "Created Date", type: "date", filterable: true, sortable: true, groupable: false },
       ...COUNT_COLUMN,
@@ -238,6 +246,16 @@ export const MODEL_REGISTRY = {
         targetKey: "id",
         columns: {
           lable_name: { label: "Label Names", type: "string" },
+        },
+      },
+      assignedTeamMembers: {
+        label: "Assigned To",
+        matchMode: "csv",
+        foreignKey: "assigned_team_member",
+        getModel: () => loginModel,
+        targetKey: "id",
+        columns: {
+          username: { label: "Assigned Names", type: "string" },
         },
       },
       status: {
