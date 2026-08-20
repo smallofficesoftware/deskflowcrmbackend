@@ -293,6 +293,14 @@ export const MODEL_REGISTRY = {
           category_name: { label: "Category Name", type: "string" },
         },
       },
+      product: {
+        label: "Product",
+        foreignKey: "product_id",
+        getModel: (tenantDB) => productModel(tenantDB),
+        targetKey: "id",
+        // Reuses products' own column defs — not a duplicate definition.
+        columns: { product_name: PRODUCT_COLUMNS.product_name },
+      },
       sourceType: {
         label: "Source Type",
         foreignKey: "source_type_id",
@@ -575,10 +583,26 @@ function inferCustomFieldType(referenceColumnName) {
 export async function resolveDynamicColumns(tenantDB, company_masters_id, formType) {
   if (!formType) return {};
   const CustomFieldForm = customFieldFormModel(tenantDB);
-  const rows = await CustomFieldForm.findAll({
-    where: { company_masters_id, form_type: formType, isDelete: 0 },
-    attributes: ["reference_column_name", "title"],
+  // A field belongs to this module if its OWN form_type matches, OR its
+  // applicable_modules (a free-text CSV of extra form_type numbers) lists
+  // it — the exact same two-part check every real caller uses
+  // (miracleWebhookService.js, miracleService.js, orderServices.js). Fetch
+  // broad (company-scoped, not form_type-filtered in SQL — applicable_modules
+  // is free text, not safely matchable with a single indexed condition) and
+  // filter in JS with the identical logic those callers already use, rather
+  // than reinventing a narrower check that silently misses cross-module fields.
+  const allRows = await CustomFieldForm.findAll({
+    where: { company_masters_id, isDelete: 0 },
+    attributes: ["reference_column_name", "title", "form_type", "applicable_modules"],
     raw: true,
+  });
+  const rows = allRows.filter((row) => {
+    if (Number(row.form_type) === Number(formType)) return true;
+    if (row.applicable_modules) {
+      const mods = String(row.applicable_modules).split(",").map((m) => m.trim());
+      return mods.includes(String(formType));
+    }
+    return false;
   });
   const columns = {};
   for (const row of rows) {
