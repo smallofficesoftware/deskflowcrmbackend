@@ -27,6 +27,18 @@ const ALLOWED_OPERATORS = {
 
 const ALLOWED_AGGREGATES = { sum: "SUM", avg: "AVG", min: "MIN", max: "MAX", count: "COUNT" };
 
+// Shared by the CSV-relation display merge and CSV group-by below — a raw
+// value like "3,7,12" (or a plain scalar, which still splits into a single-
+// element array) becomes a real numeric id array.
+function splitCsv(raw) {
+  return String(raw ?? "")
+    .split(",")
+    .map((v) => v.trim())
+    .filter(Boolean)
+    .map(Number)
+    .filter((n) => !Number.isNaN(n));
+}
+
 // One where-clause entry for a single whitelisted, filterable column. Throws
 // (caught by the caller, turned into resError) if the column isn't in the
 // registry, isn't filterable, or the operator isn't in ALLOWED_OPERATORS —
@@ -117,9 +129,43 @@ export const runQueryReport = async (definition, req) => {
       }
     }
 
-    // ---- SELECT / aggregate list, whitelisted only ----
+    // ---- GROUP BY, whitelisted only. A CSV-typed column (e.g.
+    // task_managements.status, contacts.lable) is grouped in JS below, not
+    // SQL — SQL GROUP BY on a CSV column groups by the raw string
+    // combination ("3,7" as one bucket), not by individual values, which is
+    // wrong (confirmed by reading statusWiseReportServices.js/
+    // lableWiseReportServices.js — both hand-roll a JS re-expansion step for
+    // exactly this reason, the same thing done generically here). At most
+    // one CSV column may be grouped at a time (v1 — avoids combinatorial
+    // cross-product complexity); it may be combined with any number of
+    // ordinary groupable columns, grouped in JS alongside it. ----
+    const csvGroupColumns = [];
+    const sqlGroupColumns = [];
+    for (const g of groupBy) {
+      const columnDef = effectiveColumns[g];
+      if (!columnDef) throw new Error(`Column "${g}" is not whitelisted for this report source`);
+      if (columnDef.type === "csv") {
+        csvGroupColumns.push(g);
+      } else {
+        if (!columnDef.groupable) throw new Error(`Column "${g}" is not groupable`);
+        sqlGroupColumns.push(g);
+      }
+    }
+    if (csvGroupColumns.length > 1) {
+      throw new Error("Grouping by more than one CSV column at once is not supported");
+    }
+    const csvGroupColumn = csvGroupColumns[0] || null;
+
+    // ---- SELECT / aggregate list, whitelisted only. When grouping by a
+    // CSV column, aggregation runs in JS (below), so aggregate columns are
+    // recorded as specs instead of SQL fn() attributes, and any plain
+    // (non-aggregate) column must be one of the groupBy dimensions — the
+    // same constraint plain SQL GROUP BY enforces (ONLY_FULL_GROUP_BY),
+    // just checked here by hand since SQL isn't doing the grouping. ----
     const explicitlySelectedBaseColumns = new Set();
     const attributes = [];
+    const aggregateSpecs = []; // {column, aggregate, alias} — only used when csvGroupColumn is set
+    const rawFetchColumns = new Set(); // only used when csvGroupColumn is set
     for (const c of baseColumns) {
       const columnDef = effectiveColumns[c.column];
       if (!columnDef) throw new Error(`Column "${c.column}" is not whitelisted for this report source`);
@@ -130,10 +176,25 @@ export const runQueryReport = async (definition, req) => {
         if (columnDef.aggregatable && !columnDef.aggregatable.includes(c.aggregate)) {
           throw new Error(`Column "${c.column}" does not support aggregate "${c.aggregate}"`);
         }
-        attributes.push([fn(fnName, col(c.column)), c.alias || `${c.aggregate}_${c.column}`]);
+        const alias = c.alias || `${c.aggregate}_${c.column}`;
+        if (csvGroupColumn) {
+          aggregateSpecs.push({ column: c.column, aggregate: c.aggregate, alias });
+          rawFetchColumns.add(c.column);
+        } else {
+          attributes.push([fn(fnName, col(c.column)), alias]);
+        }
+      } else if (csvGroupColumn) {
+        if (c.column !== csvGroupColumn && !sqlGroupColumns.includes(c.column)) {
+          throw new Error(`Column "${c.column}" must be aggregated or included in group_by when grouping by a CSV column`);
+        }
+        rawFetchColumns.add(c.column);
       } else {
         attributes.push(c.column);
       }
+    }
+    if (csvGroupColumn) {
+      rawFetchColumns.add(csvGroupColumn);
+      sqlGroupColumns.forEach((g) => rawFetchColumns.add(g));
     }
 
     // ---- Inject FK columns needed by referenced relations (so the merge
@@ -146,16 +207,9 @@ export const runQueryReport = async (definition, req) => {
       const foreignKey = registryEntry.relations[relKey].foreignKey;
       if (!explicitlySelectedBaseColumns.has(foreignKey) && !injectedFkColumns.includes(foreignKey)) {
         injectedFkColumns.push(foreignKey);
-        attributes.push(foreignKey);
+        if (csvGroupColumn) rawFetchColumns.add(foreignKey);
+        else attributes.push(foreignKey);
       }
-    }
-
-    // ---- GROUP BY, whitelisted only ----
-    const group = [];
-    for (const g of groupBy) {
-      const columnDef = effectiveColumns[g];
-      if (!columnDef || !columnDef.groupable) throw new Error(`Column "${g}" is not groupable`);
-      group.push(g);
     }
 
     // ---- user-supplied filters, whitelisted columns/operators, bound values only.
@@ -209,17 +263,76 @@ export const runQueryReport = async (definition, req) => {
       setTimeout(() => reject(new Error("Report query timed out")), QUERY_TIMEOUT_MS),
     );
 
-    const rows = await Promise.race([
-      Model.findAll({
-        attributes: attributes.length ? attributes : undefined,
-        where,
-        group: group.length ? group : undefined,
-        limit,
-        offset,
-        raw: true,
-      }),
-      timeoutGuard,
-    ]);
+    let rows;
+    if (csvGroupColumn) {
+      // ---- CSV group-by: fetch raw (ungrouped) rows — bounded by the same
+      // HARD_ROW_LIMIT/DEFAULT_ROW_LIMIT ceiling as every other query here,
+      // just applied to the pre-aggregation row count instead of the post-
+      // aggregation group count (group counts are typically small: a
+      // handful of statuses/labels, not thousands) — then split each row's
+      // CSV value and accumulate aggregates per individual id in JS. Same
+      // "manual expansion, not SQL" convention this codebase's own
+      // statusWiseReportServices.js/lableWiseReportServices.js already
+      // hand-roll for this exact problem, generalized here. ----
+      const rawRows = await Promise.race([
+        Model.findAll({
+          attributes: [...rawFetchColumns],
+          where,
+          limit,
+          offset,
+          raw: true,
+        }),
+        timeoutGuard,
+      ]);
+
+      const groupsMap = new Map();
+      for (const row of rawRows) {
+        const ids = splitCsv(row[csvGroupColumn]);
+        for (const id of ids) {
+          const dims = Object.fromEntries(sqlGroupColumns.map((g) => [g, row[g]]));
+          const key = JSON.stringify([id, dims]);
+          if (!groupsMap.has(key)) {
+            groupsMap.set(key, { [csvGroupColumn]: id, dims, agg: {} });
+          }
+          const bucket = groupsMap.get(key);
+          for (const spec of aggregateSpecs) {
+            if (!bucket.agg[spec.alias]) bucket.agg[spec.alias] = { sum: 0, count: 0, min: Infinity, max: -Infinity };
+            const acc = bucket.agg[spec.alias];
+            if (spec.aggregate === "count") {
+              acc.sum += 1; // count reuses sum as the running total
+            } else {
+              const val = Number(row[spec.column]) || 0;
+              acc.sum += val;
+              acc.min = Math.min(acc.min, val);
+              acc.max = Math.max(acc.max, val);
+            }
+            acc.count += 1;
+          }
+        }
+      }
+
+      rows = [...groupsMap.values()].map((bucket) => {
+        const finalized = { [csvGroupColumn]: bucket[csvGroupColumn], ...bucket.dims };
+        for (const spec of aggregateSpecs) {
+          const acc = bucket.agg[spec.alias] || { sum: 0, count: 0, min: 0, max: 0 };
+          finalized[spec.alias] =
+            spec.aggregate === "avg" ? (acc.count ? acc.sum / acc.count : 0) : spec.aggregate === "min" ? (acc.count ? acc.min : 0) : spec.aggregate === "max" ? (acc.count ? acc.max : 0) : acc.sum; // sum and count both accumulate into acc.sum above
+        }
+        return finalized;
+      });
+    } else {
+      rows = await Promise.race([
+        Model.findAll({
+          attributes: attributes.length ? attributes : undefined,
+          where,
+          group: sqlGroupColumns.length ? sqlGroupColumns : undefined,
+          limit,
+          offset,
+          raw: true,
+        }),
+        timeoutGuard,
+      ]);
+    }
 
     // ---- Whitelisted relations — one batched query per relation + a JS
     // Map merge, matching this codebase's own existing join convention
@@ -237,14 +350,6 @@ export const runQueryReport = async (definition, req) => {
         // and flatten into one distinct id set for a single batched fetch
         // (never split-then-fetch-per-row — same "one query, not N+1" rule
         // as the scalar case below).
-        const splitCsv = (raw) =>
-          String(raw ?? "")
-            .split(",")
-            .map((v) => v.trim())
-            .filter(Boolean)
-            .map(Number)
-            .filter((n) => !Number.isNaN(n));
-
         const distinctFkValues = isCsv
           ? [...new Set(rows.flatMap((r) => splitCsv(r[relDef.foreignKey])))]
           : [...new Set(rows.map((r) => r[relDef.foreignKey]).filter((v) => v !== null && v !== undefined))];
