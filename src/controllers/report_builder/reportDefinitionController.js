@@ -8,6 +8,7 @@ import {
   runReportDefinition,
   updateReportDefinition,
 } from "../../services/report_builder/reportDefinitionServices.js";
+import { exportReportExcel, exportReportPdf } from "../../services/report_builder/reportPdfExport.js";
 import callServiceMethod from "../baseController.js";
 
 export const getModelRegistryController = async (req, res) => {
@@ -40,4 +41,12 @@ export const runReportDefinitionController = async (req, res) => {
 
 export const runBatchReportDefinitionsController = async (req, res) => {
   await callServiceMethod(req, res, runBatchReportDefinitions(req, res), "runBatchReportDefinitions");
+};
+
+export const exportReportExcelController = async (req, res) => {
+  await callServiceMethod(req, res, exportReportExcel(req, res), "exportReportExcel");
+};
+
+export const exportReportPdfController = async (req, res) => {
+  await callServiceMethod(req, res, exportReportPdf(req, res), "exportReportPdf");
 };

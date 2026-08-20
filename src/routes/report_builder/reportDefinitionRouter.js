@@ -1,6 +1,8 @@
 import {
   createReportDefinitionController,
   deleteReportDefinitionController,
+  exportReportExcelController,
+  exportReportPdfController,
   getModelRegistryController,
   getPluginRegistryController,
   listReportDefinitionsController,
@@ -51,4 +53,8 @@ export default (app) => {
   // Run routes — feature flag only, no PIN (anyone with normal rights can run/view a report someone else built).
   app.post("/report-definitions/:id/run", authenticateToken, tenantMiddleware, requireReportBuilderFlag, runReportDefinitionController);
   app.post("/report-definitions/run-batch", authenticateToken, tenantMiddleware, requireReportBuilderFlag, runBatchReportDefinitionsController);
+  // Export routes — flag-only, same tier as /run (no PIN: anyone with
+  // normal rights can export/print a report someone else built).
+  app.post("/report-definitions/:id/export/excel", authenticateToken, tenantMiddleware, requireReportBuilderFlag, exportReportExcelController);
+  app.post("/report-definitions/:id/export/pdf", authenticateToken, tenantMiddleware, requireReportBuilderFlag, exportReportPdfController);
 };

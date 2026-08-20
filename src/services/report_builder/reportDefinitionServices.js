@@ -182,7 +182,7 @@ export const listReportDefinitions = async (req) => {
 // same {rows, row_count, duration_ms} envelope runQueryReport already
 // returns, so callers (including the frontend's results grid) don't need
 // to know which type of definition they ran.
-const runDefinitionByType = async (definition, req, res) => {
+export const runDefinitionByType = async (definition, req, res) => {
   const startedAt = Date.now();
   if (definition.type === "plugin") {
     const plugin = getRegisteredPlugin(definition.plugin_key);
