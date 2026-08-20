@@ -15,16 +15,30 @@
 // codebase). v1 is select/display only: relation columns are never
 // filterable/groupable/aggregatable, enforced by simply not appearing in
 // those column lists.
+import { accountTransactionsModel } from "../../models/activities/accountTransactionsModel.js";
+import { callhistoryModel } from "../../models/activities/callhistoryModel.js";
 import { cartItemModel } from "../../models/activities/cartItemsModel.js";
 import { cartModel } from "../../models/activities/cartsModel.js";
 import { contactModel } from "../../models/activities/contactModel.js";
 import { inquiryModel } from "../../models/activities/inquiryModel.js";
+import { paymentTypeModel } from "../../models/activities/paymentTypeModel.js";
+import { reminderMessagesModel } from "../../models/activities/reminderMessagesModel.js";
 import { taskManagementModel } from "../../models/activities/taskManagementModel.js";
+import { visitsModel } from "../../models/activities/visitModel.js";
+import loginModel from "../../models/application_login/loginModel.js";
 import currencyModel from "../../models/configuration/currencyModel.js";
+import { expenseTypeModel } from "../../models/hr/expenseTypeModel.js";
+import { expensesModel } from "../../models/hr/expensesModel.js";
+import { salaryRegisterModel } from "../../models/hr/salaryRegisterModel.js";
 import { sourceTypesModel } from "../../models/masters/sourceTypeMode.js";
+import { stagestatusModel } from "../../models/masters/stagestatusModel.js";
 import { taskCategoryModel } from "../../models/masters/taskCategoryModel.js";
 import { categoryModel } from "../../models/product_settings/categoryModel.js";
 import { productModel } from "../../models/product_settings/productModel.js";
+
+// COUNT needs a real column to wrap (fn("COUNT", col("id"))) — every table
+// that supports a group+count report gets this, not a new engine concept.
+const COUNT_COLUMN = { id: { label: "Count", type: "number", filterable: false, sortable: false, groupable: false, aggregatable: ["count"] } };
 
 const PRODUCT_COLUMNS = {
   product_name: { label: "Product Name", type: "string", filterable: true, sortable: true, groupable: true },
@@ -49,6 +63,7 @@ export const MODEL_REGISTRY = {
       company_name: { label: "Company Name", type: "string", filterable: true, sortable: true, groupable: true },
       mobile_number: { label: "Mobile", type: "string", filterable: true, sortable: false, groupable: false },
       contact_status: { label: "Status", type: "lookup", filterable: true, sortable: false, groupable: true },
+      source_type_id: { label: "Source Type", type: "lookup", filterable: true, sortable: false, groupable: true },
       // Already plain display strings on the row itself, not FK ids — no
       // relation needed (confirmed by reading contactModel.js in full).
       country: { label: "Country", type: "string", filterable: true, sortable: false, groupable: true },
@@ -56,6 +71,7 @@ export const MODEL_REGISTRY = {
       city: { label: "City", type: "string", filterable: true, sortable: false, groupable: true },
       area: { label: "Area", type: "string", filterable: true, sortable: false, groupable: true },
       created_date_time: { label: "Created Date", type: "date", filterable: true, sortable: true, groupable: false },
+      ...COUNT_COLUMN,
     },
     relations: {
       sourceType: {
@@ -65,6 +81,15 @@ export const MODEL_REGISTRY = {
         targetKey: "id",
         columns: {
           source_name: { label: "Source Name", type: "string" },
+        },
+      },
+      status: {
+        label: "Status",
+        foreignKey: "contact_status",
+        getModel: (tenantDB) => stagestatusModel(tenantDB),
+        targetKey: "id",
+        columns: {
+          name: { label: "Status Name", type: "string" },
         },
       },
     },
@@ -78,8 +103,10 @@ export const MODEL_REGISTRY = {
       type: { label: "Order Type", type: "lookup", filterable: true, sortable: false, groupable: true },
       cart_date: { label: "Order Date", type: "date", filterable: true, sortable: true, groupable: false },
       cart_status: { label: "Status", type: "lookup", filterable: true, sortable: false, groupable: true },
+      to_customer_id: { label: "Customer", type: "lookup", filterable: true, sortable: false, groupable: true },
       grand_total: { label: "Grand Total", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
       created_date_time: { label: "Created Date", type: "date", filterable: true, sortable: true, groupable: false },
+      ...COUNT_COLUMN,
     },
     relations: {
       customer: {
@@ -147,8 +174,12 @@ export const MODEL_REGISTRY = {
       task_title: { label: "Task Title", type: "string", filterable: true, sortable: true, groupable: false },
       task_priority: { label: "Priority", type: "lookup", filterable: true, sortable: false, groupable: true },
       task_type: { label: "Task Type", type: "lookup", filterable: true, sortable: false, groupable: true },
+      // Plain fixed-code TINYINT (confirmed in taskManagementModel.js), not
+      // an FK to stage_status_masters — no relation needed/possible.
+      status: { label: "Status", type: "lookup", filterable: true, sortable: false, groupable: true },
       task_enddate: { label: "Due Date", type: "date", filterable: true, sortable: true, groupable: false },
       created_date_time: { label: "Created Date", type: "date", filterable: true, sortable: true, groupable: false },
+      ...COUNT_COLUMN,
     },
     relations: {
       category: {
@@ -180,7 +211,9 @@ export const MODEL_REGISTRY = {
       description: { label: "Description", type: "string", filterable: true, sortable: false, groupable: false },
       qty: { label: "Quantity", type: "number", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
       contact_status: { label: "Status", type: "lookup", filterable: true, sortable: false, groupable: true },
+      source_type_id: { label: "Source Type", type: "lookup", filterable: true, sortable: false, groupable: true },
       inquiry_date_time: { label: "Inquiry Date", type: "date", filterable: true, sortable: true, groupable: false },
+      ...COUNT_COLUMN,
     },
     relations: {
       contact: {
@@ -209,6 +242,199 @@ export const MODEL_REGISTRY = {
         targetKey: "id",
         columns: {
           source_name: { label: "Source Name", type: "string" },
+        },
+      },
+      status: {
+        label: "Status",
+        foreignKey: "contact_status",
+        getModel: (tenantDB) => stagestatusModel(tenantDB),
+        targetKey: "id",
+        columns: {
+          name: { label: "Status Name", type: "string" },
+        },
+      },
+    },
+  },
+
+  account_transactions: {
+    label: "Account Transactions",
+    getModel: (tenantDB) => accountTransactionsModel(tenantDB),
+    columns: {
+      amount: { label: "Amount", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      type: { label: "Type", type: "lookup", filterable: true, sortable: false, groupable: true },
+      amount_type: { label: "Amount Type", type: "lookup", filterable: true, sortable: false, groupable: true },
+      mode: { label: "Payment Mode", type: "lookup", filterable: true, sortable: false, groupable: true },
+      payment_date_time: { label: "Payment Date", type: "date", filterable: true, sortable: true, groupable: false },
+      remark: { label: "Remark", type: "string", filterable: true, sortable: false, groupable: false },
+      ...COUNT_COLUMN,
+    },
+    relations: {
+      contact: {
+        label: "Contact",
+        foreignKey: "contact_masters_id",
+        getModel: (tenantDB) => contactModel(tenantDB),
+        targetKey: "id",
+        columns: {
+          person_name: { label: "Contact Name", type: "string" },
+          company_name: { label: "Company Name", type: "string" },
+        },
+      },
+      paymentType: {
+        label: "Payment Type",
+        foreignKey: "mode",
+        getModel: (tenantDB) => paymentTypeModel(tenantDB),
+        targetKey: "id",
+        columns: {
+          payment_type_name: { label: "Payment Type", type: "string" },
+        },
+      },
+    },
+    // NOT whitelisted: reference_id/reference_table (polymorphic — the
+    // target table varies per row, not a static FK a relation can point
+    // at). approve_by_a_application_login_id would need a_application_logins,
+    // a master-DB-only table like currencyModel above — skipped for now,
+    // same pattern (getModel: () => loginModel, non-factory) would apply.
+  },
+
+  visits: {
+    label: "Visits",
+    getModel: (tenantDB) => visitsModel(tenantDB),
+    columns: {
+      person_name: { label: "Person Name", type: "string", filterable: true, sortable: true, groupable: false },
+      remark: { label: "Remark", type: "string", filterable: true, sortable: false, groupable: false },
+      start_date: { label: "Start Date", type: "date", filterable: true, sortable: true, groupable: false },
+      end_date: { label: "End Date", type: "date", filterable: true, sortable: true, groupable: false },
+      created_date_time: { label: "Created Date", type: "date", filterable: true, sortable: true, groupable: false },
+    },
+    relations: {
+      contact: {
+        label: "Contact",
+        foreignKey: "contact_id",
+        getModel: (tenantDB) => contactModel(tenantDB),
+        targetKey: "id",
+        columns: {
+          person_name: { label: "Contact Name", type: "string" },
+          company_name: { label: "Company Name", type: "string" },
+        },
+      },
+    },
+    // visit_type_id -> visit_type_masters skipped: that table has no real
+    // display-name column (visit_type is a plain INTEGER code, confirmed
+    // by reading visitTypeModel.js), so a relation there would just swap
+    // one numeric id for another — no value over the raw column.
+  },
+
+  call_histories: {
+    label: "Call History",
+    getModel: (tenantDB) => callhistoryModel(tenantDB),
+    columns: {
+      call_type: { label: "Call Type", type: "lookup", filterable: true, sortable: false, groupable: true },
+      call_date_time: { label: "Call Date", type: "date", filterable: true, sortable: true, groupable: false },
+      duration: { label: "Duration (sec)", type: "number", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      ...COUNT_COLUMN,
+    },
+    relations: {
+      contact: {
+        label: "Contact",
+        foreignKey: "contact_id",
+        getModel: (tenantDB) => contactModel(tenantDB),
+        targetKey: "id",
+        columns: {
+          person_name: { label: "Contact Name", type: "string" },
+          company_name: { label: "Company Name", type: "string" },
+        },
+      },
+    },
+  },
+
+  reminder_messages: {
+    label: "Reminders",
+    getModel: (tenantDB) => reminderMessagesModel(tenantDB),
+    columns: {
+      // Plain fixed-code TINYINT (0/1 pending-completed style), not an FK —
+      // same as task_managements.status above.
+      status: { label: "Status", type: "lookup", filterable: true, sortable: false, groupable: true },
+      reminder_data_time: { label: "Reminder Date", type: "date", filterable: true, sortable: true, groupable: false },
+      remark: { label: "Remark", type: "string", filterable: true, sortable: false, groupable: false },
+      ...COUNT_COLUMN,
+    },
+    relations: {
+      contact: {
+        label: "Contact",
+        foreignKey: "contact_masters_id",
+        getModel: (tenantDB) => contactModel(tenantDB),
+        targetKey: "id",
+        columns: {
+          person_name: { label: "Contact Name", type: "string" },
+          company_name: { label: "Company Name", type: "string" },
+        },
+      },
+      task: {
+        label: "Task",
+        foreignKey: "task_id",
+        getModel: (tenantDB) => taskManagementModel(tenantDB),
+        targetKey: "id",
+        columns: {
+          task_title: { label: "Task Title", type: "string" },
+        },
+      },
+    },
+  },
+
+  expenses: {
+    label: "Expenses",
+    getModel: (tenantDB) => expensesModel(tenantDB),
+    columns: {
+      amount: { label: "Amount", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      expense_date: { label: "Expense Date", type: "date", filterable: true, sortable: true, groupable: false },
+      expense_status: { label: "Status", type: "lookup", filterable: true, sortable: false, groupable: true },
+      remark: { label: "Remark", type: "string", filterable: true, sortable: false, groupable: false },
+      ...COUNT_COLUMN,
+    },
+    relations: {
+      expenseType: {
+        label: "Expense Type",
+        foreignKey: "expense_type_id",
+        getModel: (tenantDB) => expenseTypeModel(tenantDB),
+        targetKey: "id",
+        columns: {
+          expense_name: { label: "Expense Type", type: "string" },
+        },
+      },
+      employee: {
+        label: "Employee",
+        foreignKey: "a_application_login_id",
+        // Pre-built instance bound to the MASTER db (a_application_logins
+        // lives only in smalloffice/smalloffice_prod, never a tenant DB —
+        // same pattern as carts.currency above).
+        getModel: () => loginModel,
+        targetKey: "id",
+        columns: {
+          username: { label: "Employee", type: "string" },
+        },
+      },
+    },
+  },
+
+  salary_registers: {
+    label: "Salary Register",
+    getModel: (tenantDB) => salaryRegisterModel(tenantDB),
+    columns: {
+      year: { label: "Year", type: "number", filterable: true, sortable: true, groupable: true },
+      month: { label: "Month", type: "number", filterable: true, sortable: true, groupable: true },
+      total_earning: { label: "Total Earning", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      total_deduction: { label: "Total Deduction", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      net_bank_pay: { label: "Net Pay", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      ...COUNT_COLUMN,
+    },
+    relations: {
+      employee: {
+        label: "Employee",
+        foreignKey: "employee_id",
+        getModel: () => loginModel,
+        targetKey: "id",
+        columns: {
+          username: { label: "Employee", type: "string" },
         },
       },
     },

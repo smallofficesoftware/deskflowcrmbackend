@@ -1,20 +1,25 @@
 // Registers the existing, unmodified complex-report services under the same
 // report_definitions/run system query-type reports use — proves the wrap-
-// don't-rewrite approach works before Phase 3 migrates the remaining 23.
-// Confirmed by reading both services directly (not assumed):
+// don't-rewrite approach works for reports that genuinely need it.
 //
-// - sourceReport(req) — 1-arg, resSuccess({data:{item: result}}) -> dataKey
-//   "item". Calls getUserRights itself against PAGE_ID.SOURCE_REPORT.
+// sourceWiseReport was removed from here: it was just contacts/inquiries
+// COUNT-grouped by source_type_id, no real business logic beyond that — now
+// buildable as a plain query-type report against `contacts`/`inquiries`
+// (source_type_id is a groupable base column, sourceType is a whitelisted
+// relation for the display name — see modelRegistry.js). sourceReportServices.js
+// itself is untouched; only the plugin-registry wrapper was removed, since
+// query-type coverage replaces the need for it.
+//
 // - productInventoryReport(req, res) — 2-arg (takes res too, unused
 //   directly but harmless to pass through), resSuccess({data:{items,
 //   totalRecords}}) -> dataKey "items". No getUserRights call at all — no
-//   row-level rights beyond company/tenant scoping.
+//   row-level rights beyond company/tenant scoping. Stays a plugin: real
+//   stock in/out math, not just stored data.
 //
 // hasOwnRightsCheck is metadata only, not something this module or
 // queryEngine.js acts on — dispatch is pass-through, each service's
 // existing rights behavior (or lack of it) is preserved exactly as-is.
 import { productInventoryReport } from "../dashboard/Reports/productInventoryReportServices.js";
-import { sourceReport } from "../dashboard/Reports/sourceReportServices.js";
 import { PAGE_ID } from "../../utils/AppEnumeration.js";
 
 export const PLUGIN_REGISTRY = {
@@ -30,18 +35,6 @@ export const PLUGIN_REGISTRY = {
       { key: "selectedCategory", label: "Category", type: "lookup" },
       { key: "selectedStockTypeId", label: "Stock Type", type: "lookup" },
       { key: "selectedWarehouseIds", label: "Warehouse", type: "lookup" },
-    ],
-  },
-  sourceWiseReport: {
-    label: "Source-wise Report",
-    fn: sourceReport,
-    dataKey: "item",
-    hasOwnRightsCheck: true,
-    page_id: PAGE_ID.SOURCE_REPORT,
-    filterSchema: [
-      { key: "selected_dates", label: "Date Range", type: "date" },
-      { key: "selectedSourceTypes", label: "Source Type", type: "lookup" },
-      { key: "selectedTeamMembers", label: "Team Member", type: "lookup" },
     ],
   },
 };
