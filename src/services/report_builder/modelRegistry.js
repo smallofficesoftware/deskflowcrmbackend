@@ -458,6 +458,10 @@ export const MODEL_REGISTRY = {
       // same as task_managements.status above.
       status: { label: "Status", type: "lookup", filterable: true, sortable: false, groupable: true },
       reminder_data_time: { label: "Reminder Date", type: "date", filterable: true, sortable: true, groupable: false },
+      // Confirmed real usage in reminderReportService.js: "future" reminders
+      // are ones where this is null/empty — a plain nullable date column,
+      // not a CSV/polymorphic field.
+      completed_date_time: { label: "Completed Date", type: "date", filterable: true, sortable: true, groupable: false },
       remark: { label: "Remark", type: "string", filterable: true, sortable: false, groupable: false },
       ...COUNT_COLUMN,
     },
@@ -470,6 +474,17 @@ export const MODEL_REGISTRY = {
         columns: {
           person_name: { label: "Contact Name", type: "string" },
           company_name: { label: "Company Name", type: "string" },
+        },
+      },
+      createdBy: {
+        label: "Created By",
+        foreignKey: "a_application_login_id",
+        // Pre-built instance bound to the MASTER db, same pattern as
+        // expenses.employee/salary_registers.employee above.
+        getModel: () => loginModel,
+        targetKey: "id",
+        columns: {
+          username: { label: "Created By", type: "string" },
         },
       },
       task: {
