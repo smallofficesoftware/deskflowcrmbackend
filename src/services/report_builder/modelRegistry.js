@@ -205,9 +205,13 @@ export const MODEL_REGISTRY = {
       task_title: { label: "Task Title", type: "string", filterable: true, sortable: true, groupable: false },
       task_priority: { label: "Priority", type: "lookup", filterable: true, sortable: false, groupable: true },
       task_type: { label: "Task Type", type: "lookup", filterable: true, sortable: false, groupable: true },
-      // Plain fixed-code TINYINT (confirmed in taskManagementModel.js), not
-      // an FK to stage_status_masters — no relation needed/possible.
-      status: { label: "Status", type: "lookup", filterable: true, sortable: false, groupable: true },
+      // CSV-of-ids despite the TINYINT column type (confirmed in
+      // teamAllTaskReportServices.js — real code does
+      // FIND_IN_SET(${id}, status)/FIND_IN_SET(${id}, external_status), not
+      // scalar equality). Corrected from an earlier wrong assumption based
+      // on the schema type alone. Only "findInSet" is a valid operator.
+      status: { label: "Status (internal)", type: "csv", filterable: true, sortable: false, groupable: false },
+      external_status: { label: "Status (external)", type: "csv", filterable: true, sortable: false, groupable: false },
       // CSV-of-ids (confirmed in taskManagementModel.js). Only "findInSet"
       // is a valid operator; see queryEngine.js.
       label_id: { label: "Labels (has label)", type: "csv", filterable: true, sortable: false, groupable: false },
@@ -224,6 +228,26 @@ export const MODEL_REGISTRY = {
         targetKey: "id",
         columns: {
           lable_name: { label: "Label Names", type: "string" },
+        },
+      },
+      status: {
+        label: "Status (internal)",
+        matchMode: "csv",
+        foreignKey: "status",
+        getModel: (tenantDB) => stagestatusModel(tenantDB),
+        targetKey: "id",
+        columns: {
+          name: { label: "Status Names", type: "string" },
+        },
+      },
+      externalStatus: {
+        label: "Status (external)",
+        matchMode: "csv",
+        foreignKey: "external_status",
+        getModel: (tenantDB) => stagestatusModel(tenantDB),
+        targetKey: "id",
+        columns: {
+          name: { label: "External Status Names", type: "string" },
         },
       },
       category: {
@@ -591,8 +615,12 @@ export async function resolveDynamicColumns(tenantDB, company_masters_id, formTy
   // is free text, not safely matchable with a single indexed condition) and
   // filter in JS with the identical logic those callers already use, rather
   // than reinventing a narrower check that silently misses cross-module fields.
+  // report_print_or_not: 1 — the same flag teamAllTaskReportServices.js
+  // filters its own custom-field lookup by. A field a company owner never
+  // marked "printable in reports" shouldn't surface in Report Builder's
+  // picker either — same intent, applied generically instead of per-report.
   const allRows = await CustomFieldForm.findAll({
-    where: { company_masters_id, isDelete: 0 },
+    where: { company_masters_id, isDelete: 0, report_print_or_not: 1 },
     attributes: ["reference_column_name", "title", "form_type", "applicable_modules"],
     raw: true,
   });
