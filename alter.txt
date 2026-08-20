@@ -2302,3 +2302,47 @@ CREATE TABLE `system_document_templates` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 ALTER TABLE `system_document_templates` ADD INDEX(`doc_type`);
+
+20-08-2026 Dhaval
+CREATE TABLE `report_definitions` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `company_masters_id` INT(11) NOT NULL,
+  `a_application_login_id` INT(11) NOT NULL,
+  `name` VARCHAR(255) NOT NULL,
+  `type` VARCHAR(50) NOT NULL DEFAULT 'query',
+  `page_id` INT(11) NULL,
+  `model_key` VARCHAR(100) NULL,
+  `plugin_key` VARCHAR(100) NULL,
+  `columns_json` TEXT NOT NULL,
+  `filters_json` TEXT NULL,
+  `group_by_json` TEXT NULL,
+  `created_date_time` DATETIME NOT NULL,
+  `modified_date` DATETIME NULL,
+  `s_timestemp` VARCHAR(255) NULL,
+  `isDelete` TINYINT(4) NOT NULL DEFAULT 0,
+  `isActive` TINYINT(4) NOT NULL DEFAULT 1,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+ALTER TABLE `report_definitions` ADD INDEX(`company_masters_id`, `isDelete`);
+
+CREATE TABLE `report_runs` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `company_masters_id` INT(11) NOT NULL,
+  `report_definition_id` INT(11) NOT NULL,
+  `executed_by` INT(11) NOT NULL,
+  `executed_at` DATETIME NOT NULL,
+  `filters_snapshot_json` TEXT NULL,
+  `row_count` INT(11) NULL,
+  `duration_ms` INT(11) NULL,
+  `success` TINYINT(4) NOT NULL DEFAULT 1,
+  `error_message` VARCHAR(500) NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+ALTER TABLE `report_runs` ADD INDEX(`company_masters_id`, `report_definition_id`);
+
+20-08-2026 Dhaval
+INSERT INTO `a_application_pages` (`id`, `page_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, 'Report Builder', 'report_builder', 'Report Builder', '0', '0', '0', '1', NOW(), UNIX_TIMESTAMP(), '0', '1');
+
+INSERT INTO `a_application_pages` (`id`, `page_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, 'Document Designer', 'document_designer', 'Document Designer', '0', '0', '0', '1', NOW(), UNIX_TIMESTAMP(), '0', '1');
