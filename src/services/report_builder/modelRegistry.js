@@ -170,9 +170,19 @@ export const MODEL_REGISTRY = {
     getModel: (tenantDB) => cartItemModel(tenantDB),
     columns: {
       item_product_name: { label: "Product Name", type: "string", filterable: true, sortable: true, groupable: true },
+      // Plain scalar INTEGER (confirmed in cartItemsModel.js) — unlike
+      // task_managements.status/contacts.lable, this one is a real FK, not
+      // CSV, despite productSalesPurchaseServices.js defensively wrapping
+      // it in FIND_IN_SET (which still matches a single int fine — not
+      // evidence of real multi-value storage).
+      item_product_id: { label: "Product", type: "lookup", filterable: true, sortable: false, groupable: true },
+      // Denormalized copy of the parent cart's type (confirmed in
+      // cartItemsModel.js), same values as carts.type.
+      cart_type: { label: "Order Type", type: "lookup", filterable: true, sortable: false, groupable: true },
       item_qty: { label: "Quantity", type: "number", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
       item_rate: { label: "Rate", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
       item_total: { label: "Total", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      ...COUNT_COLUMN,
     },
     relations: {
       product: {
