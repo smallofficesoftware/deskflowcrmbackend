@@ -262,6 +262,157 @@ export function buildItemsTableField(columnOptions) {
   });
 }
 
+const HSN_TAX_COLUMNS = [
+  { key: "hsn", label: "HSN/SAC", widthPct: 12, alignment: "left" },
+  { key: "taxable", label: "Taxable Value", widthPct: 14, alignment: "right" },
+  { key: "cgstRate", label: "CGST Rate", widthPct: 10, alignment: "center" },
+  { key: "cgstAmt", label: "CGST Amt", widthPct: 12, alignment: "right" },
+  { key: "sgstRate", label: "SGST Rate", widthPct: 10, alignment: "center" },
+  { key: "sgstAmt", label: "SGST Amt", widthPct: 12, alignment: "right" },
+  { key: "igstRate", label: "IGST Rate", widthPct: 10, alignment: "center" },
+  { key: "igstAmt", label: "IGST Amt", widthPct: 12, alignment: "right" },
+  { key: "total", label: "Total Tax", widthPct: 8, alignment: "right" },
+];
+
+// HSN/GST tax summary table + the rich totals box — port of orderPdfV1.ejs's
+// gst_summery + total_summery tables (~line 881-1218). Positioned right
+// after the item table's own declared box (y:90 + height:75 = 165), same
+// "fixed slot, not flowed" limitation the item table itself already has
+// relative to what comes after it — not a new tradeoff introduced here.
+// Each totals row is its own label+value field pair (not one dynamic
+// block) — a transaction where most optional rows don't apply leaves visible
+// gaps rather than everything reflowing to fill the space; a deliberate
+// call to keep every row individually Designer-draggable (see the plan
+// discussion this decided), not an oversight.
+function buildHsnAndTotalsFields() {
+  // The label field's own content is never empty (buildInputsForCart always
+  // sets e.g. packingChargeLabel to "Packing Charge" regardless of whether
+  // there's a packing charge) — hideIfEmpty on the LABEL's own content would
+  // never fire, leaving an orphaned label with a gap where the amount used
+  // to be. So a conditional row's label is gated on the VALUE field being
+  // non-empty instead (compare + isNotEmpty), same pattern as the HSN
+  // table's own visibility check below. `always: true` rows (Sub Total,
+  // Total Taxable Amount, Grand Total) skip conditions on both fields.
+  const row = (labelName, valueName, y, { always = false, ...styleOverrides } = {}) => [
+    textField({
+      name: labelName,
+      position: { x: 105, y },
+      width: 55,
+      height: 4,
+      fontSize: 8,
+      lineHeight: 1.3,
+      content: labelName,
+      ...(always ? {} : { visibilityCondition: { mode: "compare", field: valueName, operator: "isNotEmpty" } }),
+      ...styleOverrides,
+    }),
+    textField({
+      name: valueName,
+      position: { x: 160, y },
+      width: 40,
+      height: 4,
+      fontSize: 8,
+      alignment: "right",
+      lineHeight: 1.3,
+      content: "0.00",
+      ...(always ? {} : { visibilityCondition: { mode: "hideIfEmpty" } }),
+      ...styleOverrides,
+    }),
+  ];
+
+  let y = 200;
+  const rowStep = 4.3;
+  const totalsRows = [];
+
+  totalsRows.push(...row("subTotalLabel", "subTotalValue", y, { always: true }));
+  y += rowStep;
+  totalsRows.push(...row("packingChargeLabel", "packingChargeValue", y));
+  y += rowStep;
+  totalsRows.push(...row("transportChargeLabel", "transportChargeValue", y));
+  y += rowStep;
+  totalsRows.push(...row("cashDiscountLabel", "cashDiscountValue", y));
+  y += rowStep;
+  totalsRows.push(...row("taxableAmountLabel", "taxableAmountValue", y, { always: true }));
+  y += rowStep;
+  totalsRows.push(...row("gstLine1Label", "gstLine1Value", y));
+  y += rowStep;
+  totalsRows.push(...row("gstLine2Label", "gstLine2Value", y));
+  y += rowStep;
+  totalsRows.push(...row("tcsLabel", "tcsValue", y));
+  y += rowStep;
+  totalsRows.push(...row("roundOffLabel", "roundOffValue", y));
+  y += rowStep;
+  // Grand Total — bold, own accent color (matches the EJS's
+  // `style="border-bottom: 0; color: green;"` row), always shown (it's the
+  // real total, unlike every conditional row above it).
+  totalsRows.push(...row("grandTotalLabel", "grandTotalValue", y, { always: true, fontName: "Poppins Bold", fontColor: "#007a00" }));
+  y += rowStep;
+  totalsRows.push(...row("advancePaymentLabel", "advancePaymentValue", y));
+  y += rowStep;
+  // Payable Amount — matches the EJS's `style="color: orange;"` row.
+  totalsRows.push(...row("payableAmountLabel", "payableAmountValue", y, { fontColor: "#cc7a00" }));
+
+  return [
+    tableField({
+      name: "hsnTaxTable",
+      position: { x: 10, y: 167 },
+      width: 190,
+      height: 30,
+      showHead: true,
+      content: JSON.stringify([HSN_TAX_COLUMNS.map(() => "")]),
+      head: HSN_TAX_COLUMNS.map((c) => c.label),
+      headWidthPercentages: HSN_TAX_COLUMNS.map((c) => c.widthPct),
+      headStyles: { backgroundColor: "#f0f0f0", fontColor: "#000000", fontSize: 6.5, alignment: "center", padding: { top: 1, right: 1, bottom: 1, left: 1 } },
+      bodyStyles: { fontSize: 6.5, alignment: "left", padding: { top: 1, right: 1, bottom: 1, left: 1 } },
+      columnStyles: Object.fromEntries(HSN_TAX_COLUMNS.map((c, i) => [i, { alignment: c.alignment }])),
+      visibilityCondition: { mode: "compare", field: "gstLine1Label", operator: "isNotEmpty" },
+    }),
+    textField({
+      name: "bankDetailsText",
+      position: { x: 10, y: 200 },
+      width: 90,
+      height: 8,
+      fontSize: 7,
+      fontName: "Poppins Bold",
+      lineHeight: 1.3,
+      content: "",
+      visibilityCondition: { mode: "hideIfEmpty" },
+    }),
+    textField({
+      name: "grandTotalWordsText",
+      position: { x: 10, y: 209 },
+      width: 90,
+      height: 8,
+      fontSize: 7.5,
+      fontName: "Poppins Bold",
+      lineHeight: 1.3,
+      content: "",
+      visibilityCondition: { mode: "hideIfEmpty" },
+    }),
+    textField({
+      name: "remarksText",
+      position: { x: 10, y: 218 },
+      width: 90,
+      height: 10,
+      fontSize: 7.5,
+      lineHeight: 1.3,
+      content: "",
+      visibilityCondition: { mode: "hideIfEmpty" },
+    }),
+    textField({
+      name: "noteText",
+      position: { x: 10, y: 229 },
+      width: 90,
+      height: 8,
+      fontSize: 7.5,
+      fontName: "Poppins Bold",
+      lineHeight: 1.3,
+      content: "",
+      visibilityCondition: { mode: "hideIfEmpty" },
+    }),
+    ...totalsRows,
+  ];
+}
+
 export function buildDocTemplate(
   docTitle,
   { headerVariant = "details", footerImage = false, columnOptions = {}, headerHeightMM = 18, footerHeightMM = 15 } = {},
@@ -519,39 +670,21 @@ export function buildDocTemplate(
           content: "Team Member Name",
         }),
         buildItemsTableField(columnOptions),
-        textField({
-          name: "totalsBlock",
-          position: { x: 105, y: 170 },
-          width: 95,
-          height: 35,
-          fontSize: 9,
-          lineHeight: 1.6,
-          alignment: "right",
-          content: "Sub Total: 0.00\nTotal Amount: 0.00\nGrand Total: 0.00",
-        }),
-        textField({
-          name: "grandTotalWords",
-          position: { x: 10, y: 170 },
-          width: 90,
-          height: 20,
-          fontSize: 8,
-          lineHeight: 1.4,
-          content: "Grand Total In Words: Zero Rupees Only",
-        }),
+        ...buildHsnAndTotalsFields(),
         textField({
           name: "termsAndConditions",
-          position: { x: 10, y: 250 },
+          position: { x: 10, y: 255 },
           width: 120,
-          height: 25,
+          height: 20,
           fontSize: 7,
           lineHeight: 1.4,
           content: "Terms & Conditions:\n(your terms text)",
         }),
         textField({
           name: "signatureLine",
-          position: { x: 140, y: 250 },
+          position: { x: 140, y: 255 },
           width: 60,
-          height: 25,
+          height: 20,
           fontSize: 8,
           alignment: "right",
           lineHeight: 1.6,
@@ -560,7 +693,7 @@ export function buildDocTemplate(
         imageField({
           name: "signatureImage",
           dataSource: "companySignatureImage",
-          position: { x: 155, y: 258 },
+          position: { x: 155, y: 263 },
           width: 40,
           height: 12,
           content: "",

@@ -4872,6 +4872,7 @@ export const pdfOrder = async (req, res) => {
             gstin: companyDetail.gst_number,
             mobile: companyDetail.printed_number,
             email: companyDetail.company_email,
+            state: companyStateName,
             headerImage,
             logoImage,
             footerImage,
@@ -4915,6 +4916,28 @@ export const pdfOrder = async (req, res) => {
           cartValues: cartData,
           tenantDB: req.tenantDB,
           doc_type: pdfmeDocType,
+          // Same company-state-vs-customer-state comparison the old EJS path
+          // already computes above (customerStateName/companyStateName) —
+          // decides CGST+SGST split vs IGST in the HSN/GST summary table.
+          isSameState: !!companyStateName && companyStateName === customerStateName,
+          packingChargeLabel: cartData.packing_forwarding_charge_title || "Packing Charge",
+          transportChargeLabel: cartData.transport_charge_title || "Transport Charge",
+          tcsLabel: cartData.tcs_title || "TCS",
+          // bank_detail is rich-text (old EJS renders it raw/unescaped,
+          // <%- %>) — pdfme text fields don't render HTML, so it's flattened
+          // to plain text here: <br>/</p> become newlines, remaining tags
+          // are stripped.
+          bankDetails: (companyDetail.bank_detail || "")
+            .replace(/<br\s*\/?>/gi, "\n")
+            .replace(/<\/p>/gi, "\n")
+            .replace(/<[^>]+>/g, "")
+            .trim(),
+          remarks: cartData.cart_remark || "",
+          note: settingDetails.note ? cartData.cart_note || "" : "",
+          packingHSN: PACKING_FORWARDING_CHARGE_HSN_CODE,
+          packingGSTRate: PACKING_FORWARDING_CHARGE_GST,
+          transportHSN: TRANSPORT_CHARGE_HSN_CODE,
+          transportGSTRate: TRANSPORT_CHARGE__GST,
         });
 
         fs.writeFileSync(tempFilePath, buffer);

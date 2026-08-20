@@ -12,9 +12,11 @@ import { loadFonts } from "./fonts.js";
 import { overlayItemImages } from "./imageOverlay.js";
 import {
   applyConditionalVisibility,
+  buildCashDiscount,
   buildComputedFields,
   buildExtraPages,
   buildHsnSummary,
+  buildHsnTaxRows,
   buildInputsForCart,
   fillMissingInputsFromContent,
   injectPaymentQRField,
@@ -150,6 +152,23 @@ export async function generateQuotationPdf({
   customFieldRows,
   cartValues,
   tenantDB,
+  // Totals-box + HSN/GST-table inputs (buildTemplate.js's buildHsnAndTotalsFields,
+  // orderInputMapper.js's buildHsnTaxRows/buildCashDiscount) — same
+  // company/customer state comparison and fixed HSN/GST-rate constants for
+  // packing/transport charges orderServices.js already resolves for the EJS
+  // path (TRANSPORT_CHARGE_HSN_CODE etc., appConstants.js), passed straight
+  // through rather than re-resolved here.
+  isSameState = false,
+  packingChargeLabel,
+  transportChargeLabel,
+  tcsLabel,
+  bankDetails,
+  remarks,
+  note,
+  packingHSN,
+  packingGSTRate,
+  transportHSN,
+  transportGSTRate,
   // Historical name (this started Quotation-only) — now doc-type generic.
   // Every cart-shaped doc type (Sales Order, Sales Invoice, etc.) shares
   // this exact same engine/dictionary (templates.js's DOC_TYPES,
@@ -200,6 +219,9 @@ export async function generateQuotationPdf({
     payableAmount: computed.payableAmount,
   });
 
+  const cashDiscount = buildCashDiscount(cart);
+  const hsnTaxRows = buildHsnTaxRows({ items, cart, isSameState, packingHSN, packingGSTRate, transportHSN, transportGSTRate });
+
   const rawInputs = buildInputsForCart({
     company,
     buyer,
@@ -207,6 +229,18 @@ export async function generateQuotationPdf({
     computed,
     items,
     columnOptions: resolvedColumnOptions,
+    totals: {
+      isSameState,
+      packingChargeLabel,
+      transportChargeLabel,
+      tcsLabel,
+      cashDiscountLabel: cashDiscount.label,
+      cashDiscountAmount: cashDiscount.amount,
+      bankDetails,
+      remarks,
+      note,
+      hsnTaxRows,
+    },
   });
 
   let resolvedInputs = resolveDataSources(template, rawInputs);

@@ -244,7 +244,8 @@ export function buildComputedFields(cart, numberTowords) {
   const advancePayment = Number(cart?.advance_payment) || 0;
 
   return {
-    subTotal: num(cart?.taxable_amt),
+    subTotal: num(cart?.total_amt),
+    taxableAmount: num(cart?.taxable_amt),
     gstAmount: num(cart?.gst_amt),
     packingCharge: num(cart?.packing_forwarding_charge),
     transportCharge: num(cart?.transport_charge),
@@ -257,11 +258,30 @@ export function buildComputedFields(cart, numberTowords) {
   };
 }
 
-// HSN Summary — grouped from real item rows (item_hsn_code + item_total),
-// since there's no precomputed summary column anywhere in the real system
-// (the old EJS pipeline doesn't build one either — this is new value, not a
-// port of existing logic). One line per distinct HSN code: code, item count,
-// summed taxable total.
+// Cash discount — same computation as orderPdfV1.ejs (~line 968-975):
+// percentage-based (cash_discount_type == 1) is computed off Sub Total +
+// packing + transport, not off Taxable Amount — a flat-amount discount
+// (cash_discount_type != 1) is used as-is. Label carries the "(X%)" suffix
+// only for the percentage variant, exactly like the EJS's cashDiscLabel.
+export function buildCashDiscount(cart) {
+  const raw = Number(cart?.cash_discount) || 0;
+  if (!raw) return { amount: 0, label: "Cash Discount" };
+  if (Number(cart?.cash_discount_type) === 1) {
+    const packing = Number(cart?.packing_forwarding_charge) || 0;
+    const transport = Number(cart?.transport_charge) || 0;
+    const gross = (Number(cart?.total_amt) || 0) + packing + transport;
+    return { amount: (gross * raw) / 100, label: `Cash Discount (${raw}%)` };
+  }
+  return { amount: raw, label: "Cash Discount" };
+}
+
+// Plain one-line-per-HSN-code text summary — kept as its own dictionary
+// entry (dataDictionary.js's "hsnSummary" key) for anyone binding a simple
+// text field to it. NOT what orderPdfV1.ejs's real GST summary table is —
+// see buildHsnTaxRows() below for that (confirmed by reading orderPdfV1.ejs
+// directly: it has a full CGST/SGST/IGST-rate-and-amount table, not a plain
+// per-HSN text line — an earlier version of this comment claimed no such
+// summary existed in the old EJS at all, which was wrong).
 export function buildHsnSummary(items) {
   const groups = new Map();
   (items || []).forEach((item) => {
@@ -276,6 +296,77 @@ export function buildHsnSummary(items) {
   return Array.from(groups.entries())
     .map(([hsn, { count, amount }]) => `${hsn}: ${count} item(s), ${amount.toFixed(2)}`)
     .join("\n");
+}
+
+// Real GST tax summary table — port of orderPdfV1.ejs's `gst_summery` table
+// (~line 1067-1218): one row per distinct (HSN code, GST rate) item group,
+// PLUS a separate row each for packing charge and transport charge (each
+// taxed at its own fixed HSN/rate — TRANSPORT_CHARGE_HSN_CODE/GST,
+// PACKING_FORWARDING_CHARGE_HSN_CODE/GST in appConstants.js, passed in by
+// the caller rather than imported here — this module stays constants-free,
+// same reasoning as every other caller-supplied value), PLUS a Total row.
+// isSameState decides CGST+SGST split (half rate each) vs IGST (full rate) —
+// same company-state-vs-customer-state comparison the EJS does. Always
+// returns the SAME 9-column union shape (HSN, Taxable, CGST Rate/Amt, SGST
+// Rate/Amt, IGST Rate/Amt, Total) regardless of isSameState — the inapplicable
+// rate/amt columns are just blank for that row, rather than the EJS's
+// approach of omitting the CGST/SGST or IGST <th>s outright (pdfme table
+// fields have one fixed column count per saved template; conditionally
+// switching column COUNT per transaction isn't compatible with a
+// Designer-saved template the way a per-row visibility toggle is).
+export function buildHsnTaxRows({ items, cart, isSameState, packingHSN, packingGSTRate, transportHSN, transportGSTRate }) {
+  const fmt = (n) => Number(n || 0).toFixed(2);
+  const taxRow = (hsn, taxable, rate) => {
+    const half = rate / 2;
+    const cgst = isSameState ? (taxable * half) / 100 : 0;
+    const sgst = isSameState ? (taxable * half) / 100 : 0;
+    const igst = !isSameState ? (taxable * rate) / 100 : 0;
+    return [
+      String(hsn ?? ""),
+      fmt(taxable),
+      isSameState ? fmt(half) + "%" : "",
+      isSameState ? fmt(cgst) : "",
+      isSameState ? fmt(half) + "%" : "",
+      isSameState ? fmt(sgst) : "",
+      !isSameState ? fmt(rate) + "%" : "",
+      !isSameState ? fmt(igst) : "",
+      fmt(cgst + sgst + igst),
+    ];
+  };
+
+  const groups = new Map();
+  (items || []).forEach((item) => {
+    const hsn = item.item_hsn_code?.trim() || "Unknown";
+    const rate = Number(item.item_gst) || 0;
+    const key = `${hsn}|||${rate}`;
+    const entry = groups.get(key) || { hsn, rate, taxable: 0 };
+    entry.taxable += Number(item.item_total) || 0;
+    groups.set(key, entry);
+  });
+
+  const rows = Array.from(groups.values()).map((g) => taxRow(g.hsn, g.taxable, g.rate));
+
+  const packing = Number(cart?.packing_forwarding_charge) || 0;
+  if (packing > 0) rows.push(taxRow(packingHSN, packing, packingGSTRate));
+
+  const transport = Number(cart?.transport_charge) || 0;
+  if (transport > 0) rows.push(taxRow(transportHSN, transport, transportGSTRate));
+
+  const totalGst = Number(cart?.gst_amt) || 0;
+  const halfTotal = totalGst / 2;
+  rows.push([
+    "Total",
+    fmt(cart?.taxable_amt),
+    "",
+    isSameState ? fmt(halfTotal) : "",
+    "",
+    isSameState ? fmt(halfTotal) : "",
+    "",
+    !isSameState ? fmt(totalGst) : "",
+    fmt(totalGst),
+  ]);
+
+  return rows;
 }
 
 // Sample data for Generate Preview's empty-state fallback — a company with
@@ -302,7 +393,7 @@ export function getSampleDataForPreview() {
 // extraction from raw cart.dataValues/companyDetail happens at the call
 // site (orderServices.js), not here — keeps this module's job to shaping,
 // not digging through DB rows it doesn't own the schema of.
-export function buildInputsForCart({ company, buyer, order, computed, items, columnOptions }) {
+export function buildInputsForCart({ company, buyer, order, computed, items, columnOptions, totals = {} }) {
   const columns = resolveColumns(columnOptions);
 
   const itemsTableRows = (items || []).map((item, index) =>
@@ -370,9 +461,63 @@ export function buildInputsForCart({ company, buyer, order, computed, items, col
     payableAmount: computed?.payableAmount ?? "",
     hsnSummary: computed?.hsnSummary ?? "",
 
-    // totalsBlock/grandTotalWords are the template's own static-text
-    // fields (buildTemplate.js) — kept in sync with the Computed group so
-    // either binding style (whole block vs individual figures) works.
+    // Real totals-box rows (buildTemplate.js's buildDocTemplate) — port of
+    // orderPdfV1.ejs's total_summery table (~line 881-1062). Each row is its
+    // own fixed-position label+value field pair (hidden via
+    // visibilityCondition when not applicable to this transaction) rather
+    // than one dynamic block — see the plan discussion this replaced: kept
+    // per-row Designer-draggable at the accepted cost of a blank gap where a
+    // hidden row was, instead of everything reflowing to fill the space.
+    subTotalLabel: "Sub Total",
+    subTotalValue: computed?.subTotal ?? "",
+
+    packingChargeLabel: totals.packingChargeLabel ?? "Packing Charge",
+    packingChargeValue: computed?.packingCharge && Number(computed.packingCharge) !== 0 ? computed.packingCharge : "",
+
+    transportChargeLabel: totals.transportChargeLabel ?? "Transport Charge",
+    transportChargeValue: computed?.transportCharge && Number(computed.transportCharge) !== 0 ? computed.transportCharge : "",
+
+    cashDiscountLabel: totals.cashDiscountLabel ?? "Cash Discount",
+    cashDiscountValue: totals.cashDiscountAmount ? num(totals.cashDiscountAmount) : "",
+
+    taxableAmountLabel: "Total Taxable Amount",
+    taxableAmountValue: computed?.taxableAmount ?? "",
+
+    // gstLine1/2: CGST+SGST (same state) or IGST alone (different state) —
+    // same mutually-exclusive branch as orderPdfV1.ejs's totals table
+    // (~line 987-1005). gstLine2 stays blank/hidden for the IGST case,
+    // rather than adding a 3rd row slot — matches the EJS's own row count
+    // per branch (2 rows same-state, 1 row different-state).
+    gstLine1Label: Number(computed?.gstAmount) > 0 ? (totals.isSameState ? "CGST" : "IGST") : "",
+    gstLine1Value: Number(computed?.gstAmount) > 0 ? num(totals.isSameState ? Number(computed.gstAmount) / 2 : computed.gstAmount) : "",
+    gstLine2Label: Number(computed?.gstAmount) > 0 && totals.isSameState ? "SGST" : "",
+    gstLine2Value: Number(computed?.gstAmount) > 0 && totals.isSameState ? num(Number(computed.gstAmount) / 2) : "",
+
+    tcsLabel: totals.tcsLabel ?? "TCS",
+    tcsValue: computed?.tcsAmount && Number(computed.tcsAmount) !== 0 ? computed.tcsAmount : "",
+
+    roundOffLabel: "Round Off",
+    roundOffValue: computed?.roundOff && Number(computed.roundOff) !== 0 ? computed.roundOff : "",
+
+    grandTotalLabel: "Grand Total",
+    grandTotalValue: computed?.grandTotal ?? "",
+
+    advancePaymentLabel: "Advance Received Amount",
+    advancePaymentValue: computed?.advancePayment && Number(computed.advancePayment) !== 0 ? computed.advancePayment : "",
+    payableAmountLabel: "Payable Amount",
+    payableAmountValue: computed?.advancePayment && Number(computed.advancePayment) !== 0 ? computed.payableAmount : "",
+
+    bankDetailsText: totals.bankDetails ?? "",
+    grandTotalWordsText: computed?.grandTotalInWords ? `Grand Total In Words : ${computed.grandTotalInWords}` : "",
+    remarksText: totals.remarks ?? "",
+    noteText: totals.note ?? "",
+
+    hsnTaxTable: JSON.stringify(totals.hsnTaxRows ?? []),
+
+    // totalsBlock/grandTotalWords: legacy single-block fields, superseded
+    // by the per-row fields above — no longer bound to a visible field in
+    // buildDocTemplate.js, kept here only so a template saved before this
+    // change (still referencing them via dataSource) doesn't render blank.
     totalsBlock: `Sub Total: ${computed?.subTotal ?? ""}\nGrand Total: ${computed?.grandTotal ?? ""}`,
     grandTotalWords: `Grand Total In Words: ${computed?.grandTotalInWords ?? ""}`,
   };

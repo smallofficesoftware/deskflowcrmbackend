@@ -116,7 +116,7 @@ export function applyTemplateOptions(id, loadedTemplate, { header = null, column
 export function withCompanyHeader(template, company) {
   const cloned = structuredClone(template);
   const contactLine =
-    `Mo.: ${company.mobile}  Email: ${company.email}  GSTIN: ${company.gstin}  State: ${company.state}`;
+    `Mo.: ${company.mobile ?? ""}  Email: ${company.email ?? ""}  GSTIN: ${company.gstin ?? ""}  State: ${company.state ?? ""}`;
   const addressLine = `Address: ${company.address}\n${contactLine}`;
   const combinedBlock = `${company.name}\n${addressLine}`;
 
