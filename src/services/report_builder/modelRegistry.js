@@ -543,6 +543,13 @@ export const MODEL_REGISTRY = {
     columns: {
       year: { label: "Year", type: "number", filterable: true, sortable: true, groupable: true },
       month: { label: "Month", type: "number", filterable: true, sortable: true, groupable: true },
+      total_present_day: { label: "Present Days", type: "number", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      half_day: { label: "Half Days", type: "number", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      total_leave: { label: "Leave Days", type: "number", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      total_absent: { label: "Absent Days", type: "number", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      working_hour: { label: "Working Hours", type: "number", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      ctc: { label: "CTC", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      gross_salary: { label: "Gross Salary", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
       total_earning: { label: "Total Earning", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
       total_deduction: { label: "Total Deduction", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
       net_bank_pay: { label: "Net Pay", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
@@ -556,6 +563,9 @@ export const MODEL_REGISTRY = {
         targetKey: "id",
         columns: {
           username: { label: "Employee", type: "string" },
+          recovery_mobile: { label: "Mobile", type: "string" },
+          aadhar_card_number: { label: "Aadhar Number", type: "string" },
+          pan_card_number: { label: "PAN Number", type: "string" },
         },
       },
     },
