@@ -2546,3 +2546,26 @@ ALTER TABLE `addon_masters` ADD `is_qty_enable` TINYINT(4) NOT NULL DEFAULT '1' 
 22-08-2026 Dhaval
 ALTER TABLE `products` ADD COLUMN `document_template_id` INT(11) NULL DEFAULT NULL;
 ALTER TABLE `document_print_templates` ADD COLUMN `include_product_pages` TINYINT(4) DEFAULT 0;
+
+22-08-2026 Dhaval
+CREATE TABLE `reviews` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `company_masters_id` INT(11) NULL,
+  `a_application_login_id` INT(11) NULL,
+  `rating` TINYINT(4) NULL,
+  `review_type` ENUM('system','playstore','appstore') NULL,
+  `comment` TEXT NULL,
+  `platform` ENUM('app','web') NULL,
+  `is_completed` TINYINT(4) NOT NULL DEFAULT 0,
+  `rating_given_date` DATETIME NULL,
+  `last_asked_date` DATETIME NULL,
+  `store_prompt_last_asked_date` DATETIME NULL,
+  `store_review_completed` TINYINT(4) NOT NULL DEFAULT 0,
+  `created_date_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `modified_date` DATETIME NULL,
+  `isDelete` TINYINT(4) NOT NULL DEFAULT 0,
+  `isActive` TINYINT(4) NOT NULL DEFAULT 1,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+ALTER TABLE `reviews` ADD UNIQUE INDEX(`company_masters_id`, `a_application_login_id`);
