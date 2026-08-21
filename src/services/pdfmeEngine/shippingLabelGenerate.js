@@ -5,6 +5,7 @@
 // per-company Designer template lookup) that doesn't apply to a label.
 import { generate } from "@pdfme/generator";
 import * as plugins from "@pdfme/schemas";
+import { documentPrintTemplateModel } from "../../models/company_setup/documentPrintTemplateModel.js";
 import { loadFonts } from "./fonts.js";
 import {
   applyConditionalVisibility,
@@ -27,8 +28,36 @@ function formatInr(value) {
 // site generates a PNG QR for this path instead of reusing the SVG string).
 // showProductSection: printSetting?.ProductSection boolean, same flag the EJS
 // template checks. dynamicTerms: same string the EJS path already computes.
-export async function generateShippingLabelPdf({ cart, company, items, qrDataUri, dynamicTerms, showProductSection }) {
-  const template = buildShippingLabelTemplate();
+export async function generateShippingLabelPdf({
+  cart,
+  company,
+  items,
+  qrDataUri,
+  dynamicTerms,
+  showProductSection,
+  documentTemplateId,
+  tenantDB,
+}) {
+  // Same lookup order generateQuotationPdf uses: an explicitly picked
+  // template, else the company's own default for this doc_type, else the
+  // built-in fixed layout.
+  let template = null;
+  if (tenantDB) {
+    const Template = documentPrintTemplateModel(tenantDB);
+    let templateRow = null;
+    if (documentTemplateId) {
+      templateRow = await Template.findOne({
+        where: { id: documentTemplateId, company_masters_id: company?.id, isDelete: 0 },
+      });
+    }
+    if (!templateRow) {
+      templateRow = await Template.findOne({
+        where: { company_masters_id: company?.id, doc_type: "shippingLabel", is_default: 1, isDelete: 0 },
+      });
+    }
+    if (templateRow) template = JSON.parse(templateRow.published_template_json);
+  }
+  if (!template) template = buildShippingLabelTemplate();
 
   const addressParts = [
     cart?.shipping_address || "",

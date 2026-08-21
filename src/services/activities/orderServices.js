@@ -5942,9 +5942,10 @@ export const fetchShippingLabelPrint = async (req, res) => {
     const pdfPath = `${company.id}/${fileName}`;
 
     // pdfme Document Designer — same per-company opt-in as §5's cart-doc
-    // path (orderServices.js:4810). Shipping label isn't Designer-customizable
-    // yet (shippingLabelTemplate.js is a fixed port, not a document_print_templates
-    // row), so this only decides which renderer produces the bytes.
+    // path (orderServices.js:4810). document_template_id (from the
+    // frontend's picker, when the company has 2+ shippingLabel templates)
+    // selects a company-customized template; otherwise the company's
+    // default row (if any) or the built-in fixed layout is used.
     const documentDesignerEnabled = await isFeatureEnabled(company.id, "document_designer");
 
     if (documentDesignerEnabled) {
@@ -5961,6 +5962,8 @@ export const fetchShippingLabelPrint = async (req, res) => {
         company,
         items,
         qrDataUri,
+        documentTemplateId: req.body.document_template_id,
+        tenantDB: req.tenantDB,
         dynamicTerms,
         showProductSection: !!printSetting?.ProductSection,
       });
