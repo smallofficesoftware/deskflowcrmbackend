@@ -17,6 +17,8 @@ import {
   sanitizeObjectOfNull
 } from "../../utils/sharedFunctions.js";
 import { getCompanyByLoginId, insertStagesAndStatusLogs } from "../commonServices.js";
+import { isFeatureEnabled } from "../company_setup/featureFlagServices.js";
+import { generateTaskDueListPdf } from "../pdfmeEngine/taskDueListGenerate.js";
 
 import { randomUUID } from "crypto";
 import moment from "moment";
@@ -3360,22 +3362,6 @@ export const generateDueTaskPdfandSendMail = async (req) => {
     //     }
     //   })
     // );
-    let dynamicPrintView = 1;
-    const htmlTemplate = fs.readFileSync(
-      path.join(
-        __dirnameConstant,
-        `../views/task/dueTaskListViewV${dynamicPrintView}.ejs`
-      ),
-      "utf-8"
-    );
-
-    const renderedHtml = await ejs.render(htmlTemplate,
-      {
-        companyData,
-        teamWiseTaskList,
-        currentDate: moment(currentDate).format("DD-MM-YYYY")
-      });
-
     const uploadDir = path.resolve(
       __dirnameConstant,
       `../../media-folder/task_cron/${companyData.id.toString()}`
@@ -3385,32 +3371,58 @@ export const generateDueTaskPdfandSendMail = async (req) => {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
 
-    const options = {
-      format: "A4",
-      orientation: "landscape",
-      border: "15mm",
-      footer: {
-        height: "5mm",
-        contents: {
-          default: `<span style="color: #444;">{{page}}</span>/<span>{{pages}}</span>`,
-        },
-      },
-    };
-
     const file_name = generateFileName("due_task_mail_data")
     const filePath = path.join(uploadDir, `${file_name}.pdf`);
     const pdfPath = `${companyData.id.toString()}/${file_name}.pdf`;
 
-    const document = {
-      html: renderedHtml,
-      data: {},
-      path: filePath,
-      type: "",
-    };
-
     const fileLinkPath = PDF_LINK_EXTENDED_TASK_CRONE + pdfPath;
 
-    await pdf.create(document, options);
+    // pdfme Document Designer — same per-company opt-in as §5's cart-doc path
+    // (orderServices.js:4810). This report isn't Designer-customizable yet
+    // (taskDueListTemplate.js is a fixed port), just a renderer switch.
+    const documentDesignerEnabled = await isFeatureEnabled(companyData.id, "document_designer");
+
+    if (documentDesignerEnabled) {
+      const buffer = await generateTaskDueListPdf({ companyData, teamWiseTaskList });
+      fs.writeFileSync(filePath, buffer);
+    } else {
+      let dynamicPrintView = 1;
+      const htmlTemplate = fs.readFileSync(
+        path.join(
+          __dirnameConstant,
+          `../views/task/dueTaskListViewV${dynamicPrintView}.ejs`
+        ),
+        "utf-8"
+      );
+
+      const renderedHtml = await ejs.render(htmlTemplate,
+        {
+          companyData,
+          teamWiseTaskList,
+          currentDate: moment(currentDate).format("DD-MM-YYYY")
+        });
+
+      const options = {
+        format: "A4",
+        orientation: "landscape",
+        border: "15mm",
+        footer: {
+          height: "5mm",
+          contents: {
+            default: `<span style="color: #444;">{{page}}</span>/<span>{{pages}}</span>`,
+          },
+        },
+      };
+
+      const document = {
+        html: renderedHtml,
+        data: {},
+        path: filePath,
+        type: "",
+      };
+
+      await pdf.create(document, options);
+    }
 
     if (!fs.existsSync(filePath)) {
       console.error("PDF file was not created at:", filePath);

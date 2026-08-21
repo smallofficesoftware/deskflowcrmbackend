@@ -18,6 +18,10 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import QRCode from "qrcode";
 import Sequelize, { Op } from "sequelize";
 import { getUserRights } from "../../helpers/rightsHelper.js";
+import { isFeatureEnabled } from "../company_setup/featureFlagServices.js";
+import { generateQuotationPdf } from "../pdfmeEngine/generateDocument.js";
+import { generateShippingLabelPdf } from "../pdfmeEngine/shippingLabelGenerate.js";
+import { sniffImageMime } from "../pdfmeEngine/imageOverlay.js";
 import { tenantMiddleware } from "../../middlewares/tenantMiddleware.js";
 import { accountTransactionsModel } from "../../models/activities/accountTransactionsModel.js";
 import { cartSerialNumberModel } from "../../models/activities/cartSerialNumberModel.js";
@@ -4438,12 +4442,20 @@ export const pdfOrder = async (req, res) => {
         "utf-8"
       );
 
-      // Convert image to Base64
+      // Convert image to Base64 — mime sniffed from the real file bytes,
+      // not hardcoded to png. Was fine for the EJS/<img> path (browsers
+      // render most formats even with a wrong-labeled data URI), but
+      // pdfme's own image plugin (used for the §5 pdfme-enabled path's
+      // header/logo/footer/signature images AND the watermark overlay,
+      // both built from this same encoder) trusts the label to pick
+      // pdf-lib's embedPng vs embedJpg — a real JPEG mislabeled as PNG
+      // throws "The input is not a PNG file!" and takes down the whole
+      // generate, not just that one image.
       const encodeImageToBase64 = (filePath) => {
         try {
-
           const image = fs.readFileSync(filePath);
-          return `data:image/png;base64,${image.toString("base64")}`;
+          const mime = sniffImageMime(image) || "image/png";
+          return `data:${mime};base64,${image.toString("base64")}`;
         } catch (err) {
           console.error("Error reading image:", err);
           return "";
@@ -4776,8 +4788,163 @@ export const pdfOrder = async (req, res) => {
         type: "",
       };
 
-      // Generate the main PDF
-      await pdf.create(document, options);
+      // pdfme Document Designer — opt-in per company. Started Quotation-only
+      // (cart type 1); Sales Order (cart type 2) added next, same engine
+      // (templates.js's DOC_TYPES/dataDictionary.js already support both —
+      // only this gate + generateQuotationPdf's doc_type param needed
+      // extending). Isolated to "how tempFilePath's bytes get produced":
+      // everything above (renderedHtml/options/document) and everything
+      // below (attachment merge, upload, response) is untouched either way.
+      const PDFME_DOC_TYPE_BY_CART_TYPE = {
+        1: "quotation",
+        2: "salesOrder",
+        3: "salesInvoice",
+        4: "purchaseInvoice",
+        5: "purchaseOrder",
+        6: "returnSalesInvoice",
+        7: "returnPurchaseInvoice",
+        8: "inward",
+        9: "dispatch",
+        12: "proformaInvoice",
+      };
+      const pdfmeDocType = PDFME_DOC_TYPE_BY_CART_TYPE[resultCartById.dataValues.type];
+      const documentDesignerEnabled =
+        !!pdfmeDocType &&
+        (await isFeatureEnabled(companyDetail.id, "document_designer"));
+
+      if (documentDesignerEnabled) {
+        const cartData = resultCartById.dataValues;
+
+        // encodeImageToBase64 (above) hardcodes a "data:image/png;..." prefix
+        // regardless of the file's real format — fine for the EJS/browser
+        // path (an <img> tag renders most formats even with a wrong-labeled
+        // data URI), but imageOverlay.js's detectImageFormat trusts this
+        // label to pick pdf-lib's embedPng vs embedJpg, and embedPng throws
+        // on real JPEG bytes. Product photos are uploaded as .jpg — needs an
+        // accurately-labeled encoder, not the shared header/logo one.
+        // Mime comes from the real file bytes (sniffImageMime), not the
+        // extension — a mislabeled/renamed file (".jpg" that's actually PNG
+        // bytes, or vice versa) makes pdf-lib's embedJpg throw "SOI not
+        // found in JPEG" since the bytes genuinely aren't the format the
+        // extension claimed.
+        const buildProductImageDataUri = (relativePath) => {
+          if (!relativePath) return "";
+          try {
+            const bytes = fs.readFileSync(
+              path.join(process.cwd(), "media-folder/product-images", relativePath)
+            );
+            const mime = sniffImageMime(bytes);
+            if (!mime) return "";
+            return `data:${mime};base64,${bytes.toString("base64")}`;
+          } catch {
+            return "";
+          }
+        };
+
+        const pdfmeItems = finalData.map((item) => ({
+          description: item.item_product_name,
+          hsn: item.item_hsn_code,
+          qty: item.item_unit_name ? `${item.item_qty} / ${item.item_unit_name}` : item.item_qty,
+          rate: item.item_rate,
+          discount: item.item_discount_pct,
+          total: item.item_total,
+          item_hsn_code: item.item_hsn_code,
+          item_total: item.item_total,
+        }));
+
+        const pdfmeItemImages = resultAllCartItems.map((item) => {
+          const product = productMap[item.item_product_id];
+          if (!product?.product_img) return "";
+          // productMap's product_img is PRODUCT_IMG_LINK_EXTENDED + the raw
+          // DB value ("<companyId>/<filename>.jpg") — strip only the URL
+          // prefix, not the whole path down to the basename, or the
+          // company-folder segment (part of the real on-disk path) is lost.
+          const relativePath = product.product_img.replace(PRODUCT_IMG_LINK_EXTENDED, "");
+          return buildProductImageDataUri(relativePath);
+        });
+
+        const buffer = await generateQuotationPdf({
+          documentTemplateId: req.body?.document_template_id,
+          company: {
+            id: companyDetail.id,
+            name: companyDetail.company_name,
+            address: companyDetail.address,
+            gstin: companyDetail.gst_number,
+            mobile: companyDetail.printed_number,
+            email: companyDetail.company_email,
+            state: companyStateName,
+            headerImage,
+            logoImage,
+            footerImage,
+            signImage,
+            watermark_in_print: companyDetail.watermark_in_print,
+            // Same viewTitle/dynamicColor the old EJS path already computed
+            // above (per-company <type>_title/<type>_view_color, falling
+            // back to the type's default) — keeps a company's title/color
+            // customization intact instead of resetting to the ported
+            // static default on every pdfme generate.
+            docTitle: viewTitle,
+            titleColor: dynamicColor,
+            // Same printSetting.paymentQR / companyDetail.upi_id/upi_name
+            // the old EJS path already reads above (~line 4491-4505) to
+            // decide whether to render the UPI payment QR code.
+            paymentQREnabled: !!settingDetails.paymentQR,
+            upiId: companyDetail.upi_id,
+            upiName: companyDetail.upi_name,
+          },
+          buyer: {
+            companyName: cartData.to_customer_company_name,
+            contactName: cartData.to_customer_name,
+            phone: cartData.to_customer_phone,
+            email: cartData.to_customer_email,
+            billingAddress: cartData.Address,
+            shippingAddress: cartData.shipping_address,
+            gstin: cartData.to_customer_gst_number,
+            supplyTo: [customerStateName, customerCityName].filter(Boolean).join(" - "),
+          },
+          order: {
+            number: cartData.cart_number,
+            dateTime: cartData.update_Date_time ? moment(cartData.update_Date_time).format("DD-MM-YYYY hh:mm A") : "",
+            contactPerson: loginDetail?.username,
+          },
+          items: pdfmeItems,
+          cart: cartData,
+          numberTowords,
+          columnOptions: null,
+          itemImages: pdfmeItemImages,
+          customFieldRows: CartCustomFields,
+          cartValues: cartData,
+          tenantDB: req.tenantDB,
+          doc_type: pdfmeDocType,
+          // Same company-state-vs-customer-state comparison the old EJS path
+          // already computes above (customerStateName/companyStateName) —
+          // decides CGST+SGST split vs IGST in the HSN/GST summary table.
+          isSameState: !!companyStateName && companyStateName === customerStateName,
+          packingChargeLabel: cartData.packing_forwarding_charge_title || "Packing Charge",
+          transportChargeLabel: cartData.transport_charge_title || "Transport Charge",
+          tcsLabel: cartData.tcs_title || "TCS",
+          // bank_detail is rich-text (old EJS renders it raw/unescaped,
+          // <%- %>) — pdfme text fields don't render HTML, so it's flattened
+          // to plain text here: <br>/</p> become newlines, remaining tags
+          // are stripped.
+          bankDetails: (companyDetail.bank_detail || "")
+            .replace(/<br\s*\/?>/gi, "\n")
+            .replace(/<\/p>/gi, "\n")
+            .replace(/<[^>]+>/g, "")
+            .trim(),
+          remarks: cartData.cart_remark || "",
+          note: settingDetails.note ? cartData.cart_note || "" : "",
+          packingHSN: PACKING_FORWARDING_CHARGE_HSN_CODE,
+          packingGSTRate: PACKING_FORWARDING_CHARGE_GST,
+          transportHSN: TRANSPORT_CHARGE_HSN_CODE,
+          transportGSTRate: TRANSPORT_CHARGE__GST,
+        });
+
+        fs.writeFileSync(tempFilePath, buffer);
+      } else {
+        // Generate the main PDF
+        await pdf.create(document, options);
+      }
 
       // ✅ MERGE PDFs if attachments exist
       if (beforeAttachments.length > 0 || afterAttachments.length > 0) {
@@ -5757,32 +5924,6 @@ export const fetchShippingLabelPrint = async (req, res) => {
       dynamicTerms = company.sales_invoice_terms_conditions;
     }
 
-    //QR (ONLY sr_number)
-    let qrSvg = "";
-    if (cart.sr_by_number) {
-      qrSvg = await QRCode.toString(cart.sr_by_number.toString(), {
-        type: "svg",
-      });
-    }
-
-    //Create folder
-    const htmlTemplate = fs.readFileSync(
-      path.join(__dirnameConstant, "../views/ShippingLabel/shippingLabel.ejs"),
-      "utf-8"
-    );
-
-    //Render HTML
-    const renderedHtml = ejs.render(htmlTemplate, {
-      cart,
-      items,
-      company,
-      qrSvg,
-      printSetting,
-      matchedCartFields,
-      customFields,
-      dynamicTerms,
-    });
-
     //Create folder
     const uploadDir = path.resolve(
       __dirnameConstant,
@@ -5800,21 +5941,76 @@ export const fetchShippingLabelPrint = async (req, res) => {
     //Public path
     const pdfPath = `${company.id}/${fileName}`;
 
-    //Generate PDF
-    const document = {
-      html: renderedHtml,
-      data: {},
-      path: fullPath,
-      type: "",
-    };
+    // pdfme Document Designer — same per-company opt-in as §5's cart-doc
+    // path (orderServices.js:4810). document_template_id (from the
+    // frontend's picker, when the company has 2+ shippingLabel templates)
+    // selects a company-customized template; otherwise the company's
+    // default row (if any) or the built-in fixed layout is used.
+    const documentDesignerEnabled = await isFeatureEnabled(company.id, "document_designer");
 
-    const options = {
-      format: "A5",
-      orientation: "portrait",
-      border: "5mm",
-    };
+    if (documentDesignerEnabled) {
+      let qrDataUri = "";
+      if (cart.sr_by_number) {
+        qrDataUri = await QRCode.toDataURL(cart.sr_by_number.toString(), {
+          margin: 1,
+          color: { dark: "#000000", light: "#FFFFFF" },
+        });
+      }
 
-    await pdf.create(document, options);
+      const buffer = await generateShippingLabelPdf({
+        cart,
+        company,
+        items,
+        qrDataUri,
+        documentTemplateId: req.body.document_template_id,
+        tenantDB: req.tenantDB,
+        dynamicTerms,
+        showProductSection: !!printSetting?.ProductSection,
+      });
+
+      fs.writeFileSync(fullPath, buffer);
+    } else {
+      //QR (ONLY sr_number)
+      let qrSvg = "";
+      if (cart.sr_by_number) {
+        qrSvg = await QRCode.toString(cart.sr_by_number.toString(), {
+          type: "svg",
+        });
+      }
+
+      const htmlTemplate = fs.readFileSync(
+        path.join(__dirnameConstant, "../views/ShippingLabel/shippingLabel.ejs"),
+        "utf-8"
+      );
+
+      //Render HTML
+      const renderedHtml = ejs.render(htmlTemplate, {
+        cart,
+        items,
+        company,
+        qrSvg,
+        printSetting,
+        matchedCartFields,
+        customFields,
+        dynamicTerms,
+      });
+
+      //Generate PDF
+      const document = {
+        html: renderedHtml,
+        data: {},
+        path: fullPath,
+        type: "",
+      };
+
+      const options = {
+        format: "A5",
+        orientation: "portrait",
+        border: "5mm",
+      };
+
+      await pdf.create(document, options);
+    }
 
     //Response
     return resSuccess({

@@ -107,20 +107,26 @@ async function runMaster(category, action) {
         await sequelize.close?.();
         return;
     }
+    // database-master.js exports its config keyed by the ACTUAL NODE_ENV
+    // (development/production/DEMO/...), not a fixed "development" key —
+    // sequelize-cli defaults --env to "development" when not passed, so
+    // without this flag it looks up a key that doesn't exist whenever
+    // NODE_ENV isn't literally "development" (e.g. DEMO/production) and
+    // fails with "Dialect needs to be explicitly supplied".
     if (category === 'status') {
-        await spawnCommandStream('npx', ['sequelize-cli', 'db:migrate:status', '--config', masterDBConfigPath, '--migrations-path', migrationsPath]);
+        await spawnCommandStream('npx', ['sequelize-cli', 'db:migrate:status', '--config', masterDBConfigPath, '--migrations-path', migrationsPath, '--env', NODE_ENV]);
         return;
     }
     const isSeeder = category === 'seeder';
     const baseCommand = isSeeder ? 'db:seed' : 'db:migrate';
     if (action === 'up') {
-        const args = ['sequelize-cli', `${baseCommand}${isSeeder ? ':all' : ''}`, '--config', masterDBConfigPath];
+        const args = ['sequelize-cli', `${baseCommand}${isSeeder ? ':all' : ''}`, '--config', masterDBConfigPath, '--env', NODE_ENV];
         if (isSeeder) args.push('--seeders-path', seedersPath);
         else args.push('--migrations-path', migrationsPath);
         await spawnCommandStream('npx', args);
     } else if (action === 'down') {
         for (let i = 0; i < stepsArg; i++) {
-            const args = ['sequelize-cli', `${baseCommand}:undo`, '--config', masterDBConfigPath];
+            const args = ['sequelize-cli', `${baseCommand}:undo`, '--config', masterDBConfigPath, '--env', NODE_ENV];
             if (isSeeder) args.push('--seeders-path', seedersPath);
             else args.push('--migrations-path', migrationsPath);
             await spawnCommandStream('npx', args);

@@ -50,6 +50,8 @@ import TaskManagement from './activities/taskManagementRouter.js';
 import TaskMessageHistory from './activities/taskMessageHistoryRouter.js';
 import trackingRouter from "./activities/trackingRouter.js";
 import { default as getprintSetting, default as printSetting } from './company_setup/printSettingRouter.js';
+import documentPrintTemplateRouter from './company_setup/documentPrintTemplateRouter.js';
+import featureFlagRouter from './company_setup/featureFlagRouter.js';
 import currencyRouter from "./configuration/currencyRouter.js";
 import updateTenent from "./configuration/updateTenentRouter.js";
 import allInsightsRouter from "./dashboard/allInsightsRouter.js";
@@ -153,6 +155,8 @@ export default () => {
   getCallReport(app);
   printSetting(app);
   getprintSetting(app);
+  documentPrintTemplateRouter(app);
+  featureFlagRouter(app);
   TaskManagement(app);
   TaskMessageHistory(app);
   getTeamAllTask(app)
