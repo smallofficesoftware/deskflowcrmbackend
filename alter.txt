@@ -2303,10 +2303,10 @@ CREATE TABLE `system_document_templates` (
 
 ALTER TABLE `system_document_templates` ADD INDEX(`doc_type`);
 
-20-08-2026 Dhaval
-INSERT INTO `a_application_pages` (`id`, `page_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (146, 'Document Designer', 'document_designer', 'Document Designer', '0', '0', '0', '1', NOW(), UNIX_TIMESTAMP(), '0', '1');
+21-08-2026 Dhaval
+INSERT INTO `a_application_pages` (`id`, `page_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (157, 'Document Designer', 'document_designer', 'Document Designer', '0', '0', '0', '1', NOW(), UNIX_TIMESTAMP(), '0', '1');
 
-INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `extra_information`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, '1', '146', '0', '', NOW(), current_timestamp(), '0', '1'), (NULL, '2', '146', '0', '', NOW(), current_timestamp(), '0', '1'), (NULL, '3', '146', '0', '', NOW(), current_timestamp(), '0', '1'), (NULL, '4', '146', '0', '', NOW(), current_timestamp(), '0', '1');
+INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `extra_information`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, '1', '157', '0', '', NOW(), current_timestamp(), '0', '1'), (NULL, '2', '157', '0', '', NOW(), current_timestamp(), '0', '1'), (NULL, '3', '157', '0', '', NOW(), current_timestamp(), '0', '1'), (NULL, '4', '157', '0', '', NOW(), current_timestamp(), '0', '1');
 
 20-08-2026 Dhaval
 `system_document_templates` seeded with 54 default gallery rows: 10 cart doc_types x 5 header/footer variants (50) + 4 system doc_types (accountStatement, accountTransaction, taskDueList, shippingLabel) x 1 (4). Generated via migration/master/migrations/20260821041424-seed-system-document-templates.js.
