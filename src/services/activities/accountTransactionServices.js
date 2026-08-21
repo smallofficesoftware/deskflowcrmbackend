@@ -47,14 +47,26 @@ import { generateAccountTransactionPdf } from "../pdfmeEngine/accountTransaction
 // accountTransaction (created via Document Designer's generic
 // create/duplicate/copy-from-gallery flow) so generateAccountStatementPdf/
 // generateAccountTransactionPdf can bind data into it directly instead of
-// building the default dynamically-sized layout. Returns null (falls back
-// to the default) when no id is given or the row isn't found.
-async function loadAccountTemplateOverride(req, companyMastersId, documentTemplateId) {
-  if (!documentTemplateId) return null;
+// building the default dynamically-sized layout. Same fallback order
+// generateQuotationPdf/generateShippingLabelPdf already use: an explicitly
+// picked id, else the company's own is_default row for that doc_type, else
+// null (caller falls back to the built-in layout). Without the is_default
+// fallback, a company with exactly one customized template (no picker,
+// since that only shows at 2+) would have its customization silently
+// ignored on every print — this is what actually fixes that.
+async function loadAccountTemplateOverride(req, companyMastersId, documentTemplateId, docType) {
   const Template = documentPrintTemplateModel(req.tenantDB);
-  const row = await Template.findOne({
-    where: { id: documentTemplateId, company_masters_id: companyMastersId, isDelete: 0 },
-  });
+  let row = null;
+  if (documentTemplateId) {
+    row = await Template.findOne({
+      where: { id: documentTemplateId, company_masters_id: companyMastersId, isDelete: 0 },
+    });
+  }
+  if (!row) {
+    row = await Template.findOne({
+      where: { company_masters_id: companyMastersId, doc_type: docType, is_default: 1, isDelete: 0 },
+    });
+  }
   if (!row) return null;
   return JSON.parse(row.published_template_json);
 }
@@ -1282,7 +1294,8 @@ export const accountPDFv1 = async (req, res) => {
       const templateOverride = await loadAccountTemplateOverride(
         req,
         companyDetail.id,
-        req.body.document_template_id
+        req.body.document_template_id,
+        "accountTransaction"
       );
       const buffer = await generateAccountTransactionPdf({
         companyDetails: companyDetail,
@@ -1488,7 +1501,8 @@ export const allAccountTransactionOfContactPDF = async (req, res) => {
       const templateOverride = await loadAccountTemplateOverride(
         req,
         companyData.id,
-        req.body.document_template_id
+        req.body.document_template_id,
+        "accountStatement"
       );
       const buffer = await generateAccountStatementPdf({
         companyData,
