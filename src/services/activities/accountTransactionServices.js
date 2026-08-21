@@ -1564,6 +1564,57 @@ export const allAccountTransactionOfContactPDF = async (req, res) => {
   }
 };
 
+// Public B2B-portal counterpart — no staff login, scoped by qr_code +
+// contact_id in the URL instead of a_application_login_id in the body.
+// Same tenant-resolution pattern getAllAccountTransactionsForOnlineStore
+// already uses (getTenantDB by the company's own login id), plus an
+// ownership check (contact must belong to that company) before handing off
+// to the exact same allAccountTransactionOfContactPDF that the staff
+// endpoint uses — always the company's default template, no
+// document_template_id (no picker on the customer-facing portal).
+export const allAccountTransactionOfContactPDFOnlineStore = async (req, res) => {
+  try {
+    const { contact_id, qr_code } = req.params;
+    if (!qr_code) {
+      return resBadRequest({ developer_msg: "qr_code is required", ack_msg: "Invalid access" });
+    }
+
+    const companyDataRow = await companyModel.findOne({
+      where: { qr_code, isDelete: 0 },
+      attributes: ["id", "a_application_login_id"],
+    });
+    if (!companyDataRow) {
+      return resError({ ack_msg: "Company not found", developer_msg: `No company found with QR code: ${qr_code}` });
+    }
+
+    const tenantId = companyDataRow.a_application_login_id;
+    const companyId = companyDataRow.id;
+    const tenantDBInfo = await getTenantDB(tenantId, companyId);
+    req.tenantDB = tenantDBInfo.sequelize;
+
+    const ContactMasterModel = contactModel(req.tenantDB);
+    const contactExists = await ContactMasterModel.findOne({
+      where: { id: contact_id, isDelete: 0, company_masters_id: companyId },
+      attributes: ["id"],
+    });
+    if (!contactExists) {
+      return resError({ ack_msg: "Contact not found", developer_msg: "Contact not found for this company" });
+    }
+
+    req.body = {
+      ...req.body,
+      a_application_login_id: tenantId,
+      contact_master_id: contact_id,
+      document_template_id: undefined,
+    };
+
+    return allAccountTransactionOfContactPDF(req, res);
+  } catch (error) {
+    console.error(error);
+    return resBadRequest({ developer_msg: `error ${error}` });
+  }
+};
+
 export const generateAccountTransactionSampleSheet = async (req, res) => {
   try {
     const { a_application_login_id } = req.body;

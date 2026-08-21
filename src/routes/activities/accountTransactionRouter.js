@@ -3,6 +3,7 @@ import {
   allAccountTransactions,
   allAccountTransactionsOnlineStore,
   allContactAccountTransactionPDF,
+  allContactAccountTransactionPDFOnlineStore,
   createAccountTransactions,
   generateAccountTransactionSampleSheetProvider,
   getExcelSheetAccountTransactionProvider,
@@ -29,6 +30,10 @@ export default (app) => {
   app.post(
     "/account-transaction-list-online-store/:contact_id/:qr_code/:contactRequestData",
     allAccountTransactionsOnlineStore
+  );
+  app.post(
+    "/account-statement-pdf-online-store/:contact_id/:qr_code",
+    allContactAccountTransactionPDFOnlineStore
   );
   app.post(
     "/accountTransactionById",
