@@ -36,6 +36,18 @@ export const documentPrintTemplateModel = (sequelize) => {
             type: TINYINT,
             defaultValue: "0",
         },
+        // 'main' -> a real doc-type template, pickable/settable-default for
+        // actual order printing (listDocumentTemplates/list-all both filter
+        // to this). 'extra_page' -> created only via the "Document Designer
+        // Page" custom field's editor (data_type 14) — shares this same
+        // table/doc_type so buildDesignerPageBytes can render it exactly
+        // like any other template, but must never appear in /document-
+        // designer's own per-doc-type list or the real print-time picker,
+        // where it would be confusable with an actual Quotation layout.
+        template_purpose: {
+            type: STRING,
+            defaultValue: "main",
+        },
         display_order: {
             type: INTEGER,
             defaultValue: "0",

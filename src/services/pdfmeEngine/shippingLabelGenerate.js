@@ -9,6 +9,7 @@ import { documentPrintTemplateModel } from "../../models/company_setup/documentP
 import { loadFonts } from "./fonts.js";
 import {
   applyConditionalVisibility,
+  applyTokenSubstitution,
   fillMissingInputsFromContent,
   resolveDataSources,
 } from "./orderInputMapper.js";
@@ -94,6 +95,7 @@ export async function generateShippingLabelPdf({
 
   let resolvedInputs = resolveDataSources(template, rawInputs);
   resolvedInputs = fillMissingInputsFromContent(template, resolvedInputs);
+  resolvedInputs = applyTokenSubstitution(template, resolvedInputs);
   const visibleTemplate = applyConditionalVisibility(template, resolvedInputs);
 
   const pdfBytes = await generate({ template: visibleTemplate, inputs: [resolvedInputs], plugins: pluginMap, options: { font: fontMap } });

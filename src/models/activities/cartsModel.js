@@ -384,6 +384,21 @@ export const cartModel = (sequelize) => {
     carts_column_page_url_5: {
       type: STRING
     },
+    carts_column_designer_page_1: {
+      type: STRING
+    },
+    carts_column_designer_page_2: {
+      type: STRING
+    },
+    carts_column_designer_page_3: {
+      type: STRING
+    },
+    carts_column_designer_page_4: {
+      type: STRING
+    },
+    carts_column_designer_page_5: {
+      type: STRING
+    },
     cart_note: {
       type: STRING
     },

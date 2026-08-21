@@ -10,6 +10,7 @@ import {
   exportDocumentTemplate,
   getDocumentTemplate,
   importDocumentTemplate,
+  listAllDocumentTemplates,
   listDocumentTemplates,
   listSystemTemplates,
   listTemplateVersions,
@@ -29,6 +30,10 @@ export const verifyDocumentManagerPinController = async (req, res) => {
 
 export const listDocumentTemplatesController = async (req, res) => {
   await callServiceMethod(req, res, listDocumentTemplates(req), "listDocumentTemplates");
+};
+
+export const listAllDocumentTemplatesController = async (req, res) => {
+  await callServiceMethod(req, res, listAllDocumentTemplates(req), "listAllDocumentTemplates");
 };
 
 export const getDocumentTemplateController = async (req, res) => {

@@ -520,6 +520,7 @@ const orderTypesCustomInquiryList = [
   { id: "11", order_type_display: "page_text" },
   { id: "12", order_type_display: "page_url" },
   { id: "13", order_type_display: "attechments" },
+  { id: "14", order_type_display: "designer_page" },
 ];
 
 

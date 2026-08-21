@@ -9,6 +9,7 @@ import {
   exportDocumentTemplateController,
   getDocumentTemplateController,
   importDocumentTemplateController,
+  listAllDocumentTemplatesController,
   listDocumentTemplatesController,
   listSystemTemplatesController,
   listTemplateVersionsController,
@@ -26,6 +27,7 @@ import { tenantMiddleware } from "../../middlewares/tenantMiddleware.js";
 export default (app) => {
   app.post("/document-templates/verify-pin", authenticateToken, tenantMiddleware, verifyDocumentManagerPinController);
   app.post("/document-templates/list", authenticateToken, tenantMiddleware, listDocumentTemplatesController);
+  app.post("/document-templates/list-all", authenticateToken, tenantMiddleware, listAllDocumentTemplatesController);
   app.post("/document-templates/get", authenticateToken, tenantMiddleware, getDocumentTemplateController);
   app.post("/document-templates/create", authenticateToken, tenantMiddleware, createDocumentTemplateController);
   app.post("/document-templates/update", authenticateToken, tenantMiddleware, updateDocumentTemplateController);

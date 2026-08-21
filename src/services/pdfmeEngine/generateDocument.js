@@ -12,6 +12,7 @@ import { loadFonts } from "./fonts.js";
 import { overlayItemImages } from "./imageOverlay.js";
 import {
   applyConditionalVisibility,
+  applyTokenSubstitution,
   buildCashDiscount,
   buildComputedFields,
   buildExtraPages,
@@ -84,11 +85,39 @@ async function toImageDataUri(value) {
   return `data:${mime};base64,${Buffer.from(response.data).toString("base64")}`;
 }
 
-async function mergeExtraPages(mainBuffer, basePdf, extraPages) {
+// designerPage entry.value is a document_print_templates id — fetch that
+// company's own saved template and render it as-is: no rawInputs binding
+// (resolveDataSources/fillMissingInputsFromContent with an empty object
+// just pulls each field's own baked-in `content`), since this is a static
+// attached page (terms sheet, flyer), not bound to the current cart's data.
+async function buildDesignerPageBytes(entry, company, tenantDB) {
+  const Template = documentPrintTemplateModel(tenantDB);
+  const row = await Template.findOne({
+    where: { id: entry.value, company_masters_id: company.id, isDelete: 0 },
+  });
+  if (!row?.published_template_json) return null;
+
+  const template = JSON.parse(row.published_template_json);
+  let resolvedInputs = resolveDataSources(template, {});
+  resolvedInputs = fillMissingInputsFromContent(template, resolvedInputs);
+  return generate({ template, inputs: [resolvedInputs], plugins: pluginMap, options: { font: fontMap } });
+}
+
+async function mergeExtraPages(mainBuffer, basePdf, extraPages, company, tenantDB) {
   const { before, after } = extraPages;
   if (before.length === 0 && after.length === 0) return mainBuffer;
 
   const buildBytes = async (entry) => {
+    if (entry.kind === "designerPage") {
+      try {
+        return await buildDesignerPageBytes(entry, company, tenantDB);
+      } catch {
+        // Deleted/inaccessible template shouldn't take down the whole
+        // generate — skip just this one extra page (same as a broken
+        // pageURL image below).
+        return null;
+      }
+    }
     if (entry.kind === "image") {
       let dataUri;
       try {
@@ -187,7 +216,7 @@ export async function generateQuotationPdf({
       templateRow = await Template.findOne({ where: { id: documentTemplateId, company_masters_id: company.id, isDelete: 0 } });
     }
     if (!templateRow) {
-      templateRow = await Template.findOne({ where: { company_masters_id: company.id, doc_type, is_default: 1, isDelete: 0 } });
+      templateRow = await Template.findOne({ where: { company_masters_id: company.id, doc_type, template_purpose: "main", is_default: 1, isDelete: 0 } });
     }
     template = templateRow
       ? JSON.parse(templateRow.published_template_json)
@@ -243,8 +272,14 @@ export async function generateQuotationPdf({
     },
   });
 
+  // itemImages isn't a buildInputsForCart param (it's this function's own
+  // param, same array overlayItemImages below consumes) — merged here rather
+  // than threading it through, same 1:1 index-aligned data-URI shape.
+  rawInputs.firstItemImage = itemImages?.[0] || "";
+
   let resolvedInputs = resolveDataSources(template, rawInputs);
   resolvedInputs = fillMissingInputsFromContent(template, resolvedInputs);
+  resolvedInputs = applyTokenSubstitution(template, resolvedInputs);
 
   template = applyConditionalVisibility(template, resolvedInputs);
 
@@ -263,7 +298,7 @@ export async function generateQuotationPdf({
   }
 
   const extraPages = buildExtraPages(customFieldRows || [], cartValues || {});
-  const finalBuffer = await mergeExtraPages(Buffer.from(pdfBytes), template.basePdf, extraPages);
+  const finalBuffer = await mergeExtraPages(Buffer.from(pdfBytes), template.basePdf, extraPages, company, tenantDB);
 
   return finalBuffer;
 }

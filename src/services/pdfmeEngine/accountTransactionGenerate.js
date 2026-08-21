@@ -1,7 +1,7 @@
 import { generate } from "@pdfme/generator";
 import * as plugins from "@pdfme/schemas";
 import { loadFonts } from "./fonts.js";
-import { fillMissingInputsFromContent, resolveDataSources } from "./orderInputMapper.js";
+import { applyTokenSubstitution, fillMissingInputsFromContent, resolveDataSources } from "./orderInputMapper.js";
 import { buildAccountTransactionTemplate } from "./accountTransactionTemplate.js";
 
 const fontMap = loadFonts();
@@ -129,6 +129,7 @@ export async function generateAccountTransactionPdf({
 
   let resolvedInputs = resolveDataSources(template, rawInputs);
   resolvedInputs = fillMissingInputsFromContent(template, resolvedInputs);
+  resolvedInputs = applyTokenSubstitution(template, resolvedInputs);
 
   const pdfBytes = await generate({ template, inputs: [resolvedInputs], plugins: pluginMap, options: { font: fontMap } });
   return Buffer.from(pdfBytes);

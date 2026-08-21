@@ -29,6 +29,9 @@ const CART_DOC_DICTIONARY = [
   { key: "contactPerson", label: "Contact Person", group: "Order" },
 
   { key: "itemsTable", label: "Items Table", group: "Item" },
+  { key: "firstItemImage", label: "First Item — Product Image", group: "Item" },
+  { key: "firstItemName", label: "First Item — Name", group: "Item" },
+  { key: "firstItemPrice", label: "First Item — Rate", group: "Item" },
 
   // No formula layer in pdfme (confirmed — no expression engine, fields just
   // render whatever `inputs` hands them), so every derived number has to be

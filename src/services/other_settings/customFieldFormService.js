@@ -283,8 +283,8 @@ export const getCustomFieldDatavalues = async (req, res) => {
       ? custom_field_master_id
       : [custom_field_master_id];
 
-    if (!ids.every(id => typeof id === 'number' && id > 0)) {
-      returnresError({
+    if (!ids.every(id => Number(id) > 0)) {
+      return resError({
         ack: 0,
         ack_msg: "All custom_field_master_id values must be positive numbers",
         developer_msg: "Invalid ID format in custom_field_master_id",
