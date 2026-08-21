@@ -28,19 +28,27 @@ deploy_backend() {
   log "=== Backend deploy start ==="
   cd "$BACKEND_DIR" || { log "ERROR: cannot cd to $BACKEND_DIR"; return 1; }
 
-  local old_commit
-  old_commit="$(git rev-parse HEAD)"
   git fetch origin dev >> "$LOG_FILE" 2>&1
   git reset --hard origin/dev >> "$LOG_FILE" 2>&1
 
-  if lockfile_changed "$old_commit" package-lock.json; then
-    npm install >> "$LOG_FILE" 2>&1
-  else
-    log "package-lock.json unchanged, skipping npm install"
+  # package-lock.json is gitignored in this repo, so lockfile_changed's
+  # `git diff` against it is always empty and npm install was silently
+  # skipped on EVERY deploy — including ones that added new dependencies
+  # (e.g. @pdfme/*), which then made migrations that import them fail with
+  # "Cannot find module" and no visible error (see below). Always install.
+  npm install >> "$LOG_FILE" 2>&1
+  if [ $? -ne 0 ]; then
+    log "!!! MIGRATION-BLOCKING FAILURE: npm install failed, see above in this log !!!"
   fi
 
   NODE_ENV="$BACKEND_NODE_ENV" node src/scripts/runMigrations.js master migration up >> "$LOG_FILE" 2>&1
+  if [ $? -ne 0 ]; then
+    log "!!! MASTER MIGRATION FAILED — deploy continued anyway, DB may be out of sync, see above in this log !!!"
+  fi
   NODE_ENV="$BACKEND_NODE_ENV" node src/scripts/runMigrations.js tenant migration up >> "$LOG_FILE" 2>&1
+  if [ $? -ne 0 ]; then
+    log "!!! TENANT MIGRATION FAILED — deploy continued anyway, DB may be out of sync, see above in this log !!!"
+  fi
 
   pm2 restart "$PM2_BACKEND_NAME" >> "$LOG_FILE" 2>&1
   log "=== Backend deploy done ==="
