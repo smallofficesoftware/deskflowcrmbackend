@@ -136,10 +136,14 @@ export const createDocumentTemplate = async (req) => {
     if (!company_masters_id || !doc_type || !template_name || !template_json) {
       return resError({ developer_msg: "company_masters_id, doc_type, template_name and template_json are required" });
     }
-    // 'main' (default) if the caller doesn't say otherwise — only the
-    // "Document Designer Page" custom field's editor ever passes
-    // 'extra_page' explicitly (CustomFieldDesignerPageEditorView.tsx).
-    const template_purpose = req.body?.template_purpose === "extra_page" ? "extra_page" : "main";
+    // 'main' (default) unless the caller explicitly asks for one of the two
+    // non-pickable purposes — 'extra_page' from the "Document Designer
+    // Page" custom field's editor, 'product_page' from the Product Page
+    // Designer editor (both share CustomFieldDesignerPageEditorView.tsx's
+    // pattern, just pointed at a different save target).
+    const template_purpose = ["extra_page", "product_page"].includes(req.body?.template_purpose)
+      ? req.body.template_purpose
+      : "main";
 
     const Template = documentPrintTemplateModel(req.tenantDB);
     const Version = documentPrintTemplateVersionModel(req.tenantDB);
@@ -210,6 +214,12 @@ export const updateDocumentTemplate = async (req) => {
     if (template_json !== undefined) {
       updatePayload.draft_template_json = typeof template_json === "string" ? template_json : JSON.stringify(template_json);
       updatePayload.has_unpublished_changes = 1;
+    }
+    // Product Page Designer toggle — per-template (DocumentDesignerView.tsx's
+    // toolbar checkbox, cart-shaped doc types only), not a draft/publish
+    // concept, applies immediately.
+    if (req.body?.include_product_pages !== undefined) {
+      updatePayload.include_product_pages = req.body.include_product_pages ? 1 : 0;
     }
 
     const [affected] = await Template.update(updatePayload, { where: { id, company_masters_id, isDelete: 0 } });

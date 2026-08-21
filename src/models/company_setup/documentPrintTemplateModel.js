@@ -44,9 +44,25 @@ export const documentPrintTemplateModel = (sequelize) => {
         // like any other template, but must never appear in /document-
         // designer's own per-doc-type list or the real print-time picker,
         // where it would be confusable with an actual Quotation layout.
+        // 'main' | 'extra_page' (Document Designer Page custom field source)
+        // | 'product_page' (Product Page Designer source — see products.
+        // document_template_id). All three share this one table so
+        // buildDesignerPageBytes/product-page splicing can render any of
+        // them identically; only 'main' rows are ever listed/pickable as an
+        // actual doc-type layout (listDocumentTemplates and every
+        // explicit-id print lookup filter to it).
         template_purpose: {
             type: STRING,
             defaultValue: "main",
+        },
+        // Per-template toggle (not company-wide) — only meaningful on
+        // template_purpose='main' rows of the 7 cart-shaped doc types.
+        // When on, generate-time splices each cart item's product's own
+        // page (products.document_template_id) after the main document, in
+        // cart item order.
+        include_product_pages: {
+            type: TINYINT,
+            defaultValue: "0",
         },
         display_order: {
             type: INTEGER,

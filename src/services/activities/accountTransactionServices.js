@@ -58,13 +58,17 @@ async function loadAccountTemplateOverride(req, companyMastersId, documentTempla
   const Template = documentPrintTemplateModel(req.tenantDB);
   let row = null;
   if (documentTemplateId) {
+    // doc_type + template_purpose='main' guards: an explicit id pointing at
+    // some other doc_type's template, or at an extra_page row (a Document
+    // Designer Page custom field source), would otherwise render garbage
+    // or crash instead of falling through to the real default below.
     row = await Template.findOne({
-      where: { id: documentTemplateId, company_masters_id: companyMastersId, isDelete: 0 },
+      where: { id: documentTemplateId, company_masters_id: companyMastersId, doc_type: docType, template_purpose: "main", isDelete: 0 },
     });
   }
   if (!row) {
     row = await Template.findOne({
-      where: { company_masters_id: companyMastersId, doc_type: docType, is_default: 1, isDelete: 0 },
+      where: { company_masters_id: companyMastersId, doc_type: docType, template_purpose: "main", is_default: 1, isDelete: 0 },
     });
   }
   if (!row) return null;

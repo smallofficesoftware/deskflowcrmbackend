@@ -47,13 +47,18 @@ export async function generateShippingLabelPdf({
     const Template = documentPrintTemplateModel(tenantDB);
     let templateRow = null;
     if (documentTemplateId) {
+      // doc_type + template_purpose='main' guards: an explicit id pointing
+      // at some other doc_type's template, or at an extra_page row (a
+      // Document Designer Page custom field source — no shipping-label
+      // fields at all), would otherwise render garbage or crash instead of
+      // falling through to the real default below.
       templateRow = await Template.findOne({
-        where: { id: documentTemplateId, company_masters_id: company?.id, isDelete: 0 },
+        where: { id: documentTemplateId, company_masters_id: company?.id, doc_type: "shippingLabel", template_purpose: "main", isDelete: 0 },
       });
     }
     if (!templateRow) {
       templateRow = await Template.findOne({
-        where: { company_masters_id: company?.id, doc_type: "shippingLabel", is_default: 1, isDelete: 0 },
+        where: { company_masters_id: company?.id, doc_type: "shippingLabel", template_purpose: "main", is_default: 1, isDelete: 0 },
       });
     }
     if (templateRow) template = JSON.parse(templateRow.published_template_json);

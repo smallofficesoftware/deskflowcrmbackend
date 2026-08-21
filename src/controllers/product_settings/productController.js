@@ -8,6 +8,7 @@ import {
   productCreate,
   productStockMovement,
   productUpdate,
+  setProductDesignerPage,
   SerialNumberWiseStockCheck
 } from "../../services/product_settings/productServices.js";
 import callServiceMethod from "../baseController.js";
@@ -28,6 +29,10 @@ export const createProduct = async (req, res) => {
 export const updateProduct = async (req, res) => {
   decryptRequestForMultipart(req);
   await callServiceMethod(req, res, productUpdate(req), "updateProduct");
+};
+
+export const saveProductDesignerPage = async (req, res) => {
+  await callServiceMethod(req, res, setProductDesignerPage(req), "setProductDesignerPage");
 };
 
 export const getProductStockMovement = async (req, res) => {

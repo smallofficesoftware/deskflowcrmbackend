@@ -2542,3 +2542,7 @@ ALTER TABLE `addon_masters` CHANGE `price` `addon_price` DOUBLE NOT NULL;
 ALTER TABLE `addon_masters` ADD `modified_date` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER `isActive`;
 ALTER TABLE `addon_masters` ADD `is_qty_enable` TINYINT(4) NOT NULL DEFAULT '1' AFTER `addon_price`;
 
+
+22-08-2026 Dhaval
+ALTER TABLE `products` ADD COLUMN `document_template_id` INT(11) NULL DEFAULT NULL;
+ALTER TABLE `document_print_templates` ADD COLUMN `include_product_pages` TINYINT(4) DEFAULT 0;

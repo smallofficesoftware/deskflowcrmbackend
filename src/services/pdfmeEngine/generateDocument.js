@@ -7,6 +7,7 @@ import { generate } from "@pdfme/generator";
 import { PDFDocument } from "@pdfme/pdf-lib";
 import * as plugins from "@pdfme/schemas";
 import { documentPrintTemplateModel } from "../../models/company_setup/documentPrintTemplateModel.js";
+import { productModel } from "../../models/product_settings/productModel.js";
 import { getTemplate, withCompanyHeader } from "./templates.js";
 import { loadFonts } from "./fonts.js";
 import { overlayItemImages } from "./imageOverlay.js";
@@ -178,6 +179,10 @@ export async function generateQuotationPdf({
   numberTowords,
   columnOptions,
   itemImages,
+  // "Product Page Designer" — 1:1 with items/itemImages, in cart item
+  // order. Only spliced in when the resolved main template's
+  // include_product_pages flag is on (see includeProductPages above).
+  itemProductIds,
   customFieldRows,
   cartValues,
   tenantDB,
@@ -206,6 +211,12 @@ export async function generateQuotationPdf({
   doc_type = "quotation",
 }) {
   let template;
+  // Captured separately from `template` (which gets reassigned to the
+  // parsed JSON below) — only a real DB row has this column; a
+  // templateOverride (Designer's own "Generate Preview") has no row at all,
+  // so product-wise pages are skipped there, same as customFieldRows-driven
+  // extra pages already are for that path.
+  let includeProductPages = false;
 
   if (templateOverride) {
     template = templateOverride;
@@ -213,7 +224,13 @@ export async function generateQuotationPdf({
     const Template = documentPrintTemplateModel(tenantDB);
     let templateRow = null;
     if (documentTemplateId) {
-      templateRow = await Template.findOne({ where: { id: documentTemplateId, company_masters_id: company.id, isDelete: 0 } });
+      // template_purpose='main' guard: an extra_page row (Document Designer
+      // Page custom field source) has no itemsTable/totals/buyer fields at
+      // all — rendering one as the actual quotation crashes downstream
+      // (buildInputsForCart/overlayItemImages expect those to exist) instead
+      // of failing cleanly. An explicit id pointing at one is treated the
+      // same as "not found", falling through to the real default below.
+      templateRow = await Template.findOne({ where: { id: documentTemplateId, company_masters_id: company.id, template_purpose: "main", isDelete: 0 } });
     }
     if (!templateRow) {
       templateRow = await Template.findOne({ where: { company_masters_id: company.id, doc_type, template_purpose: "main", is_default: 1, isDelete: 0 } });
@@ -221,6 +238,7 @@ export async function generateQuotationPdf({
     template = templateRow
       ? JSON.parse(templateRow.published_template_json)
       : getTemplate(doc_type, { columnOptions: columnOptions || {} });
+    includeProductPages = !!templateRow?.include_product_pages;
   }
 
   // The itemsTable field's own columnOptions (baked in at save/apply-options
@@ -298,6 +316,32 @@ export async function generateQuotationPdf({
   }
 
   const extraPages = buildExtraPages(customFieldRows || [], cartValues || {});
+
+  // Product Page Designer — one splice entry per cart item (in item order,
+  // duplicates included if the same product appears twice), right after
+  // the main document and before any customFieldRows-driven "after" pages.
+  // Deliberately per-line-item, not deduped by product id.
+  if (includeProductPages && itemProductIds?.length) {
+    const Product = productModel(tenantDB);
+    const productIds = [...new Set(itemProductIds.filter(Boolean))];
+    // No company_masters_id filter — confirmed against getAllProduct
+    // (productServices.js), this table isn't scoped by that column (it
+    // sits at 0 on every row in a single-company tenant DB); real scoping
+    // is tenant-DB isolation alone (tenantDB is already this company's own
+    // isolated database, same as every other product query in the app).
+    const products = productIds.length
+      ? await Product.findAll({ where: { id: productIds, isDelete: 0 }, attributes: ["id", "document_template_id"] })
+      : [];
+    const templateIdByProductId = {};
+    products.forEach((p) => { if (p.document_template_id) templateIdByProductId[p.id] = p.document_template_id; });
+
+    const productPageEntries = itemProductIds
+      .map((productId) => templateIdByProductId[productId])
+      .filter(Boolean)
+      .map((templateId) => ({ kind: "designerPage", value: String(templateId) }));
+    extraPages.after = [...productPageEntries, ...extraPages.after];
+  }
+
   const finalBuffer = await mergeExtraPages(Buffer.from(pdfBytes), template.basePdf, extraPages, company, tenantDB);
 
   return finalBuffer;

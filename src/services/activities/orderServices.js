@@ -4863,6 +4863,11 @@ export const pdfOrder = async (req, res) => {
           return buildProductImageDataUri(relativePath);
         });
 
+        // "Product Page Designer" — 1:1 with pdfmeItems/pdfmeItemImages, in
+        // cart item order. Only consumed when the resolved main template's
+        // include_product_pages flag is on (generateDocument.js).
+        const pdfmeItemProductIds = resultAllCartItems.map((item) => item.item_product_id);
+
         const buffer = await generateQuotationPdf({
           documentTemplateId: req.body?.document_template_id,
           company: {
@@ -4912,6 +4917,7 @@ export const pdfOrder = async (req, res) => {
           numberTowords,
           columnOptions: null,
           itemImages: pdfmeItemImages,
+          itemProductIds: pdfmeItemProductIds,
           customFieldRows: CartCustomFields,
           cartValues: cartData,
           tenantDB: req.tenantDB,
