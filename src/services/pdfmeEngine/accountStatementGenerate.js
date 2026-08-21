@@ -31,13 +31,12 @@ function formatBalance(v) {
 // allAccountTransactionOfContactPDF (accountTransactionServices.js) already
 // builds for the EJS path.
 //
-// entityLines: the employee-statement variant (allAccountTransactionofEmployeeV1.ejs,
-// wired from employeeAccountTransactionService.js's allAccountTransactionOfEmployeePDF)
-// is the SAME layout with a smaller, differently-keyed right-side block
-// (employeeData.username/recovery_mobile/recovery_email vs contactData's 7
-// fields) — caller pre-builds that block's lines and passes them here rather
-// than a second near-duplicate module. Defaults to the original contact
-// behavior so allAccountTransactionOfContactPDF's call site needs no changes.
+// entity: the employee-statement variant (allAccountTransactionofEmployeeV1.ejs,
+// wired from employeeAccountTransactionService.js) is the SAME layout with a
+// smaller, differently-keyed right-side block (employeeData.username/
+// recovery_mobile/recovery_email vs contactData's 7 fields) — caller passes
+// this object instead of contactData so it binds onto the same named
+// contactName/contactCompany/... fields the default contact path uses.
 export async function generateAccountStatementPdf({
   companyData,
   contactData,
@@ -48,41 +47,26 @@ export async function generateAccountStatementPdf({
   fromDate,
   toDate,
   settingDetails,
-  entityLines = null,
+  entity: entityOverride = null,
   templateOverride = null,
 }) {
   const showCompanyHeader = !!settingDetails?.headerImage;
+  const companyContactLine = [
+    companyData?.company_contact ? `Mo. ${companyData.company_contact}` : null,
+    companyData?.company_email || null,
+  ]
+    .filter(Boolean)
+    .join(" | ");
 
-  const leftLines = [];
-  if (showCompanyHeader) {
-    leftLines.push(String(companyData?.company_name || "").toUpperCase());
-    if (companyData?.address) leftLines.push(companyData.address);
-    const contactLine = [
-      companyData?.company_contact ? `Mo. ${companyData.company_contact}` : null,
-      companyData?.company_email || null,
-    ]
-      .filter(Boolean)
-      .join(" | ");
-    if (contactLine) leftLines.push(contactLine);
-    if (companyData?.gst_number) leftLines.push(`GSTIN: ${companyData.gst_number}`);
-  }
-
-  const defaultEntityLines = [];
-  if (contactData) {
-    if (contactData.person_name) defaultEntityLines.push(contactData.person_name);
-    if (contactData.company_name) defaultEntityLines.push(contactData.company_name);
-    if (contactData.mobile_number) defaultEntityLines.push(`Mo. ${contactData.mobile_number}`);
-    if (contactData.email_id) defaultEntityLines.push(contactData.email_id);
-    if (contactData.address) defaultEntityLines.push(contactData.address);
-    if (contactData.shipping_address) defaultEntityLines.push(contactData.shipping_address);
-    if (contactData.gst_number) defaultEntityLines.push(`GSTIN: ${contactData.gst_number}`);
-  }
-
-  const rightLines = [
-    "Account Statement",
-    `From ${fromDate || ""} to ${toDate || ""}`,
-    ...(entityLines ?? defaultEntityLines),
-  ];
+  const entity = entityOverride ?? {
+    name: contactData?.person_name || "",
+    company: contactData?.company_name || "",
+    mobile: contactData?.mobile_number ? `Mo. ${contactData.mobile_number}` : "",
+    email: contactData?.email_id || "",
+    address: contactData?.address || "",
+    shippingAddress: contactData?.shipping_address || "",
+    gstin: contactData?.gst_number ? `GSTIN: ${contactData.gst_number}` : "",
+  };
 
   const rows = (rowsWithBalance || []).map((tx, idx) =>
     STATEMENT_COLUMNS.map((c) => {
@@ -108,13 +92,9 @@ export async function generateAccountStatementPdf({
   const hasRows = rows.length > 0;
 
   // A company's own customized template (built/edited in Document Designer)
-  // has its own fixed field positions already baked in — skip the dynamic
-  // line-count sizing entirely and bind the same rawInputs into it instead.
-  const template = templateOverride || buildAccountStatementTemplate({
-    leftLineCount: leftLines.length,
-    rightLineCount: rightLines.length,
-    hasRows,
-  });
+  // has its own fixed field positions already baked in — bind the same
+  // rawInputs into it directly instead of building the default layout.
+  const template = templateOverride || buildAccountStatementTemplate({ hasRows });
 
   if (hasRows) {
     rows.push(["Total", "", "", totalCredit || "0", totalDebit || "0", formatBalance(lastRowBalance)]);
@@ -128,8 +108,21 @@ export async function generateAccountStatementPdf({
   }
 
   const rawInputs = {
-    leftHeaderBlock: leftLines.join("\n"),
-    rightHeaderBlock: rightLines.join("\n"),
+    companyName: showCompanyHeader ? String(companyData?.company_name || "").toUpperCase() : "",
+    companyAddress: showCompanyHeader ? companyData?.address || "" : "",
+    companyContactLine: showCompanyHeader ? companyContactLine : "",
+    companyGSTIN: showCompanyHeader && companyData?.gst_number ? `GSTIN: ${companyData.gst_number}` : "",
+
+    statementTitle: "Account Statement",
+    statementDateRange: `From ${fromDate || ""} to ${toDate || ""}`,
+    contactName: entity.name || "",
+    contactCompany: entity.company || "",
+    contactMobile: entity.mobile || "",
+    contactEmail: entity.email || "",
+    contactAddress: entity.address || "",
+    contactShippingAddress: entity.shippingAddress || "",
+    contactGSTIN: entity.gstin || "",
+
     hasRows: hasRows ? "1" : "",
     statementTable: JSON.stringify(rows),
     noDataText: "No transactions found",

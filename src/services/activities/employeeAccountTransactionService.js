@@ -788,10 +788,11 @@ export const allAccountTransactionOfEmployeePDF = async (req, res) => {
         const documentDesignerEnabled = await isFeatureEnabled(companyData.id, "document_designer");
 
         if (documentDesignerEnabled) {
-            const entityLines = [];
-            if (employeeData?.username) entityLines.push(employeeData.username);
-            if (employeeData?.recovery_mobile) entityLines.push(`Mo. ${employeeData.recovery_mobile}`);
-            if (employeeData?.recovery_email) entityLines.push(employeeData.recovery_email);
+            const entity = {
+                name: employeeData?.username || "",
+                mobile: employeeData?.recovery_mobile ? `Mo. ${employeeData.recovery_mobile}` : "",
+                email: employeeData?.recovery_email || "",
+            };
 
             const buffer = await generateAccountStatementPdf({
                 companyData,
@@ -803,7 +804,7 @@ export const allAccountTransactionOfEmployeePDF = async (req, res) => {
                 fromDate,
                 toDate,
                 settingDetails,
-                entityLines,
+                entity,
             });
             fs.writeFileSync(filePath, buffer);
         } else {
