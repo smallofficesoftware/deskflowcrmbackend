@@ -8,6 +8,7 @@ import { documentPrintTemplateModel } from "../../models/company_setup/documentP
 import { documentPrintTemplateVersionModel } from "../../models/company_setup/documentPrintTemplateVersionModel.js";
 import systemDocumentTemplateModel from "../../models/company_setup/systemDocumentTemplateModel.js";
 import { productModel } from "../../models/product_settings/productModel.js";
+import { REPORT_PIN } from "../../utils/appConstants.js";
 import { numberToWordsCurrency } from "../../utils/numberToWordsCurrency.js";
 import { resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { generateQuotationPdf } from "../pdfmeEngine/generateDocument.js";
@@ -26,6 +27,24 @@ const nextDisplayOrder = async (Template, company_masters_id, doc_type) => {
 const nextVersionNumber = async (Version, document_template_id) => {
   const max = await Version.max("version_number", { where: { document_template_id } });
   return (Number(max) || 0) + 1;
+};
+
+export const verifyDocumentManagerPin = async (req) => {
+  try {
+    const { pin } = req.body || {};
+    if (!pin) {
+      return resError({ developer_msg: "pin is required" });
+    }
+
+    if (String(pin) !== String(REPORT_PIN)) {
+      return resError({ developer_msg: "Incorrect PIN", ack_msg: "Incorrect PIN" });
+    }
+
+    return resSuccess({ ack_msg: "PIN verified" });
+  } catch (e) {
+    console.log(e);
+    return resError({ developer_msg: `Failed to Catch ${e}` });
+  }
 };
 
 export const listDocumentTemplates = async (req) => {

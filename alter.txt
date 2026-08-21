@@ -2302,3 +2302,8 @@ CREATE TABLE `system_document_templates` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 ALTER TABLE `system_document_templates` ADD INDEX(`doc_type`);
+
+20-08-2026 Dhaval
+INSERT INTO `a_application_pages` (`id`, `page_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (146, 'Document Designer', 'document_designer', 'Document Designer', '0', '0', '0', '1', NOW(), UNIX_TIMESTAMP(), '0', '1');
+
+INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `extra_information`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, '1', '146', '0', '', NOW(), current_timestamp(), '0', '1'), (NULL, '2', '146', '0', '', NOW(), current_timestamp(), '0', '1'), (NULL, '3', '146', '0', '', NOW(), current_timestamp(), '0', '1'), (NULL, '4', '146', '0', '', NOW(), current_timestamp(), '0', '1');

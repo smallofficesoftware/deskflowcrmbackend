@@ -24,6 +24,7 @@ export const BACKEND_OF_WPPCONNECT = process.env.BACKEND_OF_WPPCONNECT;
 export const APP_URL_SMALL_OFFICE_CRM = process.env.APP_URL_SMALL_OFFICE_CRM;
 export const MASTER_OTP = process.env.MASTER_OTP;
 export const MASTER_PIN = process.env.MASTER_PIN;
+export const REPORT_PIN = process.env.REPORT_PIN;
 export const CALL_HELPER_APP_VERSION = process.env.CALL_HELPER_APP_VERSION;
 export const CALL_TRACKER_APP_URL = process.env.CALL_TRACKER_APP_URL;
 export const SUPER_ADMIN_WHATSAPP_APP_KEY = process.env.SUPER_ADMIN_WHATSAPP_APP_KEY;
