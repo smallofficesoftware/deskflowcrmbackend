@@ -84,13 +84,21 @@ const buildRows = () => {
   return rows;
 };
 
+// Each row's template_json is ~35-40KB — bulk-inserting all 54 rows in one
+// statement exceeds MySQL's max_allowed_packet, so insert a few rows at a
+// time instead.
+const CHUNK_SIZE = 5;
+
 export const up = async (queryInterface) => {
   const [existing] = await queryInterface.sequelize.query(
     "SELECT COUNT(*) as cnt FROM `system_document_templates`"
   );
   if (Number(existing[0].cnt) > 0) return;
 
-  await queryInterface.bulkInsert("system_document_templates", buildRows());
+  const rows = buildRows();
+  for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
+    await queryInterface.bulkInsert("system_document_templates", rows.slice(i, i + CHUNK_SIZE));
+  }
 };
 
 export const down = async (queryInterface) => {
