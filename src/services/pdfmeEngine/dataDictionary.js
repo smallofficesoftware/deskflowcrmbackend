@@ -52,6 +52,41 @@ const CART_DOC_DICTIONARY = [
   { key: "hsnSummary", label: "HSN Summary", group: "Computed" },
 ];
 
+// Field names match textField/tableField `name`s in their respective
+// pdfmeEngine builders exactly (accountStatementTemplate.js,
+// accountTransactionTemplate.js, taskDueListTemplate.js,
+// shippingLabelTemplate.js) — these 4 are the "Account/Employee Statement,
+// Shipping Label" doc types from the comment above. Stock In/Out still has
+// no builder, so it's not registered here yet.
+const ACCOUNT_STATEMENT_DICTIONARY = [
+  { key: "leftHeaderBlock", label: "Company Block", group: "Header" },
+  { key: "rightHeaderBlock", label: "Statement / Contact Block", group: "Header" },
+  { key: "statementTable", label: "Transactions Table", group: "Item" },
+];
+const ACCOUNT_TRANSACTION_DICTIONARY = [
+  { key: "companyName", label: "Company Name", group: "Header" },
+  { key: "companyHeaderLine2", label: "Company Sub-line", group: "Header" },
+  { key: "amountLine", label: "Amount Line", group: "Computed" },
+  { key: "remarkText", label: "Remark", group: "Computed" },
+];
+const TASK_DUE_LIST_DICTIONARY = [
+  { key: "companyHeaderBlock", label: "Company Block", group: "Header" },
+  { key: "taskTable", label: "Tasks Table", group: "Item" },
+];
+const SHIPPING_LABEL_DICTIONARY = [
+  { key: "toCustomerName", label: "To: Customer Name", group: "Buyer" },
+  { key: "toAddress", label: "To: Address", group: "Buyer" },
+  { key: "toPhone", label: "To: Phone", group: "Buyer" },
+  { key: "fromCompanyName", label: "From: Company Name", group: "Company" },
+  { key: "fromAddress", label: "From: Address", group: "Company" },
+  { key: "fromPhone", label: "From: Phone", group: "Company" },
+  { key: "orderNumberText", label: "Order Number", group: "Order" },
+  { key: "qrImage", label: "QR Code", group: "Order" },
+  { key: "itemsTable", label: "Items Table", group: "Item" },
+  { key: "grandTotalText", label: "Grand Total", group: "Computed" },
+  { key: "termsText", label: "Terms", group: "Computed" },
+];
+
 // doc_type -> which base dictionary applies. All 10 cart-shaped doc_types
 // point at the same array (same pattern as templates.js's titleById).
 const DICTIONARY_BY_DOC_TYPE = {
@@ -65,6 +100,10 @@ const DICTIONARY_BY_DOC_TYPE = {
   inward: CART_DOC_DICTIONARY,
   dispatch: CART_DOC_DICTIONARY,
   proformaInvoice: CART_DOC_DICTIONARY,
+  accountStatement: ACCOUNT_STATEMENT_DICTIONARY,
+  accountTransaction: ACCOUNT_TRANSACTION_DICTIONARY,
+  taskDueList: TASK_DUE_LIST_DICTIONARY,
+  shippingLabel: SHIPPING_LABEL_DICTIONARY,
 };
 
 // Cart custom fields (carts_column_*) use a DIFFERENT form_type per doc
@@ -93,8 +132,15 @@ export async function buildDataDictionary(req, doc_type) {
   }
 
   const { company_masters_id } = req.body || {};
-  const CustomField = customFieldFormModel(req.tenantDB);
   const cartCustomFieldFormType = CART_CUSTOM_FIELD_FORM_TYPE_BY_DOC_TYPE[doc_type];
+  // The 4 non-cart doc types have no cart custom-field form_type mapping —
+  // custom fields are a cart-document concept, so skip the lookup entirely
+  // rather than querying form_type IN (undefined, ...).
+  if (!cartCustomFieldFormType) {
+    return base;
+  }
+
+  const CustomField = customFieldFormModel(req.tenantDB);
   // data_type 11/12 (pageText/pageURL) are deliberately excluded — those
   // render as before/after extra pages (orderInputMapper.js), not bindable
   // data a field on the main canvas can point to.
