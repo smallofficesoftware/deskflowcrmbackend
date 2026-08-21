@@ -2532,3 +2532,13 @@ ALTER TABLE `carts` ADD COLUMN `carts_column_designer_page_2` VARCHAR(255) NOT N
 ALTER TABLE `carts` ADD COLUMN `carts_column_designer_page_3` VARCHAR(255) NOT NULL DEFAULT '';
 ALTER TABLE `carts` ADD COLUMN `carts_column_designer_page_4` VARCHAR(255) NOT NULL DEFAULT '';
 ALTER TABLE `carts` ADD COLUMN `carts_column_designer_page_5` VARCHAR(255) NOT NULL DEFAULT '';
+21-08-2026 Deep
+CREATE TABLE `addon_masters`( `id` INT(11) NOT NULL AUTO_INCREMENT, `name` VARCHAR(255) NOT NULL, `price` DOUBLE NOT NULL, `created_date_time` DATETIME NOT NULL, `s_timestemp` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, `isDelete` TINYINT(4) NOT NULL DEFAULT '0', `isActive` TINYINT(4) NOT NULL DEFAULT '1', PRIMARY KEY(`id`) ) ENGINE = InnoDB;
+CREATE TABLE `company_vs_addon_masters`( `id` INT(11) NOT NULL AUTO_INCREMENT, `a_application_login_id` INT(11) NOT NULL, `company_masters_id` INT(11) NOT NULL, `addon_id` INT(11) NOT NULL, `qty` DOUBLE NOT NULL, `rate` DOUBLE NOT NULL, `total` DOUBLE NOT NULL, `created_date_time` DATETIME NOT NULL, `s_timestemp` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, `isDelete` TINYINT(4) NOT NULL DEFAULT '0', `isActive` TINYINT(4) NOT NULL DEFAULT '1', PRIMARY KEY(`id`) ) ENGINE = InnoDB;
+
+ALTER TABLE `addon_masters` CHANGE `name` `addon_name` VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL;
+ALTER TABLE `addon_masters` CHANGE `price` `addon_price` DOUBLE NOT NULL;
+
+ALTER TABLE `addon_masters` ADD `modified_date` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER `isActive`;
+ALTER TABLE `addon_masters` ADD `is_qty_enable` TINYINT(4) NOT NULL DEFAULT '1' AFTER `addon_price`;
+
