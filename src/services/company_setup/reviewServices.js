@@ -14,21 +14,37 @@ import {
 } from "../../utils/appConstants.js";
 import { resError, resSuccess } from "../../utils/sharedFunctions.js";
 
+const PLATFORM_VALUES = ["web", "android", "ios"];
+
 const nowTimestamp = () => moment(new Date()).format("YYYY-MM-DD HH:mm:ss");
 const daysSince = (date) => moment().diff(moment(date), "days");
+
+// Same precedence as onLoad's clientIp extraction in loginService.js.
+const getClientIp = (req) => {
+  let ip =
+    req.headers?.["cf-connecting-ip"] ||
+    req.headers?.["x-real-ip"] ||
+    (req.headers?.["x-forwarded-for"] ? req.headers["x-forwarded-for"].split(",")[0].trim() : null) ||
+    req.ip ||
+    req.socket?.remoteAddress ||
+    "";
+  if (ip.startsWith("::ffff:")) ip = ip.replace("::ffff:", "");
+  return ip;
+};
 
 /*
  * Plain-argument helper (not (req)-shaped) — called from inside the onLoad
  * service (loginService.js) so its result rides along in the existing
  * onLoad/onload response instead of a separate endpoint. app + web both go
  * through onLoad. Web callers must never receive show:"store_review"
- * (there's no store to send a browser to); only the flutter app, after a
- * completed >=4-star submit, gets the store-review path. Never throws —
- * a review-status hiccup must never break the rest of onLoad's response.
+ * (there's no store to send a browser to); only the flutter app (platform
+ * "android"/"ios"), after a completed >=4-star submit, gets the
+ * store-review path. Never throws — a review-status hiccup must never
+ * break the rest of onLoad's response.
  */
-export const getReviewPromptStatus = async (a_application_login_id, platform, os) => {
+export const getReviewPromptStatus = async (a_application_login_id, platform) => {
   try {
-    if (!a_application_login_id || !["app", "web"].includes(platform)) {
+    if (!a_application_login_id || !PLATFORM_VALUES.includes(platform)) {
       return { show: "none" };
     }
 
@@ -49,10 +65,11 @@ export const getReviewPromptStatus = async (a_application_login_id, platform, os
       where: { a_application_login_id, isDelete: 0 },
     });
 
-    const storeUrl = os === "ios" ? APPLICATION_APK_URL_IOS : APPLICATION_APK_URL_ANDROID;
+    const isApp = platform !== "web";
+    const storeUrl = platform === "ios" ? APPLICATION_APK_URL_IOS : APPLICATION_APK_URL_ANDROID;
 
     const eligibleForStorePrompt =
-      platform === "app" &&
+      isApp &&
       row?.is_completed == 1 &&
       Number(row.rating) >= REVIEW_MIN_STAR_FOR_STORE_PROMPT &&
       row.store_review_completed != 1;
@@ -102,13 +119,13 @@ export const getReviewPromptStatus = async (a_application_login_id, platform, os
  */
 export const submitReview = async (req) => {
   try {
-    const { a_application_login_id, platform, action, rating, comment } = req.body;
+    const { a_application_login_id, platform, device_id, action, rating, comment } = req.body;
 
     if (!a_application_login_id) {
       return resError({ ack_msg: "Login id is required" });
     }
-    if (!["app", "web"].includes(platform)) {
-      return resError({ ack_msg: "platform must be 'app' or 'web'" });
+    if (!PLATFORM_VALUES.includes(platform)) {
+      return resError({ ack_msg: "platform must be 'web', 'android' or 'ios'" });
     }
     if (!["submit", "cancel"].includes(action)) {
       return resError({ ack_msg: "action must be 'submit' or 'cancel'" });
@@ -143,6 +160,8 @@ export const submitReview = async (req) => {
     const now = nowTimestamp();
     const payload = {
       platform,
+      device_id: device_id || null,
+      ip_address: getClientIp(req) || null,
       last_asked_date: now,
       modified_date: now,
     };

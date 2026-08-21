@@ -1595,11 +1595,7 @@ export const onLoad = async (req, res) => {
       ...companyStateGet?.dataValues
     }
 
-    const reviewStatus = await getReviewPromptStatus(
-      a_application_login_id,
-      platform === "web" ? "web" : "app",
-      platform === "ios" ? "ios" : "android"
-    );
+    const reviewStatus = await getReviewPromptStatus(a_application_login_id, platform);
 
     /* ===================== RESPONSE ===================== */
     const commonData = {

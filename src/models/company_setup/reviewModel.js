@@ -23,7 +23,13 @@ const reviewModel = sequelize.define("reviews", {
     type: TEXT,
   },
   platform: {
-    type: ENUM("app", "web"),
+    type: ENUM("web", "android", "ios"),
+  },
+  device_id: {
+    type: STRING,
+  },
+  ip_address: {
+    type: STRING,
   },
   is_completed: {
     type: TINYINT,
