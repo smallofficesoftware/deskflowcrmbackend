@@ -7,7 +7,7 @@
   "scripts": {
     "clean": "rimraf node_modules/.cache",
     "build": "tsx src/scripts/build.js",
-    "dev": "echo. > E:/deskflowcrm/backend/logs/crm_backend.log && cross-env NODE_ENV=development nodemon >> E:/deskflowcrm/backend/logs/crm_backend.log 2>&1",
+    "dev": "echo. > ./logs/crm_backend.log && cross-env NODE_ENV=development nodemon >> ./logs/crm_backend.log 2>&1",
     "start": "cross-env NODE_ENV=production tsx src/index.js",
     "check:tenant:schema-drift": "cross-env NODE_ENV=development node src/scripts/checkTenantSchemaDrift.js",
     "create:migration:master": "node src/scripts/createMigration.js master",
@@ -57,6 +57,10 @@
   "license": "ISC",
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
+    "@pdfme/common": "^6.1.12",
+    "@pdfme/generator": "^6.1.12",
+    "@pdfme/pdf-lib": "^6.1.12",
+    "@pdfme/schemas": "^6.1.12",
     "axios": "^1.7.2",
     "cors": "^2.8.5",
     "crypto-js": "^4.2.0",

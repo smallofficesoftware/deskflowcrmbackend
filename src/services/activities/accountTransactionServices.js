@@ -37,7 +37,10 @@ import { __dirnameConstant, EXPORTS_LINK_EXTENDED, PDF_LINK_EXTENDED_Account_TRA
 import { PAGE_ID } from "../../utils/AppEnumeration.js";
 import { exportData } from "../../utils/exporter.js";
 import { getCompanyByLoginId, getCompanyDetailByLoginId } from "../commonServices.js";
+import { isFeatureEnabled } from "../company_setup/featureFlagServices.js";
 import { sendMultipleNotification } from "../company_setup/thirdPartyIntegrationService.js";
+import { generateAccountStatementPdf } from "../pdfmeEngine/accountStatementGenerate.js";
+import { generateAccountTransactionPdf } from "../pdfmeEngine/accountTransactionGenerate.js";
 
 function AccountTransactionformatDateAndTime(dateStr) {
   const d = new Date(dateStr);
@@ -1231,15 +1234,6 @@ export const accountPDFv1 = async (req, res) => {
     const companyDetail = await getCompanyDetailByLoginId(
       accountTransaction.a_application_login_id
     );
-    let dynamicPrintView = 1;
-    const htmlTemplate = fs.readFileSync(
-      path.join(
-        __dirnameConstant,
-        `../views/account/accountPDFv${dynamicPrintView}.ejs`
-      ),
-      "utf-8"
-    );
-
     const printSettingModels = printSettingModel(req.tenantDB);
 
     const printSettings = await printSettingModels.findOne({
@@ -1253,45 +1247,77 @@ export const accountPDFv1 = async (req, res) => {
 
     const settingDetails = JSON.parse(printSettings?.dataValues?.setting_details || "{}");
 
-
-    const renderedHtml = ejs.render(htmlTemplate, {
-      companyDetails: companyDetail,
-      accountTransactions: accountTransaction,
-      title: accountTransaction.type === 1 ? "Credit Account Transaction" : "Debit Account Transaction",
-      contactDetails,
-      payment_type_name,
-      currencySymbol: "₹",
-      formatNumber: AccountTransactionformatNumber,
-      formatDateAndTime: AccountTransactionformatDateAndTime,
-      numberToWordsCurrency: AccountTransactionnumberToWordsCurrency,
-      remarkToHtml: AccountTransactionremarkToHtml,
-      settingDetails: settingDetails
-    });
     const uploadDir = path.resolve(
       __dirnameConstant,
       `../../media-folder/accountTransaction/${companyDetail.id.toString()}`
     );
-    const filePath = path.join(uploadDir, `account_transaction_${Date.now()}.pdf`);
-    const pdfPath = `account_transaction_${Date.now()}.pdf`;
-    const fileLinkPath = PDF_LINK_EXTENDED_Account_TRANSACTION + companyDetail.id.toString() + "/" + pdfPath;
-    const document = {
-      html: renderedHtml,
-      data: {},
-      path: filePath,
-      type: "",
-    };
-    const options = {
-      format: "A5",
-      orientation: "portrait",
-      border: "10mm",
-      footer: {
-        height: "5mm",
-        contents: {
-          default: `<span style="color: #444;">{{page}}</span>/<span>{{pages}}</span>`, // page numbers
+    const fileNameOnly = `account_transaction_${Date.now()}.pdf`;
+    const filePath = path.join(uploadDir, fileNameOnly);
+    const fileLinkPath = PDF_LINK_EXTENDED_Account_TRANSACTION + companyDetail.id.toString() + "/" + fileNameOnly;
+
+    // pdfme Document Designer — same per-company opt-in as §5's cart-doc path
+    // (orderServices.js:4810). This receipt isn't Designer-customizable yet
+    // (accountTransactionTemplate.js is a fixed port), just a renderer switch.
+    const documentDesignerEnabled = await isFeatureEnabled(companyDetail.id, "document_designer");
+
+    if (documentDesignerEnabled) {
+      const buffer = await generateAccountTransactionPdf({
+        companyDetails: companyDetail,
+        accountTransactions: accountTransaction,
+        contactDetails,
+        payment_type_name,
+        settingDetails,
+        currencySymbol: "₹",
+        formattedAmount: AccountTransactionformatNumber(accountTransaction.amount),
+        formattedDate: accountTransaction.payment_date_time ? AccountTransactionformatDateAndTime(accountTransaction.payment_date_time) : "-",
+      });
+      if (!fs.existsSync(uploadDir)) {
+        fs.mkdirSync(uploadDir, { recursive: true });
+      }
+      fs.writeFileSync(filePath, buffer);
+    } else {
+      let dynamicPrintView = 1;
+      const htmlTemplate = fs.readFileSync(
+        path.join(
+          __dirnameConstant,
+          `../views/account/accountPDFv${dynamicPrintView}.ejs`
+        ),
+        "utf-8"
+      );
+
+      const renderedHtml = ejs.render(htmlTemplate, {
+        companyDetails: companyDetail,
+        accountTransactions: accountTransaction,
+        title: accountTransaction.type === 1 ? "Credit Account Transaction" : "Debit Account Transaction",
+        contactDetails,
+        payment_type_name,
+        currencySymbol: "₹",
+        formatNumber: AccountTransactionformatNumber,
+        formatDateAndTime: AccountTransactionformatDateAndTime,
+        numberToWordsCurrency: AccountTransactionnumberToWordsCurrency,
+        remarkToHtml: AccountTransactionremarkToHtml,
+        settingDetails: settingDetails
+      });
+
+      const document = {
+        html: renderedHtml,
+        data: {},
+        path: filePath,
+        type: "",
+      };
+      const options = {
+        format: "A5",
+        orientation: "portrait",
+        border: "10mm",
+        footer: {
+          height: "5mm",
+          contents: {
+            default: `<span style="color: #444;">{{page}}</span>/<span>{{pages}}</span>`, // page numbers
+          },
         },
-      },
-    };
-    await pdf.create(document, options);
+      };
+      await pdf.create(document, options);
+    }
     return resSuccess({
       ack_msg: "Pdf generated",
       data: { fileLinkPath, mobile_number: contactDetails.mobile_number, sessionName: `a${accountTransaction.a_application_login_id}_c${companyDetail.id}` },
@@ -1401,15 +1427,6 @@ export const allAccountTransactionOfContactPDF = async (req, res) => {
     const fromDate = rowsWithBalance.length > 0 ? rowsWithBalance[0].payment_date : "";
     const toDate = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 
-    let dynamicPrintView = 1;
-    const htmlTemplate = fs.readFileSync(
-      path.join(
-        __dirnameConstant,
-        `../views/account/allAccountTransactionOfContactV${dynamicPrintView}.ejs`
-      ),
-      "utf-8"
-    );
-
     const printSettingModels = printSettingModel(req.tenantDB);
 
     const printSettings = await printSettingModels.findOne({
@@ -1423,20 +1440,6 @@ export const allAccountTransactionOfContactPDF = async (req, res) => {
 
     const settingDetails = JSON.parse(printSettings?.dataValues?.setting_details || "{}");
 
-    const renderedHtml = await ejs.render(htmlTemplate,
-      {
-        companyData,
-        contactData,
-        rowsWithBalance,
-        totalCredit,
-        totalDebit,
-        lastRowBalance,
-        fromDate,
-        toDate,
-        backendUrl: process.env.BACKEND_OF_SMALL_OFFICE_CRM_END_POINT || "",
-        settingDetails: settingDetails,
-      });
-
     const uploadDir = path.resolve(
       __dirnameConstant,
       `../../media-folder/accountTransaction/${companyData.id.toString()}`
@@ -1446,34 +1449,74 @@ export const allAccountTransactionOfContactPDF = async (req, res) => {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
 
-
-    const options = {
-      format: "A4",
-      orientation: "portrait",
-      border: "15mm",
-      footer: {
-        height: "5mm",
-        contents: {
-          default: `<span style="color: #444;">{{page}}</span>/<span>{{pages}}</span>`,
-        },
-      },
-    };
-
-    const filePath = path.join(uploadDir, `account_statement_${Date.now()}.pdf`);
-
-    const pdfPath = `${companyData.id.toString()}/account_statement_${Date.now()}.pdf`;
-
-
-    const document = {
-      html: renderedHtml,
-      data: {},
-      path: filePath,
-      type: "",
-    };
-
+    const fileNameOnly = `account_statement_${Date.now()}.pdf`;
+    const filePath = path.join(uploadDir, fileNameOnly);
+    const pdfPath = `${companyData.id.toString()}/${fileNameOnly}`;
     const fileLinkPath = PDF_LINK_EXTENDED_Account_TRANSACTION + pdfPath;
 
-    await pdf.create(document, options);
+    // pdfme Document Designer — same per-company opt-in as §5's cart-doc path
+    // (orderServices.js:4810). This statement isn't Designer-customizable yet
+    // (accountStatementTemplate.js is a fixed port), just a renderer switch.
+    const documentDesignerEnabled = await isFeatureEnabled(companyData.id, "document_designer");
+
+    if (documentDesignerEnabled) {
+      const buffer = await generateAccountStatementPdf({
+        companyData,
+        contactData,
+        rowsWithBalance,
+        totalCredit,
+        totalDebit,
+        lastRowBalance,
+        fromDate,
+        toDate,
+        settingDetails,
+      });
+      fs.writeFileSync(filePath, buffer);
+    } else {
+      let dynamicPrintView = 1;
+      const htmlTemplate = fs.readFileSync(
+        path.join(
+          __dirnameConstant,
+          `../views/account/allAccountTransactionOfContactV${dynamicPrintView}.ejs`
+        ),
+        "utf-8"
+      );
+
+      const renderedHtml = await ejs.render(htmlTemplate,
+        {
+          companyData,
+          contactData,
+          rowsWithBalance,
+          totalCredit,
+          totalDebit,
+          lastRowBalance,
+          fromDate,
+          toDate,
+          backendUrl: process.env.BACKEND_OF_SMALL_OFFICE_CRM_END_POINT || "",
+          settingDetails: settingDetails,
+        });
+
+      const options = {
+        format: "A4",
+        orientation: "portrait",
+        border: "15mm",
+        footer: {
+          height: "5mm",
+          contents: {
+            default: `<span style="color: #444;">{{page}}</span>/<span>{{pages}}</span>`,
+          },
+        },
+      };
+
+      const document = {
+        html: renderedHtml,
+        data: {},
+        path: filePath,
+        type: "",
+      };
+
+      await pdf.create(document, options);
+    }
 
     if (!fs.existsSync(filePath)) {
       console.error("PDF file was not created at:", filePath);

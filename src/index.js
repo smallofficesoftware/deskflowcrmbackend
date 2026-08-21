@@ -9,6 +9,7 @@ import { decryptRequest, encryptRequest } from "./middlewares/payloadSecurity.js
 import pinoMiddleware from './middlewares/pinoMiddleware.js';
 import routers from "./routes/indexRouter.js";
 import storeSocketId from "./services/1socketIOServices/storeSocketId.js";
+import { startVersionRetentionCron } from "./services/pdfmeEngine/versionRetentionCron.js";
 import { baseURL, ENCRYPT_SMALL_OFFICE_CRM_RESPONSE, NODE_ENV, PORT } from "./utils/appConstants.js";
 import logger from "./utils/logger.js";
 import { parseSession, resError } from "./utils/sharedFunctions.js";
@@ -241,6 +242,7 @@ server.listen(PORT, () => {
     logger.info(`Environment Mode: ${NODE_ENV}`)
     logger.info(`Response data encryption: ${ENCRYPT_SMALL_OFFICE_CRM_RESPONSE}`)
     logger.info(`Server running on ${baseURL}`)
+    startVersionRetentionCron();
 });
 // } catch (error) {
 //     logger.fatal('App failed to start:', err);
