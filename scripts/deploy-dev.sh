@@ -47,23 +47,19 @@ deploy_backend() {
 }
 
 deploy_frontend() {
-  log "=== Frontend deploy start ==="
+  # `npm run build` used to run right here on this server and OOM'd
+  # (webpack + @pdfme/* is too heavy for this box's RAM). The build now
+  # happens on a developer machine via scripts/deploy-dev-local-build.sh,
+  # which rsyncs the built build/ folder straight into $FRONTEND_DIR/build.
+  # This webhook path only keeps the git checkout in sync for reference —
+  # it deliberately does NOT install or build anymore.
+  log "=== Frontend deploy start (source sync only, build is done locally) ==="
   cd "$FRONTEND_DIR" || { log "ERROR: cannot cd to $FRONTEND_DIR"; return 1; }
 
-  local old_commit
-  old_commit="$(git rev-parse HEAD)"
   git fetch origin dev >> "$LOG_FILE" 2>&1
   git reset --hard origin/dev >> "$LOG_FILE" 2>&1
 
-  if lockfile_changed "$old_commit" package-lock.json; then
-    npm install >> "$LOG_FILE" 2>&1
-  else
-    log "package-lock.json unchanged, skipping npm install"
-  fi
-  npm run build >> "$LOG_FILE" 2>&1
-
-  # No restart needed -- nginx serves the rebuilt static files directly.
-  log "=== Frontend deploy done ==="
+  log "=== Frontend deploy done (run scripts/deploy-dev-local-build.sh locally to actually update build/) ==="
 }
 
 deploy_adminpanel() {
