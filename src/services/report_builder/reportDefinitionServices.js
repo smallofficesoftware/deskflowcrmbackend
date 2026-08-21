@@ -61,18 +61,30 @@ export const createReportDefinition = async (req) => {
       // columns_json holds the metric KEYS array for this type — same
       // "shape varies by type" precedent filters_json already has between
       // query-type ([{column,op,value}]) and plugin-type ({paramKey:value}).
-      let metricKeys;
+      // Also accepts {compute}/{case} derived-column entries mixed in
+      // (validated properly, with real field-reference checks, at RUN time
+      // in compositeEngine.js — this is just a lightweight create-time
+      // sanity check, same depth queryEngine.js's own create-time check has).
+      let rawEntries;
       try {
-        metricKeys = typeof columns_json === "string" ? JSON.parse(columns_json) : columns_json;
+        rawEntries = typeof columns_json === "string" ? JSON.parse(columns_json) : columns_json;
       } catch {
         return resError({ developer_msg: "columns_json must be a JSON array of metric keys for composite reports" });
       }
-      if (!Array.isArray(metricKeys) || metricKeys.length === 0) {
+      if (!Array.isArray(rawEntries) || rawEntries.length === 0) {
+        return resError({ developer_msg: "At least one metric is required" });
+      }
+      const metricKeys = rawEntries.filter((e) => typeof e === "string");
+      if (metricKeys.length === 0) {
         return resError({ developer_msg: "At least one metric is required" });
       }
       const unknown = metricKeys.find((k) => !getRegisteredMetric(k));
       if (unknown) {
         return resError({ ack_msg: "Unknown metric", developer_msg: `metric "${unknown}" is not whitelisted` });
+      }
+      const invalidDerived = rawEntries.find((e) => typeof e !== "string" && !e.compute && !e.case);
+      if (invalidDerived) {
+        return resError({ developer_msg: "Each columns_json entry must be a metric key string, or a {compute} / {case} derived column" });
       }
       // No existing page fits "an arbitrary set of per-member metrics" —
       // shares Report Builder's own page/rights, same as query-type.

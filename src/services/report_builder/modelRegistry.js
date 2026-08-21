@@ -24,6 +24,7 @@
 // "findInSet", built via Sequelize's own fn()/col() (bound value, not
 // string-interpolated SQL — same safety class as every other operator here).
 import { accountTransactionsModel } from "../../models/activities/accountTransactionsModel.js";
+import { employeeAccountTransactionsModel } from "../../models/activities/employeeAccountTransactionModel.js";
 import { callhistoryModel } from "../../models/activities/callhistoryModel.js";
 import { cartItemModel } from "../../models/activities/cartItemsModel.js";
 import { cartModel } from "../../models/activities/cartsModel.js";
@@ -39,6 +40,10 @@ import { attendanceModel } from "../../models/hr/attendanceModel.js";
 import { expenseTypeModel } from "../../models/hr/expenseTypeModel.js";
 import { expensesModel } from "../../models/hr/expensesModel.js";
 import { salaryRegisterModel } from "../../models/hr/salaryRegisterModel.js";
+import { targetVsIncentiveModel } from "../../models/hr/targetVsIncentiveModel.js";
+import { accountOutstandingViewModel } from "../../models/report_builder/accountOutstandingViewModel.js";
+import { employeeOutstandingViewModel } from "../../models/report_builder/employeeOutstandingViewModel.js";
+import { stockLedgerViewModel } from "../../models/report_builder/stockLedgerViewModel.js";
 import { labelModel } from "../../models/masters/labelModel.js";
 import { sourceTypesModel } from "../../models/masters/sourceTypeMode.js";
 import { stagestatusModel } from "../../models/masters/stagestatusModel.js";
@@ -56,6 +61,9 @@ const PRODUCT_COLUMNS = {
   category_id: { label: "Category", type: "lookup", filterable: true, sortable: false, groupable: true },
   rate: { label: "Sale Rate", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
   min_stock_quantity: { label: "Min Stock Qty", type: "number", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+  max_stock_quantity: { label: "Max Stock Qty", type: "number", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+  purchase_rate: { label: "Purchase Rate", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+  purchase_net_rate: { label: "Purchase Net Rate", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
   created_date_time: { label: "Created Date", type: "date", filterable: true, sortable: true, groupable: false },
 };
 
@@ -90,6 +98,17 @@ export const MODEL_REGISTRY = {
       city: { label: "City", type: "string", filterable: true, sortable: false, groupable: true },
       area: { label: "Area", type: "string", filterable: true, sortable: false, groupable: true },
       created_date_time: { label: "Created Date", type: "date", filterable: true, sortable: true, groupable: false },
+      // Real scalar INTEGER FK (confirmed in contactModel.js — same column
+      // the "children" reverse-relation below already matches against, just
+      // exposed here as a plain filterable column too — e.g. "carts whose
+      // customer is a referral of contact X" via a relation filter on
+      // carts.customer, see categorySalesPurchaseServices.js's indirect
+      // contact filter).
+      referance_contact: { label: "Referred By (Contact)", type: "lookup", filterable: true, sortable: false, groupable: true },
+      // Real TINYINT flag (confirmed in contactModel.js) — allContactReportServices.js's
+      // is_archive filter.
+      is_archive: { label: "Archived", type: "lookup", filterable: true, sortable: false, groupable: true },
+      a_application_login_id: { label: "Created By (Team Member)", type: "lookup", filterable: true, sortable: false, groupable: true },
       ...COUNT_COLUMN,
     },
     relations: {
@@ -100,6 +119,7 @@ export const MODEL_REGISTRY = {
         targetKey: "id",
         columns: {
           source_name: { label: "Source Name", type: "string" },
+          color: { label: "Source Colour", type: "string" },
         },
       },
       status: {
@@ -109,6 +129,7 @@ export const MODEL_REGISTRY = {
         targetKey: "id",
         columns: {
           name: { label: "Status Name", type: "string" },
+          color: { label: "Status Colour", type: "string" },
         },
       },
       label: {
@@ -119,6 +140,30 @@ export const MODEL_REGISTRY = {
         targetKey: "id",
         columns: {
           lable_name: { label: "Label Names", type: "string" },
+          color: { label: "Label Colours", type: "string" },
+        },
+      },
+      // CSV-of-login-ids (confirmed real usage in allContactReportServices.js
+      // — split + per-id getLoginDetailById lookup, same pattern as
+      // task_managements.assignedTeamMembers). matchMode:"csv" + master-DB
+      // getModel are both already-proven machinery, no new engine code.
+      assignedTeamMembers: {
+        label: "Assigned To",
+        matchMode: "csv",
+        foreignKey: "assinged_to_work_a_application_id",
+        getModel: () => loginModel,
+        targetKey: "id",
+        columns: {
+          username: { label: "Assigned Names", type: "string" },
+        },
+      },
+      createdBy: {
+        label: "Created By",
+        foreignKey: "a_application_login_id",
+        getModel: () => loginModel,
+        targetKey: "id",
+        columns: {
+          username: { label: "Created By", type: "string" },
         },
       },
       // One-to-many self-relation — this contact's own id matched against
@@ -175,6 +220,7 @@ export const MODEL_REGISTRY = {
         foreignKey: "to_customer_id",
         getModel: (tenantDB) => contactModel(tenantDB),
         targetKey: "id",
+        modelKey: "contacts",
         columns: {
           person_name: { label: "Contact Name", type: "string" },
           company_name: { label: "Company Name", type: "string" },
@@ -209,6 +255,12 @@ export const MODEL_REGISTRY = {
       // it in FIND_IN_SET (which still matches a single int fine — not
       // evidence of real multi-value storage).
       item_product_id: { label: "Product", type: "lookup", filterable: true, sortable: false, groupable: true },
+      // Plain scalar INTEGER (confirmed real data: int(11) NOT NULL, actual
+      // rows hold single ids, not CSV — categorySalesPurchaseServices.js's
+      // FIND_IN_SET usage is the same defensive-wrap-on-a-scalar pattern
+      // already dismissed for item_product_id above, not evidence of real
+      // multi-value storage; checked, not assumed).
+      item_category_id: { label: "Category", type: "lookup", filterable: true, sortable: false, groupable: true },
       // Denormalized copy of the parent cart's type (confirmed in
       // cartItemsModel.js), same values as carts.type.
       cart_type: { label: "Order Type", type: "lookup", filterable: true, sortable: false, groupable: true },
@@ -266,8 +318,12 @@ export const MODEL_REGISTRY = {
       // registration. Corrects an earlier wrong "needs a plugin" verdict on
       // this specific piece.
       assigned_team_member: { label: "Assigned To (has member)", type: "csv", filterable: true, sortable: false, groupable: false },
+      task_fromdate: { label: "From Date", type: "date", filterable: true, sortable: true, groupable: false },
       task_enddate: { label: "Due Date", type: "date", filterable: true, sortable: true, groupable: false },
       created_date_time: { label: "Created Date", type: "date", filterable: true, sortable: true, groupable: false },
+      // Real TINYINT flag (confirmed in taskManagementModel.js) —
+      // teamAllTaskReportServices.js's is_support_ticket_flag filter.
+      is_support_ticket: { label: "Is Support Ticket", type: "lookup", filterable: true, sortable: false, groupable: true },
       ...COUNT_COLUMN,
     },
     relations: {
@@ -318,6 +374,7 @@ export const MODEL_REGISTRY = {
         targetKey: "id",
         columns: {
           task_category_name: { label: "Category Name", type: "string" },
+          task_color: { label: "Category Colour", type: "string" },
         },
       },
       contact: {
@@ -325,9 +382,19 @@ export const MODEL_REGISTRY = {
         foreignKey: "contact_masters_id",
         getModel: (tenantDB) => contactModel(tenantDB),
         targetKey: "id",
+        modelKey: "contacts",
         columns: {
           person_name: { label: "Contact Name", type: "string" },
           company_name: { label: "Company Name", type: "string" },
+        },
+      },
+      createdBy: {
+        label: "Created By",
+        foreignKey: "a_application_login_id",
+        getModel: () => loginModel,
+        targetKey: "id",
+        columns: {
+          username: { label: "Created By", type: "string" },
         },
       },
     },
@@ -364,6 +431,7 @@ export const MODEL_REGISTRY = {
         foreignKey: "contact_master_id",
         getModel: (tenantDB) => contactModel(tenantDB),
         targetKey: "id",
+        modelKey: "contacts",
         columns: {
           person_name: { label: "Contact Name", type: "string" },
           company_name: { label: "Company Name", type: "string" },
@@ -425,9 +493,11 @@ export const MODEL_REGISTRY = {
         foreignKey: "contact_masters_id",
         getModel: (tenantDB) => contactModel(tenantDB),
         targetKey: "id",
+        modelKey: "contacts",
         columns: {
           person_name: { label: "Contact Name", type: "string" },
           company_name: { label: "Company Name", type: "string" },
+          mobile_number: { label: "Mobile", type: "string" },
         },
       },
       paymentType: {
@@ -439,12 +509,156 @@ export const MODEL_REGISTRY = {
           payment_type_name: { label: "Payment Type", type: "string" },
         },
       },
+      // Pre-built instances bound to the MASTER db (a_application_logins
+      // lives only in smalloffice/smalloffice_prod, never a tenant DB —
+      // same pattern as expenses.employee/reminder_messages.createdBy
+      // above). Confirmed real usage in accountReportServices.js's
+      // getAllAccountTranstionsReport: both resolved per-row via
+      // getLoginDetailById (N+1) — a single batched relation fetch here
+      // replaces that.
+      createdBy: {
+        label: "Created By",
+        foreignKey: "a_application_login_id",
+        getModel: () => loginModel,
+        targetKey: "id",
+        columns: {
+          username: { label: "Created By", type: "string" },
+        },
+      },
+      approvedBy: {
+        label: "Approved By",
+        foreignKey: "approve_by_a_application_login_id",
+        getModel: () => loginModel,
+        targetKey: "id",
+        columns: {
+          username: { label: "Approved By", type: "string" },
+        },
+      },
     },
     // NOT whitelisted: reference_id/reference_table (polymorphic — the
-    // target table varies per row, not a static FK a relation can point
-    // at). approve_by_a_application_login_id would need a_application_logins,
-    // a master-DB-only table like currencyModel above — skipped for now,
-    // same pattern (getModel: () => loginModel, non-factory) would apply.
+    // target table varies per row, not a static FK a relation can point at).
+  },
+
+  // Backed by a SQL VIEW (account_outstanding_view, see alter.txt), same
+  // recipe as stock_ledger — one row per APPROVED, non-deleted transaction,
+  // with a pre-computed signed amount_signed (+ debit/type=2, - credit/
+  // type=1) so SUM(amount_signed) grouped by contact IS the outstanding
+  // balance directly (debit - credit, no separate per-row JS netting).
+  // Replaces getAccountOutstandingReport's hand-rolled two-pass aggregation
+  // (fetch all txns, net credit/debit in JS, then filter Payable/Receivable
+  // in JS) with: group by contact, sum(amount_signed) as outstanding, a
+  // having filter on the sign for the Payable/Receivable bucket.
+  account_outstanding: {
+    label: "Account Outstanding",
+    getModel: (tenantDB) => accountOutstandingViewModel(tenantDB),
+    columns: {
+      contact_masters_id: { label: "Contact", type: "lookup", filterable: true, sortable: false, groupable: true },
+      type: { label: "Type", type: "lookup", filterable: true, sortable: false, groupable: true },
+      amount: { label: "Amount", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      amount_signed: { label: "Signed Amount", type: "currency", filterable: false, sortable: false, groupable: false, aggregatable: ["sum"] },
+      payment_date_time: { label: "Payment Date", type: "date", filterable: true, sortable: true, groupable: false },
+      ...COUNT_COLUMN,
+    },
+    relations: {
+      contact: {
+        label: "Contact",
+        foreignKey: "contact_masters_id",
+        getModel: (tenantDB) => contactModel(tenantDB),
+        targetKey: "id",
+        modelKey: "contacts",
+        columns: {
+          person_name: { label: "Contact Name", type: "string" },
+          company_name: { label: "Company Name", type: "string" },
+          mobile_number: { label: "Mobile", type: "string" },
+        },
+      },
+    },
+  },
+
+  // Same shape as account_transactions, dimensioned by team_id (a login,
+  // not a contact) instead of contact_masters_id — confirmed identical
+  // structure by reading employeeTransactionReportService.js's
+  // getEmployeeAccountTranctionReport in full (createdBy/approvedBy
+  // resolved per-row via getLoginDetailById, same N+1 pattern, same fix).
+  employee_transactions: {
+    label: "Employee Transactions",
+    getModel: (tenantDB) => employeeAccountTransactionsModel(tenantDB),
+    columns: {
+      amount: { label: "Amount", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      type: { label: "Type", type: "lookup", filterable: true, sortable: false, groupable: true },
+      mode: { label: "Payment Mode", type: "lookup", filterable: true, sortable: false, groupable: true },
+      payment_date_time: { label: "Payment Date", type: "date", filterable: true, sortable: true, groupable: false },
+      remark: { label: "Remark", type: "string", filterable: true, sortable: false, groupable: false },
+      ...COUNT_COLUMN,
+    },
+    relations: {
+      employee: {
+        label: "Employee",
+        foreignKey: "team_id",
+        getModel: () => loginModel,
+        targetKey: "id",
+        columns: {
+          username: { label: "Employee", type: "string" },
+          recovery_mobile: { label: "Mobile", type: "string" },
+        },
+      },
+      paymentType: {
+        label: "Payment Type",
+        foreignKey: "mode",
+        getModel: (tenantDB) => paymentTypeModel(tenantDB),
+        targetKey: "id",
+        columns: {
+          payment_type_name: { label: "Payment Type", type: "string" },
+        },
+      },
+      createdBy: {
+        label: "Created By",
+        foreignKey: "a_application_login_id",
+        getModel: () => loginModel,
+        targetKey: "id",
+        columns: {
+          username: { label: "Created By", type: "string" },
+        },
+      },
+      approvedBy: {
+        label: "Approved By",
+        foreignKey: "approve_by_a_application_login_id",
+        getModel: () => loginModel,
+        targetKey: "id",
+        columns: {
+          username: { label: "Approved By", type: "string" },
+        },
+      },
+    },
+  },
+
+  // Backed by a SQL VIEW (employee_outstanding_view, see alter.txt) — same
+  // recipe as account_outstanding, dimensioned by team_id instead of
+  // contact_masters_id. Replaces getEmployeeAccountOutstandingReport's
+  // identical hand-rolled netting logic.
+  employee_outstanding: {
+    label: "Employee Outstanding",
+    getModel: (tenantDB) => employeeOutstandingViewModel(tenantDB),
+    columns: {
+      team_id: { label: "Employee", type: "lookup", filterable: true, sortable: false, groupable: true },
+      type: { label: "Type", type: "lookup", filterable: true, sortable: false, groupable: true },
+      amount: { label: "Amount", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      amount_signed: { label: "Signed Amount", type: "currency", filterable: false, sortable: false, groupable: false, aggregatable: ["sum"] },
+      payment_date_time: { label: "Payment Date", type: "date", filterable: true, sortable: true, groupable: false },
+      ...COUNT_COLUMN,
+    },
+    relations: {
+      employee: {
+        label: "Employee",
+        foreignKey: "team_id",
+        getModel: () => loginModel,
+        targetKey: "id",
+        columns: {
+          username: { label: "Employee", type: "string" },
+          recovery_mobile: { label: "Mobile", type: "string" },
+        },
+      },
+    },
   },
 
   visits: {
@@ -465,6 +679,7 @@ export const MODEL_REGISTRY = {
         foreignKey: "contact_id",
         getModel: (tenantDB) => contactModel(tenantDB),
         targetKey: "id",
+        modelKey: "contacts",
         columns: {
           person_name: { label: "Contact Name", type: "string" },
           company_name: { label: "Company Name", type: "string" },
@@ -492,6 +707,7 @@ export const MODEL_REGISTRY = {
         foreignKey: "contact_id",
         getModel: (tenantDB) => contactModel(tenantDB),
         targetKey: "id",
+        modelKey: "contacts",
         columns: {
           person_name: { label: "Contact Name", type: "string" },
           company_name: { label: "Company Name", type: "string" },
@@ -522,6 +738,7 @@ export const MODEL_REGISTRY = {
         foreignKey: "contact_masters_id",
         getModel: (tenantDB) => contactModel(tenantDB),
         targetKey: "id",
+        modelKey: "contacts",
         columns: {
           person_name: { label: "Contact Name", type: "string" },
           company_name: { label: "Company Name", type: "string" },
@@ -622,6 +839,60 @@ export const MODEL_REGISTRY = {
     },
   },
 
+  // Backed by a SQL VIEW (stock_ledger_view, see alter.txt), not a real
+  // table — one row per stock-affecting cart_item, with a pre-computed
+  // signed qty_delta (+ inward, - outward) so a running balance is a plain
+  // ordered cumulative sum, not per-row JS business logic. Replaces the
+  // sign-flip math productInventoryReportServices.js hand-rolls across 9
+  // separate queries; that plugin also has a real bug fixed here (its
+  // opening-balance query doesn't apply the reference_type exclusion its
+  // closing-balance query does — this view applies it consistently to both,
+  // so opening-stock figures will differ slightly from the old plugin
+  // wherever a purchase/sales row has a linked inward/dispatch duplicate).
+  stock_ledger: {
+    label: "Stock Ledger",
+    getModel: (tenantDB) => stockLedgerViewModel(tenantDB),
+    columns: {
+      item_product_id: { label: "Product", type: "lookup", filterable: true, sortable: false, groupable: true },
+      cart_type: { label: "Movement Type", type: "lookup", filterable: true, sortable: false, groupable: true },
+      cart_date: { label: "Movement Date", type: "date", filterable: true, sortable: true, groupable: false },
+      item_qty: { label: "Quantity (unsigned)", type: "number", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      // Signed movement — +item_qty for inward (purchase/inward/return-
+      // sales/stock-adjustment-in), -item_qty for outward (sales/dispatch/
+      // return-purchase/stock-adjustment-out), computed once in the view.
+      // aggregatable:["sum"] gives a plain period total; runningTotal gives
+      // a cumulative per-product balance over ordered rows (see
+      // queryEngine.js's runningTotalSpec — JS accumulation over rows
+      // fetched pre-sorted by cart_date, not a SQL window function).
+      qty_delta: {
+        label: "Stock Movement (signed)",
+        type: "number",
+        filterable: false,
+        sortable: false,
+        groupable: false,
+        aggregatable: ["sum"],
+        runningTotal: { partitionBy: "item_product_id", orderBy: "cart_date" },
+      },
+      stock_type: { label: "Stock Type", type: "lookup", filterable: true, sortable: false, groupable: true },
+      ...COUNT_COLUMN,
+    },
+    relations: {
+      product: {
+        label: "Product",
+        foreignKey: "item_product_id",
+        getModel: (tenantDB) => productModel(tenantDB),
+        targetKey: "id",
+        columns: {
+          product_name: PRODUCT_COLUMNS.product_name,
+          min_stock_quantity: PRODUCT_COLUMNS.min_stock_quantity,
+          max_stock_quantity: PRODUCT_COLUMNS.max_stock_quantity,
+          purchase_rate: PRODUCT_COLUMNS.purchase_rate,
+          purchase_net_rate: PRODUCT_COLUMNS.purchase_net_rate,
+        },
+      },
+    },
+  },
+
   attendance: {
     label: "Attendance",
     getModel: (tenantDB) => attendanceModel(tenantDB),
@@ -640,6 +911,39 @@ export const MODEL_REGISTRY = {
         targetKey: "id",
         columns: {
           username: { label: "Employee", type: "string" },
+        },
+      },
+    },
+  },
+
+  // Confirmed real columns in targetVsIncentiveModel.js — assigned_team_member
+  // is the dimension targetIncentiveReportServices.js groups by. Registered
+  // both as a plain query-type source (a flat listing of target records) and
+  // so metricsRegistry.js's target-side metrics (below) can reuse this same
+  // whitelist via modelKey, same "no second whitelist" reasoning as everywhere
+  // else here.
+  target_vs_incentives: {
+    label: "Targets & Incentives",
+    getModel: (tenantDB) => targetVsIncentiveModel(tenantDB),
+    columns: {
+      assigned_team_member: { label: "Team Member", type: "lookup", filterable: true, sortable: false, groupable: true },
+      target_type: { label: "Target Type", type: "lookup", filterable: true, sortable: false, groupable: true },
+      target_fromdate: { label: "Target From", type: "date", filterable: true, sortable: true, groupable: false },
+      target_todate: { label: "Target To", type: "date", filterable: true, sortable: true, groupable: false },
+      target_count: { label: "Target Count", type: "number", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      target_value: { label: "Target Value", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      incentive_type: { label: "Incentive Type", type: "lookup", filterable: true, sortable: false, groupable: true },
+      incentive_value: { label: "Incentive Value", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      ...COUNT_COLUMN,
+    },
+    relations: {
+      employee: {
+        label: "Team Member",
+        foreignKey: "assigned_team_member",
+        getModel: () => loginModel,
+        targetKey: "id",
+        columns: {
+          username: { label: "Team Member", type: "string" },
         },
       },
     },

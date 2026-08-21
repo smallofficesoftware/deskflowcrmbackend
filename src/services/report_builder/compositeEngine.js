@@ -12,6 +12,7 @@ import { resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { getCompanyByLoginId } from "../commonServices.js";
 import { getRegisteredMetric } from "./metricsRegistry.js";
 import { getRegisteredModel } from "./modelRegistry.js";
+import { COMPUTE_OPS, evaluateCaseSpec } from "./queryEngine.js";
 
 const ALLOWED_AGGREGATES = { sum: "SUM", avg: "AVG", min: "MIN", max: "MAX", count: "COUNT" };
 
@@ -49,7 +50,45 @@ export const runCompositeReport = async (definition, req) => {
       return resError({ ack_msg: "No access to this report", developer_msg: "User has neither showAllData nor showPersonalData rights" });
     }
 
-    const metricKeys = JSON.parse(definition.columns_json || "[]");
+    // columns_json for composite type was originally a plain array of
+    // metric-key strings — still is, for backward compatibility. Now also
+    // accepts derived-column entries mixed in, same {compute:{...}}/
+    // {case:{...}} shape query-type's own derived columns use (queryEngine.js
+    // exports the shared evaluators rather than duplicating them here) — e.g.
+    // targetIncentiveReportServices' achievement percentage/incentive calc/
+    // status bucket, computed from metrics dimensioned by team member
+    // instead of query-type's row-level aggregates. Order preserved (a
+    // derived column may reference an earlier derived column's alias, same
+    // "declaration order = dependency order" rule queryEngine.js enforces).
+    const rawEntries = JSON.parse(definition.columns_json || "[]");
+    const metricKeys = rawEntries.filter((e) => typeof e === "string");
+    const derivedSpecs = [];
+    const availableFields = new Set(metricKeys);
+    for (const e of rawEntries) {
+      if (typeof e === "string") continue;
+      if (e.compute) {
+        if (!COMPUTE_OPS[e.compute.op]) throw new Error(`Compute op "${e.compute.op}" is not allowed`);
+        if (!e.alias) throw new Error("A computed column requires an alias");
+        if (!availableFields.has(e.compute.left)) throw new Error(`Computed column "${e.alias}" references "${e.compute.left}", which isn't a selected metric`);
+        if (!availableFields.has(e.compute.right)) throw new Error(`Computed column "${e.alias}" references "${e.compute.right}", which isn't a selected metric`);
+        derivedSpecs.push({ kind: "compute", op: e.compute.op, left: e.compute.left, right: e.compute.right, alias: e.alias });
+        availableFields.add(e.alias);
+      } else if (e.case) {
+        if (!e.alias) throw new Error("A case column requires an alias");
+        if (!Array.isArray(e.case.branches) || e.case.branches.length === 0) throw new Error(`Case column "${e.alias}" requires at least one branch`);
+        for (const branch of e.case.branches) {
+          if (!Array.isArray(branch.when) || branch.when.length === 0) throw new Error(`Case column "${e.alias}" has a branch with no conditions`);
+          for (const cond of branch.when) {
+            if (!availableFields.has(cond.field)) throw new Error(`Case column "${e.alias}" references "${cond.field}", which isn't a selected metric`);
+          }
+        }
+        derivedSpecs.push({ kind: "case", branches: e.case.branches, else: e.case.else, alias: e.alias });
+        availableFields.add(e.alias);
+      } else {
+        throw new Error("Each columns_json entry must be a metric key string, or a {compute} / {case} derived column");
+      }
+    }
+
     const metrics = metricKeys.map((key) => {
       const m = getRegisteredMetric(key);
       if (!m) throw new Error(`Metric "${key}" is not whitelisted`);
@@ -125,6 +164,17 @@ export const runCompositeReport = async (definition, req) => {
     }
 
     const rowsOut = [...resultsByMember.values()];
+
+    // Derived columns, applied last (after every metric is on every row),
+    // in declaration order — same evaluators query-type uses.
+    if (derivedSpecs.length > 0) {
+      rowsOut.forEach((r) => {
+        derivedSpecs.forEach((spec) => {
+          r[spec.alias] = spec.kind === "compute" ? COMPUTE_OPS[spec.op](Number(r[spec.left]) || 0, Number(r[spec.right]) || 0) : evaluateCaseSpec(r, spec);
+        });
+      });
+    }
+
     return resSuccess({
       data: { rows: rowsOut, row_count: rowsOut.length, duration_ms: Date.now() - startedAt },
       ack_msg: rowsOut.length > 0 ? "Report data retrieved successfully" : "No data found",

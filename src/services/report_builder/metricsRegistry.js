@@ -44,6 +44,20 @@ export const METRICS_REGISTRY = {
   presentDaysFromSalary: { label: "Present Days (Salary Register)", modelKey: "salary_registers", dimensionColumn: "employee_id", aggregate: "sum", column: "total_present_day" },
   absentDaysFromSalary: { label: "Absent Days (Salary Register)", modelKey: "salary_registers", dimensionColumn: "employee_id", aggregate: "sum", column: "total_absent" },
   leaveDaysFromSalary: { label: "Leave Days (Salary Register)", modelKey: "salary_registers", dimensionColumn: "employee_id", aggregate: "sum", column: "total_leave" },
+
+  // Target vs Incentive — dimensioned by assigned_team_member instead of
+  // a_application_login_id (target_vs_incentives' own FK name, confirmed
+  // in targetVsIncentiveModel.js). `aggregate: "max"` is a documented
+  // approximation, not a real sum: these are per-member CONFIG values (one
+  // target row per member per type in the common case), not transactional
+  // amounts — MAX just picks "the" value when exactly one row matches; if a
+  // company keeps multiple concurrent target rows of the SAME type for one
+  // member, this silently picks the highest one, not a combined total.
+  targetType: { label: "Target Type", modelKey: "target_vs_incentives", dimensionColumn: "assigned_team_member", aggregate: "max", column: "target_type" },
+  targetCount: { label: "Target Count", modelKey: "target_vs_incentives", dimensionColumn: "assigned_team_member", aggregate: "max", column: "target_count" },
+  targetValue: { label: "Target Value", modelKey: "target_vs_incentives", dimensionColumn: "assigned_team_member", aggregate: "max", column: "target_value" },
+  incentiveType: { label: "Incentive Type", modelKey: "target_vs_incentives", dimensionColumn: "assigned_team_member", aggregate: "max", column: "incentive_type" },
+  incentiveValue: { label: "Incentive Value (Configured)", modelKey: "target_vs_incentives", dimensionColumn: "assigned_team_member", aggregate: "max", column: "incentive_value" },
 };
 
 export const getRegisteredMetric = (key) => METRICS_REGISTRY[key];

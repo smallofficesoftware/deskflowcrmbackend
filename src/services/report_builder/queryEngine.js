@@ -27,6 +27,23 @@ const ALLOWED_OPERATORS = {
 
 const ALLOWED_AGGREGATES = { sum: "SUM", avg: "AVG", min: "MIN", max: "MAX", count: "COUNT" };
 
+// Computed columns — plain JS arithmetic between two values ALREADY on the
+// row by the end of the pipeline (an aggregate/running-total alias, or a
+// selected relation column, e.g. closingQty × product.purchase_rate for
+// stock value, or achieved/target × 100 for an achievement percentage).
+// Not a formula string / eval — a small whitelisted op set over two named
+// fields, same "whitelist not arbitrary expression" philosophy as every
+// other primitive here. divide/percentage guard against a zero denominator
+// (0, not Infinity/NaN — a report cell should never render a JS special value).
+export const COMPUTE_OPS = {
+  multiply: (a, b) => a * b,
+  add: (a, b) => a + b,
+  subtract: (a, b) => a - b,
+  divide: (a, b) => (b ? a / b : 0),
+  percentage: (a, b) => (b ? (a / b) * 100 : 0), // e.g. achieved/target * 100 (a ratio)
+  percentOf: (a, b) => (a * b) / 100, // e.g. incentive_value% of achieved_value (a rate applied to an amount)
+};
+
 // Shared by the CSV-relation display merge and CSV group-by below — a raw
 // value like "3,7,12" (or a plain scalar, which still splits into a single-
 // element array) becomes a real numeric id array.
@@ -37,6 +54,56 @@ function splitCsv(raw) {
     .filter(Boolean)
     .map(Number)
     .filter((n) => !Number.isNaN(n));
+}
+
+// JS-side evaluator for a having filter (see havingSpecs in runQueryReport)
+// — mirrors ALLOWED_OPERATORS' semantics but runs against an already-
+// computed row value in memory, not a SQL WHERE fragment.
+function evaluateHavingOperator(op, actual, expected) {
+  switch (op) {
+    case "eq": return actual === expected;
+    case "ne": return actual !== expected;
+    case "gt": return actual > expected;
+    case "gte": return actual >= expected;
+    case "lt": return actual < expected;
+    case "lte": return actual <= expected;
+    case "in": return Array.isArray(expected) && expected.includes(actual);
+    case "notIn": return Array.isArray(expected) && !expected.includes(actual);
+    case "between": return Array.isArray(expected) && actual >= expected[0] && actual <= expected[1];
+    default: throw new Error(`Operator "${op}" is not allowed on a having filter`);
+  }
+}
+
+// Case/branch columns — "targetIncentiveReportServices' incentive calc and
+// status bucket" shape: a value tested against N conditions in order, first
+// match wins, each branch (and `else`) resolving to either a literal, a
+// pass-through of another already-derived field ({ref: fieldName}), or a
+// small compute expression ({compute: {op,left,right}}, reusing COMPUTE_OPS).
+// A branch's `when` is an AND-list of conditions (same operator set as
+// having filters); OR-of-ANDs is expressed as multiple branches with the
+// same `then` — e.g. targetIncentiveReportServices' flat-incentive rule
+// ("(count target hit) OR (value target hit) OR (no target set at all)")
+// becomes 3 branches all resolving to the same incentive_value pass-through,
+// rather than a new "or" primitive — same "whitelist small pieces, compose
+// them" philosophy as everything else here, not an expression parser.
+function resolveValueRef(row, value) {
+  return value && typeof value === "object" && "ref" in value ? row[value.ref] : value;
+}
+
+function resolveDerivedValue(row, spec) {
+  if (spec && typeof spec === "object") {
+    if ("ref" in spec) return row[spec.ref];
+    if (spec.compute) return COMPUTE_OPS[spec.compute.op](Number(row[spec.compute.left]) || 0, Number(row[spec.compute.right]) || 0);
+  }
+  return spec; // literal (string/number/null)
+}
+
+export function evaluateCaseSpec(row, spec) {
+  for (const branch of spec.branches) {
+    const matches = branch.when.every((cond) => evaluateHavingOperator(cond.op, row[cond.field], resolveValueRef(row, cond.value)));
+    if (matches) return resolveDerivedValue(row, branch.then);
+  }
+  return spec.else !== undefined ? resolveDerivedValue(row, spec.else) : null;
 }
 
 // One where-clause entry for a single whitelisted, filterable column. Throws
@@ -105,8 +172,36 @@ export const runQueryReport = async (definition, req) => {
     const effectiveColumns = { ...registryEntry.columns, ...dynamicColumns };
 
     const columns = JSON.parse(definition.columns_json || "[]");
-    const filters = JSON.parse(definition.filters_json || "[]");
     const groupBy = JSON.parse(definition.group_by_json || "[]");
+    // Per-run filter override — the saved definition's own filters_json,
+    // PLUS whatever the caller passes at run time (req.body.filters, same
+    // {column,op,value}/{column,having,op,value}/{column,childFilters}
+    // shape as filters_json — never a raw string/SQL fragment). Appended,
+    // not replacing: every runtime filter still goes through the exact same
+    // whitelist/validation loop below as a saved one (buildFilterCondition,
+    // the csv/having/inbound branches) — this is a different filter SOURCE,
+    // not a new security surface. Lets a UI reuse one saved query-type
+    // definition with a live picker (e.g. a stock-bucket dropdown mapped to
+    // a having filter on closing_stock, or a warehouse_id filter) instead of
+    // needing a separate saved definition per combination — the gap plugin-
+    // type definitions never had (runDefinitionByType already merges
+    // req.body over a plugin's own saved filters_json the same way).
+    const runtimeFilters = Array.isArray(req.body?.filters) ? req.body.filters : [];
+    const filters = [...JSON.parse(definition.filters_json || "[]"), ...runtimeFilters];
+
+    // Relation-required filters — "drop this row if its relation lookup
+    // found nothing" (e.g. categorySalesPurchaseServices.js's NOT EXISTS
+    // anti-join excluding transactions whose category was later soft-
+    // deleted: the relation fetch below already filters isDelete:0, so a
+    // deleted target simply won't appear in relMap — this makes that count
+    // as "row excluded" instead of "row kept with a null display value").
+    // Collected here, ahead of the relation-resolution block below, purely
+    // so a relKey named ONLY in a relationRequired filter (no display
+    // column selected for it) still gets its relMap built — real validation
+    // (relKey exists, not a csv/reverse relation) happens in the main
+    // filters loop same as every other filter type, this is just eager
+    // discovery. v1 scope matches relationFilters above: scalar relations only.
+    const relationRequiredKeys = new Set(filters.filter((f) => f.relationRequired).map((f) => f.column));
 
     // ---- Split base-table columns from whitelisted relation columns
     // (dotted "relKey.colKey", e.g. "customer.person_name") — relation
@@ -116,7 +211,37 @@ export const runQueryReport = async (definition, req) => {
     // target — same "throws like any unwhitelisted column" behavior). ----
     const baseColumns = [];
     const relationColumns = [];
+    // Computed columns — {compute:{op,left,right}, alias} instead of
+    // {column,...} — pulled out here so the base/relation loop below never
+    // has to special-case them. left/right are validated against what's
+    // actually available on the row (computedAliases, base columns, or
+    // relation columns) once the rest of `columns` has been parsed — see
+    // the derived-column-resolution block near the end of this function.
+    // One ordered array for both kinds (not two separate lists) so a later
+    // entry can reference an earlier one's alias in declaration order —
+    // e.g. a "case" status-bucket column referencing a "compute" percentage
+    // column defined just before it in columns_json.
+    const derivedSpecs = []; // {kind:"compute"|"case", ...}
     for (const c of columns) {
+      if (c.compute) {
+        if (!COMPUTE_OPS[c.compute.op]) throw new Error(`Compute op "${c.compute.op}" is not allowed`);
+        if (!c.alias) throw new Error("A computed column requires an alias");
+        derivedSpecs.push({ kind: "compute", op: c.compute.op, left: c.compute.left, right: c.compute.right, alias: c.alias });
+        continue;
+      }
+      if (c.case) {
+        if (!c.alias) throw new Error("A case column requires an alias");
+        if (!Array.isArray(c.case.branches) || c.case.branches.length === 0) {
+          throw new Error(`Case column "${c.alias}" requires at least one branch`);
+        }
+        for (const branch of c.case.branches) {
+          if (!Array.isArray(branch.when) || branch.when.length === 0) {
+            throw new Error(`Case column "${c.alias}" has a branch with no conditions`);
+          }
+        }
+        derivedSpecs.push({ kind: "case", branches: c.case.branches, else: c.case.else, alias: c.alias });
+        continue;
+      }
       if (c.column.includes(".")) {
         const [relKey, relColKey] = c.column.split(".");
         const relDef = registryEntry.relations && registryEntry.relations[relKey];
@@ -166,10 +291,44 @@ export const runQueryReport = async (definition, req) => {
     const attributes = [];
     const aggregateSpecs = []; // {column, aggregate, alias} — only used when csvGroupColumn is set
     const rawFetchColumns = new Set(); // only used when csvGroupColumn is set
+    // Every alias that names a COMPUTED value (an aggregate, in either the
+    // SQL or CSV group-by path, or a running total) rather than a raw
+    // column — the only valid targets for a "having" filter below (a plain
+    // WHERE column filter already covers raw columns; this is specifically
+    // for filtering on the aggregated/derived result, the HAVING-clause
+    // equivalent Crystal Reports calls a "group selection formula").
+    const computedAliases = new Set();
+    // ---- Running total, whitelisted per-column (e.g. stock_ledger.qty_delta).
+    // A generic "cumulative sum over ordered raw rows, reset per partition"
+    // primitive — same JS-side-accumulation-over-sorted-rows approach the CSV
+    // group-by feature above already uses instead of a MySQL window function
+    // (no server-version dependency). Mutually exclusive with SQL/CSV
+    // group-by (a running total needs individual ordered rows, grouping
+    // collapses them) and with aggregating the SAME column (can't both sum
+    // it away and accumulate it row-by-row) — both throw like any other
+    // whitelist violation here, not silently ignored. At most one running
+    // total column per report (v1 — same "one at a time" scope as
+    // csvGroupColumn above). ----
+    let runningTotalSpec = null; // {column, alias, partitionBy, orderBy}
     for (const c of baseColumns) {
       const columnDef = effectiveColumns[c.column];
       if (!columnDef) throw new Error(`Column "${c.column}" is not whitelisted for this report source`);
       explicitlySelectedBaseColumns.add(c.column);
+      if (c.runningTotal) {
+        if (!columnDef.runningTotal) throw new Error(`Column "${c.column}" does not support a running total`);
+        if (c.aggregate) throw new Error(`Column "${c.column}" cannot be both aggregated and a running total`);
+        if (runningTotalSpec) throw new Error("Only one running-total column is supported per report");
+        if (groupBy.length > 0) throw new Error("Running total cannot be combined with group_by");
+        runningTotalSpec = {
+          column: c.column,
+          alias: c.alias || `running_${c.column}`,
+          partitionBy: columnDef.runningTotal.partitionBy,
+          orderBy: columnDef.runningTotal.orderBy,
+        };
+        computedAliases.add(runningTotalSpec.alias);
+        attributes.push(c.column);
+        continue;
+      }
       if (c.aggregate) {
         const fnName = ALLOWED_AGGREGATES[c.aggregate];
         if (!fnName) throw new Error(`Aggregate "${c.aggregate}" is not allowed`);
@@ -177,6 +336,7 @@ export const runQueryReport = async (definition, req) => {
           throw new Error(`Column "${c.column}" does not support aggregate "${c.aggregate}"`);
         }
         const alias = c.alias || `${c.aggregate}_${c.column}`;
+        computedAliases.add(alias);
         if (csvGroupColumn) {
           aggregateSpecs.push({ column: c.column, aggregate: c.aggregate, alias });
           rawFetchColumns.add(c.column);
@@ -197,11 +357,26 @@ export const runQueryReport = async (definition, req) => {
       sqlGroupColumns.forEach((g) => rawFetchColumns.add(g));
     }
 
+    // Running total needs its partition/order columns available even if the
+    // user didn't explicitly select them for display — same "inject what's
+    // needed" convention as the relation FK injection below (not tracked for
+    // stripping afterward, unlike those: partitionBy/orderBy are ordinary
+    // whitelisted columns a report about a running balance is expected to show).
+    if (runningTotalSpec) {
+      if (!explicitlySelectedBaseColumns.has(runningTotalSpec.partitionBy)) attributes.push(runningTotalSpec.partitionBy);
+      if (!explicitlySelectedBaseColumns.has(runningTotalSpec.orderBy)) attributes.push(runningTotalSpec.orderBy);
+    }
+
     // ---- Inject FK columns needed by referenced relations (so the merge
     // step below has a join key to work with), even if the user didn't
     // explicitly select the FK column itself for display. Tracked so it
     // can be stripped back out after the merge. ----
-    const usedRelationKeys = [...new Set(relationColumns.map((c) => c.relKey))];
+    // Invalid relationRequiredKeys entries are silently skipped here (not
+    // thrown) — the main filters loop below is the single source of truth
+    // for validating a relationRequired filter's relKey/matchMode, this is
+    // only eager-fetch discovery for the ones that turn out valid.
+    const validRelationRequiredKeys = [...relationRequiredKeys].filter((k) => registryEntry.relations && registryEntry.relations[k]);
+    const usedRelationKeys = [...new Set([...relationColumns.map((c) => c.relKey), ...validRelationRequiredKeys])];
     const injectedFkColumns = [];
     for (const relKey of usedRelationKeys) {
       const foreignKey = registryEntry.relations[relKey].foreignKey;
@@ -210,6 +385,55 @@ export const runQueryReport = async (definition, req) => {
         if (csvGroupColumn) rawFetchColumns.add(foreignKey);
         else attributes.push(foreignKey);
       }
+    }
+
+    // ---- Validate derived-column (compute/case) references — each must
+    // already be an explicitly-selected field (a base column, an aggregate/
+    // running-total alias, a selected relation column) OR an EARLIER
+    // derived column's own alias (processed in columns_json order below, so
+    // a case column can reference a compute column declared just before
+    // it — but never a later one, avoiding forward-reference cycles). No
+    // auto-injection (unlike the FK-injection above): a derived column
+    // reuses whatever the report ALSO chose to display, so it always
+    // references real, visible values — never something pulled in behind
+    // the scenes. ----
+    const availableFields = new Set([
+      ...explicitlySelectedBaseColumns,
+      ...computedAliases,
+      ...relationColumns.map((c) => `${c.relKey}.${c.relColKey}`),
+    ]);
+    const requireAvailable = (fieldName, aliasBeingDefined) => {
+      if (!availableFields.has(fieldName)) {
+        throw new Error(`Derived column "${aliasBeingDefined}" references "${fieldName}", which isn't selected on this report`);
+      }
+    };
+    const requireAvailableIfRef = (value, aliasBeingDefined) => {
+      if (value && typeof value === "object" && "ref" in value) requireAvailable(value.ref, aliasBeingDefined);
+    };
+    for (const spec of derivedSpecs) {
+      if (spec.kind === "compute") {
+        requireAvailable(spec.left, spec.alias);
+        requireAvailable(spec.right, spec.alias);
+      } else {
+        // case
+        for (const branch of spec.branches) {
+          for (const cond of branch.when) {
+            requireAvailable(cond.field, spec.alias);
+            requireAvailableIfRef(cond.value, spec.alias);
+          }
+          requireAvailableIfRef(branch.then, spec.alias);
+          if (branch.then && typeof branch.then === "object" && branch.then.compute) {
+            requireAvailable(branch.then.compute.left, spec.alias);
+            requireAvailable(branch.then.compute.right, spec.alias);
+          }
+        }
+        requireAvailableIfRef(spec.else, spec.alias);
+        if (spec.else && typeof spec.else === "object" && spec.else.compute) {
+          requireAvailable(spec.else.compute.left, spec.alias);
+          requireAvailable(spec.else.compute.right, spec.alias);
+        }
+      }
+      availableFields.add(spec.alias);
     }
 
     // ---- user-supplied filters, whitelisted columns/operators, bound values only.
@@ -221,8 +445,72 @@ export const runQueryReport = async (definition, req) => {
     // merged into the flat userWhere object the way {col: {op: val}} can. ----
     const userWhere = {};
     const csvWhereClauses = [];
+    // Blank-aware / multi-value-OR clauses — a recurring shape across
+    // allContactReportServices.js (labels, status, source type),
+    // teamAllTaskReportServices.js (status/external_status/assigned team
+    // member), accountReportServices.js (selectedPaymentBy): a list of ids
+    // OR'd together (findInSet for CSV columns, plain IN for scalar ones),
+    // PLUS an optional "no value set at all" sentinel (NULL/0/'') OR'd in.
+    // Kept separate from userWhere (can't merge an Op.or fragment into that
+    // flat object without colliding when more than one column needs one —
+    // Op.or is the same Symbol key every time) and merged into the final
+    // where the same way csvWhereClauses already are. ----
+    const blankAwareWhereClauses = [];
     const inboundFilterSpecs = []; // {column, childFilters} — resolved after this loop, needs an await
+    // Relation filters — "base rows whose JOINED row matches" (e.g. carts
+    // whose customer.referance_contact = X — the normal SQL "join then
+    // WHERE on the joined table" pattern relations don't support otherwise,
+    // v1 having scoped them display-only). Mirror of inboundFilters but
+    // outbound: an ALREADY-declared relation (registryEntry.relations[key]),
+    // filtered by conditions validated against ITS target's own column
+    // whitelist — reuses the full registered model's columns when the
+    // relation names one via modelKey (no second whitelist to maintain,
+    // same reasoning inboundFilters' childModelKey already uses), else
+    // falls back to the relation's own curated display columns (which have
+    // no filterable flags set, so those effectively can't be filtered on
+    // until either promoted or the relation gains a modelKey — a safe
+    // default, not silently permissive). Discriminated by relationFilters
+    // (array) — a separate namespace from real columns, no collision risk,
+    // same convention childFilters/having already use.
+    const relationFilterSpecs = []; // {relKey, relDef, relationFilters}
+    // Having filters — "keep only rows where the COMPUTED value matches",
+    // e.g. productInventoryReportServices' stockTypeId bucket (zero-stock /
+    // below-min-alert / above-max), which filters the computed closing
+    // qty, not any stored column. Discriminated by f.having:true (a
+    // separate namespace from effectiveColumns, same "no collision risk"
+    // reasoning inboundFilters' childFilters discriminator already uses)
+    // and by the target actually being a computedAliases entry — never a
+    // raw column, that's what the plain filter branch below is for.
+    // Applied as a uniform JS post-filter on the already-built `rows` array
+    // (below, after grouping/running-total) rather than a SQL HAVING clause
+    // — one code path regardless of which branch produced the computed
+    // value (SQL group, CSV group, or running total), all already end up
+    // as a plain JS array here, same reasoning CSV group-by's own
+    // aggregation-in-JS already established.
+    const havingSpecs = []; // {alias, op, value}
     for (const f of filters) {
+      if (Array.isArray(f.relationFilters)) {
+        const relDef = registryEntry.relations && registryEntry.relations[f.column];
+        if (!relDef) throw new Error(`Relation "${f.column}" is not whitelisted for this report source`);
+        if (relDef.matchMode) throw new Error(`Relation "${f.column}" does not support relation filters (csv/reverse relations aren't supported yet)`);
+        relationFilterSpecs.push({ relKey: f.column, relDef, relationFilters: f.relationFilters });
+        continue;
+      }
+      if (f.relationRequired) {
+        const relDef = registryEntry.relations && registryEntry.relations[f.column];
+        if (!relDef) throw new Error(`Relation "${f.column}" is not whitelisted for this report source`);
+        if (relDef.matchMode) throw new Error(`Relation "${f.column}" does not support a relation-required filter (csv/reverse relations aren't supported yet)`);
+        continue; // enforced during relation resolution below, using relationRequiredKeys
+      }
+      if (f.having) {
+        if (!computedAliases.has(f.column)) {
+          throw new Error(`"${f.column}" is not a computed value on this report (having filters only target an aggregate or running-total alias)`);
+        }
+        const operator = ALLOWED_OPERATORS[f.op || "eq"];
+        if (!operator || f.op === "like") throw new Error(`Operator "${f.op}" is not allowed on a having filter`);
+        havingSpecs.push({ alias: f.column, op: f.op || "eq", value: f.value });
+        continue;
+      }
       // Inbound filter — "base rows with a matching child row" (e.g.
       // "contacts who ordered product X"), discriminated by the presence of
       // childFilters (a separate namespace from effectiveColumns, so no
@@ -241,7 +529,34 @@ export const runQueryReport = async (definition, req) => {
       if (columnDef && columnDef.type === "csv") {
         if (!columnDef.filterable) throw new Error(`Column "${f.column}" is not filterable`);
         if (f.op !== "findInSet") throw new Error(`Operator "${f.op}" is not allowed on CSV column "${f.column}"`);
-        csvWhereClauses.push(sequelizeWhere(fn("FIND_IN_SET", String(f.value), col(f.column)), { [Op.gt]: 0 }));
+        if (Array.isArray(f.value)) {
+          // Multi-value CSV filter — e.g. contacts.lable matching ANY (or
+          // ALL, via combinator:"and") of several ids, optionally with a
+          // "no labels set at all" blank sentinel OR'd in.
+          const idClauses = f.value.map((v) => sequelizeWhere(fn("FIND_IN_SET", String(v), col(f.column)), { [Op.gt]: 0 }));
+          const combined = idClauses.length === 0 ? null : f.combinator === "and" ? { [Op.and]: idClauses } : { [Op.or]: idClauses };
+          if (f.includeBlank) {
+            const blankClause = { [f.column]: { [Op.or]: [{ [Op.is]: null }, { [Op.eq]: "" }] } };
+            blankAwareWhereClauses.push(combined ? { [Op.or]: [combined, blankClause] } : blankClause);
+          } else if (combined) {
+            blankAwareWhereClauses.push(combined);
+          }
+        } else {
+          csvWhereClauses.push(sequelizeWhere(fn("FIND_IN_SET", String(f.value), col(f.column)), { [Op.gt]: 0 }));
+        }
+        continue;
+      }
+      if (Array.isArray(f.value) && f.includeBlank) {
+        // Multi-value IN filter on a plain scalar column, OR'd with a "no
+        // value set at all" sentinel — e.g. allContactReportServices.js's
+        // status/source-type filters (a list of ids plus a blank bucket).
+        // Plain multi-value WITHOUT includeBlank already works via the
+        // existing {op:"in", value:[...]} path below, unchanged.
+        if (!columnDef || !columnDef.filterable) throw new Error(`Column "${f.column}" is not filterable`);
+        const orConditions = [];
+        if (f.value.length > 0) orConditions.push({ [f.column]: { [Op.in]: f.value } });
+        orConditions.push({ [f.column]: { [Op.is]: null } }, { [f.column]: { [Op.eq]: 0 } }, { [f.column]: { [Op.eq]: "" } });
+        blankAwareWhereClauses.push({ [Op.or]: orConditions });
         continue;
       }
       Object.assign(userWhere, buildFilterCondition(columnDef, f.column, f));
@@ -272,6 +587,31 @@ export const runQueryReport = async (definition, req) => {
       userWhere[inboundDef.parentKey] = { [Op.in]: parentIds.length > 0 ? parentIds : [0] };
     }
 
+    // ---- Resolve relation filters — one query per filter against the
+    // relation's TARGET table (reusing the full registered model's own
+    // column whitelist via modelKey when declared, else the relation's own
+    // curated columns — same "no duplicate whitelist" reasoning as inbound
+    // filters above), collecting matching target ids, then narrowing the
+    // base query by its foreignKey IN (...). [0] sentinel on empty match,
+    // same convention as inbound filters. ----
+    for (const { relKey, relDef, relationFilters } of relationFilterSpecs) {
+      const targetColumns = relDef.modelKey ? getRegisteredModel(relDef.modelKey)?.columns : relDef.columns;
+      if (!targetColumns) throw new Error(`Relation "${relKey}" does not support filtering`);
+      const relWhere = { isDelete: 0 };
+      for (const rf of relationFilters) {
+        const targetColumnDef = targetColumns[rf.column];
+        Object.assign(relWhere, buildFilterCondition(targetColumnDef, rf.column, rf));
+      }
+      const RelatedModel = relDef.getModel(req.tenantDB);
+      const matchedRelatedRows = await RelatedModel.findAll({
+        where: relWhere,
+        attributes: [relDef.targetKey],
+        raw: true,
+      });
+      const matchedIds = matchedRelatedRows.map((r) => r[relDef.targetKey]).filter((v) => v !== null && v !== undefined);
+      userWhere[relDef.foreignKey] = { [Op.in]: matchedIds.length > 0 ? matchedIds : [0] };
+    }
+
     // ---- rights-based scope — fail closed, never fall back to unscoped ----
     let rightsWhere = {};
     if (showAllData) {
@@ -288,10 +628,12 @@ export const runQueryReport = async (definition, req) => {
       ...rightsWhere,
       isDelete: 0,
     };
-    // csvWhereClauses (sequelize.where(fn(...)) instances) can't merge into
-    // a plain object the way {col: {op: val}} fragments can — combined via
-    // Op.and instead. Flat shape (unchanged from before) when there are none.
-    const where = csvWhereClauses.length > 0 ? { [Op.and]: [baseWhere, ...csvWhereClauses] } : baseWhere;
+    // csvWhereClauses (sequelize.where(fn(...)) instances) and
+    // blankAwareWhereClauses (Op.or fragments) can't merge into a plain
+    // object the way {col: {op: val}} fragments can — combined via Op.and
+    // instead. Flat shape (unchanged from before) when there are none.
+    const extraWhereClauses = [...csvWhereClauses, ...blankAwareWhereClauses];
+    const where = extraWhereClauses.length > 0 ? { [Op.and]: [baseWhere, ...extraWhereClauses] } : baseWhere;
 
     const requestedLimit = Number(req.body.limit) || DEFAULT_ROW_LIMIT;
     const limit = Math.min(Math.max(requestedLimit, 1), HARD_ROW_LIMIT);
@@ -366,12 +708,40 @@ export const runQueryReport = async (definition, req) => {
           attributes: attributes.length ? attributes : undefined,
           where,
           group: sqlGroupColumns.length ? sqlGroupColumns : undefined,
+          order: runningTotalSpec ? [[runningTotalSpec.orderBy, "ASC"], ["id", "ASC"]] : undefined,
           limit,
           offset,
           raw: true,
         }),
         timeoutGuard,
       ]);
+
+      // ---- Cumulative sum per partition, over rows already fetched in
+      // orderBy order — plain JS accumulation, not a SQL window function
+      // (see comment at runningTotalSpec's declaration above). Resets to 0
+      // for each distinct partitionBy value; a row with a null partition
+      // value accumulates under its own "null" bucket rather than being
+      // dropped. ----
+      if (runningTotalSpec) {
+        const running = new Map(); // partition value -> running sum so far
+        for (const row of rows) {
+          const key = row[runningTotalSpec.partitionBy];
+          const prev = running.get(key) || 0;
+          const next = prev + (Number(row[runningTotalSpec.column]) || 0);
+          running.set(key, next);
+          row[runningTotalSpec.alias] = next;
+        }
+      }
+    }
+
+    // ---- Having filters — applied here, uniformly, regardless of which
+    // branch above produced `rows` (SQL group, CSV group, or running
+    // total) since all three already end up as a plain JS array by this
+    // point. Filters on the group/product count, not the underlying row
+    // count, so it runs before limit/offset would otherwise be meaningful
+    // for it — same "computed value" semantics a SQL HAVING clause has. ----
+    if (havingSpecs.length > 0) {
+      rows = rows.filter((row) => havingSpecs.every((spec) => evaluateHavingOperator(spec.op, row[spec.alias], spec.value)));
     }
 
     // ---- Whitelisted relations — one batched query per relation + a JS
@@ -425,6 +795,16 @@ export const runQueryReport = async (definition, req) => {
           }
         }
 
+        // Relation-required — drop rows whose relation lookup found nothing
+        // (e.g. the target was soft-deleted, so it never made it into relMap
+        // above, which already scopes to isDelete:0). Applied here, right
+        // after relMap is built and before the display merge below, so a
+        // later relKey's own relMap fetch (if any) only has to consider the
+        // rows that survived this one.
+        if (relationRequiredKeys.has(relKey)) {
+          rows = rows.filter((r) => relMap.has(r[relDef.foreignKey]));
+        }
+
         rows.forEach((r) => {
           if (isReverse) {
             const children = relMap.get(r[relDef.foreignKey]) || [];
@@ -458,6 +838,22 @@ export const runQueryReport = async (definition, req) => {
     // selected by the user, don't belong in the result they asked for.
     if (injectedFkColumns.length > 0) {
       rows.forEach((r) => injectedFkColumns.forEach((fk) => delete r[fk]));
+    }
+
+    // ---- Computed columns — plain JS arithmetic between two values now
+    // present on every row (an aggregate/running-total alias and/or a
+    // relation column, both validated against availableFields above).
+    // Runs last, after relation merge, since a relation-referencing operand
+    // (e.g. product.purchase_rate) only lands on the row during that step.
+    // Processed in columns_json order (derivedSpecs), so a case column can
+    // read an earlier compute column's result on the SAME row within this
+    // same pass — no second pass needed, each row is independent. ----
+    if (derivedSpecs.length > 0) {
+      rows.forEach((r) => {
+        derivedSpecs.forEach((spec) => {
+          r[spec.alias] = spec.kind === "compute" ? COMPUTE_OPS[spec.op](Number(r[spec.left]) || 0, Number(r[spec.right]) || 0) : evaluateCaseSpec(r, spec);
+        });
+      });
     }
 
     return resSuccess({

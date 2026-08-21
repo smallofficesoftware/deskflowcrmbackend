@@ -99,12 +99,10 @@ export const PAGE_ID = {
   TARGET_VS_INCENTIVE_REPORT: "130",
   CUSTOMER_SALES_PURCHASE_REPORT: "131",
   ROUTE_PLANNER: "144",
-  REPORT_BUILDER: "145",
-  // Never existed backend-side before (confirmed via grep) — frontend's
-  // AppEnum.ts had a dangling DOCUMENT_DESIGNER_RIGHTS=145 with no matching
-  // a_application_pages row and no backend counterpart. Added here at 146
-  // now that a real row is being seeded for it.
-  DOCUMENT_DESIGNER_RIGHTS: "146",
+  // Real a_application_pages ids, confirmed against the live DB: Document
+  // Designer=157, Report Builder=158.
+  DOCUMENT_DESIGNER_RIGHTS: "157",
+  REPORT_BUILDER: "158",
   // Add more pages as needed
 };
 // config/googleApi.ts
