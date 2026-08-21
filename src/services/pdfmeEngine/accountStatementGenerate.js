@@ -49,6 +49,7 @@ export async function generateAccountStatementPdf({
   toDate,
   settingDetails,
   entityLines = null,
+  templateOverride = null,
 }) {
   const showCompanyHeader = !!settingDetails?.headerImage;
 
@@ -106,7 +107,10 @@ export async function generateAccountStatementPdf({
 
   const hasRows = rows.length > 0;
 
-  const template = buildAccountStatementTemplate({
+  // A company's own customized template (built/edited in Document Designer)
+  // has its own fixed field positions already baked in — skip the dynamic
+  // line-count sizing entirely and bind the same rawInputs into it instead.
+  const template = templateOverride || buildAccountStatementTemplate({
     leftLineCount: leftLines.length,
     rightLineCount: rightLines.length,
     hasRows,

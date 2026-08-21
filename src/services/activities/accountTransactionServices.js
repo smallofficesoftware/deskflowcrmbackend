@@ -37,10 +37,27 @@ import { __dirnameConstant, EXPORTS_LINK_EXTENDED, PDF_LINK_EXTENDED_Account_TRA
 import { PAGE_ID } from "../../utils/AppEnumeration.js";
 import { exportData } from "../../utils/exporter.js";
 import { getCompanyByLoginId, getCompanyDetailByLoginId } from "../commonServices.js";
+import { documentPrintTemplateModel } from "../../models/company_setup/documentPrintTemplateModel.js";
 import { isFeatureEnabled } from "../company_setup/featureFlagServices.js";
 import { sendMultipleNotification } from "../company_setup/thirdPartyIntegrationService.js";
 import { generateAccountStatementPdf } from "../pdfmeEngine/accountStatementGenerate.js";
 import { generateAccountTransactionPdf } from "../pdfmeEngine/accountTransactionGenerate.js";
+
+// Loads a company's own pdfme template JSON for accountStatement/
+// accountTransaction (created via Document Designer's generic
+// create/duplicate/copy-from-gallery flow) so generateAccountStatementPdf/
+// generateAccountTransactionPdf can bind data into it directly instead of
+// building the default dynamically-sized layout. Returns null (falls back
+// to the default) when no id is given or the row isn't found.
+async function loadAccountTemplateOverride(req, companyMastersId, documentTemplateId) {
+  if (!documentTemplateId) return null;
+  const Template = documentPrintTemplateModel(req.tenantDB);
+  const row = await Template.findOne({
+    where: { id: documentTemplateId, company_masters_id: companyMastersId, isDelete: 0 },
+  });
+  if (!row) return null;
+  return JSON.parse(row.published_template_json);
+}
 
 function AccountTransactionformatDateAndTime(dateStr) {
   const d = new Date(dateStr);
@@ -1256,11 +1273,17 @@ export const accountPDFv1 = async (req, res) => {
     const fileLinkPath = PDF_LINK_EXTENDED_Account_TRANSACTION + companyDetail.id.toString() + "/" + fileNameOnly;
 
     // pdfme Document Designer — same per-company opt-in as §5's cart-doc path
-    // (orderServices.js:4810). This receipt isn't Designer-customizable yet
-    // (accountTransactionTemplate.js is a fixed port), just a renderer switch.
+    // (orderServices.js:4810). document_template_id (from the frontend's
+    // picker, when the company has 2+ accountTransaction templates) selects
+    // a company-customized template instead of the default dynamic layout.
     const documentDesignerEnabled = await isFeatureEnabled(companyDetail.id, "document_designer");
 
     if (documentDesignerEnabled) {
+      const templateOverride = await loadAccountTemplateOverride(
+        req,
+        companyDetail.id,
+        req.body.document_template_id
+      );
       const buffer = await generateAccountTransactionPdf({
         companyDetails: companyDetail,
         accountTransactions: accountTransaction,
@@ -1270,6 +1293,7 @@ export const accountPDFv1 = async (req, res) => {
         currencySymbol: "₹",
         formattedAmount: AccountTransactionformatNumber(accountTransaction.amount),
         formattedDate: accountTransaction.payment_date_time ? AccountTransactionformatDateAndTime(accountTransaction.payment_date_time) : "-",
+        templateOverride,
       });
       if (!fs.existsSync(uploadDir)) {
         fs.mkdirSync(uploadDir, { recursive: true });
@@ -1455,11 +1479,17 @@ export const allAccountTransactionOfContactPDF = async (req, res) => {
     const fileLinkPath = PDF_LINK_EXTENDED_Account_TRANSACTION + pdfPath;
 
     // pdfme Document Designer — same per-company opt-in as §5's cart-doc path
-    // (orderServices.js:4810). This statement isn't Designer-customizable yet
-    // (accountStatementTemplate.js is a fixed port), just a renderer switch.
+    // (orderServices.js:4810). document_template_id (from the frontend's
+    // picker, when the company has 2+ accountStatement templates) selects
+    // a company-customized template instead of the default dynamic layout.
     const documentDesignerEnabled = await isFeatureEnabled(companyData.id, "document_designer");
 
     if (documentDesignerEnabled) {
+      const templateOverride = await loadAccountTemplateOverride(
+        req,
+        companyData.id,
+        req.body.document_template_id
+      );
       const buffer = await generateAccountStatementPdf({
         companyData,
         contactData,
@@ -1470,6 +1500,7 @@ export const allAccountTransactionOfContactPDF = async (req, res) => {
         fromDate,
         toDate,
         settingDetails,
+        templateOverride,
       });
       fs.writeFileSync(filePath, buffer);
     } else {

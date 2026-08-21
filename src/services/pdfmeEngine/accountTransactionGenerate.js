@@ -48,6 +48,7 @@ export async function generateAccountTransactionPdf({
   entityPairs = null,
   entityName = null,
   remarkColor = "#1b1bb3",
+  templateOverride = null,
 }) {
   const isCredit = accountTransactions?.type == 1;
   const showHeader = !!settingDetails?.headerImage;
@@ -97,14 +98,17 @@ export async function generateAccountTransactionPdf({
   const remark = accountTransactions?.remark || "";
   const remarkLineCount = remark ? remark.split(/\r\n|\n/).length : 0;
 
-  const template = buildAccountTransactionTemplate({
+  // A company's own customized template (built/edited in Document Designer)
+  // has its own fixed field positions already baked in — skip the dynamic
+  // line-count sizing entirely and bind the same rawInputs into it instead.
+  const template = templateOverride || buildAccountTransactionTemplate({
     headerLineCount: showHeader ? 1 + headerLine2.length : 0,
     contactRowCount: contact.count,
     remarkLineCount,
   });
 
   const amountField = template.schemas[0].find((f) => f.name === "amountLine");
-  amountField.fontColor = isCredit ? "#008000" : "#cc0000";
+  if (amountField) amountField.fontColor = isCredit ? "#008000" : "#cc0000";
   const remarkField = template.schemas[0].find((f) => f.name === "remarkText");
   if (remarkField) remarkField.fontColor = remarkColor;
 
