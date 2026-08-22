@@ -285,7 +285,7 @@ export function buildExtraPages(customFieldRows, cartValues) {
 // a pdfme text field's content must be a string (@pdfme/schemas' line-
 // break logic calls .split on it) or generate() throws. Matches the old
 // EJS pipeline's own formatNum(x, 2) (src/utils/sharedFunctions.js).
-function num(value, decimals = 2) {
+export function num(value, decimals = 2) {
   if (value === undefined || value === null || value === "") return "";
   return Number(value).toFixed(decimals);
 }

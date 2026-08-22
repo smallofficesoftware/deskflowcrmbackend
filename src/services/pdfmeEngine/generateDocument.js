@@ -23,6 +23,7 @@ import {
   fillMissingInputsFromContent,
   injectPaymentQRField,
   injectWatermarkField,
+  num,
   resolveDataSources,
 } from "./orderInputMapper.js";
 
@@ -106,6 +107,12 @@ async function toImageDataUri(value) {
 // resolved against an empty {} object by design (deliberately
 // cart-independent) — {{companyAddress}}/{{contactPerson}}/etc typed inside
 // a Designer Page's own text field never had anything to substitute against.
+//
+// entry.itemInputs (Product Page Designer only — see productPageEntries
+// below) overrides firstItemName/firstItemPrice/firstItemImage with THIS
+// item's own values instead of the cart's first line item — a product page
+// bound to "First Item — Name" means "this product's own name", not
+// whichever product happens to be first in the cart.
 async function buildDesignerPageBytes(entry, company, tenantDB, mainInputs) {
   const Template = documentPrintTemplateModel(tenantDB);
   const row = await Template.findOne({
@@ -114,7 +121,8 @@ async function buildDesignerPageBytes(entry, company, tenantDB, mainInputs) {
   if (!row?.published_template_json) return null;
 
   const template = JSON.parse(row.published_template_json);
-  let resolvedInputs = resolveDataSources(template, mainInputs || {});
+  const inputsForPage = entry.itemInputs ? { ...mainInputs, ...entry.itemInputs } : mainInputs;
+  let resolvedInputs = resolveDataSources(template, inputsForPage || {});
   resolvedInputs = fillMissingInputsFromContent(template, resolvedInputs);
   resolvedInputs = applyTokenSubstitution(template, resolvedInputs);
   return generate({ template, inputs: [resolvedInputs], plugins: pluginMap, options: { font: fontMap } });
@@ -366,10 +374,26 @@ export async function generateQuotationPdf({
     const templateIdByProductId = {};
     products.forEach((p) => { if (p.document_template_id) templateIdByProductId[p.id] = p.document_template_id; });
 
+    // itemInputs: this line item's OWN name/price/image, keyed to the same
+    // firstItem* dictionary keys a product page's fields bind to — so
+    // "First Item — Name" on a product page means "this product's own
+    // name", not the cart's first item (buildDesignerPageBytes merges this
+    // over mainInputs, not the other way around).
     const productPageEntries = itemProductIds
-      .map((productId) => templateIdByProductId[productId])
-      .filter(Boolean)
-      .map((templateId) => ({ kind: "designerPage", value: String(templateId) }));
+      .map((productId, idx) => {
+        const templateId = templateIdByProductId[productId];
+        if (!templateId) return null;
+        return {
+          kind: "designerPage",
+          value: String(templateId),
+          itemInputs: {
+            firstItemName: items?.[idx]?.description ?? "",
+            firstItemPrice: items?.[idx] ? num(items[idx].rate) : "",
+            firstItemImage: itemImages?.[idx] || "",
+          },
+        };
+      })
+      .filter(Boolean);
     extraPages.after = [...productPageEntries, ...extraPages.after];
   }
 
