@@ -10,7 +10,7 @@ import { documentPrintTemplateModel } from "../../models/company_setup/documentP
 import { productModel } from "../../models/product_settings/productModel.js";
 import { getTemplate, withCompanyHeader } from "./templates.js";
 import { loadFonts } from "./fonts.js";
-import { overlayItemImages } from "./imageOverlay.js";
+import { overlayItemImages, sniffImageMime } from "./imageOverlay.js";
 import {
   applyConditionalVisibility,
   applyTokenSubstitution,
@@ -81,9 +81,20 @@ async function toImageDataUri(value) {
   if (!value) return "";
   if (value.startsWith("data:image/")) return value;
   const response = await axios.get(value, { responseType: "arraybuffer", timeout: 15000 });
-  const contentType = String(response.headers?.["content-type"] || "");
-  const mime = contentType.includes("png") ? "image/png" : "image/jpeg";
-  return `data:${mime};base64,${Buffer.from(response.data).toString("base64")}`;
+  const bytes = Buffer.from(response.data);
+  // Trusting the response's content-type header (or worse, defaulting to
+  // "image/jpeg" for anything not explicitly "png") let a broken/redirected
+  // URL — a 404 HTML page, a WEBP/GIF/SVG, a CDN mislabeling its
+  // content-type — get declared as JPEG with non-JPEG bytes. pdf-lib's
+  // embedJpg() only checks the declared mime, not the real bytes, so it
+  // wouldn't fail until deep inside generate() (line ~140+), outside this
+  // function's own try/catch in the caller — surfacing as a bare "SOI not
+  // found in JPEG" that took down the whole /order-pdf request instead of
+  // just skipping this one page. Sniff the real magic bytes instead — same
+  // fix already applied to on-disk file reads (imageOverlay.js).
+  const mime = sniffImageMime(bytes);
+  if (!mime) return "";
+  return `data:${mime};base64,${bytes.toString("base64")}`;
 }
 
 // designerPage entry.value is a document_print_templates id — fetch that
