@@ -98,11 +98,15 @@ async function toImageDataUri(value) {
 }
 
 // designerPage entry.value is a document_print_templates id — fetch that
-// company's own saved template and render it as-is: no rawInputs binding
-// (resolveDataSources/fillMissingInputsFromContent with an empty object
-// just pulls each field's own baked-in `content`), since this is a static
-// attached page (terms sheet, flyer), not bound to the current cart's data.
-async function buildDesignerPageBytes(entry, company, tenantDB) {
+// company's own saved template and render it against the SAME resolved
+// inputs (company/buyer/order/computed/custom-field values, post token
+// substitution) the main document used — so a Designer Page ("Terms &
+// Conditions", "Company Intro") can bind fields to real data or embed
+// {{tokens}} in a static paragraph, same as the main document. Previously
+// resolved against an empty {} object by design (deliberately
+// cart-independent) — {{companyAddress}}/{{contactPerson}}/etc typed inside
+// a Designer Page's own text field never had anything to substitute against.
+async function buildDesignerPageBytes(entry, company, tenantDB, mainInputs) {
   const Template = documentPrintTemplateModel(tenantDB);
   const row = await Template.findOne({
     where: { id: entry.value, company_masters_id: company.id, isDelete: 0 },
@@ -110,19 +114,20 @@ async function buildDesignerPageBytes(entry, company, tenantDB) {
   if (!row?.published_template_json) return null;
 
   const template = JSON.parse(row.published_template_json);
-  let resolvedInputs = resolveDataSources(template, {});
+  let resolvedInputs = resolveDataSources(template, mainInputs || {});
   resolvedInputs = fillMissingInputsFromContent(template, resolvedInputs);
+  resolvedInputs = applyTokenSubstitution(template, resolvedInputs);
   return generate({ template, inputs: [resolvedInputs], plugins: pluginMap, options: { font: fontMap } });
 }
 
-async function mergeExtraPages(mainBuffer, basePdf, extraPages, company, tenantDB) {
+async function mergeExtraPages(mainBuffer, basePdf, extraPages, company, tenantDB, mainInputs) {
   const { before, after } = extraPages;
   if (before.length === 0 && after.length === 0) return mainBuffer;
 
   const buildBytes = async (entry) => {
     if (entry.kind === "designerPage") {
       try {
-        return await buildDesignerPageBytes(entry, company, tenantDB);
+        return await buildDesignerPageBytes(entry, company, tenantDB, mainInputs);
       } catch {
         // Deleted/inaccessible template shouldn't take down the whole
         // generate — skip just this one extra page (same as a broken
@@ -306,6 +311,21 @@ export async function generateQuotationPdf({
   // than threading it through, same 1:1 index-aligned data-URI shape.
   rawInputs.firstItemImage = itemImages?.[0] || "";
 
+  // Cart custom-field values, keyed by their own reference_column_name
+  // (e.g. carts_column_text_1) — same dictionary keys buildDataDictionary
+  // (dataDictionary.js) already offers as token chips for these fields, but
+  // until now nothing ever populated rawInputs with the actual per-cart
+  // value, so a {{carts_column_text_1}} token (or a field "Bound to Data" ->
+  // that custom field) always resolved to nothing. data_type 11/12/14 are
+  // whole-page custom fields (buildExtraPages handles those separately, via
+  // cartValues directly) — excluded here too, matching the dictionary's own
+  // exclusion policy.
+  (customFieldRows || []).forEach((field) => {
+    const dataType = Number(field.data_type);
+    if (dataType === 11 || dataType === 12 || dataType === 14) return;
+    rawInputs[field.reference_column_name] = cartValues?.[field.reference_column_name] ?? "";
+  });
+
   let resolvedInputs = resolveDataSources(template, rawInputs);
   resolvedInputs = fillMissingInputsFromContent(template, resolvedInputs);
   resolvedInputs = applyTokenSubstitution(template, resolvedInputs);
@@ -353,7 +373,7 @@ export async function generateQuotationPdf({
     extraPages.after = [...productPageEntries, ...extraPages.after];
   }
 
-  const finalBuffer = await mergeExtraPages(Buffer.from(pdfBytes), template.basePdf, extraPages, company, tenantDB);
+  const finalBuffer = await mergeExtraPages(Buffer.from(pdfBytes), template.basePdf, extraPages, company, tenantDB, resolvedInputs);
 
   return finalBuffer;
 }
