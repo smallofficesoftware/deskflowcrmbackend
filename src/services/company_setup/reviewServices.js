@@ -8,6 +8,7 @@ import {
   REVIEW_COMMENT_MIN_LENGTH,
   REVIEW_INITIAL_PROMPT_DAYS,
   REVIEW_MIN_STAR_FOR_STORE_PROMPT,
+  REVIEW_PROMPT_DELAY_SECONDS,
   REVIEW_PROMPT_ENABLED,
   REVIEW_RETRY_INTERVAL_DAYS,
   REVIEW_STORE_PROMPT_DELAY_DAYS,
@@ -79,7 +80,7 @@ export const getReviewPromptStatus = async (a_application_login_id, platform) =>
       const gateDays = row.store_prompt_last_asked_date ? REVIEW_RETRY_INTERVAL_DAYS : REVIEW_STORE_PROMPT_DELAY_DAYS;
 
       if (dueFrom && daysSince(dueFrom) >= gateDays) {
-        return { show: "store_review", storeUrl };
+        return { show: "store_review", storeUrl, delaySeconds: REVIEW_PROMPT_DELAY_SECONDS };
       }
       return { show: "none" };
     }
@@ -92,7 +93,7 @@ export const getReviewPromptStatus = async (a_application_login_id, platform) =>
 
     if (!row) {
       if (daysSince(login.created_date_time) >= REVIEW_INITIAL_PROMPT_DAYS) {
-        return { show: "system_review", prefill: {} };
+        return { show: "system_review", prefill: {}, delaySeconds: REVIEW_PROMPT_DELAY_SECONDS };
       }
       return { show: "none" };
     }
@@ -100,7 +101,11 @@ export const getReviewPromptStatus = async (a_application_login_id, platform) =>
     // Row exists but not completed (either never given a star, or given a
     // star and cancelled) — retry on the interval regardless of what's saved.
     if (!row.last_asked_date || daysSince(row.last_asked_date) >= REVIEW_RETRY_INTERVAL_DAYS) {
-      return { show: "system_review", prefill: { rating: row.rating, comment: row.comment } };
+      return {
+        show: "system_review",
+        prefill: { rating: row.rating, comment: row.comment },
+        delaySeconds: REVIEW_PROMPT_DELAY_SECONDS,
+      };
     }
 
     return { show: "none" };

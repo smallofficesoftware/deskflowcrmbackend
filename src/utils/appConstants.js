@@ -101,6 +101,7 @@ export const REVIEW_PROMPT_ENABLED = process.env.REVIEW_PROMPT_ENABLED !== "fals
 export const REVIEW_INITIAL_PROMPT_DAYS = Number(process.env.REVIEW_INITIAL_PROMPT_DAYS) || 30;
 export const REVIEW_RETRY_INTERVAL_DAYS = Number(process.env.REVIEW_RETRY_INTERVAL_DAYS) || 3;
 export const REVIEW_STORE_PROMPT_DELAY_DAYS = Number(process.env.REVIEW_STORE_PROMPT_DELAY_DAYS) || 7;
+export const REVIEW_PROMPT_DELAY_SECONDS = Number(process.env.REVIEW_PROMPT_DELAY_SECONDS) || 60;
 export const REVIEW_MIN_STAR_FOR_STORE_PROMPT = Number(process.env.REVIEW_MIN_STAR_FOR_STORE_PROMPT) || 4;
 export const REVIEW_COMMENT_MIN_LENGTH = Number(process.env.REVIEW_COMMENT_MIN_LENGTH) || 30;
 
