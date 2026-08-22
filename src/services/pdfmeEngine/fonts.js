@@ -22,5 +22,17 @@ export function loadFonts() {
     "Poppins SemiBold": {
       data: fs.readFileSync(path.join(FONTS_DIR, "Poppins-SemiBold.ttf")),
     },
+    // Poppins has no Devanagari/Gujarati glyphs — Hindi/Gujarati text in a
+    // field needs one of these picked as that field's own Font Name (pdfme
+    // has no automatic per-glyph font fallback within one field). Variable
+    // TTFs (Google Fonts ships no static instance for either family
+    // anymore) — fontkit (pdf-lib's embedder) reads their default/base
+    // outlines directly, no axis instancing needed for embedding.
+    "Noto Sans Devanagari": {
+      data: fs.readFileSync(path.join(FONTS_DIR, "NotoSansDevanagari-Regular.ttf")),
+    },
+    "Noto Sans Gujarati": {
+      data: fs.readFileSync(path.join(FONTS_DIR, "NotoSansGujarati-Regular.ttf")),
+    },
   };
 }
