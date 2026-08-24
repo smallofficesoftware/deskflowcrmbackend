@@ -144,6 +144,13 @@ export const cartModel = (sequelize) => {
     cash_discount_type: {
       type: TINYINT,
     },
+    // Which mode the item-level Dis/Qty column was entered in when saved —
+    // 1 = percentage, 2 = flat amount, same convention as cash_discount_type.
+    // Applies to the whole cart's item table (one toggle, not per-item) —
+    // print branches on this to show item_discount_pct vs item_discount_pr.
+    item_discount_type: {
+      type: TINYINT,
+    },
     gst_amt: {
       type: DOUBLE,
     },

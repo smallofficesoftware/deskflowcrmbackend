@@ -2580,3 +2580,6 @@ ALTER TABLE `reviews` CHANGE `platform` `platform` ENUM('web','android','ios') N
 22-08-2026 Deep
 ALTER TABLE `addon_masters` ADD `addon_period` TINYINT(4) NOT NULL DEFAULT '1' COMMENT '1: Monthly, 2: Yearly' AFTER `is_qty_enable`;
 ALTER TABLE `company_vs_addon_masters` ADD `start_date` DATE NULL AFTER `addon_id`;
+
+24-08-2026 Dhaval
+ALTER TABLE `carts` ADD COLUMN `item_discount_type` TINYINT(4) NULL AFTER `cash_discount_type`;

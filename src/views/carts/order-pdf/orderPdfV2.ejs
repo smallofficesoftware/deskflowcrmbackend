@@ -522,7 +522,7 @@
             </th>
 
             <% if (printSetting.discountColumn) { %>
-            <th class="text-center" style="width: 8%;">Dis(%)</th>
+            <th class="text-center" style="width: 8%;">Dis(<%= Number(cart.item_discount_type) === 2 ? currency : '%' %>)</th>
             <% } %>
             <% if (totalGstAmount > 0) { %>
             <th>GST(%)</th>
@@ -672,7 +672,11 @@
 
             <% if (printSetting.discountColumn) { %>
             <td style="text-align: right ; <%= productDescBorderStyle %>">
-              <%= formatNum(item.item_discount_pct || 0, 2) %>
+              <% if (Number(cart.item_discount_type) === 2) { %>
+                <%= currency %> <%= formatNum(item.item_discount_pr || 0, 2) %>
+              <% } else { %>
+                <%= formatNum(item.item_discount_pct || 0, 2) %>%
+              <% } %>
             </td>
             <% } %>
             <% if (totalGstAmount > 0) { %>
