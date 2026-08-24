@@ -172,6 +172,12 @@ export const getAllContact = async (req, feed = false, onlyMyBlog = false) => {
       order.push(...relevanceOrder);
     }
 
+
+    if (stageStatusId) {
+      // Kanban board fetch (single stage column) — respect the drag-order
+      // within this column; NULL (never dragged) sorts last.
+      order.push(Sequelize.literal("position IS NULL, position ASC"));
+    }
     order.push([
       Sequelize.literal(
         `FIND_IN_SET(${isPinByApplicationId || 0}, is_pin_by_a_application_login_id)`

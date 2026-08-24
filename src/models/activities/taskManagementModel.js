@@ -46,6 +46,11 @@ export const taskManagementModel = (sequelize) => {
       type: TINYINT,
       defaultValue: "0",
     },
+    // Kanban drag-order within a status column; NULL sorts last (never dragged yet).
+    position: {
+      type: INTEGER,
+      allowNull: true,
+    },
     external_status: {
       type: TINYINT,
       defaultValue: "0",
