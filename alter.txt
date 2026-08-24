@@ -2584,3 +2584,20 @@ ALTER TABLE `inquiries` MODIFY COLUMN `qty` VARCHAR(255) NULL;
 
 24-08-2026 Dhaval
 ALTER TABLE `inquiries` MODIFY COLUMN `category_id` VARCHAR(255) NULL;
+
+24-08-2026 Dhaval
+ALTER TABLE `contact_masters` ADD COLUMN `position` INT NULL AFTER `contact_status`;
+UPDATE contact_masters cm
+JOIN (
+  SELECT id, ROW_NUMBER() OVER (PARTITION BY contact_status ORDER BY id) * 1000 AS rn
+  FROM contact_masters
+) t ON cm.id = t.id
+SET cm.position = t.rn;
+
+ALTER TABLE `task_managements` ADD COLUMN `position` INT NULL AFTER `status`;
+UPDATE task_managements tm
+JOIN (
+  SELECT id, ROW_NUMBER() OVER (PARTITION BY status ORDER BY id) * 1000 AS rn
+  FROM task_managements
+) t ON tm.id = t.id
+SET tm.position = t.rn;

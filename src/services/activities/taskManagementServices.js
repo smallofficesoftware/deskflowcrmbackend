@@ -556,10 +556,15 @@ export const buildAllTaskWhere = ({
 
   /* ================= ORDER ================= */
 
-  const order = [
-    ["task_priority", "DESC"],
-    ["id", "DESC"]
-  ];
+  const order = [];
+
+  if (statusFilter) {
+    // Kanban board fetch (single status column) — respect the drag-order
+    // within this column; NULL (never dragged) sorts last.
+    order.push(Sequelize.literal("position IS NULL, position ASC"));
+  }
+
+  order.push(["task_priority", "DESC"], ["id", "DESC"]);
 
   if (relevanceOrder && relevanceOrder.length > 0) {
     order.push(...relevanceOrder);
