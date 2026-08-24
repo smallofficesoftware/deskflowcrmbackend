@@ -525,7 +525,7 @@ if (cart.update_Date_time && cart.update_Date_time !== "00-00-00 00:00:00") {
             <th class="text-center" colspan="<%= printSetting.discountColumn ? 1 : 2 %>" style="width: <%= printSetting.discountColumn ? '14%' : '12%' %>;">Rate</th>
 
             <% if (printSetting.discountColumn) { %>
-            <th class="text-center" style="width: 8%;">Dis %</th>
+            <th class="text-center" style="width: 8%;">Dis <%= Number(cart.item_discount_type) === 2 ? currency : '%' %></th>
             <% } %>
 
             <% if (printSetting.gstColumn && totalGstAmount > 0) { %>
@@ -684,7 +684,11 @@ if (cart.update_Date_time && cart.update_Date_time !== "00-00-00 00:00:00") {
               <%= currency %> <%= formatNum(item.item_rate || 0, 2) %>
             </td><% if (printSetting.discountColumn) { %>
             <td style="text-align: right;<%= productDescBorderStyle %>">
-              <%= formatNum(item.item_discount_pct || 0, 2) %>
+              <% if (Number(cart.item_discount_type) === 2) { %>
+                <%= currency %> <%= formatNum(item.item_discount_pr || 0, 2) %>
+              <% } else { %>
+                <%= formatNum(item.item_discount_pct || 0, 2) %>%
+              <% } %>
             </td>
             <% } %>
 

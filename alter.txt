@@ -2574,3 +2574,6 @@ ALTER TABLE `reviews` ADD UNIQUE INDEX(`company_masters_id`, `a_application_logi
 ALTER TABLE `reviews` ADD COLUMN `device_id` VARCHAR(255) NULL AFTER `platform`;
 ALTER TABLE `reviews` ADD COLUMN `ip_address` VARCHAR(255) NULL AFTER `device_id`;
 ALTER TABLE `reviews` CHANGE `platform` `platform` ENUM('web','android','ios') NULL;
+
+24-08-2026 Dhaval
+ALTER TABLE `carts` ADD COLUMN `item_discount_type` TINYINT(4) NULL AFTER `cash_discount_type`;

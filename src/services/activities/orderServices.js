@@ -4841,12 +4841,19 @@ export const pdfOrder = async (req, res) => {
           }
         };
 
+        // Mirrors the legacy EJS fix — item_discount_type (cart-level, same
+        // 1=percentage/2=flat convention as cash_discount_type) says which
+        // of item_discount_pct/item_discount_pr the user actually entered;
+        // NULL on carts saved before this field existed defaults to percentage.
+        const isFlatItemDiscount = Number(cartData.item_discount_type) === 2;
         const pdfmeItems = finalData.map((item) => ({
           description: item.item_product_name,
           hsn: item.item_hsn_code,
           qty: item.item_unit_name ? `${item.item_qty} / ${item.item_unit_name}` : item.item_qty,
           rate: item.item_rate,
-          discount: item.item_discount_pct,
+          discount: isFlatItemDiscount
+            ? `${currencySymbol} ${(Number(item.item_discount_pr) || 0).toFixed(2)}`
+            : `${(Number(item.item_discount_pct) || 0).toFixed(2)}%`,
           total: item.item_total,
           item_hsn_code: item.item_hsn_code,
           item_total: item.item_total,
