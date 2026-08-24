@@ -116,11 +116,23 @@ export const getAllInquiry = async (req) => {
     }
 
     if (searchCategory) {
-      whereClause.category_id = searchCategory;
+      whereClause[Op.and] = whereClause[Op.and] || [];
+      whereClause[Op.and].push(
+        Sequelize.where(
+          Sequelize.fn("FIND_IN_SET", searchCategory, Sequelize.col("category_id")),
+          { [Op.gt]: 0 }
+        )
+      );
     }
 
     if (searchProduct) {
-      whereClause.product_id = searchProduct;
+      whereClause[Op.and] = whereClause[Op.and] || [];
+      whereClause[Op.and].push(
+        Sequelize.where(
+          Sequelize.fn("FIND_IN_SET", searchProduct, Sequelize.col("product_id")),
+          { [Op.gt]: 0 }
+        )
+      );
     }
 
     if (userFilter?.length > 0) {
@@ -206,18 +218,18 @@ export const getAllInquiry = async (req) => {
       ],
       [
         Sequelize.literal(`(
-          SELECT products.product_name
+          SELECT GROUP_CONCAT(products.product_name SEPARATOR ', ')
           FROM products
-          WHERE products.id = inquiries.product_id
+          WHERE FIND_IN_SET(products.id, inquiries.product_id) > 0
             AND products.isDelete = 0
         )`),
         "product_name",
       ],
       [
         Sequelize.literal(`(
-          SELECT categories.category_name
+          SELECT GROUP_CONCAT(categories.category_name SEPARATOR ', ')
           FROM categories
-          WHERE categories.id = inquiries.category_id
+          WHERE FIND_IN_SET(categories.id, inquiries.category_id) > 0
             AND categories.isDelete = 0
         )`),
         "category_name",

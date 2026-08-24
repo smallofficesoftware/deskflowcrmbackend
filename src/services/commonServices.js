@@ -833,29 +833,44 @@ export const createCommon = async (req) => {
             });
             return user?.person_name || null;
           };
-          // Async function to fetch product category
+          // Async function to fetch product category(-ies) — category_id is
+          // a comma-separated list, same convention as product_id below.
           const Productcategory = async (category_id) => {
             if (!category_id) return null;
-            const user = await sequelize.models.categories.findOne({
+            const ids = String(category_id)
+              .split(",")
+              .map((id) => id.trim())
+              .filter(Boolean);
+            if (ids.length === 0) return null;
+            const users = await sequelize.models.categories.findAll({
               where: {
-                id: category_id,
+                id: { [Op.in]: ids },
                 isDelete: "0",
               },
               attributes: ["category_name"],
             });
-            return user?.category_name || null;
+            const names = users.map((u) => u.category_name).filter(Boolean);
+            return names.length > 0 ? names.join(", ") : null;
           };
-          // Async function to fetch product name
+          // Async function to fetch product name(s) — product_id is a
+          // comma-separated list (an inquiry can reference multiple
+          // products), e.g. "5,12,18"; a single product is just "5".
           const Product = async (product_id) => {
             if (!product_id) return null;
-            const user = await sequelize.models.products.findOne({
+            const ids = String(product_id)
+              .split(",")
+              .map((id) => id.trim())
+              .filter(Boolean);
+            if (ids.length === 0) return null;
+            const users = await sequelize.models.products.findAll({
               where: {
-                id: product_id,
+                id: { [Op.in]: ids },
                 isDelete: "0",
               },
               attributes: ["product_name"],
             });
-            return user?.product_name || null;
+            const names = users.map((u) => u.product_name).filter(Boolean);
+            return names.length > 0 ? names.join(", ") : null;
           };
           // Fetch data concurrently
           const [contactnameall, productcategory, product, username] =

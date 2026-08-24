@@ -2577,3 +2577,10 @@ ALTER TABLE `reviews` CHANGE `platform` `platform` ENUM('web','android','ios') N
 
 24-08-2026 Dhaval
 ALTER TABLE `carts` ADD COLUMN `item_discount_type` TINYINT(4) NULL AFTER `cash_discount_type`;
+
+24-08-2026 Dhaval
+ALTER TABLE `inquiries` MODIFY COLUMN `product_id` VARCHAR(255) NULL;
+ALTER TABLE `inquiries` MODIFY COLUMN `qty` VARCHAR(255) NULL;
+
+24-08-2026 Dhaval
+ALTER TABLE `inquiries` MODIFY COLUMN `category_id` VARCHAR(255) NULL;
