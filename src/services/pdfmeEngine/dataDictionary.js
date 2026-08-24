@@ -124,7 +124,7 @@ const CART_CUSTOM_FIELD_FORM_TYPE_BY_DOC_TYPE = {
   returnPurchaseInvoice: 11,
   inward: 12,
   dispatch: 13,
-  proformaInvoice: 15,
+  proformaInvoice: 16,
 };
 const PRODUCT_CUSTOM_FIELD_FORM_TYPE = 4;
 

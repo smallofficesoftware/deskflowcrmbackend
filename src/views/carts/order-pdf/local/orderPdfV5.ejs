@@ -145,7 +145,9 @@
     } else if (orderType.id == 6) {
         dynamicColor = companyDetail.return_saled_invoice_color || "#cfcfcf"; 
     } else if (orderType.id == 7) {
-        dynamicColor = companyDetail.return_purchase_invoice_color || "#cfcfcf"; 
+        dynamicColor = companyDetail.return_purchase_invoice_color || "#cfcfcf";
+    } else if (orderType.id == 12) {
+        dynamicColor = companyDetail.proforma_invoice_view_color || "#cfcfcf";
     }
 
     let dynamicTitle = "";
@@ -163,7 +165,9 @@
     } else if (orderType.id == 6) {
         dynamicTitle = companyDetail.return_saled_invoice_title || "Return Sales Invoice"; 
     } else if (orderType.id == 7) {
-        dynamicTitle = companyDetail.return_purchase_invoice_title || "Return Purchase Invoice"; 
+        dynamicTitle = companyDetail.return_purchase_invoice_title || "Return Purchase Invoice";
+    } else if (orderType.id == 12) {
+        dynamicTitle = companyDetail.proforma_invoice_title || "Proforma Invoice";
     }
 
 const groupedItems = items.reduce((acc, item) => {

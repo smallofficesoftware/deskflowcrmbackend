@@ -85,7 +85,7 @@ const orderTypesList = [
   { id: "7", type: "return_purchase_invoice" },
   { id: "8", type: "inward" },
   { id: "9", type: "dispatch" },
-  { id: "12", order_type: "Proforma Invoice" },
+  { id: "12", type: "proforma_invoice" },
 ];
 const orderTypesShowList = [
   { id: "1", type: "Quotation" },
@@ -97,7 +97,7 @@ const orderTypesShowList = [
   { id: "7", type: "Return Purchase Invoice" },
   { id: "8", type: "Inward" },
   { id: "9", type: "Dispatch" },
-  { id: "12", order_type: "Proforma Invoice" },
+  { id: "12", type: "Proforma Invoice" },
 ];
 const paymentModeList = [
   { id: "2", type: "Debit" },
@@ -4292,7 +4292,7 @@ export const pdfOrder = async (req, res) => {
           customFieldsWhere.form_type = 13;
           dynamicPrintView = companyDetail.dispatch_view_formate;
         } else if (cartType == 12) {
-          customFieldsWhere.form_type = 15;
+          customFieldsWhere.form_type = 16;
           dynamicPrintView = companyDetail.proforma_invoice_view_formate;
         }
       }
@@ -4485,7 +4485,7 @@ export const pdfOrder = async (req, res) => {
         { id: "7", type: "Return Purchase Invoice" },
         { id: "8", type: "Inward" },
         { id: "9", type: "Dispatch" },
-        { id: "12", order_type: "Proforma Invoice" },
+        { id: "12", type: "Proforma Invoice" },
       ];
 
       const selectedCurrency = currencyDetails[0]?.short_name || "INR";

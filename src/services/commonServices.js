@@ -1601,6 +1601,20 @@ export const updateCommon = async (req) => {
             })
           }
         }
+        else if (referanceColumn.form_type == 16) {
+          const cartColumnCheck = await sequelize.models.carts.update(updateColumn, {
+            where: {
+              id: { [Op.gt]: 0 },
+              type: 12
+            }
+          });
+
+          if (cartColumnCheck) {
+            return resSuccess({
+              ack_msg: "Custom form field and data is deleted successfully"
+            })
+          }
+        }
         else {
           return resError({
             developer_msg: "referanceColumn.form_type is not match please try another field"
