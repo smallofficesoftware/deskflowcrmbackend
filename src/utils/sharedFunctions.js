@@ -608,6 +608,9 @@ export const getColumnName = async ({ dataType, companyId, formType, req }) => {
     } else if (Number(formType) === 15) {
       const findColum = `task_column_${findDataTypeName}_${firstAvailable}`;
       return findColum;
+    } else if (Number(formType) === 16) {
+      const findColum = `carts_column_${findDataTypeName}_${firstAvailable}`;
+      return findColum;
     }
   }
 };

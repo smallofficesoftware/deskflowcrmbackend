@@ -234,7 +234,7 @@ export const getTeamAllCarts = async (req) => {
 
     // Form type mapping for custom fields
     const formTypeMap = {
-      1: 5, 2: 6, 3: 7, 4: 8, 5: 9, 6: 10, 7: 11, 8: 12, 9: 13,
+      1: 5, 2: 6, 3: 7, 4: 8, 5: 9, 6: 10, 7: 11, 8: 12, 9: 13, 12: 16,
     };
     const formType = formTypeMap[type] || 5;
 
@@ -621,7 +621,7 @@ export const OrderDetailsProductIteamWise = async (req) => {
 
     // Form type mapping for custom fields
     const formTypeMap = {
-      1: 5, 2: 6, 3: 7, 4: 8, 5: 9, 6: 10, 7: 11, 8: 12, 9: 13,
+      1: 5, 2: 6, 3: 7, 4: 8, 5: 9, 6: 10, 7: 11, 8: 12, 9: 13, 12: 16,
     };
     const formType = formTypeMap[type] || 5;
 
@@ -1014,7 +1014,7 @@ export const getDailySalesInvoiceReport = async (req) => {
 
     // Form type mapping for custom fields
     const formTypeMap = {
-      1: 5, 2: 6, 3: 7, 4: 8, 5: 9, 6: 10, 7: 11, 8: 12, 9: 13,
+      1: 5, 2: 6, 3: 7, 4: 8, 5: 9, 6: 10, 7: 11, 8: 12, 9: 13, 12: 16,
     };
     const formType = formTypeMap[type] || 5;
 
