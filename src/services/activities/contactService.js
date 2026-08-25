@@ -33,6 +33,7 @@ import {
   customFormFiledDataAddToChatHistory,
   formatDateAndTimeCreateDateTime,
   generateOTP,
+  isDuplicateContact,
   isValid,
   normalizeToTenDigit,
   resBadRequest,
@@ -671,17 +672,24 @@ export const addContact = async (req, res) => {
     const a_company_name = companyData.dataValues.company_name;
     const a_company_id = companyData.dataValues.id;
 
-    if (companyData?.is_contact_validation == 1) {
+    {
       const existingMobileNum = await COTModel.findOne({
         where: {
           mobile_number: contactBody.mobile_number,
           company_masters_id: findCompanyId.company_masters_id,
           isDelete: 0,
         },
-        attributes: ["mobile_number", "id"],
+        attributes: ["mobile_number", "person_name", "id"],
       });
 
-      if (existingMobileNum && existingMobileNum.dataValues.mobile_number) {
+      if (
+        existingMobileNum?.dataValues?.mobile_number &&
+        isDuplicateContact(
+          companyData?.is_contact_validation,
+          existingMobileNum.dataValues.person_name,
+          contactBody.person_name,
+        )
+      ) {
         return resError({
           ack_msg: "Mobile number already exists in this company.",
           developer_msg: "Mobile number already exists in this company.",
@@ -1080,7 +1088,7 @@ export const addContactByQR = async (req, res) => {
     // Find company details by QR code
     const companyData = await companyModel.findOne({
       where: { qr_code, isDelete: 0 },
-      attributes: ["id", "a_application_login_id", "qr_code", "company_name"],
+      attributes: ["id", "a_application_login_id", "qr_code", "company_name", "is_contact_validation"],
     });
     if (!companyData) {
       return resError({
@@ -1167,8 +1175,16 @@ export const addContactByQR = async (req, res) => {
     let contactCreate;
     contactCreate = await contactData.findOne({
       where: { mobile_number, company_masters_id, isDelete: 0 },
-      attributes: ["mobile_number", "id"],
+      attributes: ["mobile_number", "person_name", "id"],
     });
+    if (
+      contactCreate &&
+      !isDuplicateContact(companyData.dataValues.is_contact_validation, contactCreate.person_name, contact_name)
+    ) {
+      // Same mobile, different name, and this company allows it - treat as a
+      // brand-new lead rather than attaching to the existing contact.
+      contactCreate = null;
+    }
     if (!contactCreate) {
       const whatsappEmailSendTeamPersonList = [];
       /* Contact Assignment */
@@ -3075,51 +3091,6 @@ export const CreateContactWithReminder = async (req, res) => {
     }
     /* Contact Assignment */
     const assinged_to_work_a_application_id = contactAssignedIdsStr || a_application_login_id;
-    // if (isContactDuplicationAllowed[0]?.is_contact_validation == 1) {
-    //   // Duplication ALLOWED → Always create NEW contact
-    //   const contactBody = {
-    //     source_type_id: source_type_id || "",
-    //     person_name: person_name || "",
-    //     mobile_number: normalizedMobile,
-    //     company_masters_id: findCompanyId.company_masters_id,
-    //     a_application_login_id,
-    //     assinged_to_work_a_application_id: assinged_to_work_a_application_id,
-    //   };
-    //   contactData = await COTModel.create(contactBody);
-    //   isNewContact = true;
-    // }
-    //  else {
-    //   // Duplication NOT allowed → Check for existing contact
-    //   contactData = await COTModel.findOne({
-    //     where: {
-    //       company_masters_id: findCompanyId.company_masters_id,
-    //       mobile_number: normalizedMobile,
-    //       isDelete: 0,
-    //     },
-    //   });
-
-    //   if (!contactData) {
-    //     // No existing → create new
-    //     const contactBody = {
-    //       source_type_id: source_type_id || "",
-    //       person_name: person_name || "",
-    //       mobile_number: normalizedMobile,
-    //       company_masters_id: findCompanyId.company_masters_id,
-    //       assinged_to_work_a_application_id: assinged_to_work_a_application_id,
-    //       a_application_login_id,
-    //     };
-    //     contactData = await COTModel.create(contactBody);
-    //     isNewContact = true;
-    //   }
-    // }
-
-    // contactData = await COTModel.findOne({
-    //   where: {
-    //     company_masters_id: findCompanyId.company_masters_id,
-    //     mobile_number: normalizedMobile,
-    //     isDelete: 0,
-    //   },
-    // });
     let contactData;
     contactData = await COTModel.findOne({
       where: {
@@ -3156,7 +3127,14 @@ export const CreateContactWithReminder = async (req, res) => {
       });
     }
 
-
+    if (
+      contactData &&
+      !isDuplicateContact(isContactDuplicationAllowed[0]?.dataValues?.is_contact_validation, contactData.person_name, person_name)
+    ) {
+      // Same mobile, different name, and this company allows it - treat as a
+      // brand-new contact rather than attaching to the existing one.
+      contactData = null;
+    }
 
     if (!contactData) {
       // No existing → create new
@@ -4090,7 +4068,7 @@ export const assignReadUnreadContact = async (req) => {
 
 export const checkContactMobileDuplicate = async (req, res) => {
   try {
-    const { mobile_number, a_application_login_id } = req.body;
+    const { mobile_number, a_application_login_id, person_name } = req.body;
 
     // Basic validation
     if (!mobile_number) {
@@ -4112,17 +4090,24 @@ export const checkContactMobileDuplicate = async (req, res) => {
     });
     let isDuplicate = false;
     let ack_msg = "Mobile number is available.";
-    if (companyData?.is_contact_validation == 1) {
+    {
       const existingMobileNum = await COTModel.findOne({
         where: {
           mobile_number: normalizedMobile,
           company_masters_id: findCompanyId.company_masters_id,
           isDelete: 0,
         },
-        attributes: ["mobile_number", "id"],
+        attributes: ["mobile_number", "person_name", "id"],
       });
 
-      if (existingMobileNum && existingMobileNum.dataValues.mobile_number) {
+      if (
+        existingMobileNum?.dataValues?.mobile_number &&
+        isDuplicateContact(
+          companyData?.is_contact_validation,
+          existingMobileNum.dataValues.person_name,
+          person_name,
+        )
+      ) {
         isDuplicate = true;
         ack_msg = `Mobile number ${normalizedMobile} already exists in this company.`;
       }
