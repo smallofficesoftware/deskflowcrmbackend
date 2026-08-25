@@ -957,6 +957,16 @@ export const addProductByExcelSheetUpdateData = async (req) => {
             });
         }
 
+        // order_qty_unit: 1=Quantity only, 2=+Inner, 3=+Outer, 4=+Inner+Outer
+        // -- same gate as the sample-sheet generator (productServices.js),
+        // so a company that doesn't use inner/outer packaging can't write
+        // to a field its own UI never lets it set in the first place.
+        const companyOrderQtySetting = await companyModel.findOne({
+            where: { id: findCompanyId.company_masters_id, isDelete: 0 },
+            attributes: ["order_qty_unit"],
+        });
+        const innerOuterQtyActive = Number(companyOrderQtySetting?.order_qty_unit) > 1;
+
         const formattedDate = moment(new Date()).format("YYYY-MM-DD HH:mm:ss");
 
         // ================= READ EXCEL =================
@@ -997,8 +1007,10 @@ export const addProductByExcelSheetUpdateData = async (req) => {
             "sales_gst_label": "gst_id",
             "purchase_rate": "purchase_rate",
             "purchase_gst_label": "purchase_gst_id",
-            "product_inner_qty": "product_inner_qty",
-            "product_outer_qty": "product_outer_qty",
+            ...(innerOuterQtyActive && {
+                "product_inner_qty": "product_inner_qty",
+                "product_outer_qty": "product_outer_qty",
+            }),
         };
 
         // ================= CUSTOM FIELD =================
@@ -1272,11 +1284,13 @@ export const addProductByExcelSheetUpdateData = async (req) => {
             const max_stock_quantity =
                 parseInt(v.max_stock_quantity) || 0;
 
-            const product_inner_qty =
-                parseFloat(v.product_inner_qty) || 0;
+            const product_inner_qty = innerOuterQtyActive
+                ? (parseFloat(v.product_inner_qty) || 0)
+                : undefined;
 
-            const product_outer_qty =
-                parseFloat(v.product_outer_qty) || 0;
+            const product_outer_qty = innerOuterQtyActive
+                ? (parseFloat(v.product_outer_qty) || 0)
+                : undefined;
 
             const product_group = isValid(v.product_group)
                 ? v.product_group.toString().trim()
@@ -1407,8 +1421,8 @@ export const addProductByExcelSheetUpdateData = async (req) => {
                 min_stock_quantity,
                 max_stock_quantity,
 
-                product_inner_qty,
-                product_outer_qty,
+                ...(product_inner_qty !== undefined && { product_inner_qty }),
+                ...(product_outer_qty !== undefined && { product_outer_qty }),
                 ...(product_group_id !== undefined && { product_group_id }),
                 ...(category_id !== undefined && { category_id }),
             };

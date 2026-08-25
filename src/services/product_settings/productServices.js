@@ -1541,6 +1541,16 @@ export const getExportsProductsForUpdateData = async (req) => {
 
     const companyDetail = await getCompanyByLoginId(a_application_login_id);
 
+    // order_qty_unit: 1=Quantity only, 2=+Inner, 3=+Outer, 4=+Inner+Outer
+    // (NewCreateCompanyController.ts's orderQtyList) -- inner/outer packaging
+    // isn't a concept this company uses at all when left at the "1" default,
+    // so those 2 columns would just be permanently-empty noise in the sheet.
+    const companyOrderQtySetting = await companyModel.findOne({
+      where: { id: companyDetail.company_masters_id, isDelete: 0 },
+      attributes: ["order_qty_unit"],
+    });
+    const innerOuterQtyActive = Number(companyOrderQtySetting?.order_qty_unit) > 1;
+
     let whereClause = {
       isDelete: "0",
     };
@@ -1625,8 +1635,10 @@ export const getExportsProductsForUpdateData = async (req) => {
       gst_id: "sales_gst_label",
       purchase_rate: "purchase_rate",
       purchase_gst_id: "purchase_gst_label",
-      product_inner_qty: "product_inner_qty",
-      product_outer_qty: "product_outer_qty",
+      ...(innerOuterQtyActive && {
+        product_inner_qty: "product_inner_qty",
+        product_outer_qty: "product_outer_qty",
+      }),
     };
 
     const excelColumnDefineArrayDy = {
