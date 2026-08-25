@@ -2648,7 +2648,7 @@ CREATE TABLE `report_runs` (
 ALTER TABLE `report_runs` ADD INDEX(`company_masters_id`, `report_definition_id`);
 
 20-08-2026 Dhaval
-INSERT INTO `a_application_pages` (`id`, `page_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (158, 'Report Builder', 'report_builder', 'Report Builder', '0', '0', '0', '1', NOW(), UNIX_TIMESTAMP(), '0', '1');
+INSERT INTO `a_application_pages` (`id`, `page_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (159, 'Report Builder', 'report_builder', 'Report Builder', '0', '0', '0', '1', NOW(), UNIX_TIMESTAMP(), '0', '1');
 
 INSERT INTO `a_application_pages` (`id`, `page_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (157, 'Document Designer', 'document_designer', 'Document Designer', '0', '0', '0', '1', NOW(), UNIX_TIMESTAMP(), '0', '1');
 

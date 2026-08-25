@@ -100,9 +100,10 @@ export const PAGE_ID = {
   CUSTOMER_SALES_PURCHASE_REPORT: "131",
   ROUTE_PLANNER: "144",
   // Real a_application_pages ids, confirmed against the live DB: Document
-  // Designer=157, Report Builder=158.
+  // Designer=157. 158 belongs to Reviews (origin/dev) — Report Builder
+  // moved to 159 to avoid the collision.
   DOCUMENT_DESIGNER_RIGHTS: "157",
-  REPORT_BUILDER: "158",
+  REPORT_BUILDER: "159",
   // Add more pages as needed
 };
 // config/googleApi.ts

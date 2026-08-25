@@ -407,7 +407,16 @@ export const MODEL_REGISTRY = {
     customFieldFormType: 2,
     columns: {
       description: { label: "Description", type: "string", filterable: true, sortable: false, groupable: false },
-      qty: { label: "Quantity", type: "number", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      // Widened to VARCHAR by migration 20260824200000 — an inquiry can now
+      // reference multiple products, each with its own qty, via product_id/
+      // qty/category_id as three POSITIONALLY-PAIRED comma-separated lists
+      // (index N in one lines up with index N in the others; a single
+      // product is just "5"). Not a plain number anymore — no longer
+      // aggregatable/filterable as one (SUM on a CSV string would be wrong,
+      // not just unsupported), display-only until a real "paired CSV
+      // line-items" primitive exists (none does yet — a different shape
+      // than the flat "tag" CSVs like contacts.lable, no engine support here).
+      qty: { label: "Quantity (CSV)", type: "string", filterable: false, sortable: false, groupable: false },
       contact_status: { label: "Status", type: "lookup", filterable: true, sortable: false, groupable: true },
       source_type_id: { label: "Source Type", type: "lookup", filterable: true, sortable: false, groupable: true },
       // Plain INTEGER FK (confirmed in inquiryModel.js — unlike contacts.lable
@@ -437,8 +446,16 @@ export const MODEL_REGISTRY = {
           company_name: { label: "Company Name", type: "string" },
         },
       },
+      // Both category_id and product_id are now CSV-of-ids (migrations
+      // 20260824200000/210000 widened product_id/qty/category_id to VARCHAR
+      // for multi-product inquiries) — matchMode:"csv" corrects the earlier
+      // scalar-FK registration from before that schema change. Display only
+      // joins/lists every matching name; the positional pairing with qty
+      // (which product got which quantity) isn't reconstructable through a
+      // plain CSV relation, same gap noted on the qty column above.
       category: {
         label: "Category",
+        matchMode: "csv",
         foreignKey: "category_id",
         getModel: (tenantDB) => categoryModel(tenantDB),
         targetKey: "id",
@@ -448,6 +465,7 @@ export const MODEL_REGISTRY = {
       },
       product: {
         label: "Product",
+        matchMode: "csv",
         foreignKey: "product_id",
         getModel: (tenantDB) => productModel(tenantDB),
         targetKey: "id",
