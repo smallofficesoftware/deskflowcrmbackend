@@ -2219,7 +2219,7 @@ export const updateCommon = async (req) => {
         },
         attributes: ["username"],
       });
-      const message = "Task #" + whereObj.id + "'s status has been changed to " + statusName.name + " by " + loginName.username;
+      const message = "Task #" + whereObj.id + "'s status has been changed to " + (statusName?.name || parsedData.status) + " by " + loginName.username;
       await sequelize.models.task_message_histories.create({
         description: message,
         message_side: 1,
@@ -2298,14 +2298,14 @@ export const updateCommon = async (req) => {
               // Send notifications to all assigned members
               await sendMultipleNotification({
                 deviceTokens: uniqueTokens,
-                title: `Task #${whereObj.id}'s status has been changed to ${statusName.name} by ${loginName.username}`,
+                title: `Task #${whereObj.id}'s status has been changed to ${statusName?.name || parsedData.status} by ${loginName.username}`,
                 body: `Task: ${taskData.dataValues.task_title}`,
               });
             } catch (notificationError) {
               console.log("Notification failed (non-critical):", { notificationError });
             }
           } else {
-            req.console.log("No device tokens found for assigned team members.");
+            console.log("No device tokens found for assigned team members.");
           }
         }
       }
@@ -2373,7 +2373,7 @@ export const updateCommon = async (req) => {
               console.log("Notification failed (non-critical):", { notificationError });
             }
           } else {
-            req.console.log("No device tokens found for assigned team members.");
+            console.log("No device tokens found for assigned team members.");
           }
         }
       }
@@ -2397,7 +2397,7 @@ export const updateCommon = async (req) => {
         attributes: ["username"],
       });
 
-      const message = "Task #" + whereObj.id + "'s status has been changed to " + statusName.name + " by " + loginName.username;
+      const message = "Task #" + whereObj.id + "'s status has been changed to " + (statusName?.name || parsedData.external_status) + " by " + loginName.username;
       await sequelize.models.task_message_histories.create({
         description: message,
         message_side: 2,
@@ -2476,14 +2476,14 @@ export const updateCommon = async (req) => {
               // Send notifications to all assigned members
               await sendMultipleNotification({
                 deviceTokens: uniqueTokens,
-                title: `Task #${whereObj.id}'s status has been changed to ${statusName.name} by ${loginName.username}`,
+                title: `Task #${whereObj.id}'s status has been changed to ${statusName?.name || parsedData.external_status} by ${loginName.username}`,
                 body: `Task: ${taskData.dataValues.task_title}`,
               });
             } catch (notificationError) {
               console.log("Notification failed (non-critical):", { notificationError });
             }
           } else {
-            req.console.log("No device tokens found for assigned team members.");
+            console.log("No device tokens found for assigned team members.");
           }
         }
       }

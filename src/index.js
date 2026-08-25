@@ -9,6 +9,7 @@ import { decryptRequest, encryptRequest } from "./middlewares/payloadSecurity.js
 import pinoMiddleware from './middlewares/pinoMiddleware.js';
 import routers from "./routes/indexRouter.js";
 import storeSocketId from "./services/1socketIOServices/storeSocketId.js";
+import { getCompanyByLoginId } from "./services/commonServices.js";
 import { startVersionRetentionCron } from "./services/pdfmeEngine/versionRetentionCron.js";
 import { baseURL, ENCRYPT_SMALL_OFFICE_CRM_RESPONSE, NODE_ENV, PORT } from "./utils/appConstants.js";
 import logger from "./utils/logger.js";
@@ -120,6 +121,21 @@ io.on("connection", (socket) => {
                     error: error.message || "Unexpected error",
                 });
                 logger.error("[Deskflow CRM:storeSocketID]:[Error]", error);
+            }
+        }
+    );
+    socket.on(
+        "joinCompanyRoom",
+        async ({ a_application_login_id }) => {
+            try {
+                if (!a_application_login_id) return;
+                const company = await getCompanyByLoginId(a_application_login_id);
+                if (company?.company_masters_id) {
+                    socket.join(`company-${company.company_masters_id}`);
+                    logger.info(`[Deskflow CRM:joinCompanyRoom]: socket ${socket.id} joined company-${company.company_masters_id}`);
+                }
+            } catch (error) {
+                logger.error("[Deskflow CRM:joinCompanyRoom]:[Error]", error);
             }
         }
     );
