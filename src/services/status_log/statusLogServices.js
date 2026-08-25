@@ -152,7 +152,11 @@ export const getStatus = async (req) => {
         const getStatusDataDb = await stagestatusModelInstance.findAll(
             {
                 where: whereClause,
-                order: [["display_order_type", "ASC"]],
+                // id as a secondary sort — display_order_type ties (e.g. every
+                // status left at its 0 default) would otherwise resolve to
+                // whatever arbitrary order the DB happens to return, not a
+                // stable/predictable one.
+                order: [["display_order_type", "ASC"], ["id", "ASC"]],
                 raw: true,
                 attributes: ["id", "name", "color", "order_type", "change_status_team_ids", "show_status_data_team_ids", "display_order_type", "status_type", "visibility"]
             }
