@@ -2615,4 +2615,4 @@ INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `extra_in
 
 25-08-2026 Dhaval
 2 new Document Designer doc types added: `pendingSalesOrder`, `pendingPurchaseOrder` (templates.js's DOC_TYPES), backing pendingOrderView.tsx / pendingPurchaseView.tsx.
-`system_document_templates` seeded with 10 new gallery rows: 2 doc_types x 5 header/footer variants. Generated via migration/master/migrations/20260825100000-seed-pending-order-document-templates.js.
+`system_document_templates` seeded with 2 new gallery rows (1 per doc_type, not 5 variants — header is edited per-template in the Designer for these 2, not picked from pre-seeded variants). Generated via migration/master/migrations/20260825100000-seed-pending-order-document-templates.js.
