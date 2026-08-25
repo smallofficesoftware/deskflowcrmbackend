@@ -1720,97 +1720,101 @@ export const updateCommon = async (req) => {
 
     if (table === "contact_masters" && parsedData.contact_status) {
       try {
+        // Wrapped in an IIFE so the early "nothing to notify" exits below
+        // only skip this notification step, not the whole updateCommon
+        // response (a bare `return` here previously aborted the entire
+        // function with no response body whenever the contact had no
+        // assigned owner - e.g. any status change on an unassigned contact).
+        await (async () => {
+          const assignedIds = Array.isArray(whereObj.id)
+            ? whereObj.id
+            : [whereObj.id];
+          const contactData = await sequelize.models.contact_masters.findAll({
+            where: { id: assignedIds },
+            attributes: ["a_application_login_id"],
+          });
 
-
-
-        const assignedIds = Array.isArray(whereObj.id)
-          ? whereObj.id
-          : [whereObj.id];
-        const contactData = await sequelize.models.contact_masters.findAll({
-          where: { id: assignedIds },
-          attributes: ["a_application_login_id"],
-        });
-
-        if (!contactData.length) {
-          return;
-        }
-
-        const loginIds = contactData
-          .map((contact) => contact.a_application_login_id)
-          .filter((id) => id);
-
-        if (!loginIds.length) {
-          return;
-        }
-
-        const assignedTokenData = await loginModel.findAll({
-          where: {
-            id: loginIds,
-            isDelete: 0,
-          },
-          attributes: [
-            "web_refresh_token",
-            "android_refresh_token",
-            "ios_refresh_token",
-            "reporting_member",
-          ],
-        });
-
-        if (!assignedTokenData.length) {
-          return;
-        }
-
-        const allTokens = [];
-        const reportingMemberIds = new Set();
-
-        for (const tokenData of assignedTokenData) {
-          allTokens.push(
-            tokenData.web_refresh_token,
-            tokenData.android_refresh_token,
-            tokenData.ios_refresh_token
-          );
-          if (tokenData.reporting_member) {
-            reportingMemberIds.add(tokenData.reporting_member);
+          if (!contactData.length) {
+            return;
           }
-        }
 
-        if (reportingMemberIds.size > 0) {
-          const reportingMemberData = await loginModel.findAll({
+          const loginIds = contactData
+            .map((contact) => contact.a_application_login_id)
+            .filter((id) => id);
+
+          if (!loginIds.length) {
+            return;
+          }
+
+          const assignedTokenData = await loginModel.findAll({
             where: {
-              id: Array.from(reportingMemberIds),
+              id: loginIds,
               isDelete: 0,
             },
             attributes: [
               "web_refresh_token",
               "android_refresh_token",
               "ios_refresh_token",
+              "reporting_member",
             ],
           });
 
-          for (const reportingMember of reportingMemberData) {
+          if (!assignedTokenData.length) {
+            return;
+          }
+
+          const allTokens = [];
+          const reportingMemberIds = new Set();
+
+          for (const tokenData of assignedTokenData) {
             allTokens.push(
-              reportingMember.web_refresh_token,
-              reportingMember.android_refresh_token,
-              reportingMember.ios_refresh_token
+              tokenData.web_refresh_token,
+              tokenData.android_refresh_token,
+              tokenData.ios_refresh_token
+            );
+            if (tokenData.reporting_member) {
+              reportingMemberIds.add(tokenData.reporting_member);
+            }
+          }
+
+          if (reportingMemberIds.size > 0) {
+            const reportingMemberData = await loginModel.findAll({
+              where: {
+                id: Array.from(reportingMemberIds),
+                isDelete: 0,
+              },
+              attributes: [
+                "web_refresh_token",
+                "android_refresh_token",
+                "ios_refresh_token",
+              ],
+            });
+
+            for (const reportingMember of reportingMemberData) {
+              allTokens.push(
+                reportingMember.web_refresh_token,
+                reportingMember.android_refresh_token,
+                reportingMember.ios_refresh_token
+              );
+            }
+          }
+
+          const uniqueTokens = [
+            ...new Set(allTokens.filter((token) => token && token.trim() !== "")),
+          ];
+
+          if (uniqueTokens.length > 0) {
+            await sendMultipleNotification({
+              deviceTokens: uniqueTokens,
+              title: "Contact status updated successfully",
+            });
+
+          } else {
+            console.log(
+              "No valid device tokens found for assigned users or their reporting members."
             );
           }
-        }
-
-        const uniqueTokens = [
-          ...new Set(allTokens.filter((token) => token && token.trim() !== "")),
-        ];
-
-        if (uniqueTokens.length > 0) {
-          await sendMultipleNotification({
-            deviceTokens: uniqueTokens,
-            title: "Contact status updated successfully",
-          });
-
-        } else {
-          console.log(
-            "No valid device tokens found for assigned users or their reporting members."
-          );
-        }
+        })();
       } catch (error) {
         console.log("Error processing notifications:", error.message);
       }
@@ -1957,7 +1961,10 @@ export const updateCommon = async (req) => {
     if (table === "reminder_messages") {
       if (!whereClause12) {
         console.log("whereClause12 is undefined or invalid");
-        return;
+        return resBadRequest({
+          ack_msg: "Invalid update target",
+          developer_msg: "whereClause12 is undefined or invalid",
+        });
       }
 
       const reminderMessages = await sequelize.models.reminder_messages.findAll({
