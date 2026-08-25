@@ -10,6 +10,10 @@ const SOCKET_EVENT_MAP = {
   AllTaskDelete: "task-changed",
   archiveAllTask: "task-changed",
   unarchiveAllTask: "task-changed",
+  createContact: "contact-changed",
+  updateContact: "contact-changed",
+  deleteContact: "contact-changed",
+  assignStatusContactsProvider: "contact-changed",
 };
 
 // The generic commonCreate/commonUpdate passthrough is shared by every
@@ -18,6 +22,7 @@ const SOCKET_EVENT_MAP = {
 // writes go through, so a drag emits the same "task-changed" signal.
 const COMMON_TABLE_EVENT_MAP = {
   task_managements: "task-changed",
+  contact_masters: "contact-changed",
 };
 
 const resolveSocketEvent = (FN_name, req) => {
