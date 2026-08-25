@@ -1625,6 +1625,8 @@ export const getExportsProductsForUpdateData = async (req) => {
       gst_id: "sales_gst_label",
       purchase_rate: "purchase_rate",
       purchase_gst_id: "purchase_gst_label",
+      product_inner_qty: "product_inner_qty",
+      product_outer_qty: "product_outer_qty",
     };
 
     const excelColumnDefineArrayDy = {

@@ -997,6 +997,8 @@ export const addProductByExcelSheetUpdateData = async (req) => {
             "sales_gst_label": "gst_id",
             "purchase_rate": "purchase_rate",
             "purchase_gst_label": "purchase_gst_id",
+            "product_inner_qty": "product_inner_qty",
+            "product_outer_qty": "product_outer_qty",
         };
 
         // ================= CUSTOM FIELD =================
@@ -1270,6 +1272,12 @@ export const addProductByExcelSheetUpdateData = async (req) => {
             const max_stock_quantity =
                 parseInt(v.max_stock_quantity) || 0;
 
+            const product_inner_qty =
+                parseFloat(v.product_inner_qty) || 0;
+
+            const product_outer_qty =
+                parseFloat(v.product_outer_qty) || 0;
+
             const product_group = isValid(v.product_group)
                 ? v.product_group.toString().trim()
                 : "";
@@ -1398,6 +1406,9 @@ export const addProductByExcelSheetUpdateData = async (req) => {
 
                 min_stock_quantity,
                 max_stock_quantity,
+
+                product_inner_qty,
+                product_outer_qty,
                 ...(product_group_id !== undefined && { product_group_id }),
                 ...(category_id !== undefined && { category_id }),
             };
