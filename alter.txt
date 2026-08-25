@@ -2612,3 +2612,7 @@ SET tm.position = t.rn;
 INSERT INTO `a_application_pages` (`id`, `page_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (158, 'Reviews', 'reviews_report', 'Reviews', '0', '0', '0', '1', NOW(), UNIX_TIMESTAMP(), '0', '1');
 
 INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `extra_information`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, '1', '158', '0', '', NOW(), current_timestamp(), '0', '1'), (NULL, '2', '158', '0', '', NOW(), current_timestamp(), '0', '1'), (NULL, '3', '158', '0', '', NOW(), current_timestamp(), '0', '1'), (NULL, '4', '158', '0', '', NOW(), current_timestamp(), '0', '1');
+
+25-08-2026 Dhaval
+2 new Document Designer doc types added: `pendingSalesOrder`, `pendingPurchaseOrder` (templates.js's DOC_TYPES), backing pendingOrderView.tsx / pendingPurchaseView.tsx.
+`system_document_templates` seeded with 10 new gallery rows: 2 doc_types x 5 header/footer variants. Generated via migration/master/migrations/20260825100000-seed-pending-order-document-templates.js.

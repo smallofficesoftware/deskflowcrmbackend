@@ -16,6 +16,8 @@ export const DOC_TYPES = [
   { id: "inward", title: "Goods Received Note (GRN)" },
   { id: "dispatch", title: "Dispatch" },
   { id: "proformaInvoice", title: "Proforma Invoice" },
+  { id: "pendingSalesOrder", title: "Pending Sales Order" },
+  { id: "pendingPurchaseOrder", title: "Pending Purchase Order" },
 ];
 
 export { HEADER_VARIANTS };
