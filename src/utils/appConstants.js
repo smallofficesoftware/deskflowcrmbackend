@@ -99,6 +99,15 @@ export const ENCRYPT_SMALL_OFFICE_CRM_RESPONSE = process.env.ENCRYPT_SMALL_OFFIC
 export const ENCRYPT_WHATSAPP_RESPONSE = process.env.ENCRYPT_WHATSAPP_RESPONSE === "true";
 export const WHATSAPP_PAYLOAD_ENCRYPTION_KEY = process.env.WHATSAPP_PAYLOAD_ENCRYPTION_KEY;
 
+// In-app review prompt (system-review + store-review) — global settings, not per-company
+export const REVIEW_PROMPT_ENABLED = process.env.REVIEW_PROMPT_ENABLED !== "false";
+export const REVIEW_INITIAL_PROMPT_DAYS = Number(process.env.REVIEW_INITIAL_PROMPT_DAYS) || 30;
+export const REVIEW_RETRY_INTERVAL_DAYS = Number(process.env.REVIEW_RETRY_INTERVAL_DAYS) || 3;
+export const REVIEW_STORE_PROMPT_DELAY_DAYS = Number(process.env.REVIEW_STORE_PROMPT_DELAY_DAYS) || 7;
+export const REVIEW_PROMPT_DELAY_SECONDS = Number(process.env.REVIEW_PROMPT_DELAY_SECONDS) || 60;
+export const REVIEW_MIN_STAR_FOR_STORE_PROMPT = Number(process.env.REVIEW_MIN_STAR_FOR_STORE_PROMPT) || 4;
+export const REVIEW_COMMENT_MIN_LENGTH = Number(process.env.REVIEW_COMMENT_MIN_LENGTH) || 30;
+
 
 export const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID;
 export const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET;

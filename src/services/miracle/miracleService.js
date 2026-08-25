@@ -148,6 +148,7 @@ export const syncProduct = async (req) => {
             delete payload['commnm'];
             delete payload['hsncode'];
             delete payload['gstper'];
+            delete payload['slabnm'];
             delete payload['prdstp'];
         }
 

@@ -22,6 +22,7 @@ import {
   getCompanyDetailByLoginId,
   loginHistories,
 } from "../commonServices.js";
+import { getReviewPromptStatus } from "../company_setup/reviewServices.js";
 
 import { createTransporter } from "../../middlewares/nodemailer.js";
 import companyModel from "../../models/company_setup/companyModel.js";
@@ -1594,8 +1595,11 @@ export const onLoad = async (req, res) => {
       ...companyStateGet?.dataValues
     }
 
+    const reviewStatus = await getReviewPromptStatus(a_application_login_id, platform);
+
     /* ===================== RESPONSE ===================== */
     const commonData = {
+      review: reviewStatus,
       MIRACLE_FLAG: getMiracleFlag ? 1 : 2,
       WHATSAPP_PLATEFORM: WHATSAPP_PLATEFORM,
       RAISE_SUPPORT_TICKET_FLAG: raise_support_ticket_flag,

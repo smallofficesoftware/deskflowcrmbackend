@@ -99,6 +99,12 @@ io.on("connection", (socket) => {
             try {
                 sessions.length > 0 && sessions.map(async (session) => {
                     const { a_application_login_id, company_masters_id } = parseSession(session);
+                    if (company_masters_id) {
+                        // Company-scoped room for broadcast events (task/contact live sync
+                        // etc.) — every teammate connected for this company receives the
+                        // same emit, without per-user socket-id lookups.
+                        socket.join(`company-${company_masters_id}`);
+                    }
                     if (socketID && socketID.length > 0) {
                         await storeSocketId({
                             socketId: socketID,
@@ -122,6 +128,7 @@ io.on("connection", (socket) => {
     });
 });
 app.set('whatsAppSocket', io);
+app.set('io', io);
 app.use(express.urlencoded({ extended: true }));
 app.use(apiLogger);
 app.use("/api", routers());

@@ -690,6 +690,49 @@ export const productCreate = async (req) => {
     });
   }
 };
+// "Product Page Designer" — sets/clears which document_print_templates row
+// (template_purpose='product_page') this product's own extra page splices
+// from at generate time, when the resolved main template's
+// include_product_pages flag is on (see generateDocument.js). Deliberately
+// its own small endpoint rather than folding into productUpdate's much
+// larger required-field validation below — this is a single-column,
+// independently-triggered save from ProductPageDesignerEditorView.tsx's
+// "Use This Page" action, not a general product edit.
+export const setProductDesignerPage = async (req) => {
+  try {
+    const { product_id, document_template_id } = req.body || {};
+    if (!product_id) {
+      return resError({ developer_msg: "product_id is required" });
+    }
+
+    const Product = productModel(req.tenantDB);
+    // No company_masters_id filter — confirmed against getAllProduct above,
+    // this table isn't scoped by that column (it sits at 0 on every row in
+    // a single-company tenant DB); real scoping is tenant-DB isolation
+    // alone, same convention every other product query in this file uses.
+    //
+    // Checked via a real existence lookup, not update()'s "affected rows"
+    // count — MySQL/Sequelize report 0 affected rows when the new value
+    // equals the existing one (e.g. re-saving the same page, or explicitly
+    // clearing an already-null link), which is a legitimate no-op save,
+    // not a "row not found" — using the update's own return value here
+    // would wrongly error on exactly that case.
+    const product = await Product.findOne({ where: { id: product_id, isDelete: 0 }, attributes: ["id"] });
+    if (!product) {
+      return resError({ developer_msg: "Product not found" });
+    }
+    await Product.update(
+      { document_template_id: document_template_id || null },
+      { where: { id: product_id, isDelete: 0 } },
+    );
+
+    return resSuccess({ ack_msg: "Product page saved" });
+  } catch (e) {
+    console.log(e);
+    return resError({ developer_msg: `Failed to Catch ${e}` });
+  }
+};
+
 export const productUpdate = async (req) => {
   const {
     product_name,

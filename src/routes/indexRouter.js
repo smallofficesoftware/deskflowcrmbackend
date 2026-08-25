@@ -54,6 +54,7 @@ import documentPrintTemplateRouter from './company_setup/documentPrintTemplateRo
 import featureFlagRouter from './company_setup/featureFlagRouter.js';
 import reportPinRouter from './company_setup/reportPinRouter.js';
 import reportDefinitionRouter from './report_builder/reportDefinitionRouter.js';
+import reviewRouter from './company_setup/reviewRouter.js';
 import currencyRouter from "./configuration/currencyRouter.js";
 import updateTenent from "./configuration/updateTenentRouter.js";
 import allInsightsRouter from "./dashboard/allInsightsRouter.js";
@@ -161,6 +162,7 @@ export default () => {
   featureFlagRouter(app);
   reportPinRouter(app);
   reportDefinitionRouter(app);
+  reviewRouter(app);
   TaskManagement(app);
   TaskMessageHistory(app);
   getTeamAllTask(app)

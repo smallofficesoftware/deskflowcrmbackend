@@ -7,11 +7,13 @@ import { generate } from "@pdfme/generator";
 import { PDFDocument } from "@pdfme/pdf-lib";
 import * as plugins from "@pdfme/schemas";
 import { documentPrintTemplateModel } from "../../models/company_setup/documentPrintTemplateModel.js";
+import { productModel } from "../../models/product_settings/productModel.js";
 import { getTemplate, withCompanyHeader } from "./templates.js";
 import { loadFonts } from "./fonts.js";
-import { overlayItemImages } from "./imageOverlay.js";
+import { overlayItemImages, sniffImageMime } from "./imageOverlay.js";
 import {
   applyConditionalVisibility,
+  applyTokenSubstitution,
   buildCashDiscount,
   buildComputedFields,
   buildExtraPages,
@@ -21,6 +23,7 @@ import {
   fillMissingInputsFromContent,
   injectPaymentQRField,
   injectWatermarkField,
+  num,
   resolveDataSources,
 } from "./orderInputMapper.js";
 
@@ -79,16 +82,67 @@ async function toImageDataUri(value) {
   if (!value) return "";
   if (value.startsWith("data:image/")) return value;
   const response = await axios.get(value, { responseType: "arraybuffer", timeout: 15000 });
-  const contentType = String(response.headers?.["content-type"] || "");
-  const mime = contentType.includes("png") ? "image/png" : "image/jpeg";
-  return `data:${mime};base64,${Buffer.from(response.data).toString("base64")}`;
+  const bytes = Buffer.from(response.data);
+  // Trusting the response's content-type header (or worse, defaulting to
+  // "image/jpeg" for anything not explicitly "png") let a broken/redirected
+  // URL — a 404 HTML page, a WEBP/GIF/SVG, a CDN mislabeling its
+  // content-type — get declared as JPEG with non-JPEG bytes. pdf-lib's
+  // embedJpg() only checks the declared mime, not the real bytes, so it
+  // wouldn't fail until deep inside generate() (line ~140+), outside this
+  // function's own try/catch in the caller — surfacing as a bare "SOI not
+  // found in JPEG" that took down the whole /order-pdf request instead of
+  // just skipping this one page. Sniff the real magic bytes instead — same
+  // fix already applied to on-disk file reads (imageOverlay.js).
+  const mime = sniffImageMime(bytes);
+  if (!mime) return "";
+  return `data:${mime};base64,${bytes.toString("base64")}`;
 }
 
-async function mergeExtraPages(mainBuffer, basePdf, extraPages) {
+// designerPage entry.value is a document_print_templates id — fetch that
+// company's own saved template and render it against the SAME resolved
+// inputs (company/buyer/order/computed/custom-field values, post token
+// substitution) the main document used — so a Designer Page ("Terms &
+// Conditions", "Company Intro") can bind fields to real data or embed
+// {{tokens}} in a static paragraph, same as the main document. Previously
+// resolved against an empty {} object by design (deliberately
+// cart-independent) — {{companyAddress}}/{{contactPerson}}/etc typed inside
+// a Designer Page's own text field never had anything to substitute against.
+//
+// entry.itemInputs (Product Page Designer only — see productPageEntries
+// below) overrides firstItemName/firstItemPrice/firstItemImage with THIS
+// item's own values instead of the cart's first line item — a product page
+// bound to "First Item — Name" means "this product's own name", not
+// whichever product happens to be first in the cart.
+async function buildDesignerPageBytes(entry, company, tenantDB, mainInputs) {
+  const Template = documentPrintTemplateModel(tenantDB);
+  const row = await Template.findOne({
+    where: { id: entry.value, company_masters_id: company.id, isDelete: 0 },
+  });
+  if (!row?.published_template_json) return null;
+
+  const template = JSON.parse(row.published_template_json);
+  const inputsForPage = entry.itemInputs ? { ...mainInputs, ...entry.itemInputs } : mainInputs;
+  let resolvedInputs = resolveDataSources(template, inputsForPage || {});
+  resolvedInputs = fillMissingInputsFromContent(template, resolvedInputs);
+  resolvedInputs = applyTokenSubstitution(template, resolvedInputs);
+  return generate({ template, inputs: [resolvedInputs], plugins: pluginMap, options: { font: fontMap } });
+}
+
+async function mergeExtraPages(mainBuffer, basePdf, extraPages, company, tenantDB, mainInputs) {
   const { before, after } = extraPages;
   if (before.length === 0 && after.length === 0) return mainBuffer;
 
   const buildBytes = async (entry) => {
+    if (entry.kind === "designerPage") {
+      try {
+        return await buildDesignerPageBytes(entry, company, tenantDB, mainInputs);
+      } catch {
+        // Deleted/inaccessible template shouldn't take down the whole
+        // generate — skip just this one extra page (same as a broken
+        // pageURL image below).
+        return null;
+      }
+    }
     if (entry.kind === "image") {
       let dataUri;
       try {
@@ -149,6 +203,10 @@ export async function generateQuotationPdf({
   numberTowords,
   columnOptions,
   itemImages,
+  // "Product Page Designer" — 1:1 with items/itemImages, in cart item
+  // order. Only spliced in when the resolved main template's
+  // include_product_pages flag is on (see includeProductPages above).
+  itemProductIds,
   customFieldRows,
   cartValues,
   tenantDB,
@@ -177,6 +235,12 @@ export async function generateQuotationPdf({
   doc_type = "quotation",
 }) {
   let template;
+  // Captured separately from `template` (which gets reassigned to the
+  // parsed JSON below) — only a real DB row has this column; a
+  // templateOverride (Designer's own "Generate Preview") has no row at all,
+  // so product-wise pages are skipped there, same as customFieldRows-driven
+  // extra pages already are for that path.
+  let includeProductPages = false;
 
   if (templateOverride) {
     template = templateOverride;
@@ -184,14 +248,21 @@ export async function generateQuotationPdf({
     const Template = documentPrintTemplateModel(tenantDB);
     let templateRow = null;
     if (documentTemplateId) {
-      templateRow = await Template.findOne({ where: { id: documentTemplateId, company_masters_id: company.id, isDelete: 0 } });
+      // template_purpose='main' guard: an extra_page row (Document Designer
+      // Page custom field source) has no itemsTable/totals/buyer fields at
+      // all — rendering one as the actual quotation crashes downstream
+      // (buildInputsForCart/overlayItemImages expect those to exist) instead
+      // of failing cleanly. An explicit id pointing at one is treated the
+      // same as "not found", falling through to the real default below.
+      templateRow = await Template.findOne({ where: { id: documentTemplateId, company_masters_id: company.id, template_purpose: "main", isDelete: 0 } });
     }
     if (!templateRow) {
-      templateRow = await Template.findOne({ where: { company_masters_id: company.id, doc_type, is_default: 1, isDelete: 0 } });
+      templateRow = await Template.findOne({ where: { company_masters_id: company.id, doc_type, template_purpose: "main", is_default: 1, isDelete: 0 } });
     }
     template = templateRow
       ? JSON.parse(templateRow.published_template_json)
       : getTemplate(doc_type, { columnOptions: columnOptions || {} });
+    includeProductPages = !!templateRow?.include_product_pages;
   }
 
   // The itemsTable field's own columnOptions (baked in at save/apply-options
@@ -243,8 +314,29 @@ export async function generateQuotationPdf({
     },
   });
 
+  // itemImages isn't a buildInputsForCart param (it's this function's own
+  // param, same array overlayItemImages below consumes) — merged here rather
+  // than threading it through, same 1:1 index-aligned data-URI shape.
+  rawInputs.firstItemImage = itemImages?.[0] || "";
+
+  // Cart custom-field values, keyed by their own reference_column_name
+  // (e.g. carts_column_text_1) — same dictionary keys buildDataDictionary
+  // (dataDictionary.js) already offers as token chips for these fields, but
+  // until now nothing ever populated rawInputs with the actual per-cart
+  // value, so a {{carts_column_text_1}} token (or a field "Bound to Data" ->
+  // that custom field) always resolved to nothing. data_type 11/12/14 are
+  // whole-page custom fields (buildExtraPages handles those separately, via
+  // cartValues directly) — excluded here too, matching the dictionary's own
+  // exclusion policy.
+  (customFieldRows || []).forEach((field) => {
+    const dataType = Number(field.data_type);
+    if (dataType === 11 || dataType === 12 || dataType === 14) return;
+    rawInputs[field.reference_column_name] = cartValues?.[field.reference_column_name] ?? "";
+  });
+
   let resolvedInputs = resolveDataSources(template, rawInputs);
   resolvedInputs = fillMissingInputsFromContent(template, resolvedInputs);
+  resolvedInputs = applyTokenSubstitution(template, resolvedInputs);
 
   template = applyConditionalVisibility(template, resolvedInputs);
 
@@ -263,7 +355,49 @@ export async function generateQuotationPdf({
   }
 
   const extraPages = buildExtraPages(customFieldRows || [], cartValues || {});
-  const finalBuffer = await mergeExtraPages(Buffer.from(pdfBytes), template.basePdf, extraPages);
+
+  // Product Page Designer — one splice entry per cart item (in item order,
+  // duplicates included if the same product appears twice), right after
+  // the main document and before any customFieldRows-driven "after" pages.
+  // Deliberately per-line-item, not deduped by product id.
+  if (includeProductPages && itemProductIds?.length) {
+    const Product = productModel(tenantDB);
+    const productIds = [...new Set(itemProductIds.filter(Boolean))];
+    // No company_masters_id filter — confirmed against getAllProduct
+    // (productServices.js), this table isn't scoped by that column (it
+    // sits at 0 on every row in a single-company tenant DB); real scoping
+    // is tenant-DB isolation alone (tenantDB is already this company's own
+    // isolated database, same as every other product query in the app).
+    const products = productIds.length
+      ? await Product.findAll({ where: { id: productIds, isDelete: 0 }, attributes: ["id", "document_template_id"] })
+      : [];
+    const templateIdByProductId = {};
+    products.forEach((p) => { if (p.document_template_id) templateIdByProductId[p.id] = p.document_template_id; });
+
+    // itemInputs: this line item's OWN name/price/image, keyed to the same
+    // firstItem* dictionary keys a product page's fields bind to — so
+    // "First Item — Name" on a product page means "this product's own
+    // name", not the cart's first item (buildDesignerPageBytes merges this
+    // over mainInputs, not the other way around).
+    const productPageEntries = itemProductIds
+      .map((productId, idx) => {
+        const templateId = templateIdByProductId[productId];
+        if (!templateId) return null;
+        return {
+          kind: "designerPage",
+          value: String(templateId),
+          itemInputs: {
+            firstItemName: items?.[idx]?.description ?? "",
+            firstItemPrice: items?.[idx] ? num(items[idx].rate) : "",
+            firstItemImage: itemImages?.[idx] || "",
+          },
+        };
+      })
+      .filter(Boolean);
+    extraPages.after = [...productPageEntries, ...extraPages.after];
+  }
+
+  const finalBuffer = await mergeExtraPages(Buffer.from(pdfBytes), template.basePdf, extraPages, company, tenantDB, resolvedInputs);
 
   return finalBuffer;
 }

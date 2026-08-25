@@ -290,13 +290,19 @@ export const inquiryReport = async (req) => {
     if (selectedProduct) {
 
       whereClause[Op.and] = [
-        Sequelize.literal(`FIND_IN_SET('${selectedProduct}',product_id)`)
+        Sequelize.where(
+          Sequelize.fn("FIND_IN_SET", selectedProduct, Sequelize.col("product_id")),
+          { [Op.gt]: 0 }
+        ),
       ];
     }
     if (selectedCategory) {
 
       whereClause[Op.and] = [
-        Sequelize.literal(`FIND_IN_SET('${selectedCategory}',category_id)`)
+        Sequelize.where(
+          Sequelize.fn("FIND_IN_SET", selectedCategory, Sequelize.col("category_id")),
+          { [Op.gt]: 0 }
+        ),
       ];
     }
     if (selectedContactId && referenceWiseContact == 1) {
@@ -427,12 +433,18 @@ export const inquiryReport = async (req) => {
       const matchedContact = contacts.find(
         (contact) => contact.id === inquiry.contact_master_id
       );
-      const matchedCategory = categories.find(
-        (categories) => categories.id === inquiry.category_id
-      );
-      const matchedProduct = products.find(
-        (products) => products.id === inquiry.product_id
-      );
+      const categoryIds = inquiry.category_id
+        ? inquiry.category_id.split(",").map((id) => Number(id.trim())).filter(Boolean)
+        : [];
+      const matchedCategoryNames = categoryIds
+        .map((id) => categories.find((c) => c.id === id)?.category_name)
+        .filter(Boolean);
+      const productIds = inquiry.product_id
+        ? inquiry.product_id.split(",").map((id) => Number(id.trim())).filter(Boolean)
+        : [];
+      const matchedProductNames = productIds
+        .map((id) => products.find((p) => p.id === id)?.product_name)
+        .filter(Boolean);
       const matchedSource = sources.find(
         (sources) => sources.id === inquiry.source_type_id
       );
@@ -494,8 +506,8 @@ export const inquiryReport = async (req) => {
         ...inquiry.dataValues,
         customForm: CustomFormFeilds,
         inquiry_id: `#${inquiry.id}`,
-        category_name: matchedCategory ? matchedCategory.category_name : "-",
-        product_id: matchedProduct ? matchedProduct.product_name : "-",
+        category_name: matchedCategoryNames.length > 0 ? matchedCategoryNames.join(", ") : "-",
+        product_id: matchedProductNames.length > 0 ? matchedProductNames.join(", ") : "-",
         source_type_id: matchedSource ? matchedSource.source_name : "-",
         source_colour: matchedSource ? matchedSource.color : "-",
         status_name: matchedStatus ? matchedStatus.name : "-",

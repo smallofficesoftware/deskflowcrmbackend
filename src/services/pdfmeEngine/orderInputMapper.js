@@ -43,6 +43,35 @@ export function fillMissingInputsFromContent(template, inputs) {
   return filled;
 }
 
+// Mail-merge-style {{key}} tokens embedded inside an otherwise free-typed
+// text field's content (a paragraph, not a whole-field dataSource binding) —
+// resolved against the SAME rawInputs/dictionary values already computed for
+// the doc, so a field can mix literal text and variables in one block. Only
+// text-type fields are scanned (table holds JSON rows, image holds data
+// URIs — neither should ever be regex-substituted), and the `.includes` guard
+// makes this a no-op for the vast majority of fields with no "{{" at all.
+const TOKEN_PATTERN = /\{\{\s*([\w.-]+)\s*\}\}/g;
+
+export function applyTokenSubstitution(template, inputs) {
+  const substituted = { ...inputs };
+  (template.schemas || []).forEach((page) => {
+    page.forEach((field) => {
+      if (field.type !== "text") return;
+      const value = substituted[field.name];
+      if (typeof value !== "string" || !value.includes("{{")) return;
+      substituted[field.name] = value.replace(TOKEN_PATTERN, (match, key) => {
+        const replacement = inputs[key];
+        // Unknown/typo'd key: leave the literal "{{key}}" in place rather
+        // than blanking it — a blank is indistinguishable from a real empty
+        // value (e.g. no GSTIN on file), the literal braces are a visible,
+        // debuggable artifact instead of a silent wrong answer.
+        return replacement === undefined || replacement === null ? match : String(replacement);
+      });
+    });
+  });
+  return substituted;
+}
+
 function isEmptyValue(value) {
   return value === undefined || value === null || value === "" || value === "0" || value === 0;
 }
@@ -182,21 +211,27 @@ export async function injectPaymentQRField(template, { docType, company, order, 
   return cloned;
 }
 
-// pageText (formType/data_type 11) / pageURL (data_type 12) — per-cart
-// custom-field-driven extra pages, sourced from the SAME custom-field rows
-// orderServices.js already fetches for the EJS pipeline (form_type scoped
-// to the cart's doc type, print_or_not: 1). Returns { before: [], after: [] }
-// where each entry is { kind: "text"|"image", value, display_order } —
-// caller (orderServices.js's generate flow) turns each into its own tiny
-// pdfme template + generate() + pdf-lib splice, matching the main doc's
-// basePdf so a cover/outro page carries the same page size.
+// pageText (formType/data_type 11) / pageURL (data_type 12) / designerPage
+// (data_type 14) — per-cart custom-field-driven extra pages, sourced from
+// the SAME custom-field rows orderServices.js already fetches for the EJS
+// pipeline (form_type scoped to the cart's doc type, print_or_not: 1).
+// Returns { before: [], after: [] } where each entry is
+// { kind: "text"|"image"|"designerPage", value, display_order } — caller
+// (generateDocument.js's mergeExtraPages) turns text/image into a tiny
+// pdfme template, and designerPage into a full render of the referenced
+// document_print_templates row, then pdf-lib-splices each in, matching the
+// main doc's basePdf so a cover/outro page carries the same page size.
+// designerPage's value is a comma-joined list of document_print_templates
+// ids (unlike pageText/pageURL's single-value convention — a field can
+// attach several Designer Pages at once, split back out below into one
+// splice entry per id), not raw content.
 export function buildExtraPages(customFieldRows, cartValues) {
   const before = [];
   const after = [];
 
   customFieldRows.forEach((field) => {
     const dataType = Number(field.data_type);
-    if (dataType !== 11 && dataType !== 12) return;
+    if (dataType !== 11 && dataType !== 12 && dataType !== 14) return;
 
     const value = cartValues?.[field.reference_column_name];
     const isValid =
@@ -210,12 +245,28 @@ export function buildExtraPages(customFieldRows, cartValues) {
       value !== "0000-00-00 00:00:00";
     if (!isValid) return;
 
-    const entry = {
+    const bucket = Number(field.display_order) <= 0 ? before : after;
+
+    if (dataType === 14) {
+      // Multiple sources allowed per field (DesignerPageEditModel.tsx's
+      // checkbox picker) — stored as a comma-joined id list, one splice
+      // entry per id, all at this field's own display_order (their
+      // relative order among themselves follows the comma list order).
+      String(value)
+        .split(",")
+        .map((v) => v.trim())
+        .filter(Boolean)
+        .forEach((templateId) => {
+          bucket.push({ kind: "designerPage", value: templateId, display_order: field.display_order });
+        });
+      return;
+    }
+
+    bucket.push({
       kind: dataType === 11 ? "text" : "image",
       value,
       display_order: field.display_order,
-    };
-    (Number(field.display_order) <= 0 ? before : after).push(entry);
+    });
   });
 
   const byOrder = (a, b) => a.display_order - b.display_order;
@@ -234,7 +285,7 @@ export function buildExtraPages(customFieldRows, cartValues) {
 // a pdfme text field's content must be a string (@pdfme/schemas' line-
 // break logic calls .split on it) or generate() throws. Matches the old
 // EJS pipeline's own formatNum(x, 2) (src/utils/sharedFunctions.js).
-function num(value, decimals = 2) {
+export function num(value, decimals = 2) {
   if (value === undefined || value === null || value === "") return "";
   return Number(value).toFixed(decimals);
 }
@@ -448,6 +499,8 @@ export function buildInputsForCart({ company, buyer, order, computed, items, col
     contactPerson: order?.contactPerson ?? "",
 
     itemsTable: JSON.stringify(itemsTableRows),
+    firstItemName: items?.[0]?.description ?? "",
+    firstItemPrice: items?.[0] ? num(items[0].rate) : "",
 
     subTotal: computed?.subTotal ?? "",
     gstAmount: computed?.gstAmount ?? "",

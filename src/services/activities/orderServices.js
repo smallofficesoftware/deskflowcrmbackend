@@ -85,7 +85,7 @@ const orderTypesList = [
   { id: "7", type: "return_purchase_invoice" },
   { id: "8", type: "inward" },
   { id: "9", type: "dispatch" },
-  { id: "12", order_type: "Proforma Invoice" },
+  { id: "12", type: "proforma_invoice" },
 ];
 const orderTypesShowList = [
   { id: "1", type: "Quotation" },
@@ -97,7 +97,7 @@ const orderTypesShowList = [
   { id: "7", type: "Return Purchase Invoice" },
   { id: "8", type: "Inward" },
   { id: "9", type: "Dispatch" },
-  { id: "12", order_type: "Proforma Invoice" },
+  { id: "12", type: "Proforma Invoice" },
 ];
 const paymentModeList = [
   { id: "2", type: "Debit" },
@@ -4292,7 +4292,7 @@ export const pdfOrder = async (req, res) => {
           customFieldsWhere.form_type = 13;
           dynamicPrintView = companyDetail.dispatch_view_formate;
         } else if (cartType == 12) {
-          customFieldsWhere.form_type = 15;
+          customFieldsWhere.form_type = 16;
           dynamicPrintView = companyDetail.proforma_invoice_view_formate;
         }
       }
@@ -4485,7 +4485,7 @@ export const pdfOrder = async (req, res) => {
         { id: "7", type: "Return Purchase Invoice" },
         { id: "8", type: "Inward" },
         { id: "9", type: "Dispatch" },
-        { id: "12", order_type: "Proforma Invoice" },
+        { id: "12", type: "Proforma Invoice" },
       ];
 
       const selectedCurrency = currencyDetails[0]?.short_name || "INR";
@@ -4841,12 +4841,19 @@ export const pdfOrder = async (req, res) => {
           }
         };
 
+        // Mirrors the legacy EJS fix — item_discount_type (cart-level, same
+        // 1=percentage/2=flat convention as cash_discount_type) says which
+        // of item_discount_pct/item_discount_pr the user actually entered;
+        // NULL on carts saved before this field existed defaults to percentage.
+        const isFlatItemDiscount = Number(cartData.item_discount_type) === 2;
         const pdfmeItems = finalData.map((item) => ({
           description: item.item_product_name,
           hsn: item.item_hsn_code,
           qty: item.item_unit_name ? `${item.item_qty} / ${item.item_unit_name}` : item.item_qty,
           rate: item.item_rate,
-          discount: item.item_discount_pct,
+          discount: isFlatItemDiscount
+            ? `${currencySymbol} ${(Number(item.item_discount_pr) || 0).toFixed(2)}`
+            : `${(Number(item.item_discount_pct) || 0).toFixed(2)}%`,
           total: item.item_total,
           item_hsn_code: item.item_hsn_code,
           item_total: item.item_total,
@@ -4862,6 +4869,11 @@ export const pdfOrder = async (req, res) => {
           const relativePath = product.product_img.replace(PRODUCT_IMG_LINK_EXTENDED, "");
           return buildProductImageDataUri(relativePath);
         });
+
+        // "Product Page Designer" — 1:1 with pdfmeItems/pdfmeItemImages, in
+        // cart item order. Only consumed when the resolved main template's
+        // include_product_pages flag is on (generateDocument.js).
+        const pdfmeItemProductIds = resultAllCartItems.map((item) => item.item_product_id);
 
         const buffer = await generateQuotationPdf({
           documentTemplateId: req.body?.document_template_id,
@@ -4912,6 +4924,7 @@ export const pdfOrder = async (req, res) => {
           numberTowords,
           columnOptions: null,
           itemImages: pdfmeItemImages,
+          itemProductIds: pdfmeItemProductIds,
           customFieldRows: CartCustomFields,
           cartValues: cartData,
           tenantDB: req.tenantDB,
@@ -5942,9 +5955,10 @@ export const fetchShippingLabelPrint = async (req, res) => {
     const pdfPath = `${company.id}/${fileName}`;
 
     // pdfme Document Designer — same per-company opt-in as §5's cart-doc
-    // path (orderServices.js:4810). Shipping label isn't Designer-customizable
-    // yet (shippingLabelTemplate.js is a fixed port, not a document_print_templates
-    // row), so this only decides which renderer produces the bytes.
+    // path (orderServices.js:4810). document_template_id (from the
+    // frontend's picker, when the company has 2+ shippingLabel templates)
+    // selects a company-customized template; otherwise the company's
+    // default row (if any) or the built-in fixed layout is used.
     const documentDesignerEnabled = await isFeatureEnabled(company.id, "document_designer");
 
     if (documentDesignerEnabled) {
@@ -5961,6 +5975,8 @@ export const fetchShippingLabelPrint = async (req, res) => {
         company,
         items,
         qrDataUri,
+        documentTemplateId: req.body.document_template_id,
+        tenantDB: req.tenantDB,
         dynamicTerms,
         showProductSection: !!printSetting?.ProductSection,
       });

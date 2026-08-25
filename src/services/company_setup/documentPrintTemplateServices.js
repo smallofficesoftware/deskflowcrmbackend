@@ -1,6 +1,7 @@
 import fs from "fs";
 import moment from "moment";
 import path from "path";
+import { Op } from "sequelize";
 import { cartItemModel } from "../../models/activities/cartItemsModel.js";
 import { cartModel } from "../../models/activities/cartsModel.js";
 import companyModel from "../../models/company_setup/companyModel.js";
@@ -8,6 +9,7 @@ import { documentPrintTemplateModel } from "../../models/company_setup/documentP
 import { documentPrintTemplateVersionModel } from "../../models/company_setup/documentPrintTemplateVersionModel.js";
 import systemDocumentTemplateModel from "../../models/company_setup/systemDocumentTemplateModel.js";
 import { productModel } from "../../models/product_settings/productModel.js";
+import { REPORT_PIN } from "../../utils/appConstants.js";
 import { numberToWordsCurrency } from "../../utils/numberToWordsCurrency.js";
 import { resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { generateQuotationPdf } from "../pdfmeEngine/generateDocument.js";
@@ -28,6 +30,50 @@ const nextVersionNumber = async (Version, document_template_id) => {
   return (Number(max) || 0) + 1;
 };
 
+export const verifyDocumentManagerPin = async (req) => {
+  try {
+    const { pin } = req.body || {};
+    if (!pin) {
+      return resError({ developer_msg: "pin is required" });
+    }
+
+    if (String(pin) !== String(REPORT_PIN)) {
+      return resError({ developer_msg: "Incorrect PIN", ack_msg: "Incorrect PIN" });
+    }
+
+    return resSuccess({ ack_msg: "PIN verified" });
+  } catch (e) {
+    console.log(e);
+    return resError({ developer_msg: `Failed to Catch ${e}` });
+  }
+};
+
+// Company-wide list across every doc_type — used by the "Document Designer
+// Page" custom field type (data_type 14, orderInputMapper.js's
+// buildExtraPages) picker, which attaches ANY of a company's own saved
+// templates (quotation, shippingLabel, whatever) as a static extra page, not
+// one scoped doc_type like listDocumentTemplates above.
+export const listAllDocumentTemplates = async (req) => {
+  try {
+    const { company_masters_id } = req.body || {};
+    if (!company_masters_id) {
+      return resError({ developer_msg: "company_masters_id is required" });
+    }
+
+    const Template = documentPrintTemplateModel(req.tenantDB);
+    const rows = await Template.findAll({
+      where: { company_masters_id, isDelete: 0, published_template_json: { [Op.ne]: null } },
+      attributes: ["id", "doc_type", "template_name", "is_default"],
+      order: [["doc_type", "ASC"], ["display_order", "ASC"], ["id", "ASC"]],
+    });
+
+    return resSuccess({ data: { item: rows } });
+  } catch (e) {
+    console.log(e);
+    return resError({ developer_msg: `Failed to Catch ${e}` });
+  }
+};
+
 export const listDocumentTemplates = async (req) => {
   try {
     const { company_masters_id, doc_type } = req.body || {};
@@ -37,7 +83,13 @@ export const listDocumentTemplates = async (req) => {
 
     const Template = documentPrintTemplateModel(req.tenantDB);
     const rows = await Template.findAll({
-      where: { company_masters_id, doc_type, isDelete: 0 },
+      // template_purpose 'extra_page' rows (Document Designer Page custom
+      // field sources) are deliberately excluded — this same list backs
+      // both /document-designer's own sidebar AND the real print-time
+      // template picker (orderPrintController.ts's fetchPdfmeTemplatesFor
+      // Picker hits this identical endpoint), so an extra_page row showing
+      // here would be selectable as an actual order's print layout.
+      where: { company_masters_id, doc_type, template_purpose: "main", isDelete: 0 },
       attributes: ["id", "template_name", "is_default", "display_order", "has_unpublished_changes"],
       order: [["display_order", "ASC"], ["id", "ASC"]],
     });
@@ -57,9 +109,14 @@ export const getDocumentTemplate = async (req) => {
     }
 
     const Template = documentPrintTemplateModel(req.tenantDB);
+    // An explicit id (editing a known template, extra_page or main) is
+    // trusted as-is; the is_default fallback (real print-time resolution
+    // with no id given) is scoped to 'main' — belt-and-suspenders, since
+    // createDocumentTemplate above already never sets is_default:1 on an
+    // extra_page row.
     const where = id
       ? { id, company_masters_id, isDelete: 0 }
-      : { company_masters_id, doc_type, is_default: 1, isDelete: 0 };
+      : { company_masters_id, doc_type, template_purpose: "main", is_default: 1, isDelete: 0 };
 
     const row = await Template.findOne({ where });
     if (!row) {
@@ -79,12 +136,27 @@ export const createDocumentTemplate = async (req) => {
     if (!company_masters_id || !doc_type || !template_name || !template_json) {
       return resError({ developer_msg: "company_masters_id, doc_type, template_name and template_json are required" });
     }
+    // 'main' (default) unless the caller explicitly asks for one of the two
+    // non-pickable purposes — 'extra_page' from the "Document Designer
+    // Page" custom field's editor, 'product_page' from the Product Page
+    // Designer editor (both share CustomFieldDesignerPageEditorView.tsx's
+    // pattern, just pointed at a different save target).
+    const template_purpose = ["extra_page", "product_page"].includes(req.body?.template_purpose)
+      ? req.body.template_purpose
+      : "main";
 
     const Template = documentPrintTemplateModel(req.tenantDB);
     const Version = documentPrintTemplateVersionModel(req.tenantDB);
     const jsonString = typeof template_json === "string" ? template_json : JSON.stringify(template_json);
 
-    const existingCount = await Template.count({ where: { company_masters_id, doc_type, isDelete: 0 } });
+    // Scoped to 'main' rows only — an extra_page row must never itself
+    // become "the" is_default (it's not a real print layout, and it must
+    // never affect whether a genuine first 'main' template becomes default
+    // either).
+    const existingMainCount =
+      template_purpose === "main"
+        ? await Template.count({ where: { company_masters_id, doc_type, template_purpose: "main", isDelete: 0 } })
+        : 1;
     const display_order = await nextDisplayOrder(Template, company_masters_id, doc_type);
     const formattedDateTime = now();
 
@@ -92,10 +164,11 @@ export const createDocumentTemplate = async (req) => {
       company_masters_id,
       doc_type,
       template_name,
+      template_purpose,
       draft_template_json: jsonString,
       published_template_json: jsonString,
       has_unpublished_changes: 0,
-      is_default: existingCount === 0 ? 1 : 0,
+      is_default: template_purpose === "main" && existingMainCount === 0 ? 1 : 0,
       display_order,
       modify_by: a_application_login_id,
       created_date_time: formattedDateTime,
@@ -141,6 +214,12 @@ export const updateDocumentTemplate = async (req) => {
     if (template_json !== undefined) {
       updatePayload.draft_template_json = typeof template_json === "string" ? template_json : JSON.stringify(template_json);
       updatePayload.has_unpublished_changes = 1;
+    }
+    // Product Page Designer toggle — per-template (DocumentDesignerView.tsx's
+    // toolbar checkbox, cart-shaped doc types only), not a draft/publish
+    // concept, applies immediately.
+    if (req.body?.include_product_pages !== undefined) {
+      updatePayload.include_product_pages = req.body.include_product_pages ? 1 : 0;
     }
 
     const [affected] = await Template.update(updatePayload, { where: { id, company_masters_id, isDelete: 0 } });

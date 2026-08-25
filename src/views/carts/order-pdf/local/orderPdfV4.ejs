@@ -154,7 +154,9 @@
       } else if (orderType.id == 8) {
         dynamicColor = companyDetail.inward_color || "#cfcfcf"; 
       } else if (orderType.id == 9) {
-        dynamicColor = companyDetail.dispatch_color || "#cfcfcf"; 
+        dynamicColor = companyDetail.dispatch_color || "#cfcfcf";
+      } else if (orderType.id == 12) {
+        dynamicColor = companyDetail.proforma_invoice_view_color || "#cfcfcf";
       }
 
       let dynamicTitle = "";
@@ -175,7 +177,9 @@
       } else if (orderType.id == 8) {
         dynamicTitle = companyDetail.inward_title || "Goods Received Note"; 
       } else if (orderType.id == 9) {
-        dynamicTitle = companyDetail.dispatch_title || "Dispatch"; 
+        dynamicTitle = companyDetail.dispatch_title || "Dispatch";
+      } else if (orderType.id == 12) {
+        dynamicTitle = companyDetail.proforma_invoice_title || "Proforma Invoice";
       }
 
       const groupedItems = items.reduce((acc, item) => {
@@ -456,7 +460,7 @@
             </th>
 
             <% if (printSetting.discountColumn) { %>
-            <th class="text-center" style="width: 6%;">Dis(%)</th>
+            <th class="text-center" style="width: 6%;">Dis(<%= Number(cart.item_discount_type) === 2 ? currency : '%' %>)</th>
             <% } %>
             <% if (totalGstAmount > 0) { %>
             <th>GST(%)</th>
@@ -600,7 +604,11 @@
 
             <% if (printSetting.discountColumn) { %>
             <td style="text-align: right;<%= productDescBorderStyle %>">
-              <%= formatNum(item.item_discount_pct || 0, 2) %>
+              <% if (Number(cart.item_discount_type) === 2) { %>
+                <%= currency %> <%= formatNum(item.item_discount_pr || 0, 2) %>
+              <% } else { %>
+                <%= formatNum(item.item_discount_pct || 0, 2) %>%
+              <% } %>
             </td>
             <% } %>
             <% if (totalGstAmount > 0) { %>

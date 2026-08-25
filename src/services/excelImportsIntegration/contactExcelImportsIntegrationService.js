@@ -20,6 +20,7 @@ import { categoryModel } from "../../models/product_settings/categoryModel.js";
 import { priceListMastersModel } from "../../models/product_settings/priceListMastersModel.js";
 import { productModel } from "../../models/product_settings/productModel.js";
 import {
+    isDuplicateContact,
     isValid,
     normalizeToTenDigit,
     resBadRequest,
@@ -1221,6 +1222,7 @@ export const addContactByExcelSheetV2 = async (req) => {
             // bulkCreate). If the contact already exists in the DB, every row independently looks
             // it up directly - no in-file shortcut is used for that case.
             const mobileNumberToColumn5Map = new Map();
+            const mobileNumberToPersonNameMap = new Map();
             const clientCodeToColumn5Map = new Map();
             const gstNumberToColumn5Map = new Map();
             // Tracks descriptions already queued per column_5, for the brand-new-contact case only
@@ -1261,14 +1263,10 @@ export const addContactByExcelSheetV2 = async (req) => {
             // Finds an existing contact by mobile_number, then client_code, then gst_number (first
             // match wins). Always queried fresh against the DB - this is intentionally NOT cached
             // in-memory per file, since duplicate rows must each independently re-check.
-            const findExistingContact = async (mobile_number, client_code, gst_number) => {
-                if (isValid(mobile_number)) {
-                    const byMobile = await CTcontactModel.findOne({
-                        where: { isDelete: 0, mobile_number },
-                        raw: true,
-                    });
-                    if (byMobile) return byMobile;
-                }
+            // client_code / gst_number are exact business identifiers - always a hard
+            // duplicate, unaffected by is_contact_validation (that flag is specifically
+            // about mobile number duplication, per the company setting's own label).
+            const findExistingContactByCodeOrGst = async (client_code, gst_number) => {
                 if (isValid(client_code)) {
                     const byClientCode = await CTcontactModel.findOne({
                         where: { isDelete: 0, client_code },
@@ -1282,6 +1280,26 @@ export const addContactByExcelSheetV2 = async (req) => {
                         raw: true,
                     });
                     if (byGst) return byGst;
+                }
+                return null;
+            };
+
+            // Mobile match goes through is_contact_validation: Off (default) treats any
+            // mobile match as the existing contact (today's behavior); On only treats it
+            // as the existing contact if the person name also matches - a different name
+            // with the same mobile is allowed to become its own new contact.
+            const findExistingContact = async (mobile_number, client_code, gst_number, person_name) => {
+                const byCodeOrGst = await findExistingContactByCodeOrGst(client_code, gst_number);
+                if (byCodeOrGst) return byCodeOrGst;
+
+                if (isValid(mobile_number)) {
+                    const byMobile = await CTcontactModel.findOne({
+                        where: { isDelete: 0, mobile_number },
+                        raw: true,
+                    });
+                    if (byMobile && isDuplicateContact(companyData?.is_contact_validation, byMobile.person_name, person_name)) {
+                        return byMobile;
+                    }
                 }
                 return null;
             };
@@ -1329,7 +1347,7 @@ export const addContactByExcelSheetV2 = async (req) => {
                    many duplicate rows exist in the file), UNLESS this exact description already
                    exists for that contact, in which case only the inquiry is skipped. */
 
-                const existingContact = await findExistingContact(mobile_number, client_code, gst_number);
+                const existingContact = await findExistingContact(mobile_number, client_code, gst_number, person_name);
 
                 if (existingContact) {
                     if (isValid(v?.description)) {
@@ -1355,11 +1373,20 @@ export const addContactByExcelSheetV2 = async (req) => {
                    in this same upload, so an exact repeat (like rows 2 and 4 both being
                    "bluetooth speaker" for the same brand-new contact) isn't added twice. */
 
-                const inFileColumn5 =
-                    (isValid(mobile_number) && mobileNumberToColumn5Map.get(String(mobile_number))) ||
+                let inFileColumn5 =
                     (isValid(client_code) && clientCodeToColumn5Map.get(String(client_code))) ||
                     (isValid(gst_number) && gstNumberToColumn5Map.get(String(gst_number))) ||
                     null;
+
+                if (!inFileColumn5 && isValid(mobile_number)) {
+                    const mobileMatchColumn5 = mobileNumberToColumn5Map.get(String(mobile_number));
+                    if (mobileMatchColumn5) {
+                        const queuedPersonName = mobileNumberToPersonNameMap.get(String(mobile_number));
+                        if (isDuplicateContact(companyData?.is_contact_validation, queuedPersonName, person_name)) {
+                            inFileColumn5 = mobileMatchColumn5;
+                        }
+                    }
+                }
 
                 if (inFileColumn5) {
                     if (isValid(v?.description)) {
@@ -1558,6 +1585,7 @@ export const addContactByExcelSheetV2 = async (req) => {
                 // attach their inquiry/message to this row's contact once it's created.
                 if (isValid(mobile_number)) {
                     mobileNumberToColumn5Map.set(String(mobile_number), column_5);
+                    mobileNumberToPersonNameMap.set(String(mobile_number), person_name);
                 }
                 if (isValid(client_code)) {
                     clientCodeToColumn5Map.set(String(client_code), column_5);

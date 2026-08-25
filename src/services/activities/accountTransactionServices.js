@@ -37,10 +37,43 @@ import { __dirnameConstant, EXPORTS_LINK_EXTENDED, PDF_LINK_EXTENDED_Account_TRA
 import { PAGE_ID } from "../../utils/AppEnumeration.js";
 import { exportData } from "../../utils/exporter.js";
 import { getCompanyByLoginId, getCompanyDetailByLoginId } from "../commonServices.js";
+import { documentPrintTemplateModel } from "../../models/company_setup/documentPrintTemplateModel.js";
 import { isFeatureEnabled } from "../company_setup/featureFlagServices.js";
 import { sendMultipleNotification } from "../company_setup/thirdPartyIntegrationService.js";
 import { generateAccountStatementPdf } from "../pdfmeEngine/accountStatementGenerate.js";
 import { generateAccountTransactionPdf } from "../pdfmeEngine/accountTransactionGenerate.js";
+
+// Loads a company's own pdfme template JSON for accountStatement/
+// accountTransaction (created via Document Designer's generic
+// create/duplicate/copy-from-gallery flow) so generateAccountStatementPdf/
+// generateAccountTransactionPdf can bind data into it directly instead of
+// building the default dynamically-sized layout. Same fallback order
+// generateQuotationPdf/generateShippingLabelPdf already use: an explicitly
+// picked id, else the company's own is_default row for that doc_type, else
+// null (caller falls back to the built-in layout). Without the is_default
+// fallback, a company with exactly one customized template (no picker,
+// since that only shows at 2+) would have its customization silently
+// ignored on every print — this is what actually fixes that.
+async function loadAccountTemplateOverride(req, companyMastersId, documentTemplateId, docType) {
+  const Template = documentPrintTemplateModel(req.tenantDB);
+  let row = null;
+  if (documentTemplateId) {
+    // doc_type + template_purpose='main' guards: an explicit id pointing at
+    // some other doc_type's template, or at an extra_page row (a Document
+    // Designer Page custom field source), would otherwise render garbage
+    // or crash instead of falling through to the real default below.
+    row = await Template.findOne({
+      where: { id: documentTemplateId, company_masters_id: companyMastersId, doc_type: docType, template_purpose: "main", isDelete: 0 },
+    });
+  }
+  if (!row) {
+    row = await Template.findOne({
+      where: { company_masters_id: companyMastersId, doc_type: docType, template_purpose: "main", is_default: 1, isDelete: 0 },
+    });
+  }
+  if (!row) return null;
+  return JSON.parse(row.published_template_json);
+}
 
 function AccountTransactionformatDateAndTime(dateStr) {
   const d = new Date(dateStr);
@@ -1256,11 +1289,18 @@ export const accountPDFv1 = async (req, res) => {
     const fileLinkPath = PDF_LINK_EXTENDED_Account_TRANSACTION + companyDetail.id.toString() + "/" + fileNameOnly;
 
     // pdfme Document Designer — same per-company opt-in as §5's cart-doc path
-    // (orderServices.js:4810). This receipt isn't Designer-customizable yet
-    // (accountTransactionTemplate.js is a fixed port), just a renderer switch.
+    // (orderServices.js:4810). document_template_id (from the frontend's
+    // picker, when the company has 2+ accountTransaction templates) selects
+    // a company-customized template instead of the default dynamic layout.
     const documentDesignerEnabled = await isFeatureEnabled(companyDetail.id, "document_designer");
 
     if (documentDesignerEnabled) {
+      const templateOverride = await loadAccountTemplateOverride(
+        req,
+        companyDetail.id,
+        req.body.document_template_id,
+        "accountTransaction"
+      );
       const buffer = await generateAccountTransactionPdf({
         companyDetails: companyDetail,
         accountTransactions: accountTransaction,
@@ -1270,6 +1310,7 @@ export const accountPDFv1 = async (req, res) => {
         currencySymbol: "₹",
         formattedAmount: AccountTransactionformatNumber(accountTransaction.amount),
         formattedDate: accountTransaction.payment_date_time ? AccountTransactionformatDateAndTime(accountTransaction.payment_date_time) : "-",
+        templateOverride,
       });
       if (!fs.existsSync(uploadDir)) {
         fs.mkdirSync(uploadDir, { recursive: true });
@@ -1455,11 +1496,18 @@ export const allAccountTransactionOfContactPDF = async (req, res) => {
     const fileLinkPath = PDF_LINK_EXTENDED_Account_TRANSACTION + pdfPath;
 
     // pdfme Document Designer — same per-company opt-in as §5's cart-doc path
-    // (orderServices.js:4810). This statement isn't Designer-customizable yet
-    // (accountStatementTemplate.js is a fixed port), just a renderer switch.
+    // (orderServices.js:4810). document_template_id (from the frontend's
+    // picker, when the company has 2+ accountStatement templates) selects
+    // a company-customized template instead of the default dynamic layout.
     const documentDesignerEnabled = await isFeatureEnabled(companyData.id, "document_designer");
 
     if (documentDesignerEnabled) {
+      const templateOverride = await loadAccountTemplateOverride(
+        req,
+        companyData.id,
+        req.body.document_template_id,
+        "accountStatement"
+      );
       const buffer = await generateAccountStatementPdf({
         companyData,
         contactData,
@@ -1470,6 +1518,7 @@ export const allAccountTransactionOfContactPDF = async (req, res) => {
         fromDate,
         toDate,
         settingDetails,
+        templateOverride,
       });
       fs.writeFileSync(filePath, buffer);
     } else {
@@ -1527,6 +1576,57 @@ export const allAccountTransactionOfContactPDF = async (req, res) => {
       ack_msg: "Pdf generated",
       data: { fileLinkPath, sessionName: `a${a_application_login_id}_c${companyData.id}`, mobile_number: contactData.mobile_number },
     });
+  } catch (error) {
+    console.error(error);
+    return resBadRequest({ developer_msg: `error ${error}` });
+  }
+};
+
+// Public B2B-portal counterpart — no staff login, scoped by qr_code +
+// contact_id in the URL instead of a_application_login_id in the body.
+// Same tenant-resolution pattern getAllAccountTransactionsForOnlineStore
+// already uses (getTenantDB by the company's own login id), plus an
+// ownership check (contact must belong to that company) before handing off
+// to the exact same allAccountTransactionOfContactPDF that the staff
+// endpoint uses — always the company's default template, no
+// document_template_id (no picker on the customer-facing portal).
+export const allAccountTransactionOfContactPDFOnlineStore = async (req, res) => {
+  try {
+    const { contact_id, qr_code } = req.params;
+    if (!qr_code) {
+      return resBadRequest({ developer_msg: "qr_code is required", ack_msg: "Invalid access" });
+    }
+
+    const companyDataRow = await companyModel.findOne({
+      where: { qr_code, isDelete: 0 },
+      attributes: ["id", "a_application_login_id"],
+    });
+    if (!companyDataRow) {
+      return resError({ ack_msg: "Company not found", developer_msg: `No company found with QR code: ${qr_code}` });
+    }
+
+    const tenantId = companyDataRow.a_application_login_id;
+    const companyId = companyDataRow.id;
+    const tenantDBInfo = await getTenantDB(tenantId, companyId);
+    req.tenantDB = tenantDBInfo.sequelize;
+
+    const ContactMasterModel = contactModel(req.tenantDB);
+    const contactExists = await ContactMasterModel.findOne({
+      where: { id: contact_id, isDelete: 0, company_masters_id: companyId },
+      attributes: ["id"],
+    });
+    if (!contactExists) {
+      return resError({ ack_msg: "Contact not found", developer_msg: "Contact not found for this company" });
+    }
+
+    req.body = {
+      ...req.body,
+      a_application_login_id: tenantId,
+      contact_master_id: contact_id,
+      document_template_id: undefined,
+    };
+
+    return allAccountTransactionOfContactPDF(req, res);
   } catch (error) {
     console.error(error);
     return resBadRequest({ developer_msg: `error ${error}` });

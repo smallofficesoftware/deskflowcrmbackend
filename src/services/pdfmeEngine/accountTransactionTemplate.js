@@ -1,190 +1,149 @@
 // Single account-transaction receipt (accountPDFv1.ejs port) — an 80mm
-// thermal-receipt-shaped doc, not the A4 invoice layout. Own doc shape, not
-// registered in templates.js's DOC_TYPES (no Designer customization for
-// this one yet, fixed port only).
+// thermal-receipt-shaped doc.
 //
-// The EJS lays out each optional section as a 2-column label/value HTML
-// table (label left, value right, only rows whose data exists get a <tr>
-// at all) with a VARIABLE row count (0-8 contact rows depending on which
-// fields the contact actually has). A static template with hardcoded y
-// positions can't fit that — text overflows its declared height silently
-// (pdfme draws past a field's `height`, it isn't a clip box) and collides
-// with whatever comes next. So this builds the schema with a running
-// vertical cursor instead, sized from each block's REAL line count, and
-// is called at generate time (accountTransactionGenerate.js) once the real
-// row counts are known — not a fixed Designer-editable layout.
+// Fixed field positions (like accountStatementTemplate.js / buildTemplate.js's
+// cart-doc buyer block), not the previous "running cursor sized from real
+// content" approach — that computed every field's Y from the actual line
+// counts on hand at generation time, which is exactly wrong for a company's
+// own SAVED customization: the frozen JSON keeps whatever Y positions its
+// original content happened to produce, so a later receipt with more/fewer
+// lines than that one either overlaps the next section or leaves it
+// stranded with a gap.
+//
+// Still built with a running cursor (below) so the row spacing math stays
+// in one place, but the cursor now advances by a FIXED assumed-max height
+// per row every time, never a real measured one — same output on every
+// call, whether pdfme is building it fresh or replaying a company's frozen
+// JSON. Optional rows use hideIfEmpty (a gap where a company left a field
+// blank) and optional SECTIONS use a flag input (showHeader/showContact/
+// showRemark) instead of being omitted from the schema entirely — every
+// field is always present and independently movable in the Designer
+// canvas. rowH() is the same fontSize*lineHeight*mmPerPt*1.3-safety-margin
+// formula accountStatementTemplate.js uses (pdfme does NOT clip text to a
+// field's declared height — text taller than its box draws past it into
+// whatever comes next, confirmed by an actual render of the first cut of
+// this rewrite, which used flat spacing and visibly overlapped).
 import { textField } from "./buildTemplate.js";
 
 const PAGE_WIDTH = 80; // mm, matches the old 80mm thermal-receipt @page width
 const MARGIN_X = 4;
 const CONTENT_WIDTH = PAGE_WIDTH - MARGIN_X * 2;
 
-// pdfme fontSize is in pt, position/width/height in mm — 1pt = 0.3528mm.
-// +15% safety margin on top of the raw conversion — measured mm/line has
-// run short of the real rendered line spacing in practice (see
-// accountStatementTemplate.js), so every field sized off this is padded.
 const PT_TO_MM = 0.3528;
-function lineHeightMM(fontSize, lineHeight) {
-  return fontSize * lineHeight * PT_TO_MM * 1.15;
+function rowH(fontSize, lineHeight = 1.4) {
+  return fontSize * lineHeight * PT_TO_MM * 1.3;
+}
+const GAP = 2;
+
+function hideIfEmpty(name) {
+  return { dataSource: name, visibilityCondition: { mode: "hideIfEmpty" } };
+}
+function showWhenFlag(name, flagField) {
+  return { dataSource: name, visibilityCondition: { mode: "compare", field: flagField, operator: "equals", value: "1" } };
 }
 
-export function buildAccountTransactionTemplate({
-  headerLineCount,
-  contactRowCount,
-  remarkLineCount,
-}) {
+export function buildAccountTransactionTemplate() {
   const fields = [];
   let y = 0;
-
   const push = (field) => fields.push(field);
 
-  if (headerLineCount > 0) {
-    push(
-      textField({
-        name: "companyName",
-        position: { x: MARGIN_X, y },
-        width: CONTENT_WIDTH,
-        height: lineHeightMM(15, 1.2),
-        fontSize: 15,
-        fontName: "Poppins Bold",
-        alignment: "center",
-        content: "COMPANY NAME",
-      }),
-    );
-    y += lineHeightMM(15, 1.2) + 1;
+  const divider = (name, flagField) => {
+    push(textField({
+      name, position: { x: MARGIN_X, y }, width: CONTENT_WIDTH, height: 0.3,
+      backgroundColor: "#000000", content: "", readOnly: true,
+      ...(flagField ? showWhenFlag(name, flagField) : {}),
+    }));
+    y += GAP;
+  };
 
-    const line2Height = lineHeightMM(7.5, 1.3) * (headerLineCount - 1);
-    push(
-      textField({
-        name: "companyHeaderLine2",
-        position: { x: MARGIN_X, y },
-        width: CONTENT_WIDTH,
-        height: line2Height,
-        fontSize: 7.5,
-        alignment: "center",
-        lineHeight: 1.3,
-        content: "",
-      }),
-    );
-    y += line2Height + 2;
-  }
+  const sectionTitle = (name, content, flagField) => {
+    const h = rowH(10);
+    push(textField({
+      name, position: { x: MARGIN_X, y }, width: CONTENT_WIDTH, height: h,
+      fontSize: 10, fontName: "Poppins Bold", alignment: "center", content,
+      readOnly: name !== "thankYouText",
+      ...(flagField ? showWhenFlag(name, flagField) : {}),
+    }));
+    y += h + GAP;
+  };
 
-  if (contactRowCount > 0) {
-    y = pushDivider(fields, y);
-    y = pushSectionTitle(fields, "contactSectionTitle", "Contact Details", y);
-    y = pushDivider(fields, y);
-    y = pushLabelValuePair(fields, "contactLabels", "contactValues", y, contactRowCount);
-    y += 3;
-  }
+  // plain: true -> always visible, no hideIfEmpty/flag binding at all
+  // (matches the old unconditional amountLine behavior).
+  const textRow = (name, fontSize, opts = {}) => {
+    const h = opts.tall ? rowH(fontSize) * 1.8 : rowH(fontSize);
+    push(textField({
+      name, position: { x: MARGIN_X, y }, width: CONTENT_WIDTH, height: h,
+      fontSize, lineHeight: 1.4, content: opts.content ?? "",
+      ...(opts.overrides || {}),
+      ...(opts.plain ? {} : opts.flagField ? showWhenFlag(name, opts.flagField) : hideIfEmpty(name)),
+    }));
+    y += h;
+    return h;
+  };
 
-  y = pushDivider(fields, y);
-  y = pushSectionTitle(fields, "txnSectionTitle", "Account Transaction", y);
-  y = pushDivider(fields, y);
-  y = pushLabelValuePair(fields, "txnLabelsTop", "txnValuesTop", y, 2);
-  y += 3;
+  const labelValueRow = (labelName, valueName, flagField) => {
+    const h = rowH(8.5);
+    push(textField({
+      name: labelName, position: { x: MARGIN_X, y }, width: 36, height: h,
+      fontSize: 8.5, fontName: "Poppins Bold", lineHeight: 1.4, content: "",
+      ...(flagField ? showWhenFlag(labelName, flagField) : hideIfEmpty(labelName)),
+    }));
+    push(textField({
+      name: valueName, position: { x: MARGIN_X + 36, y }, width: 36, height: h,
+      fontSize: 8.5, alignment: "right", lineHeight: 1.4, content: "",
+      ...(flagField ? showWhenFlag(valueName, flagField) : hideIfEmpty(valueName)),
+    }));
+    y += h;
+  };
 
-  push(
-    textField({
-      name: "amountLine",
-      position: { x: MARGIN_X, y },
-      width: CONTENT_WIDTH,
-      height: lineHeightMM(12, 1.2),
-      fontSize: 12,
-      fontName: "Poppins Bold",
-      alignment: "right",
-      fontColor: "#008000",
-      content: "₹ 0.00 (Credit)",
-    }),
-  );
-  y += lineHeightMM(12, 1.2) + 3;
+  // Company header block — gaps appear where a company left companyContact/
+  // companyGSTIN blank, section shows/hides as a whole via showHeader.
+  textRow("companyName", 15, { flagField: "showHeader", content: "COMPANY NAME", overrides: { fontName: "Poppins Bold", alignment: "center" } });
+  textRow("companyAddress", 7.5, { flagField: "showHeader", tall: true, overrides: { alignment: "center" } });
+  textRow("companyContact", 7.5, { flagField: "showHeader", overrides: { alignment: "center" } });
+  textRow("companyGSTIN", 7.5, { flagField: "showHeader", overrides: { alignment: "center" } });
+  y += GAP;
 
-  y = pushLabelValuePair(fields, "txnLabelsBottom", "txnValuesBottom", y, 2);
-  y += 3;
+  divider("divider_1", "showContact");
+  sectionTitle("contactSectionTitle", "Contact Details", "showContact");
+  divider("divider_2", "showContact");
+  labelValueRow("contactNameLabel", "contactNameValue", "showContact");
+  labelValueRow("contactMobileLabel", "contactMobileValue");
+  labelValueRow("contactEmailLabel", "contactEmailValue");
+  labelValueRow("contactCompanyLabel", "contactCompanyValue");
+  labelValueRow("contactCountryLabel", "contactCountryValue");
+  labelValueRow("contactStateLabel", "contactStateValue");
+  labelValueRow("contactCityLabel", "contactCityValue");
+  labelValueRow("contactPincodeLabel", "contactPincodeValue");
+  labelValueRow("contactAddressLabel", "contactAddressValue");
+  y += GAP;
 
-  if (remarkLineCount > 0) {
-    const remarkHeight = lineHeightMM(8.5, 1.3) * remarkLineCount;
-    push(
-      textField({
-        name: "remarkText",
-        position: { x: MARGIN_X, y },
-        width: CONTENT_WIDTH,
-        height: remarkHeight,
-        fontSize: 8.5,
-        fontName: "Poppins Bold",
-        fontColor: "#1b1bb3",
-        lineHeight: 1.3,
-        content: "",
-      }),
-    );
-    y += remarkHeight + 3;
-  }
+  divider("divider_3");
+  sectionTitle("txnSectionTitle", "Account Transaction");
+  divider("divider_4");
+  labelValueRow("txnIdLabel", "txnIdValue");
+  labelValueRow("entityLabel", "entityValue");
+  y += GAP;
 
-  y = pushDivider(fields, y);
-  y = pushSectionTitle(fields, "thankYouText", "Thank You!", y);
-  y += 4;
+  textRow("amountLine", 12, {
+    plain: true,
+    content: "₹ 0.00 (Credit)",
+    overrides: { fontName: "Poppins Bold", alignment: "right", fontColor: "#008000" },
+  });
+  y += GAP;
+
+  labelValueRow("paymentDateLabel", "paymentDateValue");
+  labelValueRow("paymentModeLabel", "paymentModeValue");
+  y += GAP;
+
+  textRow("remarkText", 8.5, { flagField: "showRemark", tall: true, overrides: { fontName: "Poppins Bold", fontColor: "#1b1bb3" } });
+  y += GAP;
+
+  divider("divider_5");
+  sectionTitle("thankYouText", "Thank You!");
 
   return {
-    basePdf: { width: PAGE_WIDTH, height: Math.max(y + 6, 60), padding: [6, 0, 6, 0] },
+    basePdf: { width: PAGE_WIDTH, height: Math.ceil(y + 6), padding: [6, 0, 6, 0] },
     schemas: [fields],
   };
-}
-
-function pushDivider(fields, y) {
-  fields.push(
-    textField({
-      name: `divider_${fields.length}`,
-      position: { x: MARGIN_X, y },
-      width: CONTENT_WIDTH,
-      height: 0.3,
-      backgroundColor: "#000000",
-      content: "",
-      readOnly: true,
-    }),
-  );
-  return y + 2.5;
-}
-
-function pushSectionTitle(fields, name, content, y) {
-  const h = lineHeightMM(10, 1.2);
-  fields.push(
-    textField({
-      name,
-      position: { x: MARGIN_X, y },
-      width: CONTENT_WIDTH,
-      height: h,
-      fontSize: 10,
-      fontName: "Poppins Bold",
-      alignment: "center",
-      content,
-      readOnly: name !== "thankYouText" ? false : true,
-    }),
-  );
-  return y + h + 2.5;
-}
-
-function pushLabelValuePair(fields, labelName, valueName, y, rowCount) {
-  const h = lineHeightMM(8.5, 1.6) * rowCount;
-  fields.push(
-    textField({
-      name: labelName,
-      position: { x: MARGIN_X, y },
-      width: 36,
-      height: h,
-      fontSize: 8.5,
-      fontName: "Poppins Bold",
-      lineHeight: 1.6,
-      content: "",
-    }),
-    textField({
-      name: valueName,
-      position: { x: MARGIN_X + 36, y },
-      width: 36,
-      height: h,
-      fontSize: 8.5,
-      alignment: "right",
-      lineHeight: 1.6,
-      content: "",
-    }),
-  );
-  return y + h;
 }
