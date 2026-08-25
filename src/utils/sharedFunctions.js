@@ -857,6 +857,28 @@ export function isValid(value) {
   return true;
 }
 
+/**
+ * Company-wide "is this a duplicate contact?" rule, keyed off
+ * company_masters.is_contact_validation (1 = Off, 2 = On).
+ *
+ * Off (default): a matching mobile number alone is always a duplicate —
+ * the existing behavior every contact-creation path had before this flag
+ * existed.
+ * On: a matching mobile number is only a duplicate if the person name also
+ * matches (case/whitespace-insensitive) — lets the same number be reused by
+ * a genuinely different person (e.g. a shared reception line), while still
+ * catching a literal re-submission of the same contact.
+ */
+export function isDuplicateContact(isContactValidationFlag, existingName, newName) {
+  if (Number(isContactValidationFlag) !== 2) return true;
+
+  const normalize = (name) => String(name || "").trim().toLowerCase();
+  const existing = normalize(existingName);
+  const incoming = normalize(newName);
+
+  return existing.length > 0 && existing === incoming;
+}
+
 
 export function formatDateTimeValue(value, preserveOffset = true) {
   // Skip invalid or non-string/Date values
