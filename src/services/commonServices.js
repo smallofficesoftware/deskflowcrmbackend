@@ -2118,6 +2118,39 @@ export const updateCommon = async (req) => {
       }
     }
 
+    // change_status_team_ids gate — stage_status_masters.change_status_team_ids
+    // is already enforced on the READ side (statusLogServices.js's getStatus,
+    // action_flag "update"), but this generic passthrough never checked it on
+    // the WRITE side, so a Kanban drag (or any other caller of commonUpdate)
+    // could move a contact/task into a status the user isn't authorized to
+    // change into, as long as they could see the column at all. Company
+    // owner (company_flag === 1) is exempt, same as the read-side check.
+    if (
+      (table === "contact_masters" && parsedData.contact_status) ||
+      (table === "task_managements" && parsedData.status)
+    ) {
+      const targetStatusId = table === "contact_masters" ? parsedData.contact_status : parsedData.status;
+      const requesterLoginId = req.headers["x-tenant-id"];
+      const requesterCompany = await getCompanyByLoginId(requesterLoginId);
+      if (requesterCompany?.company_flag !== 1) {
+        const targetStatus = await sequelize.models.stage_status_masters.findOne({
+          where: { id: targetStatusId, isDelete: 0 },
+          attributes: ["change_status_team_ids"],
+        });
+        if (targetStatus && isValid(targetStatus.change_status_team_ids)) {
+          const allowedIds = targetStatus.change_status_team_ids
+            .split(",")
+            .map((i) => i.trim());
+          if (!allowedIds.includes(String(requesterLoginId))) {
+            return resError({
+              ack_msg: "You do not have permission to change status to this stage.",
+              developer_msg: "requesterLoginId not in stage_status_masters.change_status_team_ids for targetStatusId",
+            });
+          }
+        }
+      }
+    }
+
     const [rowsUpdated, updatedRows] = await sequelize.models[table].update(
       updateData,
       {
