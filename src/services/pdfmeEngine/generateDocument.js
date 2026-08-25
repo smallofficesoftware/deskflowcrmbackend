@@ -199,6 +199,9 @@ export async function generateQuotationPdf({
   buyer,
   order,
   items,
+  // pendingSalesOrder/pendingPurchaseOrder only — see orderInputMapper.js's
+  // buildInputsForCart pendingItems param.
+  pendingItems,
   cart,
   numberTowords,
   columnOptions,
@@ -299,6 +302,7 @@ export async function generateQuotationPdf({
     order,
     computed,
     items,
+    pendingItems,
     columnOptions: resolvedColumnOptions,
     totals: {
       isSameState,

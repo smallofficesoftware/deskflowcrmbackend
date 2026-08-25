@@ -444,8 +444,20 @@ export function getSampleDataForPreview() {
 // extraction from raw cart.dataValues/companyDetail happens at the call
 // site (orderServices.js), not here — keeps this module's job to shaping,
 // not digging through DB rows it doesn't own the schema of.
-export function buildInputsForCart({ company, buyer, order, computed, items, columnOptions, totals = {} }) {
+export function buildInputsForCart({ company, buyer, order, computed, items, pendingItems, columnOptions, totals = {} }) {
   const columns = resolveColumns(columnOptions);
+
+  // pendingSalesOrder/pendingPurchaseOrder only — a fulfillment/outstanding-
+  // quantity row shape (ordered/invoiced/pending qty), not the generic
+  // priced items table above. See pendingOrderTemplate.js's pendingItemsTable.
+  const pendingItemsTableRows = (pendingItems || []).map((item, index) => [
+    String(index + 1),
+    item.description ?? "",
+    item.orderedQty ?? "",
+    item.invoicedQty ?? "",
+    item.pendingQty ?? "",
+    item.rate === undefined || item.rate === null ? "" : num(item.rate),
+  ]);
 
   const itemsTableRows = (items || []).map((item, index) =>
     columns.map((c) => {
@@ -499,6 +511,7 @@ export function buildInputsForCart({ company, buyer, order, computed, items, col
     contactPerson: order?.contactPerson ?? "",
 
     itemsTable: JSON.stringify(itemsTableRows),
+    pendingItemsTable: JSON.stringify(pendingItemsTableRows),
     firstItemName: items?.[0]?.description ?? "",
     firstItemPrice: items?.[0] ? num(items[0].rate) : "",
 

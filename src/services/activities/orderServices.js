@@ -4875,6 +4875,48 @@ export const pdfOrder = async (req, res) => {
         // of item_discount_pct/item_discount_pr the user actually entered;
         // NULL on carts saved before this field existed defaults to percentage.
         const isFlatItemDiscount = Number(cartData.item_discount_type) === 2;
+
+        // pendingSalesOrder/pendingPurchaseOrder only — same referencing-cart
+        // lookup orderById's print_flag 1/2 branches already use for the
+        // legacy PendingPrintViewV1 (~line 1310-1332): sum item_qty of every
+        // cart that references THIS cart (referance_cart_id), per product —
+        // that's how much of the order has already been converted into a
+        // downstream sales/purchase invoice. Fully-fulfilled rows (pending
+        // qty === 0) are dropped, matching the legacy view's own filter.
+        let pendingItems;
+        if (isPendingPrintVariant) {
+          const referencingCartItems = await CATItemModel.findAll({
+            where: {
+              isDelete: 0,
+              referance_cart_id: cartData.id,
+              stock_type: { [Op.ne]: 0 },
+            },
+            attributes: ["item_qty", "item_product_id"],
+          });
+          const invoicedQtyByProduct = referencingCartItems.reduce((acc, ri) => {
+            const productId = ri.item_product_id;
+            acc[productId] = (acc[productId] || 0) + (ri.item_qty || 0);
+            return acc;
+          }, {});
+          pendingItems = finalData
+            .map((item) => {
+              const orderedQty = item.item_qty || 0;
+              const invoicedQty = invoicedQtyByProduct[item.item_product_id] || 0;
+              const pendingQty = orderedQty - invoicedQty;
+              const unit = item.item_unit_name ? ` / ${item.item_unit_name}` : "";
+              return {
+                description: item.item_product_name,
+                orderedQty: `${orderedQty}${unit}`,
+                invoicedQty: `${invoicedQty}${unit}`,
+                pendingQty: `${pendingQty}${unit}`,
+                rate: item.item_rate,
+                _pendingQtyRaw: pendingQty,
+              };
+            })
+            .filter((item) => item._pendingQtyRaw !== 0)
+            .map(({ _pendingQtyRaw, ...rest }) => rest);
+        }
+
         const pdfmeItems = finalData.map((item) => ({
           description: item.item_product_name,
           hsn: item.item_hsn_code,
@@ -4949,6 +4991,7 @@ export const pdfOrder = async (req, res) => {
             contactPerson: loginDetail?.username,
           },
           items: pdfmeItems,
+          pendingItems,
           cart: cartData,
           numberTowords,
           columnOptions: null,

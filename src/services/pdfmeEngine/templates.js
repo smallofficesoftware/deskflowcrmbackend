@@ -1,5 +1,11 @@
 import { buildDocTemplate, HEADER_VARIANTS, shiftFieldY } from "./buildTemplate.js";
 import { resolvePageDimensions, scaleTemplate } from "./paperSize.js";
+import { buildPendingOrderTemplate } from "./pendingOrderTemplate.js";
+
+// Pending Sales/Purchase Order are a fulfillment/outstanding-quantity
+// tracker, not a priced document — buildPendingOrderTemplate's own shape
+// (3-quantity-column table, no HSN/totals/bank), not the generic cart doc.
+const PENDING_ORDER_DOC_TYPES = new Set(["pendingSalesOrder", "pendingPurchaseOrder"]);
 
 // Mirrors the same 10 document types + default titles already used across
 // backend/src/services/company_setup/companyService.js (companyBody defaults)
@@ -29,6 +35,9 @@ export function getTemplate(id, headerOptions = {}) {
   const title = titleById[id];
   if (!title) {
     throw new Error(`Unknown document type: ${id}`);
+  }
+  if (PENDING_ORDER_DOC_TYPES.has(id)) {
+    return buildPendingOrderTemplate(title, headerOptions);
   }
   return buildDocTemplate(title, headerOptions);
 }
