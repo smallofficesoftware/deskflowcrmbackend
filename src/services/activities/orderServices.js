@@ -4807,10 +4807,39 @@ export const pdfOrder = async (req, res) => {
         9: "dispatch",
         12: "proformaInvoice",
       };
-      const pdfmeDocType = PDFME_DOC_TYPE_BY_CART_TYPE[resultCartById.dataValues.type];
+      // Pending Order / Pending Purchase Order print (openPendingPrint's
+      // PendingPrintViewV1) is a distinct document from the regular
+      // sales/purchase order, not a status-variant of it — selected via
+      // print_variant, not swapped in based on the cart's own state.
+      const PENDING_PDFME_DOC_TYPE_BY_CART_TYPE = {
+        2: "pendingSalesOrder",
+        5: "pendingPurchaseOrder",
+      };
+      const isPendingPrintVariant = req.body?.print_variant === "pending";
+      const pdfmeDocType = isPendingPrintVariant
+        ? PENDING_PDFME_DOC_TYPE_BY_CART_TYPE[resultCartById.dataValues.type]
+        : PDFME_DOC_TYPE_BY_CART_TYPE[resultCartById.dataValues.type];
       const documentDesignerEnabled =
         !!pdfmeDocType &&
         (await isFeatureEnabled(companyDetail.id, "document_designer"));
+
+      // The legacy fallback below (pdf.create with the EJS-rendered regular
+      // order document) is the WRONG document for a pending-print request —
+      // there's no legacy renderer for it, so refuse rather than silently
+      // hand back a regular sales/purchase order PDF instead.
+      if (isPendingPrintVariant && !documentDesignerEnabled) {
+        return resError({
+          ack_msg: "Pending order print requires Document Designer to be enabled.",
+          developer_msg: "print_variant=pending requested but document_designer feature flag is off, or this cart type has no pending doc type mapping.",
+        });
+      }
+
+      // viewTitle/dynamicColor above were computed from the cart's normal
+      // type-based company settings (e.g. "Sales Order") — not right for
+      // the pending variant's own document title.
+      if (isPendingPrintVariant) {
+        viewTitle = pdfmeDocType === "pendingPurchaseOrder" ? "Pending Purchase Order" : "Pending Sales Order";
+      }
 
       if (documentDesignerEnabled) {
         const cartData = resultCartById.dataValues;
