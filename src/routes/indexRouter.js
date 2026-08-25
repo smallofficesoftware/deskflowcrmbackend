@@ -47,6 +47,7 @@ import reminderRouter from "./activities/reminderRouter.js";
 import routePlannerRouter from "./activities/routePlannerRouter.js";
 import stockAdjustmentRouter from "./activities/stockAdjustmentRouter.js";
 import TaskManagement from './activities/taskManagementRouter.js';
+import TaskChecklist from './activities/taskChecklistRouter.js';
 import TaskMessageHistory from './activities/taskMessageHistoryRouter.js';
 import trackingRouter from "./activities/trackingRouter.js";
 import { default as getprintSetting, default as printSetting } from './company_setup/printSettingRouter.js';
@@ -161,6 +162,7 @@ export default () => {
   reviewRouter(app);
   TaskManagement(app);
   TaskMessageHistory(app);
+  TaskChecklist(app);
   getTeamAllTask(app)
   allAccountTranctionsReport(app)
   changeMobileNumberRouter(app)

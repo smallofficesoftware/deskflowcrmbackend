@@ -85,6 +85,7 @@ CREATE TABLE `departments` LIKE smalloffice_sample_tenant.departments;
 CREATE TABLE `machine_managements` LIKE smalloffice_sample_tenant.machine_managements;
 CREATE TABLE `task_managements` LIKE smalloffice_sample_tenant.task_managements;
 CREATE TABLE `task_message_histories` LIKE smalloffice_sample_tenant.task_message_histories;
+CREATE TABLE `task_checklist_items` LIKE smalloffice_sample_tenant.task_checklist_items;
 CREATE TABLE `custom_field_form_datavalues` LIKE smalloffice_sample_tenant.custom_field_form_datavalues;
 CREATE TABLE `wrkflw_auto_assignment_of_contacts` LIKE smalloffice_sample_tenant.wrkflw_auto_assignment_of_contacts;
 CREATE TABLE `task_templete_masters` LIKE smalloffice_sample_tenant.task_templete_masters;

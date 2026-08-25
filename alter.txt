@@ -2616,3 +2616,22 @@ INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `extra_in
 25-08-2026 Dhaval
 2 new Document Designer doc types added: `pendingSalesOrder`, `pendingPurchaseOrder` (templates.js's DOC_TYPES), backing pendingOrderView.tsx / pendingPurchaseView.tsx.
 `system_document_templates` seeded with 2 new gallery rows (1 per doc_type, not 5 variants — header is edited per-template in the Designer for these 2, not picked from pre-seeded variants). Generated via migration/master/migrations/20260825100000-seed-pending-order-document-templates.js.
+
+25-08-2026 Dhaval
+CREATE TABLE `task_checklist_items` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `task_id` INT(11) DEFAULT NULL,
+  `title` VARCHAR(255) DEFAULT NULL,
+  `is_done` TINYINT(4) NOT NULL DEFAULT 0,
+  `position` INT(11) DEFAULT NULL,
+  `company_masters_id` INT(11) DEFAULT NULL,
+  `a_application_login_id` INT(11) DEFAULT NULL,
+  `completed_date` DATETIME DEFAULT NULL,
+  `completed_by` INT(11) DEFAULT NULL,
+  `created_date_time` DATETIME DEFAULT NULL,
+  `modified_date` DATETIME DEFAULT NULL,
+  `isDelete` TINYINT(4) NOT NULL DEFAULT 0,
+  `isActive` TINYINT(4) NOT NULL DEFAULT 1,
+  PRIMARY KEY (`id`),
+  KEY `idx_task_checklist_items_task_id` (`task_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
