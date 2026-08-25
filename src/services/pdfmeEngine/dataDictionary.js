@@ -103,6 +103,8 @@ const DICTIONARY_BY_DOC_TYPE = {
   inward: CART_DOC_DICTIONARY,
   dispatch: CART_DOC_DICTIONARY,
   proformaInvoice: CART_DOC_DICTIONARY,
+  pendingSalesOrder: CART_DOC_DICTIONARY,
+  pendingPurchaseOrder: CART_DOC_DICTIONARY,
   accountStatement: ACCOUNT_STATEMENT_DICTIONARY,
   accountTransaction: ACCOUNT_TRANSACTION_DICTIONARY,
   taskDueList: TASK_DUE_LIST_DICTIONARY,
@@ -125,6 +127,11 @@ const CART_CUSTOM_FIELD_FORM_TYPE_BY_DOC_TYPE = {
   inward: 12,
   dispatch: 13,
   proformaInvoice: 16,
+  // Same cart type/custom-field form_type as their confirmed-order
+  // counterpart — pendingSalesOrder/pendingPurchaseOrder print the same
+  // underlying cart record (cart.type 2/5), just a different doc_type.
+  pendingSalesOrder: 6,
+  pendingPurchaseOrder: 9,
 };
 const PRODUCT_CUSTOM_FIELD_FORM_TYPE = 4;
 
