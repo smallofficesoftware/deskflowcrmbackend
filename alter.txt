@@ -2639,3 +2639,7 @@ CREATE TABLE `task_checklist_items` (
 26-08-2026 Dhaval
 2 new Document Designer doc types added: `contactAddress`, `contactEnvelope`, replacing the previously hardcoded ContactAddressPrintView1.tsx / ContactAddressEnvelopePrintView.tsx print pages (Contact Info panel's "Print Address"/"Print Envelope" buttons) with the same feature-flag-gated pdfme path shippingLabel already uses. Legacy pages kept as the flag-off fallback.
 `system_document_templates` seeded with 2 new gallery rows (1 per doc_type). Generated via migration/master/migrations/20260826140000-seed-contact-print-document-templates.js.
+
+26-08-2026 Dhaval
+2 new Document Designer doc types added: `employeeAccountStatement`, `employeeAccountTransaction` — Team's OWN customization slot for Account History of Team's "Print Statement"/per-row "Print", deliberately separate from the existing `accountStatement`/`accountTransaction` doc types (the Contact variant's own slot), so a company can brand an employee statement/receipt differently from a customer one.
+`system_document_templates` seeded with 2 new gallery rows (1 per doc_type). Generated via migration/master/migrations/20260826180000-seed-employee-account-document-templates.js.

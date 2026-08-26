@@ -72,6 +72,40 @@ const ACCOUNT_TRANSACTION_DICTIONARY = [
   { key: "amountLine", label: "Amount Line", group: "Computed" },
   { key: "remarkText", label: "Remark", group: "Computed" },
 ];
+// employeeAccountStatement / employeeAccountTransaction — Team's OWN
+// customization slot, deliberately separate from accountStatement /
+// accountTransaction (the Contact variant's slot) even though the layouts
+// started similar, so a company can brand an employee payment receipt
+// differently from a customer one. Per-field entries (like
+// CONTACT_DOC_DICTIONARY below), not group-level blocks like
+// ACCOUNT_STATEMENT_DICTIONARY above — each field is individually bindable.
+// See employeeAccountStatementTemplate.js / employeeAccountTransactionTemplate.js.
+const EMPLOYEE_ACCOUNT_STATEMENT_DICTIONARY = [
+  { key: "companyName", label: "Company Name", group: "Company" },
+  { key: "companyAddress", label: "Company Address", group: "Company" },
+  { key: "companyContactLine", label: "Company Contact Line", group: "Company" },
+  { key: "companyGSTIN", label: "Company GSTIN", group: "Company" },
+  { key: "statementTitle", label: "Statement Title", group: "Statement" },
+  { key: "statementDateRange", label: "Statement Date Range", group: "Statement" },
+  { key: "employeeName", label: "Employee Name", group: "Employee" },
+  { key: "employeeMobile", label: "Employee Mobile", group: "Employee" },
+  { key: "employeeEmail", label: "Employee Email", group: "Employee" },
+  { key: "statementTable", label: "Transactions Table", group: "Item" },
+];
+const EMPLOYEE_ACCOUNT_TRANSACTION_DICTIONARY = [
+  { key: "companyName", label: "Company Name", group: "Company" },
+  { key: "companyAddress", label: "Company Address", group: "Company" },
+  { key: "companyContact", label: "Company Contact", group: "Company" },
+  { key: "companyGSTIN", label: "Company GSTIN", group: "Company" },
+  { key: "employeeNameValue", label: "Employee Name", group: "Employee" },
+  { key: "employeeMobileValue", label: "Employee Mobile", group: "Employee" },
+  { key: "employeeEmailValue", label: "Employee Email", group: "Employee" },
+  { key: "txnIdValue", label: "Transaction ID", group: "Transaction" },
+  { key: "amountLine", label: "Amount Line", group: "Computed" },
+  { key: "paymentDateValue", label: "Payment Date", group: "Transaction" },
+  { key: "paymentModeValue", label: "Payment Mode", group: "Transaction" },
+  { key: "remarkText", label: "Remark", group: "Computed" },
+];
 const TASK_DUE_LIST_DICTIONARY = [
   { key: "companyHeaderBlock", label: "Company Block", group: "Header" },
   { key: "taskTable", label: "Tasks Table", group: "Item" },
@@ -126,6 +160,8 @@ const DICTIONARY_BY_DOC_TYPE = {
   shippingLabel: SHIPPING_LABEL_DICTIONARY,
   contactAddress: CONTACT_DOC_DICTIONARY,
   contactEnvelope: CONTACT_DOC_DICTIONARY,
+  employeeAccountStatement: EMPLOYEE_ACCOUNT_STATEMENT_DICTIONARY,
+  employeeAccountTransaction: EMPLOYEE_ACCOUNT_TRANSACTION_DICTIONARY,
 };
 
 // Cart custom fields (carts_column_*) use a DIFFERENT form_type per doc

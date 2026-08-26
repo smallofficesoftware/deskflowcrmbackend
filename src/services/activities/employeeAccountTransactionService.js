@@ -20,12 +20,38 @@ import loginModel from "../../models/application_login/loginModel.js";
 import companyModel from "../../models/company_setup/companyModel.js";
 import { printSettingModel } from "../../models/company_setup/printSettingModel.js";
 import currencyModel from "../../models/configuration/currencyModel.js";
+import { documentPrintTemplateModel } from "../../models/company_setup/documentPrintTemplateModel.js";
 import { __dirnameConstant, PDF_LINK_EXTENDED_EMP_Account_TRANSACTION } from '../../utils/appConstants.js';
 import { PAGE_ID } from "../../utils/AppEnumeration.js";
 import { getCompanyByLoginId, getCompanyDetailByLoginId } from "../commonServices.js";
 import { isFeatureEnabled } from "../company_setup/featureFlagServices.js";
-import { generateAccountStatementPdf } from "../pdfmeEngine/accountStatementGenerate.js";
-import { generateAccountTransactionPdf } from "../pdfmeEngine/accountTransactionGenerate.js";
+import { generateEmployeeAccountStatementPdf } from "../pdfmeEngine/employeeAccountStatementGenerate.js";
+import { generateEmployeeAccountTransactionPdf } from "../pdfmeEngine/employeeAccountTransactionGenerate.js";
+import { buildEmployeeAccountStatementTemplate } from "../pdfmeEngine/employeeAccountStatementTemplate.js";
+import { buildEmployeeAccountTransactionTemplate } from "../pdfmeEngine/employeeAccountTransactionTemplate.js";
+
+// Team's OWN 3-tier template resolution (explicit document_template_id ->
+// company's is_default row for that doc_type -> fallback builder) —
+// deliberately a LOCAL copy, not imported from accountTransactionServices.js's
+// loadAccountTemplateOverride, since employeeAccountStatement/
+// employeeAccountTransaction are Team's own doc types, separate from the
+// Contact variant's accountStatement/accountTransaction slot. Mirrors
+// contactPrintGenerate.js's resolveContactTemplate shape.
+async function resolveEmployeeAccountTemplate(tenantDB, companyId, docType, documentTemplateId, fallbackBuilder) {
+    const Template = documentPrintTemplateModel(tenantDB);
+    let row = null;
+    if (documentTemplateId) {
+        row = await Template.findOne({
+            where: { id: documentTemplateId, company_masters_id: companyId, doc_type: docType, template_purpose: "main", isDelete: 0 },
+        });
+    }
+    if (!row) {
+        row = await Template.findOne({
+            where: { company_masters_id: companyId, doc_type: docType, template_purpose: "main", is_default: 1, isDelete: 0 },
+        });
+    }
+    return row ? JSON.parse(row.published_template_json) : fallbackBuilder();
+}
 
 
 
@@ -783,20 +809,23 @@ export const allAccountTransactionOfEmployeePDF = async (req, res) => {
         const fileLinkPath = PDF_LINK_EXTENDED_EMP_Account_TRANSACTION + pdfPath;
 
         // pdfme Document Designer — same per-company opt-in as orderServices.js's
-        // §5 cart-doc path. This statement isn't Designer-customizable yet
-        // (accountStatementTemplate.js is a fixed port), just a renderer switch.
+        // §5 cart-doc path. Uses Team's OWN "employeeAccountStatement" doc
+        // type/template slot, resolved via document_template_id (picker) or
+        // the company's default, falling back to the built-in layout.
         const documentDesignerEnabled = await isFeatureEnabled(companyData.id, "document_designer");
 
         if (documentDesignerEnabled) {
-            const entity = {
-                name: employeeData?.username || "",
-                mobile: employeeData?.recovery_mobile ? `Mo. ${employeeData.recovery_mobile}` : "",
-                email: employeeData?.recovery_email || "",
-            };
+            const templateOverride = await resolveEmployeeAccountTemplate(
+                req.tenantDB,
+                companyData.id,
+                "employeeAccountStatement",
+                req.body.document_template_id,
+                buildEmployeeAccountStatementTemplate,
+            );
 
-            const buffer = await generateAccountStatementPdf({
+            const buffer = await generateEmployeeAccountStatementPdf({
                 companyData,
-                contactData: null,
+                employeeData,
                 rowsWithBalance,
                 totalCredit,
                 totalDebit,
@@ -804,7 +833,7 @@ export const allAccountTransactionOfEmployeePDF = async (req, res) => {
                 fromDate,
                 toDate,
                 settingDetails,
-                entity,
+                templateOverride,
             });
             fs.writeFileSync(filePath, buffer);
         } else {
@@ -1022,40 +1051,35 @@ export const employeePDFaccountv1 = async (req, res) => {
         const fileLinkPath = PDF_LINK_EXTENDED_EMP_Account_TRANSACTION + companyDetail.id.toString() + "/" + fileNameOnly;
 
         // pdfme Document Designer — same per-company opt-in as orderServices.js's
-        // §5 cart-doc path. This receipt isn't Designer-customizable yet
-        // (accountTransactionTemplate.js is a fixed port), just a renderer switch.
+        // §5 cart-doc path. Uses Team's OWN "employeeAccountTransaction" doc
+        // type/template slot, resolved via document_template_id (picker) or
+        // the company's default, falling back to the built-in layout.
         const documentDesignerEnabled = await isFeatureEnabled(companyDetail.id, "document_designer");
 
         if (documentDesignerEnabled) {
             if (!fs.existsSync(uploadDir)) {
                 fs.mkdirSync(uploadDir, { recursive: true });
             }
-            // recovery_mobile/recovery_email (loginModel's real column names)
-            // — the EJS this replaces checks employeeDetails?.recover_mobile,
-            // which doesn't exist on loginModel (confirmed against
-            // loginModel.js) and so never actually renders live today. Using
-            // the real field name here rather than porting that dead field.
-            const employeePairs = [
-                { label: "Employee Name:", value: employeeDetails?.username || "-" },
-                employeeDetails?.recovery_mobile ? { label: "Mobile No:", value: employeeDetails.recovery_mobile } : null,
-                employeeDetails?.recovery_email ? { label: "Email:", value: employeeDetails.recovery_email } : null,
-            ].filter(Boolean);
 
-            const buffer = await generateAccountTransactionPdf({
+            const templateOverride = await resolveEmployeeAccountTemplate(
+                req.tenantDB,
+                companyDetail.id,
+                "employeeAccountTransaction",
+                req.body.document_template_id,
+                buildEmployeeAccountTransactionTemplate,
+            );
+
+            const buffer = await generateEmployeeAccountTransactionPdf({
                 companyDetails: companyDetail,
                 accountTransactions: accountTransaction,
-                contactDetails: null,
+                employeeDetails,
                 payment_type_name,
                 settingDetails,
                 currencySymbol: "₹",
                 formattedAmount: AccountTransactionformatNumber(accountTransaction.amount),
                 formattedDate: accountTransaction.payment_date_time ? AccountTransactionformatDateAndTime(accountTransaction.payment_date_time) : "-",
-                entityLabel: "Employee Name:",
-                entitySectionTitle: "Employee Details",
-                entityShowKey: "employeeDetails",
-                entityPairs: employeePairs,
-                entityName: employeeDetails?.username || "-",
                 remarkColor: "#000000",
+                templateOverride,
             });
             fs.writeFileSync(filePath, buffer);
         } else {
