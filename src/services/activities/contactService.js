@@ -19,12 +19,14 @@ import { applicationLoginTypeRightModel } from "../../models/application_login/a
 import loginModel from "../../models/application_login/loginModel.js";
 import companyModel from "../../models/company_setup/companyModel.js";
 import companyVsApplicationLoginModel from "../../models/company_setup/companyVsApplicationLoginModel.js";
+import { cityModel } from "../../models/masters/cityModel.js";
 import { labelModel } from "../../models/masters/labelModel.js";
 import { sourceTypesModel } from "../../models/masters/sourceTypeMode.js";
 import { stagestatusModel } from "../../models/masters/stagestatusModel.js";
+import { stateModel } from "../../models/masters/stateModel.js";
 import { customFieldFormModel } from "../../models/other_settings/customFieldFormModel.js";
 import { priceListMastersModel } from "../../models/product_settings/priceListMastersModel.js";
-import { CONTACT_AUTO_REFRESH_INACTIVITY_DELAY, CONTACT_AUTO_REFRESH_ON, CONTACT_AUTO_REFRESH_TIMEOUT, EXPORTS_LINK_EXTENDED, JWT_TOKEN_SIGNATURE, VISITING_CARD_VIEW } from "../../utils/appConstants.js";
+import { CONTACT_AUTO_REFRESH_INACTIVITY_DELAY, CONTACT_AUTO_REFRESH_ON, CONTACT_AUTO_REFRESH_TIMEOUT, EXPORTS_LINK_EXTENDED, JWT_TOKEN_SIGNATURE, PDF_LINK_CONTACT_PRINT, VISITING_CARD_VIEW } from "../../utils/appConstants.js";
 import { GOOGLE_API, PAGE_ID } from "../../utils/AppEnumeration.js";
 import { exportData } from "../../utils/exporter.js";
 import logger from "../../utils/logger.js";
@@ -41,9 +43,11 @@ import {
   resSuccess,
   sanitizeObjectOfNull
 } from "../../utils/sharedFunctions.js";
-import { getCompanyByLoginId, insertStagesAndStatusLogs } from "../commonServices.js";
+import { getCompanyByLoginId, getCompanyDetailByLoginId, insertStagesAndStatusLogs } from "../commonServices.js";
+import { isFeatureEnabled } from "../company_setup/featureFlagServices.js";
 import { ClaudeOfficeWhatsAppOtp, sendMultipleNotification } from "../company_setup/thirdPartyIntegrationService.js";
 import { autoAssignmentContactIdsGet, prepareMailAndWhatsappSenderToTheContact } from "../other_settings/wrkflwAutoAssignmentContactService.js";
+import { generateContactAddressPdf, generateContactEnvelopePdf } from "../pdfmeEngine/contactPrintGenerate.js";
 const oauth2Client = new google.auth.OAuth2(
   GOOGLE_API.GOOGLE_CLIENT_ID,
   GOOGLE_API.GOOGLE_CLIENT_SECRET
@@ -104,6 +108,72 @@ export const getContactByIds = async (req) => {
   } catch (e) {
     throw e;
   }
+};
+
+// Contact address label / envelope print — pdfme Document Designer path for
+// the "Print Address"/"Print Envelope" buttons in Profile.tsx. Unlike
+// shippingLabel there's no backend legacy fallback here (the legacy print is
+// pure frontend, ContactAddressPrintView1.tsx/ContactAddressEnvelopePrintView.tsx
+// call window.print() directly, never hitting the backend) — Profile.tsx
+// checks the flag before ever calling these routes, so a flag-off request
+// reaching here is refused rather than silently rendered.
+const fetchContactPrint = async (req, docType, generateFn) => {
+  try {
+    const contactRes = await getContactByIds(req);
+    // resSuccess coerces a null/not-found data into [] (truthy), so check for
+    // a real contact row (contact.id) rather than just truthiness.
+    const contact = contactRes?.data;
+    if (!contact || !contact.id) return resError({ ack_msg: "Contact not found" });
+
+    const findCompanyId = await getCompanyByLoginId(req.body.a_application_login_id);
+    const company = await getCompanyDetailByLoginId(req.body.a_application_login_id);
+
+    const City = cityModel(req.tenantDB);
+    const State = stateModel(req.tenantDB);
+    const companyCity = await City.findOne({ where: { id: company.city_id, isDelete: 0 }, attributes: ["city_name"], raw: true });
+    const companyState = await State.findOne({ where: { id: company.state_id, isDelete: 0 }, attributes: ["state_name"], raw: true });
+    company.city_name = companyCity?.city_name || "";
+    company.state_name = companyState?.state_name || "";
+
+    const documentDesignerEnabled = await isFeatureEnabled(findCompanyId.company_masters_id, "document_designer");
+    if (!documentDesignerEnabled) {
+      return resBadRequest({ ack_msg: "Document Designer is not enabled for this company" });
+    }
+
+    const outputDir = `media-folder/ContactPrint/${findCompanyId.company_masters_id}`;
+    const uploadDir = path.resolve(process.cwd(), outputDir);
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+
+    const fileName = `contact_${docType === "contactAddress" ? "address" : "envelope"}_${Date.now()}.pdf`;
+    const fullPath = path.join(uploadDir, fileName);
+    const pdfPath = `${findCompanyId.company_masters_id}/${fileName}`;
+
+    const buffer = await generateFn({
+      contact,
+      company: { ...company, id: findCompanyId.company_masters_id },
+      documentTemplateId: req.body.document_template_id,
+      tenantDB: req.tenantDB,
+    });
+    fs.writeFileSync(fullPath, buffer);
+
+    return resSuccess({
+      ack_msg: "PDF Generated",
+      data: { path: PDF_LINK_CONTACT_PRINT + pdfPath, file_name: fileName },
+    });
+  } catch (err) {
+    console.log("ContactPrint Error:", err);
+    return resBadRequest({ developer_msg: err.message });
+  }
+};
+
+export const fetchContactAddressPrint = async (req, res) => {
+  return fetchContactPrint(req, "contactAddress", generateContactAddressPdf);
+};
+
+export const fetchContactEnvelopePrint = async (req, res) => {
+  return fetchContactPrint(req, "contactEnvelope", generateContactEnvelopePdf);
 };
 
 export const getAllContact = async (req, feed = false, onlyMyBlog = false) => {

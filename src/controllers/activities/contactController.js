@@ -15,6 +15,8 @@ import {
   contactRecover,
   contactUpdate,
   CreateContactWithReminder,
+  fetchContactAddressPrint,
+  fetchContactEnvelopePrint,
   generateContactSampleSheet,
   getAllContact,
   getContactByIds,
@@ -42,6 +44,14 @@ export const createContactByOnlineStore = async (req, res) => {
 
 export const getContactById = async (req, res) => {
   await callServiceMethod(req, res, getContactByIds(req), "getContactById");
+};
+
+export const contactAddressPrint = async (req, res) => {
+  await callServiceMethod(req, res, fetchContactAddressPrint(req, res), "fetchContactAddressPrint");
+};
+
+export const contactEnvelopePrint = async (req, res) => {
+  await callServiceMethod(req, res, fetchContactEnvelopePrint(req, res), "fetchContactEnvelopePrint");
 };
 
 export const updateContact = async (req, res) => {

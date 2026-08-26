@@ -2635,3 +2635,7 @@ CREATE TABLE `task_checklist_items` (
   PRIMARY KEY (`id`),
   KEY `idx_task_checklist_items_task_id` (`task_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+26-08-2026 Dhaval
+2 new Document Designer doc types added: `contactAddress`, `contactEnvelope`, replacing the previously hardcoded ContactAddressPrintView1.tsx / ContactAddressEnvelopePrintView.tsx print pages (Contact Info panel's "Print Address"/"Print Envelope" buttons) with the same feature-flag-gated pdfme path shippingLabel already uses. Legacy pages kept as the flag-off fallback.
+`system_document_templates` seeded with 2 new gallery rows (1 per doc_type). Generated via migration/master/migrations/20260826140000-seed-contact-print-document-templates.js.

@@ -89,6 +89,21 @@ const SHIPPING_LABEL_DICTIONARY = [
   { key: "grandTotalText", label: "Grand Total", group: "Computed" },
   { key: "termsText", label: "Terms", group: "Computed" },
 ];
+// contactAddress / contactEnvelope share this — same bindable fields, only
+// layout (label sheet vs. A4-landscape envelope) differs between them.
+const CONTACT_DOC_DICTIONARY = [
+  { key: "toName", label: "To: Name", group: "Contact" },
+  { key: "toCompanyName", label: "To: Company Name", group: "Contact" },
+  { key: "toPhone", label: "To: Contact No.", group: "Contact" },
+  { key: "toEmail", label: "To: Email", group: "Contact" },
+  { key: "toLocationLine", label: "To: Area/City/State/Country - Pincode", group: "Contact" },
+  { key: "toAddress", label: "To: Address", group: "Contact" },
+  { key: "fromCompanyName", label: "From: Company Name", group: "Company" },
+  { key: "fromLocationLine", label: "From: City, State", group: "Company" },
+  { key: "fromPhone", label: "From: Contact No.", group: "Company" },
+  { key: "fromEmail", label: "From: Email", group: "Company" },
+  { key: "fromAddress", label: "From: Address", group: "Company" },
+];
 
 // doc_type -> which base dictionary applies. All 10 cart-shaped doc_types
 // point at the same array (same pattern as templates.js's titleById).
@@ -109,6 +124,8 @@ const DICTIONARY_BY_DOC_TYPE = {
   accountTransaction: ACCOUNT_TRANSACTION_DICTIONARY,
   taskDueList: TASK_DUE_LIST_DICTIONARY,
   shippingLabel: SHIPPING_LABEL_DICTIONARY,
+  contactAddress: CONTACT_DOC_DICTIONARY,
+  contactEnvelope: CONTACT_DOC_DICTIONARY,
 };
 
 // Cart custom fields (carts_column_*) use a DIFFERENT form_type per doc

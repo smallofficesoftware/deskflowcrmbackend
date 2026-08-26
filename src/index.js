@@ -230,6 +230,9 @@ app.use("/order_view", express.static(findOrderView));
 const findShippingLabelView = path.join(process.cwd(), "media-folder/ShippingLabel");
 app.use("/shipping_label_view", express.static(findShippingLabelView));
 
+const findContactPrintView = path.join(process.cwd(), "media-folder/ContactPrint");
+app.use("/contact_print_view", express.static(findContactPrintView));
+
 const findAccountTransactionView = path.join(process.cwd(), "media-folder/accountTransaction");
 app.use("/accountTransactions", express.static(findAccountTransactionView));
 
