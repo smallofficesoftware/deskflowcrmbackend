@@ -4,6 +4,8 @@ import { contactModel } from "../../models/activities/contactModel.js";
 import { inquiryModel } from "../../models/activities/inquiryModel.js";
 import loginModel from "../../models/application_login/loginModel.js";
 import companyVsApplicationLoginModel from "../../models/company_setup/companyVsApplicationLoginModel.js";
+import { productModel } from "../../models/product_settings/productModel.js";
+import { categoryModel } from "../../models/product_settings/categoryModel.js";
 import { PAGE_ID } from "../../utils/AppEnumeration.js";
 import {
   formatDateAndTimeCreateDateTime,
@@ -218,24 +220,6 @@ export const getAllInquiry = async (req) => {
       ],
       [
         Sequelize.literal(`(
-          SELECT GROUP_CONCAT(products.product_name SEPARATOR ', ')
-          FROM products
-          WHERE FIND_IN_SET(products.id, inquiries.product_id) > 0
-            AND products.isDelete = 0
-        )`),
-        "product_name",
-      ],
-      [
-        Sequelize.literal(`(
-          SELECT GROUP_CONCAT(categories.category_name SEPARATOR ', ')
-          FROM categories
-          WHERE FIND_IN_SET(categories.id, inquiries.category_id) > 0
-            AND categories.isDelete = 0
-        )`),
-        "category_name",
-      ],
-      [
-        Sequelize.literal(`(
           SELECT contact_masters.person_name
           FROM contact_masters
           WHERE contact_masters.id = inquiries.contact_master_id
@@ -347,6 +331,62 @@ export const getAllInquiry = async (req) => {
       );
     }
 
+    // product_name / category_name are derived here (not via GROUP_CONCAT)
+    // because product_id/category_id are comma-joined per-row values that can
+    // repeat (two products sharing a category) — GROUP_CONCAT over a JOIN
+    // dedupes matched rows and has no guaranteed order, so it silently
+    // desyncs from the product_id/category_id/qty position it's meant to
+    // label. Splitting the raw CSV ourselves preserves both order and dupes.
+    const ProductModel = productModel(tenantDB);
+    const CategoryModel = categoryModel(tenantDB);
+
+    const allProductIds = new Set();
+    const allCategoryIds = new Set();
+    for (const item of inquiry || []) {
+      (item.product_id || "")
+        .split(",")
+        .map((id) => id.trim())
+        .filter(Boolean)
+        .forEach((id) => allProductIds.add(Number(id)));
+      (item.category_id || "")
+        .split(",")
+        .map((id) => id.trim())
+        .filter(Boolean)
+        .forEach((id) => allCategoryIds.add(Number(id)));
+    }
+
+    const [productRows, categoryRows] = await Promise.all([
+      allProductIds.size
+        ? ProductModel.findAll({
+          where: { id: { [Op.in]: [...allProductIds] }, isDelete: 0 },
+          attributes: ["id", "product_name"],
+          raw: true,
+        })
+        : [],
+      allCategoryIds.size
+        ? CategoryModel.findAll({
+          where: { id: { [Op.in]: [...allCategoryIds] }, isDelete: 0 },
+          attributes: ["id", "category_name"],
+          raw: true,
+        })
+        : [],
+    ]);
+
+    const productNameMap = new Map(
+      productRows.map((p) => [Number(p.id), p.product_name]),
+    );
+    const categoryNameMap = new Map(
+      categoryRows.map((c) => [Number(c.id), c.category_name]),
+    );
+
+    const namesFromCsv = (csv, nameMap) =>
+      (csv || "")
+        .split(",")
+        .map((id) => id.trim())
+        .filter(Boolean)
+        .map((id) => nameMap.get(Number(id)) || "")
+        .join(", ");
+
     const sanitizedInquire = inquiry?.map((item) => {
       const clean = sanitizeObjectOfNull(item.toJSON());
 
@@ -386,6 +426,8 @@ export const getAllInquiry = async (req) => {
         ...clean,
         assined_team_person_list,
         inq_created_by_name,
+        product_name: namesFromCsv(clean.product_id, productNameMap),
+        category_name: namesFromCsv(clean.category_id, categoryNameMap),
 
         create_date_time: clean.create_date_time
           ? formatDateAndTimeCreateDateTime(
