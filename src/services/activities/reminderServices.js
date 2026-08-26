@@ -31,6 +31,15 @@ export const getAllReminder = async (req) => {
 
     const reminderMSGModel = reminderMessagesModel(req.tenantDB);
 
+    const companyflag = await companyVsApplicationLoginModel.findOne({
+      where: {
+        a_application_login_id: req.body.a_application_login_id,
+        isDelete: 0,
+      },
+      attributes: ["company_flag"],
+    });
+    const company_flag = companyflag ? companyflag.company_flag : null;
+
     let whereClause = {
       isDelete: "0",
       is_reminder_app_flag: "0",
@@ -49,7 +58,10 @@ export const getAllReminder = async (req) => {
         { assigned_to: a_application_login_id },
       ],
     };
-    if (typeFilter == "all") {
+    if (typeFilter == "all" && Number(company_flag) === 1) {
+      // "All" spans every team member's reminders only for the company
+      // owner - a regular team member always stays scoped to their own
+      // (created or assigned) reminders, same as due/upcoming/completed.
       whereClause = {
         isDelete: "0",
         is_reminder_app_flag: "0",
@@ -296,15 +308,6 @@ export const getAllReminder = async (req) => {
       },
     });
     console.log("aaaaaaaaaaaaaa", resultReminder)
-    let company_flag = null;
-    const companyflag = await companyVsApplicationLoginModel.findOne({
-      where: {
-        a_application_login_id: req.body.a_application_login_id,
-        isDelete: 0,
-      },
-      attributes: ["company_flag"],
-    });
-    company_flag = companyflag ? companyflag.company_flag : null;
 
 
     const lableModelIntance = labelModel(req.tenantDB);
