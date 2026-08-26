@@ -2726,3 +2726,8 @@ FROM `employee_account_transactions` eat
 WHERE eat.isDelete = 0
   AND eat.approve_by_a_application_login_id != 0;
 
+26-08-2026 Dhaval
+Fix socket_connections.id (MASTER DB) losing AUTO_INCREMENT/PRIMARY KEY - a prior migration (20251025072452-add-comments-in-socket-connections.js) changed the id column to add a comment without restating autoIncrement/primaryKey, and MySQL's MODIFY COLUMN replaced the whole column definition, silently dropping both.
+SET @rn := COALESCE((SELECT MAX(id) FROM socket_connections), 0);
+UPDATE socket_connections SET id = (@rn := @rn + 1) WHERE id IS NULL ORDER BY updated_date;
+ALTER TABLE socket_connections MODIFY id INT(11) NOT NULL AUTO_INCREMENT, ADD PRIMARY KEY (id);
