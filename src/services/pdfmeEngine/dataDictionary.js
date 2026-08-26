@@ -168,16 +168,17 @@ export async function buildDataDictionary(req, doc_type) {
   }
 
   const CustomField = customFieldFormModel(req.tenantDB);
-  // data_type 11/12 (pageText/pageURL) are deliberately excluded — those
-  // render as before/after extra pages (orderInputMapper.js), not bindable
-  // data a field on the main canvas can point to.
+  // data_type 11/12/14 (pageText/pageURL/Document Designer Page) are
+  // deliberately excluded — those render as before/after extra pages
+  // (orderInputMapper.js), not bindable data a field on the main canvas can
+  // point to.
   const customFields = await CustomField.findAll({
     where: {
       form_type: [cartCustomFieldFormType, PRODUCT_CUSTOM_FIELD_FORM_TYPE],
       company_masters_id,
       print_or_not: 1,
       isDelete: 0,
-      data_type: { [Op.notIn]: [11, 12] },
+      data_type: { [Op.notIn]: [11, 12, 14] },
     },
     attributes: ["title", "reference_column_name", "form_type"],
   });
