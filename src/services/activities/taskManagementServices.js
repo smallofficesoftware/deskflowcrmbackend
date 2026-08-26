@@ -844,9 +844,40 @@ export const AllTaskGet = async (req, res) => {
       );
     }
 
+    /* ================= CUSTOM FIELDS ================= */
+    // Same dynamicFormType/report_print_or_not/customForm shape
+    // teamAllTaskReportServices.js's getTeamTaskReport already builds
+    // correctly - this endpoint (AllTaskGet, /get-task) never fetched
+    // custom field definitions at all, so a custom field configured for
+    // Task (form_type 14) or Support Ticket (form_type 15) never showed up
+    // anywhere that reads from THIS endpoint, even though the raw
+    // task_column_* value was always present on the row.
+    const dynamicFormType = Number(supportTicketFlag) === 1 ? 15 : 14;
+    const customFormFields = await customFieldFormModel(req.tenantDB).findAll({
+      where: {
+        form_type: dynamicFormType,
+        company_masters_id: companyId,
+        isDelete: 0,
+        report_print_or_not: 1,
+        data_type: { [Op.ne]: 11 },
+      },
+      raw: true,
+    });
+
     /* ================= FORMAT TASKS ================= */
 
     const tasksWithEnhancement = resultTasks.map(task => {
+      const customForm = customFormFields.map((field) => ({
+        id: field.id,
+        a_application_login_id: field.a_application_login_id,
+        company_masters_id: field.company_masters_id,
+        title: field.title,
+        reference_column_name: field.reference_column_name,
+        data_type: field.data_type,
+        value: field.reference_column_name && Object.prototype.hasOwnProperty.call(task, field.reference_column_name)
+          ? task[field.reference_column_name]
+          : "",
+      }));
 
       let assignedUsernames = "";
 
@@ -901,6 +932,7 @@ export const AllTaskGet = async (req, res) => {
         category_name: category?.task_category_name || "",
         category_color_code: category?.task_color || "",
         is_unread: isUnread,
+        customForm,
       };
     });
 
