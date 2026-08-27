@@ -1,4 +1,4 @@
-import { assignLabelToJobCard, assignStatusToJobCard, assignTeamMemberToJob, deleteJobCard, deleteProductionEntry, fetchProductionEntryDetail, fetchProductionList, fetchWarehouseStockBatch, jobCardsDetails, jobCardsFetch, jobCardsSave, printBom, submitUnifiedProductionEntry, updateJobCardQty } from "../../services/production/JobCardServices.js";
+import { assignLabelToJobCard, assignStatusToJobCard, assignTeamMemberToJob, deleteJobCard, deleteProductionEntry, fetchBomOrderItems, fetchBomProducts, fetchProductionEntryDetail, fetchProductionList, fetchWarehouseStockBatch, jobCardsDetails, jobCardsFetch, jobCardsSave, printBom, submitUnifiedProductionEntry, updateJobCardQty } from "../../services/production/JobCardServices.js";
 import callServiceMethod from "../baseController.js";
 
 export const jobCardsFetchProvider = async (req, res) => {
@@ -52,4 +52,12 @@ export const updateJobCardQtyProvider = async (req, res) => {
 
 export const fetchProductionEntryDetailProvider = async (req, res) => {
     await callServiceMethod(req, res, fetchProductionEntryDetail(req), "fetchProductionEntryDetailProvider");
+}
+
+export const fetchBomProductsProvider = async (req, res) => {
+    await callServiceMethod(req, res, fetchBomProducts(req), "fetchBomProductsProvider");
+}
+
+export const fetchBomOrderItemsProvider = async (req, res) => {
+    await callServiceMethod(req, res, fetchBomOrderItems(req), "fetchBomOrderItemsProvider");
 }
