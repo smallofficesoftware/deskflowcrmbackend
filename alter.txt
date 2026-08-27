@@ -2763,7 +2763,9 @@ CREATE TABLE `task_checklist_items` (
 `system_document_templates` seeded with 2 new gallery rows (1 per doc_type). Generated via migration/master/migrations/20260826180000-seed-employee-account-document-templates.js.
 
 26-08-2026 Dhaval
-Fix socket_connections.id (MASTER DB) losing AUTO_INCREMENT/PRIMARY KEY - a prior migration (20251025072452-add-comments-in-socket-connections.js) changed the id column to add a comment without restating autoIncrement/primaryKey, and MySQL's MODIFY COLUMN replaced the whole column definition, silently dropping both.
 SET @rn := COALESCE((SELECT MAX(id) FROM socket_connections), 0);
 UPDATE socket_connections SET id = (@rn := @rn + 1) WHERE id IS NULL ORDER BY updated_date;
 ALTER TABLE socket_connections MODIFY id INT(11) NOT NULL AUTO_INCREMENT, ADD PRIMARY KEY (id);
+
+24-08-2026 Dhaval
+ALTER TABLE `carts` ADD `item_discount_type` TINYINT(4) NULL DEFAULT NULL;
