@@ -2767,3 +2767,90 @@ Fix socket_connections.id (MASTER DB) losing AUTO_INCREMENT/PRIMARY KEY - a prio
 SET @rn := COALESCE((SELECT MAX(id) FROM socket_connections), 0);
 UPDATE socket_connections SET id = (@rn := @rn + 1) WHERE id IS NULL ORDER BY updated_date;
 ALTER TABLE socket_connections MODIFY id INT(11) NOT NULL AUTO_INCREMENT, ADD PRIMARY KEY (id);
+
+25-08-2026 Deep
+CREATE TABLE `quotations`(
+    `id` INT(11) NOT NULL AUTO_INCREMENT,
+    `company_masters_id` INT(11) NULL,
+    `company_name` TEXT NOT NULL,
+    `company_email` TEXT NOT NULL,
+    `company_contact` TEXT NOT NULL,
+    `country_id` INT(11) NOT NULL,
+    `state_id` INT(11) NOT NULL,
+    `city_id` INT(11) NOT NULL,
+    `address` TEXT NULL,
+    `gst_number` TEXT NULL,
+    `created_date_time` DATETIME NOT NULL,
+    `modified_date` DATETIME NULL,
+    `s_timestemp` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `isDelete` TINYINT(4) NOT NULL DEFAULT '0',
+    `isActive` TINYINT(4) NOT NULL DEFAULT '1',
+    PRIMARY KEY(`id`)
+) ENGINE = InnoDB;
+
+CREATE TABLE `quotation_items`(
+    `id` INT(11) NOT NULL AUTO_INCREMENT,
+    `quotation_id` INT(11) NOT NULL,
+    `item_type` TINYINT(4) NOT NULL DEFAULT 1 COMMENT '1 - Plan | 2 - Add On',
+    `item_id` INT(11) NOT NULL,
+    `item_details` LONGTEXT NOT NULL COMMENT 'JSON string of plan or add-on details (name, duration, start_date, end_date)',
+    `item_qty` INT(11) NOT NULL DEFAULT 1,
+    `item_rate` DOUBLE NOT NULL,
+    `total` DOUBLE NOT NULL,
+    `created_date_time` DATETIME NOT NULL,
+    `modified_date` DATETIME NULL DEFAULT NULL,
+    `s_timestemp` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    `isDelete` TINYINT(4) NOT NULL DEFAULT 0,
+    `isActive` TINYINT(4) NOT NULL DEFAULT 1,
+    PRIMARY KEY(`id`),
+    KEY `idx_quotation_id`(`quotation_id`),
+    KEY `idx_item_type_item_id`(`item_type`, `item_id`),
+    KEY `idx_isDelete_isActive`(`isDelete`, `isActive`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+26-08-2026 Deep
+DROP TABLE IF EXISTS `quotation_items`;
+DROP TABLE IF EXISTS `quotations`;
+
+ALTER TABLE `socket_connections` MODIFY COLUMN `id` INT(11) NOT NULL AUTO_INCREMENT COMMENT 'Primary key: Unique identifier for each socket connection';
+
+27-08-2026 Deep
+CREATE TABLE `event_type_masters`(
+    `id` INT(11) NOT NULL AUTO_INCREMENT,
+    `event_type_name` TEXT NOT NULL,
+    `event_type_color` VARCHAR(255) NOT NULL,
+    `created_date_time` DATETIME NOT NULL,
+    `modified_date` DATETIME NULL DEFAULT NULL,
+    `s_timestemp` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `isDelete` TINYINT(4) NOT NULL DEFAULT '0',
+    `isActive` TINYINT(4) NOT NULL DEFAULT '1',
+    PRIMARY KEY(`id`)
+) ENGINE = InnoDB;
+
+CREATE TABLE `event_masters`(
+    `id` INT(11) NOT NULL AUTO_INCREMENT,
+    `event_type_id` INT(11) NOT NULL,
+    `event_title` VARCHAR(255) NOT NULL,
+    `event_date` DATE NOT NULL,
+    `created_date_time` DATETIME NOT NULL,
+    `modified_date` DATETIME NULL DEFAULT NULL,
+    `s_timestemp` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `isDelete` TINYINT(4) NOT NULL DEFAULT '0',
+    `isActive` TINYINT(4) NOT NULL DEFAULT '1',
+    PRIMARY KEY(`id`)
+) ENGINE = InnoDB;
+
+CREATE TABLE `event_participate_masters`(
+    `id` INT(11) NOT NULL AUTO_INCREMENT,
+    `event_id` INT(11) NOT NULL,
+    `participant_name` VARCHAR(255) NOT NULL,
+    `participant_contact` VARCHAR(255) NOT NULL,
+    `participant_company` VARCHAR(255) NOT NULL,
+    `created_date_time` DATETIME NOT NULL,
+    `modified_date` DATETIME NULL DEFAULT NULL,
+    `s_timestemp` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `isDelete` TINYINT(4) NOT NULL DEFAULT '0',
+    `isActive` TINYINT(4) NOT NULL DEFAULT '1',
+    PRIMARY KEY(`id`),
+    UNIQUE KEY `uq_event_participant` (`event_id`, `participant_name`, `participant_contact`)
+) ENGINE = InnoDB;

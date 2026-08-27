@@ -98,22 +98,26 @@ io.on("connection", (socket) => {
         "storeSocketID",
         async ({ sessions, socketID }) => {
             try {
-                sessions.length > 0 && sessions.map(async (session) => {
-                    const { a_application_login_id, company_masters_id } = parseSession(session);
-                    if (company_masters_id) {
-                        // Company-scoped room for broadcast events (task/contact live sync
-                        // etc.) — every teammate connected for this company receives the
-                        // same emit, without per-user socket-id lookups.
-                        socket.join(`company-${company_masters_id}`);
-                    }
-                    if (socketID && socketID.length > 0) {
-                        await storeSocketId({
-                            socketId: socketID,
-                            applicationLoginId: a_application_login_id,
-                            companyId: company_masters_id,
-                        });
-                    }
-                });
+                if (Array.isArray(sessions) && sessions.length > 0) {
+                    await Promise.all(
+                        sessions.map(async (session) => {
+                            const { a_application_login_id, company_masters_id } = parseSession(session);
+                            if (company_masters_id) {
+                                // Company-scoped room for broadcast events (task/contact live sync
+                                // etc.) — every teammate connected for this company receives the
+                                // same emit, without per-user socket-id lookups.
+                                socket.join(`company-${company_masters_id}`);
+                            }
+                            if (socketID && socketID.length > 0) {
+                                await storeSocketId({
+                                    socketId: socketID,
+                                    applicationLoginId: a_application_login_id,
+                                    companyId: company_masters_id,
+                                });
+                            }
+                        })
+                    );
+                }
             } catch (error) {
                 socket.emit("socket-error", {
                     message: "Failed to register socket IDs",
