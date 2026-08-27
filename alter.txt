@@ -2785,3 +2785,6 @@ ALTER TABLE `job_cards` MODIFY `order_id` INT(11) NULL;
 
 27-08-2026 Dhaval
 ALTER TABLE `maintenance_modes` ADD `is_socket_disabled` INT(11) NOT NULL DEFAULT 0;
+
+27-08-2026 Dhaval
+ALTER TABLE `a_application_logins` ADD `socket_connection_switch` TINYINT NOT NULL DEFAULT 0;

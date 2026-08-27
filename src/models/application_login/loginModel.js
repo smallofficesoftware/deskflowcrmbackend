@@ -184,6 +184,9 @@ const loginModel = sequelize.define("a_application_logins", {
   location_switch: {
     type: TINYINT
   },
+  socket_connection_switch: {
+    type: TINYINT
+  },
   activitylocationswitch: {
     type: TINYINT
   },
