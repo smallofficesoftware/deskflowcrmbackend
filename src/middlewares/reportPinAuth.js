@@ -1,31 +1,24 @@
 // Shared owner+PIN gate for build/author routes across two features: the
 // Report Builder (report_definitions CRUD) and the pdfme Document Designer
 // (document_print_templates CRUD, src/routes/company_setup/documentPrintTemplateRouter.js).
-// One PIN, one verified-flag store — verifying from either feature's UI
+// One PIN, one verification mechanism — verifying from either feature's UI
 // unlocks both, since it's the same login and the same REPORT_PIN value.
 //
-// No new table for the verified flag: an in-process Map is enough (matches
-// the plan's "no per-company DB storage, no new encryption" for the PIN
-// itself, extended to the verified-flag too). Lost on server restart —
-// that's fine, it just forces re-verification, same spirit as "re-verify
-// on next login, not on every page visit."
+// Stateless: verification is a signed, short-lived JWT handed back to the
+// caller on success (not a server-side Map keyed by login id). The caller
+// sends it back on every gated request; this middleware just checks the
+// signature + expiry + that it matches the requesting login. No new DB
+// table/column (matches the plan's "no per-company DB storage, no new
+// encryption" for the PIN itself), and — unlike the old in-memory Map —
+// survives a server restart, since the proof lives in the client's token,
+// not this process's memory.
+import jwt from "jsonwebtoken";
 import companyVsApplicationLoginModel from "../models/company_setup/companyVsApplicationLoginModel.js";
-import { REPORT_PIN } from "../utils/appConstants.js";
+import { REPORT_PIN, JWT_TOKEN_SIGNATURE } from "../utils/appConstants.js";
 import { resError } from "../utils/sharedFunctions.js";
 import { getCompanyByLoginId } from "../services/commonServices.js";
 
-const verifiedLogins = new Map(); // a_application_login_id -> verifiedAtMs
-const TTL_MS = 8 * 60 * 60 * 1000; // 8 hours
-
-function isVerified(loginId) {
-  const verifiedAt = verifiedLogins.get(String(loginId));
-  if (!verifiedAt) return false;
-  if (Date.now() - verifiedAt > TTL_MS) {
-    verifiedLogins.delete(String(loginId));
-    return false;
-  }
-  return true;
-}
+const REPORT_PIN_TOKEN_EXPIRES_IN = "2h";
 
 // company_flag: 1 => self (the login that actually owns/created the
 // company), 2 => join (an invited member) — same field, same "1 = owner"
@@ -59,8 +52,12 @@ export const verifyReportPin = async (req) => {
       return resError({ code: 403, ack_msg: "Incorrect PIN", developer_msg: "Submitted PIN did not match REPORT_PIN" });
     }
 
-    verifiedLogins.set(String(a_application_login_id), Date.now());
-    return { ack: 1, code: 200, ack_msg: "PIN verified", developer_msg: "working good", data: [] };
+    const reportPinToken = jwt.sign(
+      { a_application_login_id: String(a_application_login_id) },
+      JWT_TOKEN_SIGNATURE,
+      { expiresIn: REPORT_PIN_TOKEN_EXPIRES_IN },
+    );
+    return { ack: 1, code: 200, ack_msg: "PIN verified", developer_msg: "working good", data: { reportPinToken } };
   } catch (error) {
     console.error("verifyReportPin error:", error);
     return resError({ developer_msg: `Failed to Catch ${error}` });
@@ -88,8 +85,18 @@ export const requireReportPin = async (req, res, next) => {
       return res.status(200).send(resError({ code: 403, ack_msg: "Only the company owner can access this", developer_msg: "company_flag != 1 for this login" }));
     }
 
-    if (!isVerified(a_application_login_id)) {
-      return res.status(200).send(resError({ code: 403, ack_msg: "PIN verification required", developer_msg: "No verified PIN entry for this login" }));
+    const reportPinToken = req.headers["x-report-pin-token"];
+    let verifiedLoginId;
+    try {
+      verifiedLoginId = reportPinToken
+        ? jwt.verify(reportPinToken, JWT_TOKEN_SIGNATURE).a_application_login_id
+        : null;
+    } catch {
+      verifiedLoginId = null; // expired or invalid signature — treat as unverified
+    }
+
+    if (!verifiedLoginId || verifiedLoginId !== String(a_application_login_id)) {
+      return res.status(200).send(resError({ code: 403, ack_msg: "PIN verification required", developer_msg: "No valid x-report-pin-token for this login" }));
     }
 
     next();

@@ -19,14 +19,12 @@ import {
   restoreTemplateVersionController,
   setDefaultDocumentTemplateController,
   updateDocumentTemplateController,
-  verifyDocumentManagerPinController,
 } from "../../controllers/company_setup/documentPrintTemplateController.js";
 import { authenticateToken } from "../../middlewares/auth.js";
 import { requireReportPin } from "../../middlewares/reportPinAuth.js";
 import { tenantMiddleware } from "../../middlewares/tenantMiddleware.js";
 
 export default (app) => {
-  app.post("/document-templates/verify-pin", authenticateToken, tenantMiddleware, verifyDocumentManagerPinController);
   app.post("/document-templates/list", authenticateToken, tenantMiddleware, listDocumentTemplatesController);
   app.post("/document-templates/list-all", authenticateToken, tenantMiddleware, listAllDocumentTemplatesController);
   app.post("/document-templates/get", authenticateToken, tenantMiddleware, getDocumentTemplateController);
