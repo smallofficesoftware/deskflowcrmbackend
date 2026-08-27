@@ -2782,3 +2782,6 @@ See migration/master/migrations/20260821101942-refresh-account-statement-transac
 ALTER TABLE `job_cards` ADD `job_card_type` TINYINT NOT NULL DEFAULT 1 AFTER `item_id`;
 ALTER TABLE `job_cards` MODIFY `contact_id` INT(11) NULL;
 ALTER TABLE `job_cards` MODIFY `order_id` INT(11) NULL;
+
+27-08-2026 Dhaval
+ALTER TABLE `maintenance_modes` ADD `is_socket_disabled` INT(11) NOT NULL DEFAULT 0;
