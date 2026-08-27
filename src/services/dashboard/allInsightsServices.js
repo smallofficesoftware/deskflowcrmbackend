@@ -565,7 +565,7 @@ export const getCrmInsight = async (req) => {
                 const orderData = await CATModel.findOne({
                     attributes: [
                         [Sequelize.fn("COUNT", Sequelize.col("id")), "count"],
-                        [Sequelize.fn("SUM", Sequelize.col("grand_total")), "amount"],
+                        [Sequelize.fn("SUM", Sequelize.col("taxable_amt")), "amount"],
                     ],
                     where: {
                         isDelete: "0",
@@ -579,7 +579,7 @@ export const getCrmInsight = async (req) => {
                 const invoiceData = await CATModel.findOne({
                     attributes: [
                         [Sequelize.fn("COUNT", Sequelize.col("id")), "count"],
-                        [Sequelize.fn("SUM", Sequelize.col("grand_total")), "amount"],
+                        [Sequelize.fn("SUM", Sequelize.col("taxable_amt")), "amount"],
                     ],
                     where: {
                         isDelete: "0",
