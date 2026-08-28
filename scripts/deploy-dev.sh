@@ -90,13 +90,14 @@ deploy_adminpanel() {
   pm2 restart "$PM2_ADMINPANEL_BACKEND_NAME" >> "$LOG_FILE" 2>&1 || pm2 start dist/server.js --name "$PM2_ADMINPANEL_BACKEND_NAME" >> "$LOG_FILE" 2>&1
   pm2 save >> "$LOG_FILE" 2>&1
 
-  cd "$ADMINPANEL_DIR/frontend" || { log "ERROR: cannot cd to $ADMINPANEL_DIR/frontend"; return 1; }
-  if lockfile_changed "$old_commit" frontend/package-lock.json; then
-    npm ci --legacy-peer-deps >> "$LOG_FILE" 2>&1
-  else
-    log "frontend/package-lock.json unchanged, skipping npm ci"
-  fi
-  npm run build >> "$LOG_FILE" 2>&1
+  # `npm run build` used to run right here and OOM'd (webpack + @pdfme/* is
+  # too heavy for this box's RAM — same failure frontend-document-designer
+  # already hit). The build now happens on a developer machine via
+  # frontend/scripts/deploy-dev-local-build.sh, which commits the built
+  # frontend/build/ folder straight into the repo — this webhook path only
+  # keeps the git checkout in sync (already done by the reset --hard above);
+  # it deliberately no longer installs or builds the frontend.
+  log "=== Adminpanel frontend: source sync only, build is done locally (frontend/scripts/deploy-dev-local-build.sh) ==="
 
   log "=== Adminpanel deploy done ==="
 }
