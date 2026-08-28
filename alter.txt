@@ -2872,3 +2872,7 @@ ALTER TABLE `maintenance_modes` ADD `is_socket_disabled` INT(11) NOT NULL DEFAUL
 
 27-08-2026 Dhaval
 ALTER TABLE `a_application_logins` ADD `socket_connection_switch` TINYINT NOT NULL DEFAULT 0;
+
+28-08-2026 Dhaval
+ALTER TABLE `maintenance_modes` ADD `is_training_disabled` INT(11) NOT NULL DEFAULT 0;
+-- admin panel migration: adminpanel/backend/src/database/migrations/20260828140000-add-is-training-disabled-to-maintenance-modes.js

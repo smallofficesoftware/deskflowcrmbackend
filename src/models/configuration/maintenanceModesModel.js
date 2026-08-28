@@ -17,6 +17,10 @@ const maintenanceModesModel = sequelize.define("maintenance_modes", {
     type: INTEGER,
     defaultValue: 0,
   },
+  is_training_disabled: {
+    type: INTEGER,
+    defaultValue: 0,
+  },
   created_date_time: {
     type: DATE,
     defaultValue: NOW,
