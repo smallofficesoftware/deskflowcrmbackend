@@ -2792,3 +2792,8 @@ ALTER TABLE `a_application_logins` ADD `socket_connection_switch` TINYINT NOT NU
 28-08-2026 Dhaval
 ALTER TABLE `maintenance_modes` ADD `is_training_disabled` INT(11) NOT NULL DEFAULT 0;
 -- admin panel migration: adminpanel/backend/src/database/migrations/20260828140000-add-is-training-disabled-to-maintenance-modes.js
+-- also added here: migration/master/migrations/20260828140000-add-is-training-disabled-to-maintenance-modes.js
+-- (the adminpanel-only migration above is never run against the live/demo
+-- DB by any deploy step — this repo's chain is the one actually executed;
+-- its absence here is why every maintenance_modes query started throwing
+-- "Unknown column 'is_training_disabled'" once the model change shipped.)
