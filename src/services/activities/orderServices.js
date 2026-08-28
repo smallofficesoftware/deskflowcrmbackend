@@ -4130,7 +4130,11 @@ export const covertOrderSystem = async (req, res) => {
     return resBadRequest({ developer_msg: error });
   }
 };
-export const pdfOrder = async (req, res) => {
+// Single-cart PDF generation - unchanged body, just renamed and no longer
+// exported directly. pdfOrder (below) is now a thin dispatcher: it calls
+// this once for a single cart_id (identical to today's behavior), or loops
+// it per id + merges the results for a multi-select "Generate Multi Print".
+const generateSingleOrderPdf = async (req, res) => {
   try {
     const orderId = req.body.cart_id;
     const CATModel = cartModel(req.tenantDB);
@@ -5248,6 +5252,80 @@ export const pdfOrder = async (req, res) => {
     }
   } catch (error) {
     console.log(`pdfOrder error ${error}`);
+    return resBadRequest({ developer_msg: `error ${error}` });
+  }
+};
+
+// Thin dispatcher: a single cart_id (number or 1-element array) goes
+// straight through to generateSingleOrderPdf unchanged (today's exact
+// behavior). 2+ ids ("Generate Multi Print") runs that same untouched
+// single-cart path once per id, then merges the resulting PDFs into one
+// file with PDFMerger - the same library already used a few hundred lines
+// up in generateSingleOrderPdf to splice uploaded attachments onto a
+// generated PDF. One print job for the whole selection, matching what the
+// legacy comma-joined print (openPrint(ids.join(","), viewFormate)) already
+// produces today.
+export const pdfOrder = async (req, res) => {
+  const rawCartId = req.body.cart_id;
+  const cartIds = Array.isArray(rawCartId) ? rawCartId : [rawCartId];
+
+  if (cartIds.length <= 1) {
+    req.body.cart_id = cartIds[0];
+    return await generateSingleOrderPdf(req, res);
+  }
+
+  try {
+    const mediaBaseDir = path.join(process.cwd(), "media-folder/cart");
+    const generatedFilePaths = [];
+    let firstResult = null;
+
+    // Sequential, not Promise.all - req.body.cart_id is mutated per
+    // iteration on this same shared req object, so calls must not overlap.
+    for (const id of cartIds) {
+      req.body.cart_id = id;
+      const result = await generateSingleOrderPdf(req, res);
+      if (result?.ack !== 1) {
+        return resError({
+          ack_msg: `Failed to generate PDF for order ${id}: ${result?.ack_msg || "unknown error"}`,
+        });
+      }
+      if (!firstResult) firstResult = result;
+
+      const relativePath = result.data.path.replace(PDF_LINK_EXTENDED, "");
+      generatedFilePaths.push(path.join(mediaBaseDir, relativePath));
+    }
+
+    const companySegment = generatedFilePaths[0].split(path.sep).slice(-2)[0];
+    const mergedFileName = `cart_multi_${Date.now()}.pdf`;
+    const mergedRelativePath = `${companySegment}/${mergedFileName}`;
+    const mergedFullPath = path.join(mediaBaseDir, mergedRelativePath);
+
+    const merger = new PDFMerger();
+    for (const filePath of generatedFilePaths) {
+      await merger.add(filePath);
+    }
+    await merger.save(mergedFullPath);
+
+    // Clean up the individual per-cart files now that they're merged into one.
+    for (const filePath of generatedFilePaths) {
+      try {
+        fs.unlinkSync(filePath);
+      } catch {
+        // Best-effort cleanup - a leftover temp file isn't worth failing the request for.
+      }
+    }
+
+    return resSuccess({
+      ack_msg: "Pdf generated",
+      data: {
+        title: `Multiple_Orders_${cartIds.length}_${Date.now()}`,
+        path: PDF_LINK_EXTENDED + mergedRelativePath,
+        customer_phone: firstResult.data.customer_phone,
+        sessionName: firstResult.data.sessionName,
+      },
+    });
+  } catch (error) {
+    console.log(`pdfOrder multi-print error ${error}`);
     return resBadRequest({ developer_msg: `error ${error}` });
   }
 };

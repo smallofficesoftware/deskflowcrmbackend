@@ -29,6 +29,7 @@ export const jobCardsFetch = async (req) => {
         const ContactModelInstance = contactModel(req.tenantDB);
         const CartModelInstance = cartModel(req.tenantDB);
         const CartItemModelInstance = cartItemModel(req.tenantDB);
+        const ProductModelInstance = productModel(req.tenantDB);
 
         const findCompanyId = await getCompanyByLoginId(a_application_login_id);
 
@@ -182,6 +183,22 @@ export const jobCardsFetch = async (req) => {
                         },
                     },
                     {
+                        // type 2/3 job cards: item_id is a products.id
+                        [Op.and]: [
+                            { job_card_type: { [Op.in]: [2, 3] } },
+                            {
+                                item_id: {
+                                    [Op.in]: Sequelize.literal(`(
+                                    SELECT id
+                                    FROM products
+                                    WHERE isDelete = 0
+                                    AND (product_name LIKE '%${searchTerm}%' OR product_code LIKE '%${searchTerm}%')
+                                )`),
+                                },
+                            },
+                        ],
+                    },
+                    {
                         order_id: {
                             [Op.in]: Sequelize.literal(`(
                                     SELECT id
@@ -256,9 +273,26 @@ export const jobCardsFetch = async (req) => {
         }
 
         const jobCardList = await Promise.all(jobCardsData.map(async (jobCard) => {
-            const customer = await ContactModelInstance.findOne({ where: { id: jobCard.contact_id }, raw: true });
-            const item = await CartItemModelInstance.findOne({ where: { id: jobCard.item_id }, raw: true });
-            const cart = await CartModelInstance.findOne({ where: { id: jobCard.order_id }, raw: true });
+            const jobCardType = Number(jobCard.job_card_type) || 1;
+            const isProductDirect = jobCardType === 2 || jobCardType === 3;
+
+            const customer = jobCard.contact_id
+                ? await ContactModelInstance.findOne({ where: { id: jobCard.contact_id }, raw: true })
+                : null;
+            // type 1: item_id is a cart_items.id; type 2/3: item_id is a products.id
+            const item = isProductDirect
+                ? null
+                : await CartItemModelInstance.findOne({ where: { id: jobCard.item_id }, raw: true });
+            const directProduct = isProductDirect
+                ? await ProductModelInstance.findOne({
+                    where: { id: jobCard.item_id },
+                    attributes: ["id", "product_name", "product_code", "unit"],
+                    raw: true
+                })
+                : null;
+            const cart = jobCard.order_id
+                ? await CartModelInstance.findOne({ where: { id: jobCard.order_id }, raw: true })
+                : null;
 
             const loginId = jobCard.a_application_login_id;
 
@@ -287,12 +321,14 @@ export const jobCardsFetch = async (req) => {
 
             return {
                 id: jobCard.id,
+                job_card_type: jobCardType,
                 order_item_id: jobCard.item_id,
-                item_name: item?.item_product_name || "Unknown Item",
+                product_id: isProductDirect ? jobCard.item_id : (item?.item_product_id || item?.product_id || null),
+                item_name: item?.item_product_name || directProduct?.product_name || "Unknown Item",
                 order_no: cart?.cart_number || "-",
-                customer_name: customer?.company_name || customer?.person_name || "Unknown Customer",
+                customer_name: customer?.company_name || customer?.person_name || (isProductDirect && jobCardType === 2 ? "" : "Unknown Customer"),
                 product_qty: jobCard.production_qty,
-                unit: item?.item_unit_name || "",
+                unit: item?.item_unit_name || directProduct?.unit || "",
                 status_id: jobCard.status_id || 0,
                 label_ids: jobCard.label_ids || "",
                 team_assign_ids: jobCard.team_assign_ids || "",
@@ -352,11 +388,17 @@ export const jobCardsDetails = async (req) => {
         }
         console.log(`[DEBUG 1] Job Card found:`, { id: jobCard.id, item_id: jobCard.item_id || jobCard.order_item_id, order_id: jobCard.order_id });
 
-        // 2. Fetch Contact Detail
-        const contact = await ContactModelInstance.findOne({
-            where: { id: jobCard.contact_id, isDelete: 0 },
-            raw: true
-        });
+        // job_card_type: 1 = from order, 2 = direct product, 3 = for customer
+        const jobCardType = Number(jobCard.job_card_type) || 1;
+        const isProductDirect = jobCardType === 2 || jobCardType === 3;
+
+        // 2. Fetch Contact Detail (types 1 & 3 only — type 2 has no customer)
+        const contact = jobCard.contact_id
+            ? await ContactModelInstance.findOne({
+                where: { id: jobCard.contact_id, isDelete: 0 },
+                raw: true
+            })
+            : null;
 
         const contactDetail = {
             id: contact?.id || null,
@@ -368,37 +410,57 @@ export const jobCardsDetails = async (req) => {
             gst_no: contact?.gst_number || "",
         };
 
-        // 3. Fetch Item & Order Detail (Supports both item_id and order_item_id)
+        // 3. Fetch Item & Order Detail
+        //    type 1  -> item_id is a cart_items.id, order details come from the cart
+        //    type 2/3 -> item_id is a products.id, no cart / order
         const targetItemId = jobCard.item_id || jobCard.order_item_id;
 
-        const item = await CartItemModelInstance.findOne({
-            where: { id: targetItemId, isDelete: 0 },
-            raw: true
-        });
+        const item = isProductDirect
+            ? null
+            : await CartItemModelInstance.findOne({
+                where: { id: targetItemId, isDelete: 0 },
+                raw: true
+            });
 
-        const cart = await CartModelInstance.findOne({
-            where: { id: jobCard.order_id, isDelete: 0 },
-            raw: true
-        });
+        const directProduct = isProductDirect
+            ? await ProductModelInstance.findOne({
+                where: { id: targetItemId, isDelete: 0 },
+                attributes: ["id", "product_name", "product_code", "unit"],
+                raw: true
+            })
+            : null;
 
-        console.log(`[DEBUG 2] Item Found:`, item ? item.item_product_name : "NULL");
+        const cart = jobCard.order_id
+            ? await CartModelInstance.findOne({
+                where: { id: jobCard.order_id, isDelete: 0 },
+                raw: true
+            })
+            : null;
 
-        const prodQty = Number(jobCard.product_qty) || Number(item?.item_qty) || 1;
+        console.log(`[DEBUG 2] Item Found:`, item ? item.item_product_name : (directProduct ? directProduct.product_name : "NULL"));
+
+        const prodQty = Number(jobCard.production_qty) || Number(item?.item_qty) || 1;
+
+        // BOM product id: cart-item's product (type 1) or the product itself (type 2/3)
+        const productId = isProductDirect
+            ? targetItemId
+            : (item?.item_product_id || item?.product_id);
 
         const itemDetail = {
-            item_id: item?.id || null,
-            item_name: item?.item_product_name || "",
-            item_code: item?.item_product_code || "",
+            item_id: item?.id || directProduct?.id || null,
+            product_id: productId || null,
+            job_card_type: jobCardType,
+            item_name: item?.item_product_name || directProduct?.product_name || "",
+            item_code: item?.item_product_code || directProduct?.product_code || "",
             order_no: cart?.cart_number || "",
             order_qty: Number(item?.item_qty) || 0,
-            unit: item?.item_unit_name || "",
+            unit: item?.item_unit_name || directProduct?.unit || "",
             pending_qty: Number(item?.item_qty) || 0,
             delivery_date: cart?.due_date || null
         };
 
         // 4. Fetch BOM & Processes
         let bomProcesses = [];
-        const productId = item?.item_product_id || item?.product_id;
 
         if (productId) {
             const bom = await BOMModelInstance.findOne({
@@ -580,13 +642,38 @@ const fetchItemStockBatch = async (req, itemIds) => {
 
 export const jobCardsSave = async (req) => {
     const { a_application_login_id, customer_id, order_item_id, product_qty, order_id } = req.body;
+    // job_card_type: 1 = from order, 2 = direct product, 3 = for customer.
+    // For types 2 & 3 the frontend sends the product id in `item_id`; for type 1
+    // it sends the cart_items id in `order_item_id` (kept for backward compat).
+    const jobCardType = Number(req.body.job_card_type) || 1;
+    const itemId = req.body.item_id ?? order_item_id;
     try {
+        if (!itemId) {
+            return resError({
+                ack_msg: jobCardType === 1 ? "Please select an order item" : "Please select a product",
+                developer_msg: "item_id / order_item_id missing",
+            });
+        }
+        if (jobCardType === 1 && (!customer_id || !order_id)) {
+            return resError({
+                ack_msg: "Customer and order are required for an order job card",
+                developer_msg: "customer_id / order_id missing for job_card_type 1",
+            });
+        }
+        if (jobCardType === 3 && !customer_id) {
+            return resError({
+                ack_msg: "Customer is required for a customer job card",
+                developer_msg: "customer_id missing for job_card_type 3",
+            });
+        }
+
         const JobCardsModelInstance = JobCardsModel(req.tenantDB);
         const insert = await JobCardsModelInstance.create({
             a_application_login_id,
-            contact_id: customer_id,
-            order_id,
-            item_id: order_item_id,
+            contact_id: customer_id || null,
+            order_id: order_id || null,
+            item_id: itemId,
+            job_card_type: jobCardType,
             production_qty: product_qty
         })
 
@@ -645,6 +732,11 @@ export const submitUnifiedProductionEntry = async (req) => {
             rejection_items = []
         } = req.body;
 
+        // Finished-good product id. For order job cards the frontend historically
+        // sent it as `order_item_id`; for product-direct job cards it sends the
+        // real product id in `product_id`. Prefer the explicit one.
+        const fgProductId = req.body.product_id || order_item_id;
+
         // Initialize Models
         const productModelInstance = productModel(req.tenantDB);
         const categoryModelInstance = categoryModel(req.tenantDB);
@@ -661,7 +753,7 @@ export const submitUnifiedProductionEntry = async (req) => {
         const productionMaster = await productionTransactionModelInstance.create({
             job_id,
             team_member: team_member_id || "",
-            production_item_id: order_item_id || "",
+            production_item_id: fgProductId || "",
             bom_id: "",
             production_qty: produced_qty,
             consumption_qty: totalConsumption,
@@ -702,7 +794,7 @@ export const submitUnifiedProductionEntry = async (req) => {
         // 2. PRE-FETCH PRODUCT DATA (Cache)
         // ==========================================
 
-        const allProductIds = [order_item_id, ...consumption_items.map(i => i.material_id), ...rejection_items.map(i => i.material_id)];
+        const allProductIds = [fgProductId, ...consumption_items.map(i => i.material_id), ...rejection_items.map(i => i.material_id)];
         const uniqueProductIds = [...new Set(allProductIds.filter(id => id))];
 
         const productCache = {};
@@ -727,15 +819,15 @@ export const submitUnifiedProductionEntry = async (req) => {
         // ==========================================
         // 3A. FINISHED GOODS STOCK ADJUSTMENT (INWARD)
         // ==========================================
-        if (produced_qty > 0 && productCache[order_item_id]) {
-            const p = productCache[order_item_id];
+        if (produced_qty > 0 && productCache[fgProductId]) {
+            const p = productCache[fgProductId];
             req.body.stockDetail = {
                 stock_adjustment_type: "2", // Plus
                 stock_date: entry_date,
                 stock_remark: `Production FG INWARD (Job Card #${job_id})`
             };
             req.body.stockItem = [{
-                product_id: order_item_id,
+                product_id: fgProductId,
                 product_name: p.product_name,
                 warehouse_from: finish_good_warehouse_id,
                 warehouse_to: null,
@@ -1456,6 +1548,115 @@ export const fetchProductionEntryDetail = async (req) => {
 
     } catch (error) {
         console.log("fetchProductionEntryDetail Error", error);
+        return resBadRequest({
+            ack_msg: "UNKNOWN_ERROR_TRY_AGAIN",
+            developer_msg: `error ${error.message || error}`,
+        });
+    }
+};
+
+// ─── BOM Product / Order-Item pickers (Job Card "Direct Product" / "For Customer" modes) ───
+// Both list only entities that actually have a Bill of Materials — a job card
+// with no BOM has nothing to produce.
+
+export const fetchBomProducts = async (req) => {
+    try {
+        const { searchTerm } = req.body;
+
+        const BOMModelInstance = productBillOfMaterialModel(req.tenantDB);
+        const ProductModelInstance = productModel(req.tenantDB);
+
+        const boms = await BOMModelInstance.findAll({
+            where: { isDelete: 0 },
+            attributes: ["product_id"],
+            raw: true,
+        });
+        const bomProductIds = [...new Set(boms.map(b => Number(b.product_id)).filter(Boolean))];
+
+        if (bomProductIds.length === 0) {
+            return resSuccess({ ack_msg: "No BOM products found", data: { items: [] } });
+        }
+
+        const where = { id: { [Op.in]: bomProductIds }, isDelete: 0 };
+        if (isValid(searchTerm) && searchTerm !== "undefined") {
+            where[Op.or] = [
+                { product_name: { [Op.like]: `%${searchTerm}%` } },
+                { product_code: { [Op.like]: `%${searchTerm}%` } },
+            ];
+        }
+
+        const products = await ProductModelInstance.findAll({
+            where,
+            attributes: ["id", "product_name", "product_code", "unit"],
+            limit: 50,
+            order: [["product_name", "ASC"]],
+            raw: true,
+        });
+
+        return resSuccess({
+            ack_msg: "BOM products fetched successfully",
+            data: {
+                items: products.map(p => ({
+                    id: p.id,
+                    product_name: p.product_name,
+                    product_code: p.product_code || "",
+                    unit: p.unit || "",
+                })),
+            },
+        });
+    } catch (error) {
+        console.log("fetchBomProducts Error", error);
+        return resBadRequest({
+            ack_msg: "UNKNOWN_ERROR_TRY_AGAIN",
+            developer_msg: `error ${error.message || error}`,
+        });
+    }
+};
+
+export const fetchBomOrderItems = async (req) => {
+    try {
+        const { cart_id } = req.body;
+        if (!cart_id) {
+            return resError({ ack_msg: "cart_id is required", developer_msg: "cart_id missing" });
+        }
+
+        const CartItemModelInstance = cartItemModel(req.tenantDB);
+        const BOMModelInstance = productBillOfMaterialModel(req.tenantDB);
+
+        const items = await CartItemModelInstance.findAll({
+            where: { cart_id, isDelete: 0 },
+            raw: true,
+        });
+        if (items.length === 0) {
+            return resSuccess({ ack_msg: "No items found", data: { items: [] } });
+        }
+
+        const productIds = [...new Set(items.map(i => Number(i.item_product_id)).filter(Boolean))];
+        const boms = productIds.length
+            ? await BOMModelInstance.findAll({
+                where: { product_id: { [Op.in]: productIds }, isDelete: 0 },
+                attributes: ["product_id"],
+                raw: true,
+            })
+            : [];
+        const bomProductIds = new Set(boms.map(b => Number(b.product_id)));
+
+        const filtered = items
+            .filter(i => bomProductIds.has(Number(i.item_product_id)))
+            .map(i => ({
+                id: i.id,
+                item_product_name: i.item_product_name,
+                item_product_code: i.item_product_code || "",
+                item_qty: Number(i.item_qty) || 0,
+                item_unit_name: i.item_unit_name || "",
+            }));
+
+        return resSuccess({
+            ack_msg: "Order items fetched successfully",
+            data: { items: filtered },
+        });
+    } catch (error) {
+        console.log("fetchBomOrderItems Error", error);
         return resBadRequest({
             ack_msg: "UNKNOWN_ERROR_TRY_AGAIN",
             developer_msg: `error ${error.message || error}`,

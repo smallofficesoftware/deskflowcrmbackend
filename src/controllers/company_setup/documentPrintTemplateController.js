@@ -20,13 +20,8 @@ import {
   restoreTemplateVersion,
   setDefaultDocumentTemplate,
   updateDocumentTemplate,
-  verifyDocumentManagerPin,
 } from "../../services/company_setup/documentPrintTemplateServices.js";
 import callServiceMethod from "../baseController.js";
-
-export const verifyDocumentManagerPinController = async (req, res) => {
-  await callServiceMethod(req, res, verifyDocumentManagerPin(req), "verifyDocumentManagerPin");
-};
 
 export const listDocumentTemplatesController = async (req, res) => {
   await callServiceMethod(req, res, listDocumentTemplates(req), "listDocumentTemplates");

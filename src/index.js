@@ -5,6 +5,7 @@ import path from "path";
 import { Server } from "socket.io";
 import apiLogger from "./middlewares/apiLogger.js";
 import maintenanceMode from "./middlewares/maintenanceMode.js";
+import maintenanceModesModel from "./models/configuration/maintenanceModesModel.js";
 import { decryptRequest, encryptRequest } from "./middlewares/payloadSecurity.js";
 import pinoMiddleware from './middlewares/pinoMiddleware.js';
 import routers from "./routes/indexRouter.js";
@@ -92,6 +93,20 @@ app.use((err, req, res, next) => {
         developer_msg: "Internal Server Error",
     })
 })
+// Admin-panel kill-switch: when maintenance_modes.is_socket_disabled = 1 the
+// backend refuses every new socket.io connection (and reconnect attempt).
+// Fails open on a DB error so a lookup blip can't take live sync down.
+io.use(async (socket, next) => {
+    try {
+        const setting = await maintenanceModesModel.findOne({ where: { isDelete: 0 } });
+        if (setting && setting.dataValues.is_socket_disabled === 1) {
+            return next(new Error("socket connections are disabled"));
+        }
+    } catch (error) {
+        logger.error("[Deskflow CRM:socketGate]:[Error]", error);
+    }
+    return next();
+});
 io.on("connection", (socket) => {
     logger.info("[Deskflow CRM:connection]: socket connection successful with id: ", socket.id)
     socket.on(

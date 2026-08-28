@@ -1,4 +1,4 @@
-import { assignLabelToJob, assignStatusToJob, assignTeamToJob, deleteProductionEntryProvider, fetchProductionEntryDetailProvider, fetchWarehouseStockBatchProvider, jobCardDeleteProvider, jobCardsDetailsProvider, jobCardsFetchProductionListProvider, jobCardsFetchProvider, jobCardsSaveProvider, printBomProvider, productionEntryProvider, updateJobCardQtyProvider } from "../../controllers/production/JobCardController.js";
+import { assignLabelToJob, assignStatusToJob, assignTeamToJob, deleteProductionEntryProvider, fetchBomOrderItemsProvider, fetchBomProductsProvider, fetchProductionEntryDetailProvider, fetchWarehouseStockBatchProvider, jobCardDeleteProvider, jobCardsDetailsProvider, jobCardsFetchProductionListProvider, jobCardsFetchProvider, jobCardsSaveProvider, printBomProvider, productionEntryProvider, updateJobCardQtyProvider } from "../../controllers/production/JobCardController.js";
 import { authenticateToken } from "../../middlewares/auth.js";
 import { tenantMiddleware } from "../../middlewares/tenantMiddleware.js";
 
@@ -6,6 +6,8 @@ export default (app) => {
     app.post("/job-card/fetch", authenticateToken, tenantMiddleware, jobCardsFetchProvider);
     app.post("/job-card/detail", authenticateToken, tenantMiddleware, jobCardsDetailsProvider);
     app.post("/job-card/save", authenticateToken, tenantMiddleware, jobCardsSaveProvider);
+    app.post("/job-card/products", authenticateToken, tenantMiddleware, fetchBomProductsProvider);
+    app.post("/job-card/order-items", authenticateToken, tenantMiddleware, fetchBomOrderItemsProvider);
     app.post("/job-card/print-bom", authenticateToken, tenantMiddleware, printBomProvider);
     app.post("/job-card/delete", authenticateToken, tenantMiddleware, jobCardDeleteProvider);
     app.post("/job-card/production-entry/save", authenticateToken, tenantMiddleware, productionEntryProvider);

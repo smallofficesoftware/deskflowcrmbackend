@@ -2861,3 +2861,14 @@ CREATE TABLE `event_participate_masters`(
     PRIMARY KEY(`id`),
     UNIQUE KEY `uq_event_participant` (`event_id`, `participant_name`, `participant_contact`)
 ) ENGINE = InnoDB;
+
+27-08-2026 Dhaval
+ALTER TABLE `job_cards` ADD `job_card_type` TINYINT NOT NULL DEFAULT 1 AFTER `item_id`;
+ALTER TABLE `job_cards` MODIFY `contact_id` INT(11) NULL;
+ALTER TABLE `job_cards` MODIFY `order_id` INT(11) NULL;
+
+27-08-2026 Dhaval
+ALTER TABLE `maintenance_modes` ADD `is_socket_disabled` INT(11) NOT NULL DEFAULT 0;
+
+27-08-2026 Dhaval
+ALTER TABLE `a_application_logins` ADD `socket_connection_switch` TINYINT NOT NULL DEFAULT 0;
