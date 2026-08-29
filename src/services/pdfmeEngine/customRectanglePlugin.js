@@ -38,6 +38,13 @@ async function renderBorderSide(arg, position, width, height, color) {
 }
 
 export const customRectangle = {
+  // ui/propPanel are never actually invoked server-side (no browser, no
+  // Designer here) — but @pdfme/common's generate() validates every
+  // registered plugin against its full Plugin schema before running, and
+  // throws "expected nonoptional, received undefined" if ui/propPanel are
+  // missing. Keeping the stock ones is enough to satisfy that check.
+  ui: rectangle.ui,
+  propPanel: rectangle.propPanel,
   pdf: async (arg) => {
     const { schema } = arg;
     const { position, width, height } = schema;
