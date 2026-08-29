@@ -128,31 +128,19 @@ export function buildHeaderFields(variant, headerHeightMM = 18) {
           height: 18,
           content: "",
         }),
-        textField({
-          name: "companyDetailsWithLogo",
-          position: { x: 32, y: 5 },
-          width: 168,
-          height: 18,
-          fontSize: 8,
-          alignment: "left",
-          lineHeight: 1.3,
-          content:
-            "Company Name\nAddress: 123 Street, City, State, PIN\nMo.: 0000000000  Email: company@example.com  GSTIN: 00XXXXX0000X0X0  State: State",
-        }),
+        textField({ name: "companyName", position: { x: 32, y: 5 }, width: 168, height: 8, fontSize: 12, fontName: "Poppins Bold", alignment: "left" }),
+        textField({ name: "companyAddress", position: { x: 32, y: 13 }, width: 168, height: 6, fontSize: 8, alignment: "left", lineHeight: 1.3 }),
+        textField({ name: "companyGSTIN", position: { x: 32, y: 19.5 }, width: 168, height: 3.5, fontSize: 7, alignment: "left", content: "", visibilityCondition: { mode: "hideIfEmpty" } }),
+        textField({ name: "companyMobile", position: { x: 32, y: 23 }, width: 84, height: 3.5, fontSize: 7, alignment: "left", content: "", visibilityCondition: { mode: "hideIfEmpty" } }),
+        textField({ name: "companyEmail", position: { x: 116, y: 23 }, width: 84, height: 3.5, fontSize: 7, alignment: "left", content: "", visibilityCondition: { mode: "hideIfEmpty" } }),
       ];
     case "logoRight":
       return [
-        textField({
-          name: "companyDetailsWithLogo",
-          position: { x: 10, y: 5 },
-          width: 168,
-          height: 18,
-          fontSize: 8,
-          alignment: "left",
-          lineHeight: 1.3,
-          content:
-            "Company Name\nAddress: 123 Street, City, State, PIN\nMo.: 0000000000  Email: company@example.com  GSTIN: 00XXXXX0000X0X0  State: State",
-        }),
+        textField({ name: "companyName", position: { x: 10, y: 5 }, width: 168, height: 8, fontSize: 12, fontName: "Poppins Bold", alignment: "left" }),
+        textField({ name: "companyAddress", position: { x: 10, y: 13 }, width: 168, height: 6, fontSize: 8, alignment: "left", lineHeight: 1.3 }),
+        textField({ name: "companyGSTIN", position: { x: 10, y: 19.5 }, width: 168, height: 3.5, fontSize: 7, alignment: "left", content: "", visibilityCondition: { mode: "hideIfEmpty" } }),
+        textField({ name: "companyMobile", position: { x: 10, y: 23 }, width: 84, height: 3.5, fontSize: 7, alignment: "left", content: "", visibilityCondition: { mode: "hideIfEmpty" } }),
+        textField({ name: "companyEmail", position: { x: 94, y: 23 }, width: 84, height: 3.5, fontSize: 7, alignment: "left", content: "", visibilityCondition: { mode: "hideIfEmpty" } }),
         imageField({
           name: "headerLogo",
           dataSource: "companyLogo",
@@ -184,6 +172,17 @@ export function buildHeaderFields(variant, headerHeightMM = 18) {
           alignment: "center",
           lineHeight: 1.3,
         }),
+        // companyGSTIN/companyMobile/companyEmail — orderInputMapper.js
+        // already produces these 3 keys (lines ~496-498) and
+        // dataDictionary.js's CART_DOC_DICTIONARY already lists them, but
+        // no header variant ever exposed them as their own bindable field
+        // until now (logoLeft/logoRight baked them into one static
+        // companyDetailsWithLogo block; this "details" variant just never
+        // had them at all). hideIfEmpty so a company with no GSTIN/mobile/
+        // email on file doesn't get a visible blank line.
+        textField({ name: "companyGSTIN", position: { x: 10, y: 23 }, width: 190, height: 3.5, fontSize: 7, alignment: "center", content: "", visibilityCondition: { mode: "hideIfEmpty" } }),
+        textField({ name: "companyMobile", position: { x: 10, y: 26.5 }, width: 95, height: 3.5, fontSize: 7, alignment: "center", content: "", visibilityCondition: { mode: "hideIfEmpty" } }),
+        textField({ name: "companyEmail", position: { x: 105, y: 26.5 }, width: 95, height: 3.5, fontSize: 7, alignment: "center", content: "", visibilityCondition: { mode: "hideIfEmpty" } }),
       ];
   }
 }
@@ -420,7 +419,12 @@ export function buildDocTemplate(
   // Top padding must clear the header banner's actual height (only the
   // "image" variant's height is configurable). Bottom padding must clear the
   // footer banner's actual height plus the pageNumber margin below it.
-  const topPadding = headerVariant === "image" ? Math.max(25, 5 + headerHeightMM + 2) : 25;
+  // Non-image variants now reserve 34mm (was 25) — buildHeaderFields'
+  // "details"/"logoLeft"/"logoRight" cases all grew 3 extra lines
+  // (companyGSTIN/companyMobile/companyEmail), needing ~9mm more room.
+  // contentTopOffset below shifts every OTHER field down by that same
+  // delta automatically, so nothing further needed any position edits.
+  const topPadding = headerVariant === "image" ? Math.max(25, 5 + headerHeightMM + 2) : 34;
   const bottomPadding = footerImage ? Math.max(30, FOOTER_BOTTOM_MARGIN + footerHeightMM + 3) : 15;
 
   const contentTopOffset = topPadding - 25;
