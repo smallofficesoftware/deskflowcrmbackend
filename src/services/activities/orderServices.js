@@ -4455,9 +4455,27 @@ const generateSingleOrderPdf = async (req, res) => {
       // pdf-lib's embedPng vs embedJpg — a real JPEG mislabeled as PNG
       // throws "The input is not a PNG file!" and takes down the whole
       // generate, not just that one image.
+      // PhantomJS (html-pdf's rendering engine) is well known to hang/crash
+      // on oversized embedded base64 images — confirmed live: a company
+      // logo/signature saved as a full-size photo (100-230KB+ JPEGs,
+      // instead of a small optimized logo/signature) reliably crashed
+      // EVERY doc type's legacy PDF for that company with an unhandled
+      // 'error' event / EPIPE writing to PhantomJS's already-dead process
+      // (see generateSingleOrderPdf's write to PdfExec). These 4 images are
+      // meant to be small (header/footer banners, a logo, a signature) —
+      // 100KB is already generous for that; skip embedding (same graceful
+      // "" fallback already used for a missing file) rather than crash the
+      // whole PDF over one oversized image.
+      const MAX_EMBEDDED_IMAGE_BYTES = 100 * 1024;
       const encodeImageToBase64 = (filePath) => {
         try {
           const image = fs.readFileSync(filePath);
+          if (image.length > MAX_EMBEDDED_IMAGE_BYTES) {
+            console.error(
+              `Skipping oversized image (${image.length} bytes > ${MAX_EMBEDDED_IMAGE_BYTES} limit), would risk crashing PhantomJS: ${filePath}`
+            );
+            return "";
+          }
           const mime = sniffImageMime(image) || "image/png";
           return `data:${mime};base64,${image.toString("base64")}`;
         } catch (err) {
