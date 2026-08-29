@@ -262,7 +262,9 @@
 
   <div style="position: relative">
     <div class="watermark" style="position: absolute; top: 27%; left: 35%; opacity: 0.2">
+      <% if (company_logo) { %>
       <img src="<%= company_logo %>" alt="" style="width: 50mm; display: none" />
+      <% } %>
     </div>
 
     <div class="header" style="text-align: center; display: none; height: 1px !important">
@@ -1189,7 +1191,9 @@
     </div>
 </div>
     <div class="footer" style="text-align: center; display: none">
+      <% if (footerImg) { %>
       <img src="<%= footerImg %>" style="width: 100%" alt="" />
+      <% } %>
     </div>
   </div>
 </body>
