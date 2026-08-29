@@ -20,14 +20,20 @@ export async function generateTaskDueListPdf({ companyData, teamWiseTaskList }) 
   const template = buildTaskDueListTemplate();
 
   // Same conditional-join logic as dueTaskListViewV1.ejs's header block
-  // (only show a line/separator when the underlying value is actually set).
-  const headerLines = [String(companyData?.company_name || "").toUpperCase()];
-  if (companyData?.address) headerLines.push(companyData.address);
-  const contactParts = [];
-  if (companyData?.company_contact) contactParts.push(`Mo. ${companyData.company_contact}`);
-  if (companyData?.company_email) contactParts.push(companyData.company_email);
-  if (contactParts.length) headerLines.push(contactParts.join(" | "));
-  if (companyData?.gst_number) headerLines.push(`GSTIN: ${companyData.gst_number}`);
+  // (only show a line/separator when the underlying value is actually set) —
+  // now split into companyName/companyAddress/companyContactLine/
+  // companyGSTIN, one per field, matching accountStatementGenerate.js's own
+  // convention exactly (companyGSTIN's "GSTIN: " prefix baked into the
+  // value itself, since there's no separate label field to carry it).
+  const companyName = String(companyData?.company_name || "").toUpperCase();
+  const companyAddress = companyData?.address || "";
+  const companyContactLine = [
+    companyData?.company_contact ? `Mo. ${companyData.company_contact}` : null,
+    companyData?.company_email || null,
+  ]
+    .filter(Boolean)
+    .join(" | ");
+  const companyGSTIN = companyData?.gst_number ? `GSTIN: ${companyData.gst_number}` : "";
 
   const rows = [];
   (teamWiseTaskList || []).forEach((team) => {
@@ -60,7 +66,10 @@ export async function generateTaskDueListPdf({ companyData, teamWiseTaskList }) 
   });
 
   const rawInputs = {
-    companyHeaderBlock: headerLines.join("\n"),
+    companyName,
+    companyAddress,
+    companyContactLine,
+    companyGSTIN,
     hasTasks: rows.length ? "1" : "",
     taskTable: JSON.stringify(rows),
     noDataText: "No due task found",

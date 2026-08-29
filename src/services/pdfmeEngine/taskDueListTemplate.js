@@ -43,15 +43,18 @@ export function buildTaskDueListTemplate() {
     basePdf: { width: PAGE.width, height: PAGE.height, padding: [15, 15, 15, 15] },
     schemas: [
       [
-        textField({
-          name: "companyHeaderBlock",
-          position: { x: 0, y: 0 },
-          width: 200,
-          height: 40,
-          fontSize: 9,
-          lineHeight: 1.4,
-          content: "COMPANY NAME\nAddress line\nMo. 0000000000 | company@example.com\nGSTIN: 00XXXXX0000X0X0",
-        }),
+        // Split from one companyHeaderBlock text field into the same
+        // granular companyName/companyAddress/companyContactLine/
+        // companyGSTIN fields accountStatementTemplate.js and
+        // employeeAccountStatementTemplate.js already use — the combined
+        // block couldn't be bound to any one real data key on its own,
+        // only worked as static placeholder text nobody could actually
+        // customize per-field. 40mm of header room was already reserved
+        // (divider starts at y:42), so no other field needs to move.
+        textField({ name: "companyName", position: { x: 0, y: 0 }, width: 200, height: 11, fontSize: 11, fontName: "Poppins Bold", lineHeight: 1.4, content: "", visibilityCondition: { mode: "hideIfEmpty" } }),
+        textField({ name: "companyAddress", position: { x: 0, y: 11 }, width: 200, height: 9, fontSize: 9, lineHeight: 1.4, content: "", visibilityCondition: { mode: "hideIfEmpty" } }),
+        textField({ name: "companyContactLine", position: { x: 0, y: 20 }, width: 200, height: 9, fontSize: 9, lineHeight: 1.4, content: "", visibilityCondition: { mode: "hideIfEmpty" } }),
+        textField({ name: "companyGSTIN", position: { x: 0, y: 29 }, width: 200, height: 9, fontSize: 9, lineHeight: 1.4, content: "", visibilityCondition: { mode: "hideIfEmpty" } }),
         textField({
           name: "divider",
           position: { x: 0, y: 42 },

@@ -64,7 +64,10 @@ export function buildPendingOrderTemplate(
   docTitle,
   { headerVariant = "details", footerImage = false, headerHeightMM = 18, footerHeightMM = 15 } = {},
 ) {
-  const topPadding = headerVariant === "image" ? Math.max(25, 5 + headerHeightMM + 2) : 25;
+  // Kept in sync with buildTemplate.js's buildDocTemplate — both share
+  // buildHeaderFields, whose non-image variants now reserve 34mm (was 25)
+  // for the added companyGSTIN/companyMobile/companyEmail lines.
+  const topPadding = headerVariant === "image" ? Math.max(25, 5 + headerHeightMM + 2) : 34;
   const bottomPadding = footerImage ? Math.max(30, FOOTER_BOTTOM_MARGIN + footerHeightMM + 3) : 15;
 
   const contentTopOffset = topPadding - 25;
