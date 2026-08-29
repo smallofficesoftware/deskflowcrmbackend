@@ -1,5 +1,6 @@
 import { requestContext } from "../config/context.js";
 import emitToCompany from "../services/1socketIOServices/emitToCompany.js";
+import { contactModel } from "../models/activities/contactModel.js";
 
 // Service functions that should broadcast a live-refresh signal to the rest
 // of the company on success. Keyed by the FN_name each router already passes
@@ -113,6 +114,38 @@ const emitSocketEventForResult = (req, eventName, payload) => {
   }
 };
 
+// Contact Kanban board only wants to auto-refresh for contacts assigned to
+// the viewer, not every contact-changed event company-wide (a company can
+// have many team members' boards open at once, each only caring about
+// their own assignments). Reading assinged_to_work_a_application_id
+// straight off the row (not off req.body) works regardless of which
+// entry point fired the event (createContact/updateContact/deleteContact/
+// assignStatusContactsProvider/updateCommon all reach here with different
+// body shapes) - one cheap lookup by the id already resolved into the
+// payload, skipped entirely when there's no id (a brand-new contact keeps
+// today's "always refresh, it might belong on this board" behavior).
+const attachContactAssignees = async (req, eventName, payload) => {
+  if (eventName !== "contact-changed" || !payload?.id || !req.tenantDB) {
+    return payload;
+  }
+  try {
+    const Contact = contactModel(req.tenantDB);
+    const contact = await Contact.findOne({
+      where: { id: payload.id },
+      attributes: ["assinged_to_work_a_application_id"],
+      raw: true,
+    });
+    const assignedIds = (contact?.assinged_to_work_a_application_id || "")
+      .split(",")
+      .map((v) => Number(v.trim()))
+      .filter((v) => !isNaN(v));
+    return { ...payload, assigned_to: assignedIds };
+  } catch (error) {
+    console.error(`[socket:${eventName}] failed to resolve assignee`, error);
+    return payload;
+  }
+};
+
 const callServiceMethod = async (req, res, serviceMethodToCall, FN_name) => {
   try {
     const data = await serviceMethodToCall;
@@ -121,9 +154,10 @@ const callServiceMethod = async (req, res, serviceMethodToCall, FN_name) => {
     const eventNames = resolveSocketEvents(FN_name, req);
     if (eventNames.length && data?.ack === 1) {
       const payload = resolveSocketPayload(FN_name, req, data);
-      eventNames.forEach((eventName) =>
-        emitSocketEventForResult(req, eventName, payload),
-      );
+      for (const eventName of eventNames) {
+        const enrichedPayload = await attachContactAssignees(req, eventName, payload);
+        emitSocketEventForResult(req, eventName, enrichedPayload);
+      }
     }
   } catch (error) {
     if (error.response && error.response.status === 401) {
