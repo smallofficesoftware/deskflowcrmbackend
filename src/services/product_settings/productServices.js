@@ -1425,6 +1425,8 @@ export const getExportsProducts = async (req) => {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
 
+    const customFormFieldModelIntance = customFieldFormModel(req.tenantDB);
+
     /* get custome form field */
     let getCustomFormFieldR = await customFormFieldModelIntance.findAll({
       where: { form_type: 4, isDelete: 0 },
