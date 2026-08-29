@@ -4553,9 +4553,23 @@ const generateSingleOrderPdf = async (req, res) => {
       }
       const printSettingModels = printSettingModel(req.tenantDB);
 
+      // print_settings.type isn't always the same number as the cart's own
+      // `type` column — Proforma Invoice carts are type 12, but the print-
+      // settings UI (getprintSetting/printSettingController.js) stores its
+      // rows under type 15 for Proforma specifically. Passing the raw cart
+      // type (12) straight through found no row at all for any print_version
+      // that only exists under 15, silently falling back to an empty {}
+      // settingDetails - which then makes every printSetting.X check in the
+      // EJS false, hiding buyer info/columns/signature/etc. (confirmed live:
+      // type 15 has real, fully-configured rows for print_version 1-4).
+      const PRINT_SETTINGS_TYPE_BY_CART_TYPE = { 12: 15 };
+      const printSettingsType =
+        PRINT_SETTINGS_TYPE_BY_CART_TYPE[resultCartById.dataValues.type] ??
+        Number(resultCartById.dataValues.type);
+
       const printSettings = await printSettingModels.findOne({
         where: {
-          type: Number(resultCartById.dataValues.type),
+          type: printSettingsType,
           print_version: Number(viewFormate),
           isDelete: 0
         },
@@ -4609,7 +4623,6 @@ const generateSingleOrderPdf = async (req, res) => {
         qrSvg: qrSvg,
         BACKEND_OF_SMALL_OFFICE_CRM_END_POINT: BACKEND_OF_SMALL_OFFICE_CRM_END_POINT,
       });
-
 
       // ✅ Dynamic height calculation function
       const calculateHeaderDetailsHeight = () => {
