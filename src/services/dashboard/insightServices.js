@@ -226,7 +226,8 @@ export const getAllInsight = async (req) => {
     const supportAnd = await buildFor({
       pageId: PAGE_ID.SUPPORT_TICKET,
       ownerCol: "a_application_login_id",
-      assigneeCols: ["assigned_team_member"]
+      assigneeCols: ["assigned_team_member"],
+      csv: true, // CSV column ("3424,3425") → FIND_IN_SET, not exact Op.in match
     });
     const whereClauseSupportTicket = {
       isDelete: "0",
@@ -243,14 +244,22 @@ export const getAllInsight = async (req) => {
     const taskAnd = await buildFor({
       pageId: PAGE_ID.TASK_MANAGEMENT,
       ownerCol: "a_application_login_id",
-      assigneeCols: ["assigned_team_member"]
+      assigneeCols: ["assigned_team_member"],
+      csv: true, // CSV column ("3424,3425") → FIND_IN_SET, not exact Op.in match
     });
     const whereClauseTask = {
       isDelete: "0",
       is_support_ticket: "0",
       task_template: "0",
       is_not_visible: "0",
-      [Op.and]: [...taskAnd, dateAnd("created_date_time", start, end)],
+      // status=-6 is a completed sticky note (same table, set by completeStickeyNote) —
+      // get-task's buildAllTaskWhere excludes it the same way, sticky notes aren't tasks.
+      status: { [Op.ne]: -6 },
+      [Op.and]: [
+        ...taskAnd,
+        Sequelize.where(Sequelize.fn("DATE", Sequelize.col("task_fromdate")), { [Op.gte]: start }),
+        Sequelize.where(Sequelize.fn("DATE", Sequelize.col("task_enddate")), { [Op.lte]: end }),
+      ],
     };
     const TotalTaskCount = await TaskModel.count({ where: whereClauseTask });
 
