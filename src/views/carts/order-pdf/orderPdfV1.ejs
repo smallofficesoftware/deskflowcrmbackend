@@ -1314,31 +1314,43 @@ if (cart.update_Date_time && cart.update_Date_time !== "00-00-00 00:00:00") {
   <script>
     // JavaScript solution to prevent row breaks
     // This runs before print and adds page breaks BEFORE rows that would be cut
-    
+    //
+    // ES5 only (var, function expressions, no arrow functions/template
+    // literals) - this EJS is also rendered by html-pdf's PhantomJS engine
+    // (see generateSingleOrderPdf, orderServices.js), whose ancient
+    // pre-ES6 JS engine throws a hard SyntaxError on const/let/arrow
+    // functions - "Expected an identifier but found 'currentPageHeight'
+    // instead" - which aborted the ENTIRE page render there, producing a
+    // blank PDF (confirmed live via crm_backend.log). beforeprint/
+    // afterprint never fire in PhantomJS's rendering model anyway (no
+    // actual print action happens), so this is a no-op no-error listener
+    // there either way - it's still real for an actual browser print of
+    // this same template (e.g. OrderPrintViewV1).
+
     window.addEventListener('beforeprint', function() {
-      const A4_HEIGHT_PX = 1122; // A4 height in pixels at 96 DPI (297mm)
-      const MARGIN_BOTTOM = 50; // Safety margin
-      const PAGE_HEIGHT = A4_HEIGHT_PX - MARGIN_BOTTOM;
-      
-      const rows = document.querySelectorAll('.invoice-row:not(.blank-row)');
-      let currentPageHeight = 0;
-      let pageNumber = 1;
-      
+      var A4_HEIGHT_PX = 1122; // A4 height in pixels at 96 DPI (297mm)
+      var MARGIN_BOTTOM = 50; // Safety margin
+      var PAGE_HEIGHT = A4_HEIGHT_PX - MARGIN_BOTTOM;
+
+      var rows = document.querySelectorAll('.invoice-row:not(.blank-row)');
+      var currentPageHeight = 0;
+      var pageNumber = 1;
+
       // First, remove any existing page break classes
-      rows.forEach(row => {
+      rows.forEach(function(row) {
         row.classList.remove('force-page-break-before');
       });
-      
+
       // Calculate initial offset (header + customer info)
-      const invoiceContainer = document.querySelector('.invoice-container');
+      var invoiceContainer = document.querySelector('.invoice-container');
       if (invoiceContainer) {
-        const containerTop = invoiceContainer.getBoundingClientRect().top;
+        var containerTop = invoiceContainer.getBoundingClientRect().top;
         currentPageHeight = containerTop;
       }
-      
-      rows.forEach((row, index) => {
-        const rowHeight = row.offsetHeight;
-        
+
+      rows.forEach(function(row) {
+        var rowHeight = row.offsetHeight;
+
         // Check if this row would overflow the page
         if (currentPageHeight + rowHeight > PAGE_HEIGHT) {
           // Add page break before this row
@@ -1351,14 +1363,14 @@ if (cart.update_Date_time && cart.update_Date_time !== "00-00-00 00:00:00") {
           currentPageHeight += rowHeight;
         }
       });
-      
+
       console.log('Page break calculation complete. Total pages:', pageNumber);
     });
-    
+
     // Optional: Remove page breaks after printing
     window.addEventListener('afterprint', function() {
-      const rows = document.querySelectorAll('.invoice-row');
-      rows.forEach(row => {
+      var rows = document.querySelectorAll('.invoice-row');
+      rows.forEach(function(row) {
         row.classList.remove('force-page-break-before');
       });
     });
