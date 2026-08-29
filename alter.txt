@@ -2881,3 +2881,14 @@ ALTER TABLE `maintenance_modes` ADD `is_training_disabled` INT(11) NOT NULL DEFA
 -- DB by any deploy step — this repo's chain is the one actually executed;
 -- its absence here is why every maintenance_modes query started throwing
 -- "Unknown column 'is_training_disabled'" once the model change shipped.)
+
+29-08-2026 Deep
+CREATE TABLE `status_masters`(
+    `id` INT(11) NOT NULL AUTO_INCREMENT,
+    `status_name` VARCHAR(100) NOT NULL,
+    `status_color` VARCHAR(50) NOT NULL,
+    `status_parent` INT(11) NOT NULL COMMENT '1: event',
+    `created_date_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP(), `modified_date` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP(), `s_timestemp` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP() ON UPDATE CURRENT_TIMESTAMP(), `isDelete` TINYINT(4) NOT NULL DEFAULT 0, `isActive` TINYINT(4) NOT NULL DEFAULT 1, PRIMARY KEY(`id`)) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci;
+
+29-08-2026 Deep
+ALTER TABLE `event_masters` ADD `status_id` INT(11) NULL DEFAULT NULL AFTER `event_date`;
