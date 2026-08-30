@@ -2883,8 +2883,9 @@ INSERT INTO `SequelizeMeta` (`name`) VALUES
 
 30-08-2026 Dhaval
 ALTER TABLE `inquiries` ADD `product_remarks` LONGTEXT NULL DEFAULT NULL AFTER `qty`;
--- Per-product remarks for the multi-product inquiry rows. Stored as a JSON
--- array string ("[\"remark 1\",\"remark 2\"]") positionally paired with the
--- comma-joined product_id/qty/category_id - free text (commas/newlines) so it
--- cannot use their comma-join. Also apply to smalloffice_sample_tenant.
+-- Per-product remarks for the multi-product inquiry rows. Positionally
+-- paired with the comma-joined product_id/qty/category_id - free text
+-- (commas/newlines) so it cannot use their comma-join; joined instead with
+-- the distinctive delimiter "||$||" ("remark 1||$||remark 2"). Also apply
+-- to smalloffice_sample_tenant.
 -- migration: migration/tenant/migrations/20260830130000-add-product-remarks-to-inquiries.js
