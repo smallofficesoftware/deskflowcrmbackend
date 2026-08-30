@@ -63,10 +63,31 @@ const makeTempConfigContent = (tenant, dialect) => {
 };\n`;
 };
 
+// smalloffice_sample_tenant isn't a real tenant_masters row - it's the
+// structure template new-company signup clones via `CREATE TABLE x LIKE
+// smalloffice_sample_tenant.x` (see create_company_copy.sql). It lives on
+// the same MySQL server as the master DB. Historically it only got tenant
+// migrations' SQL applied by hand (alter.txt), never through this runner,
+// so every server's copy needs a one-time SequelizeMeta backfill for
+// already-applied migrations before this starts covering it - otherwise
+// `up` will try to replay old CREATE TABLE/ADD COLUMN migrations against
+// structure that's already there and fail. See migration/tenant/README or
+// alter.txt history for the backfill statement.
+const SAMPLE_TENANT_DB_NAME = 'smalloffice_sample_tenant';
+
 const getTenants = async (masterSequelize) => {
     try {
         const [rows] = await masterSequelize.query(tenantQuery);
-        return rows || [];
+        const tenants = rows || [];
+        tenants.push({
+            id: 'sample',
+            company_masters_id: null,
+            db_name: SAMPLE_TENANT_DB_NAME,
+            db_user: process.env.TENANT_DB_USER_NAME,
+            db_password: process.env.TENANT_DB_PASSWORD,
+            db_host: process.env.TENANT_DB_HOST_NAME,
+        });
+        return tenants;
     } catch (error) {
         console.error('Error fetching tenants:', error.message);
         return [];
