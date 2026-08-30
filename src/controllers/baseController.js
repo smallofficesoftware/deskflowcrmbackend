@@ -19,6 +19,8 @@ const SOCKET_EVENT_MAP = {
   updateContact: "contact-changed",
   deleteContact: "contact-changed",
   assignStatusContactsProvider: "contact-changed",
+  assignLableContactsProvider: "contact-changed",
+  assignContactsProvider: "contact-changed",
   createcreateCustomerSupportTicketAllTask: "support-ticket-changed",
   convertSupportTicketAllTask: ["task-changed", "support-ticket-changed"],
 };
@@ -90,16 +92,20 @@ const resolveSocketPayload = (FN_name, req, data) => {
   // FN_name-keyed task/contact actions - each route uses its own field name
   // for the record id (verified against the actual service functions, not
   // guessed): AllTaskUpdate uses `editId`; AllTaskDelete/archiveAllTask/
-  // unarchiveAllTask use `TaskId`; deleteContact uses `contactId`. Several
-  // of these can be an array for bulk actions - kept unscoped rather than
-  // guessing how a listener should compare against a list.
+  // unarchiveAllTask use `TaskId`; deleteContact uses `contactId`;
+  // assignContactsProvider/assignStatusContactsProvider/
+  // assignLableContactsProvider use `appliedTo` (single id, or the literal
+  // string "all" for a filter-driven bulk apply). Several of these can be
+  // an array/"all" for bulk actions - kept unscoped rather than guessing
+  // how a listener should compare against a list.
   const rawId =
     req.body?.id ??
     req.body?.task_id ??
     req.body?.contact_id ??
     req.body?.editId ??
     req.body?.TaskId ??
-    req.body?.contactId;
+    req.body?.contactId ??
+    (req.body?.appliedTo !== "all" ? req.body?.appliedTo : undefined);
   const id = Array.isArray(rawId) ? undefined : rawId;
   return id ? { id } : {};
 };
