@@ -343,12 +343,17 @@ export const getAllInquiry = async (req) => {
     const allProductIds = new Set();
     const allCategoryIds = new Set();
     for (const item of inquiry || []) {
-      (item.product_id || "")
+      // product_id/category_id are varchar columns meant to hold a
+      // comma-joined list, but a row can end up with a bare numeric value
+      // (e.g. inserted directly, or Sequelize/mysql2 coercing an
+      // all-digit varchar to a JS number under some driver configs) -
+      // String(...) guards .split() against that either way.
+      String(item.product_id || "")
         .split(",")
         .map((id) => id.trim())
         .filter(Boolean)
         .forEach((id) => allProductIds.add(Number(id)));
-      (item.category_id || "")
+      String(item.category_id || "")
         .split(",")
         .map((id) => id.trim())
         .filter(Boolean)
@@ -380,7 +385,7 @@ export const getAllInquiry = async (req) => {
     );
 
     const namesFromCsv = (csv, nameMap) =>
-      (csv || "")
+      String(csv || "")
         .split(",")
         .map((id) => id.trim())
         .filter(Boolean)
