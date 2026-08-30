@@ -103,16 +103,33 @@ export const getAllContactReport = async (req) => {
         tenentId: req.tenantDB,
       });
 
+    // Personal scope means "mine" - both contacts this login created AND
+    // ones assigned to them, same convention lableWiseReportServices.js /
+    // sourceReportServices.js / teamPerformanceReportServices.js already
+    // use. Filtering on a_application_login_id alone (the old behavior)
+    // silently dropped every contact assigned to a team member by someone
+    // else - "for owner all record, for team member default created and
+    // assigned" was correct for owners, not for team members.
+    const personalScopeOr = [
+      { a_application_login_id: a_application_login_id_rights },
+      Sequelize.literal(
+        `FIND_IN_SET('${a_application_login_id_rights}', assinged_to_work_a_application_id) > 0`
+      ),
+    ];
+
+    // Op.and (not a bare [Op.or] key) so this survives the
+    // ...fullTextSearchCondition spread below - fullTextSearchCondition
+    // has its OWN [Op.or] key when a search term is active, and since
+    // Op.or is the same Symbol every time, a second [Op.or]: ... spread
+    // on top would silently replace this one instead of combining with it.
     if (!showAllData && showPersonalData) {
       whereClause = {
         ...whereClause,
-        a_application_login_id:
-          req.body.a_application_login_id,
+        [Op.and]: [{ [Op.or]: personalScopeOr }],
       };
     } else if (showPersonalData) {
       whereClause = {
-        a_application_login_id:
-          req.body.a_application_login_id,
+        [Op.and]: [{ [Op.or]: personalScopeOr }],
       };
     }
 
