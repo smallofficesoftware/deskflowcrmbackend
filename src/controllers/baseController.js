@@ -1,6 +1,7 @@
 import { requestContext } from "../config/context.js";
 import emitToCompany from "../services/1socketIOServices/emitToCompany.js";
 import { contactModel } from "../models/activities/contactModel.js";
+import { taskManagementModel } from "../models/activities/taskManagementModel.js";
 
 // Service functions that should broadcast a live-refresh signal to the rest
 // of the company on success. Keyed by the FN_name each router already passes
@@ -146,6 +147,34 @@ const attachContactAssignees = async (req, eventName, payload) => {
   }
 };
 
+// Same idea as attachContactAssignees, for the Task/Support Ticket Kanban
+// board (task_managements rows double as support tickets, and both share
+// the one TaskKanbanModal component listening on "task-changed" - no
+// separate handling needed for support-ticket-changed). Covers every
+// assign-team-member/assign-status/assign-label action since they all
+// reach here via the same updateCommon(table: "task_managements") path.
+const attachTaskAssignees = async (req, eventName, payload) => {
+  if (eventName !== "task-changed" || !payload?.id || !req.tenantDB) {
+    return payload;
+  }
+  try {
+    const Task = taskManagementModel(req.tenantDB);
+    const task = await Task.findOne({
+      where: { id: payload.id },
+      attributes: ["assigned_team_member"],
+      raw: true,
+    });
+    const assignedIds = (task?.assigned_team_member || "")
+      .split(",")
+      .map((v) => Number(v.trim()))
+      .filter((v) => !isNaN(v));
+    return { ...payload, assigned_to: assignedIds };
+  } catch (error) {
+    console.error(`[socket:${eventName}] failed to resolve assignee`, error);
+    return payload;
+  }
+};
+
 const callServiceMethod = async (req, res, serviceMethodToCall, FN_name) => {
   try {
     const data = await serviceMethodToCall;
@@ -155,7 +184,8 @@ const callServiceMethod = async (req, res, serviceMethodToCall, FN_name) => {
     if (eventNames.length && data?.ack === 1) {
       const payload = resolveSocketPayload(FN_name, req, data);
       for (const eventName of eventNames) {
-        const enrichedPayload = await attachContactAssignees(req, eventName, payload);
+        let enrichedPayload = await attachContactAssignees(req, eventName, payload);
+        enrichedPayload = await attachTaskAssignees(req, eventName, enrichedPayload);
         emitSocketEventForResult(req, eventName, enrichedPayload);
       }
     }
