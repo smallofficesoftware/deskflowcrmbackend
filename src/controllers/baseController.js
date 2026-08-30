@@ -2,6 +2,7 @@ import { requestContext } from "../config/context.js";
 import emitToCompany from "../services/1socketIOServices/emitToCompany.js";
 import { contactModel } from "../models/activities/contactModel.js";
 import { taskManagementModel } from "../models/activities/taskManagementModel.js";
+import maintenanceModesModel from "../models/configuration/maintenanceModesModel.js";
 
 // Service functions that should broadcast a live-refresh signal to the rest
 // of the company on success. Keyed by the FN_name each router already passes
@@ -121,6 +122,22 @@ const emitSocketEventForResult = (req, eventName, payload) => {
   }
 };
 
+// Same admin-panel kill-switch src/index.js's io.use() gate checks
+// (maintenance_modes.is_socket_disabled) - when it's on, no client can even
+// hold a socket connection, so every emit here is a guaranteed no-op. Skip
+// the whole thing (including the attach*Assignees DB lookups) rather than
+// doing that work for nobody on every single write. Fails open on a DB
+// error, same as the connection-gate itself.
+const isSocketDisabled = async () => {
+  try {
+    const setting = await maintenanceModesModel.findOne({ where: { isDelete: 0 } });
+    return setting?.dataValues?.is_socket_disabled === 1;
+  } catch (error) {
+    console.error("[socket] failed to read maintenance_modes, assuming enabled", error);
+    return false;
+  }
+};
+
 // Contact Kanban board only wants to auto-refresh for contacts assigned to
 // the viewer, not every contact-changed event company-wide (a company can
 // have many team members' boards open at once, each only caring about
@@ -187,7 +204,7 @@ const callServiceMethod = async (req, res, serviceMethodToCall, FN_name) => {
     res.status(200).send(data);
 
     const eventNames = resolveSocketEvents(FN_name, req);
-    if (eventNames.length && data?.ack === 1) {
+    if (eventNames.length && data?.ack === 1 && !(await isSocketDisabled())) {
       const payload = resolveSocketPayload(FN_name, req, data);
       for (const eventName of eventNames) {
         let enrichedPayload = await attachContactAssignees(req, eventName, payload);
