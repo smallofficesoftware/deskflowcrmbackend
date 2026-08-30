@@ -2880,3 +2880,11 @@ INSERT INTO `SequelizeMeta` (`name`) VALUES
 -- (Run SELECT name FROM SequelizeMeta first to skip any already listed -
 -- this is the local-dev gap as of today; demo/prod's own sample_tenant
 -- may already be ahead or behind this exact list.)
+
+30-08-2026 Dhaval
+ALTER TABLE `inquiries` ADD `product_remarks` LONGTEXT NULL DEFAULT NULL AFTER `qty`;
+-- Per-product remarks for the multi-product inquiry rows. Stored as a JSON
+-- array string ("[\"remark 1\",\"remark 2\"]") positionally paired with the
+-- comma-joined product_id/qty/category_id - free text (commas/newlines) so it
+-- cannot use their comma-join. Also apply to smalloffice_sample_tenant.
+-- migration: migration/tenant/migrations/20260830130000-add-product-remarks-to-inquiries.js

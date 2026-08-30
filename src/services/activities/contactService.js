@@ -919,6 +919,7 @@ export const addContact = async (req, res) => {
         contact_master_id: contactCreate.dataValues.id,
         description: req.body.description || "",
         qty: req.body.qty || "",
+        product_remarks: req.body.product_remarks || "",
         category_id: req.body.category_id || 0,
         product_id: req.body.product_id || 0,
         source_type_id: req.body.source_type_id || "",
