@@ -3723,7 +3723,11 @@ export const covertOrderSystem = async (req, res) => {
         ...restAllCart,
         cart_number: financialYearDetail?.order_no || "",
         sr_by_number: financialYearDetail?.sr_by_no || 0,
-        sr_by_prifix: financialYearDetail?.sr_by_prifix || "cart",
+        // Blank, not "cart": the number/prefix is assigned on approve. A
+        // non-empty sr_by_prifix here is taken verbatim by getNumberSeries,
+        // so "cart" (or the spread-in source-doc prefix) would stick to the
+        // converted doc instead of its own type's default.
+        sr_by_prifix: financialYearDetail?.sr_by_prifix || "",
         type: cart_type,
         created_date_time: formattedDateTime,
         cart_date: formattedDate,
@@ -4005,7 +4009,11 @@ export const covertOrderSystem = async (req, res) => {
         ...restAllCart,
         cart_number: financialYearDetail?.order_no || "",
         sr_by_number: financialYearDetail?.sr_by_no || 0,
-        sr_by_prifix: financialYearDetail?.sr_by_prifix || "cart",
+        // Blank, not "cart": the number/prefix is assigned on approve. A
+        // non-empty sr_by_prifix here is taken verbatim by getNumberSeries,
+        // so "cart" (or the spread-in source-doc prefix) would stick to the
+        // converted doc instead of its own type's default.
+        sr_by_prifix: financialYearDetail?.sr_by_prifix || "",
         type: cart_type,
         created_date_time: formattedDateTime,
         cart_date: formattedDate,
