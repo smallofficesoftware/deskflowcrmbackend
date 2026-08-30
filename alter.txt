@@ -2853,3 +2853,30 @@ CREATE TABLE `event_participant_masters` (
 --   adminpanel/backend/src/database/migrations/20260830120001-create-event-masters.js
 --   adminpanel/backend/src/database/migrations/20260830120002-create-event-participant-masters.js
 --   adminpanel/backend/src/database/migrations/20260830120003-add-is-participation-allowed-to-event-masters.js
+
+30-08-2026 Dhaval
+-- One-time bookkeeping, not a schema change: src/scripts/runMigrations.js's
+-- tenant loop now also runs against smalloffice_sample_tenant (it isn't a
+-- tenant_masters row, so it was never covered automatically - only ever
+-- got tenant migrations' SQL applied by hand from this file). Its actual
+-- structure already matches every migration below (applied by hand over
+-- time), but SequelizeMeta never recorded that, so before this runner
+-- change reaches a server, that server's own smalloffice_sample_tenant
+-- needs this same backfill first - otherwise `migrate:tenant:up` will try
+-- to replay these as new and fail on "table/column already exists":
+USE smalloffice_sample_tenant;
+INSERT INTO `SequelizeMeta` (`name`) VALUES
+('20260821150000-add-template-purpose-to-document-print-templates.js'),
+('20260821160000-add-carts-designer-page-columns.js'),
+('20260822090000-add-product-document-template-id.js'),
+('20260822090001-add-include-product-pages.js'),
+('20260824180000-add-item-discount-type.js'),
+('20260824200000-change-inquiry-product-id-qty-to-text.js'),
+('20260824210000-change-inquiry-category-id-to-text.js'),
+('20260824220000-add-position-to-contact-masters.js'),
+('20260824220001-add-position-to-task-managements.js'),
+('20260825140000-create-task-checklist-items.js'),
+('20260827120000-add-job-card-type-to-job-cards.js');
+-- (Run SELECT name FROM SequelizeMeta first to skip any already listed -
+-- this is the local-dev gap as of today; demo/prod's own sample_tenant
+-- may already be ahead or behind this exact list.)
