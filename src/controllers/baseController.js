@@ -1,6 +1,8 @@
 import { requestContext } from "../config/context.js";
 import emitToCompany from "../services/1socketIOServices/emitToCompany.js";
 import { contactModel } from "../models/activities/contactModel.js";
+import { taskManagementModel } from "../models/activities/taskManagementModel.js";
+import maintenanceModesModel from "../models/configuration/maintenanceModesModel.js";
 
 // Service functions that should broadcast a live-refresh signal to the rest
 // of the company on success. Keyed by the FN_name each router already passes
@@ -18,6 +20,8 @@ const SOCKET_EVENT_MAP = {
   updateContact: "contact-changed",
   deleteContact: "contact-changed",
   assignStatusContactsProvider: "contact-changed",
+  assignLableContactsProvider: "contact-changed",
+  assignContactsProvider: "contact-changed",
   createcreateCustomerSupportTicketAllTask: "support-ticket-changed",
   convertSupportTicketAllTask: ["task-changed", "support-ticket-changed"],
 };
@@ -89,16 +93,20 @@ const resolveSocketPayload = (FN_name, req, data) => {
   // FN_name-keyed task/contact actions - each route uses its own field name
   // for the record id (verified against the actual service functions, not
   // guessed): AllTaskUpdate uses `editId`; AllTaskDelete/archiveAllTask/
-  // unarchiveAllTask use `TaskId`; deleteContact uses `contactId`. Several
-  // of these can be an array for bulk actions - kept unscoped rather than
-  // guessing how a listener should compare against a list.
+  // unarchiveAllTask use `TaskId`; deleteContact uses `contactId`;
+  // assignContactsProvider/assignStatusContactsProvider/
+  // assignLableContactsProvider use `appliedTo` (single id, or the literal
+  // string "all" for a filter-driven bulk apply). Several of these can be
+  // an array/"all" for bulk actions - kept unscoped rather than guessing
+  // how a listener should compare against a list.
   const rawId =
     req.body?.id ??
     req.body?.task_id ??
     req.body?.contact_id ??
     req.body?.editId ??
     req.body?.TaskId ??
-    req.body?.contactId;
+    req.body?.contactId ??
+    (req.body?.appliedTo !== "all" ? req.body?.appliedTo : undefined);
   const id = Array.isArray(rawId) ? undefined : rawId;
   return id ? { id } : {};
 };
@@ -111,6 +119,22 @@ const emitSocketEventForResult = (req, eventName, payload) => {
   } catch (error) {
     // Never let a broadcast failure affect the already-sent HTTP response.
     console.error(`[socket:${eventName}] emit failed`, error);
+  }
+};
+
+// Same admin-panel kill-switch src/index.js's io.use() gate checks
+// (maintenance_modes.is_socket_disabled) - when it's on, no client can even
+// hold a socket connection, so every emit here is a guaranteed no-op. Skip
+// the whole thing (including the attach*Assignees DB lookups) rather than
+// doing that work for nobody on every single write. Fails open on a DB
+// error, same as the connection-gate itself.
+const isSocketDisabled = async () => {
+  try {
+    const setting = await maintenanceModesModel.findOne({ where: { isDelete: 0 } });
+    return setting?.dataValues?.is_socket_disabled === 1;
+  } catch (error) {
+    console.error("[socket] failed to read maintenance_modes, assuming enabled", error);
+    return false;
   }
 };
 
@@ -146,16 +170,45 @@ const attachContactAssignees = async (req, eventName, payload) => {
   }
 };
 
+// Same idea as attachContactAssignees, for the Task/Support Ticket Kanban
+// board (task_managements rows double as support tickets, and both share
+// the one TaskKanbanModal component listening on "task-changed" - no
+// separate handling needed for support-ticket-changed). Covers every
+// assign-team-member/assign-status/assign-label action since they all
+// reach here via the same updateCommon(table: "task_managements") path.
+const attachTaskAssignees = async (req, eventName, payload) => {
+  if (eventName !== "task-changed" || !payload?.id || !req.tenantDB) {
+    return payload;
+  }
+  try {
+    const Task = taskManagementModel(req.tenantDB);
+    const task = await Task.findOne({
+      where: { id: payload.id },
+      attributes: ["assigned_team_member"],
+      raw: true,
+    });
+    const assignedIds = (task?.assigned_team_member || "")
+      .split(",")
+      .map((v) => Number(v.trim()))
+      .filter((v) => !isNaN(v));
+    return { ...payload, assigned_to: assignedIds };
+  } catch (error) {
+    console.error(`[socket:${eventName}] failed to resolve assignee`, error);
+    return payload;
+  }
+};
+
 const callServiceMethod = async (req, res, serviceMethodToCall, FN_name) => {
   try {
     const data = await serviceMethodToCall;
     res.status(200).send(data);
 
     const eventNames = resolveSocketEvents(FN_name, req);
-    if (eventNames.length && data?.ack === 1) {
+    if (eventNames.length && data?.ack === 1 && !(await isSocketDisabled())) {
       const payload = resolveSocketPayload(FN_name, req, data);
       for (const eventName of eventNames) {
-        const enrichedPayload = await attachContactAssignees(req, eventName, payload);
+        let enrichedPayload = await attachContactAssignees(req, eventName, payload);
+        enrichedPayload = await attachTaskAssignees(req, eventName, enrichedPayload);
         emitSocketEventForResult(req, eventName, enrichedPayload);
       }
     }
