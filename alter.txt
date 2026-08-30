@@ -2797,3 +2797,59 @@ ALTER TABLE `maintenance_modes` ADD `is_training_disabled` INT(11) NOT NULL DEFA
 -- DB by any deploy step — this repo's chain is the one actually executed;
 -- its absence here is why every maintenance_modes query started throwing
 -- "Unknown column 'is_training_disabled'" once the model change shipped.)
+
+29-08-2026 Dhaval
+ALTER TABLE `a_application_logins` ADD `date_of_birth` DATE NULL;
+
+30-08-2026 Dhaval
+CREATE TABLE `event_type_masters` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `event_type_name` TEXT NOT NULL,
+  `event_type_color` VARCHAR(255) NOT NULL,
+  `created_date_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `modified_date` DATETIME NULL,
+  `s_timestemp` DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
+  `isActive` TINYINT NOT NULL DEFAULT 1,
+  `isDelete` TINYINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`)
+);
+CREATE TABLE `event_masters` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `event_type_id` INT(11) NOT NULL,
+  `event_title` VARCHAR(255) NOT NULL,
+  `event_date` DATE NOT NULL,
+  `is_participation_allowed` TINYINT NOT NULL DEFAULT 0,
+  `created_date_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `modified_date` DATETIME NULL,
+  `s_timestemp` DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
+  `isActive` TINYINT NOT NULL DEFAULT 1,
+  `isDelete` TINYINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  KEY `event_masters_event_type_id` (`event_type_id`)
+);
+CREATE TABLE `event_participant_masters` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `event_id` INT(11) NULL,
+  `participant_name` VARCHAR(255) NOT NULL,
+  `participant_email` VARCHAR(255) NULL,
+  `participant_whatsapp_no` VARCHAR(20) NULL,
+  `participant_company_name` VARCHAR(255) NULL,
+  `created_date_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `modified_date` DATETIME NULL,
+  `s_timestemp` DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
+  `isActive` TINYINT NOT NULL DEFAULT 1,
+  `isDelete` TINYINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  KEY `event_participant_masters_event_id` (`event_id`)
+);
+-- Admin-panel event feature. `event_type_masters` / `event_masters` shipped in
+-- commit 9aa9e05 (models + CRUD + UI) with no migration; `event_participant_masters`
+-- + `event_masters.is_participation_allowed` add the public website calendar where
+-- visitors self-register for an event (is_participation_allowed = 1 opens it).
+-- Tables live on the shared master (smalloffice) DB that adminpanel/backend uses.
+-- migrations (adminpanel chain only - no deploy step runs it against live/demo,
+-- so apply the SQL above to the master DB by hand):
+--   adminpanel/backend/src/database/migrations/20260830120000-create-event-type-masters.js
+--   adminpanel/backend/src/database/migrations/20260830120001-create-event-masters.js
+--   adminpanel/backend/src/database/migrations/20260830120002-create-event-participant-masters.js
+--   adminpanel/backend/src/database/migrations/20260830120003-add-is-participation-allowed-to-event-masters.js
