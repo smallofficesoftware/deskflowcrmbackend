@@ -178,6 +178,8 @@ export const getAllInsight = async (req) => {
     const inquiryAnd = await buildFor({
       pageId: PAGE_ID.INQUIRY,
       ownerCol: "a_application_login_id",
+      assigneeCols: ["inquiry_assigned_team_member"],
+      csv: true, // CSV column ("3424,3425") → FIND_IN_SET, not exact Op.in match
     });
     const whereClauseInquiry = {
       isDelete: "0",
