@@ -3033,3 +3033,6 @@ CREATE TABLE `addon_vs_pages`(
     `isActive` TINYINT(4) NOT NULL DEFAULT '1',
     PRIMARY KEY(`id`)
 ) ENGINE = InnoDB;
+
+
+ALTER TABLE `company_vs_addon_masters` ADD `addon_type` TINYINT(4) NOT NULL COMMENT '1: Addon, 2: Page' AFTER `addon_id`;
