@@ -1,5 +1,6 @@
 import { insertApiLog } from '../services/activities/logService.js';
 import { insertMiracleLog } from '../services/activities/miracleLogService.js';
+import { insertThirdPartyLog } from '../services/activities/thirdPartyLogService.js';
 import { API_LOG_ENABLE_FLAG } from '../utils/appConstants.js';
 
 const miracleApiPatterns = [
@@ -11,6 +12,26 @@ const miracleApiPatterns = [
     /^\/api\/product-sync/,
     /^\/api\/contact-sync/,
     /^\/api\/bulk-sync-miracle-modules/,
+];
+
+// Every other third-party integration this app talks to - Miracle has its
+// own dedicated whitelist/table above (miracle_logs), these all land in the
+// separate third_party_logs table instead. Disjoint URL sets from Miracle's,
+// so a request only ever matches one of the two - no double-logging.
+const thirdPartyApiPatterns = [
+    { pattern: /^\/api\/India-mart/i, integration: "INDIAMART", direction: "OUTBOUND" },
+    { pattern: /^\/api\/webhookindiamart(\/|$)/i, integration: "INDIAMART", direction: "INBOUND" },
+    { pattern: /^\/api\/trade-india-buy-leads/i, integration: "TRADEINDIA_BUY_LEADS", direction: "OUTBOUND" },
+    { pattern: /^\/api\/trade-india/i, integration: "TRADEINDIA", direction: "OUTBOUND" },
+    { pattern: /^\/api\/webhookjustdial(\/|$)/i, integration: "JUSTDIAL", direction: "INBOUND" },
+    { pattern: /^\/api\/google-sheet-for-facebook/i, integration: "GOOGLESHEET", direction: "OUTBOUND" },
+    { pattern: /^\/api\/get-google-sheet-columns/i, integration: "GOOGLESHEET", direction: "OUTBOUND" },
+    { pattern: /^\/api\/update-google-sheet-columns/i, integration: "GOOGLESHEET", direction: "OUTBOUND" },
+    { pattern: /^\/api\/verify-payment-razorpay/i, integration: "RAZORPAY", direction: "OUTBOUND" },
+    { pattern: /^\/api\/razorpay/i, integration: "RAZORPAY", direction: "OUTBOUND" },
+    { pattern: /^\/api\/gimini/i, integration: "GEMINI", direction: "OUTBOUND" },
+    { pattern: /^\/api\/send-whatsapp-template/i, integration: "WHATSAPP_SEND", direction: "OUTBOUND" },
+    { pattern: /^\/api\/whatsapp-sender-messages/i, integration: "WHATSAPP_WEBHOOK", direction: "INBOUND" },
 ];
 
 function inferCrmModule(url = "") {
@@ -32,8 +53,9 @@ const apiLogger = (req, res, next) => {
 
     const isMiracleCrmApi = miracleApiPatterns.some(route => route.test(req.originalUrl));
     const isWebhook = /^\/api\/webhookmiracle(\/|$)/.test(req.originalUrl);
+    const matchedThirdParty = thirdPartyApiPatterns.find(entry => entry.pattern.test(req.originalUrl));
 
-    if (!isMiracleCrmApi && !isWebhook) {
+    if (!isMiracleCrmApi && !isWebhook && !matchedThirdParty) {
         return next();
     }
 
@@ -94,6 +116,25 @@ const apiLogger = (req, res, next) => {
                         response_payload: body,
                         error_message: res.statusCode >= 400 ? (typeof body === 'string' ? body : JSON.stringify(body)) : null,
                         company_masters_id: req.user?.company_id || null,
+                    });
+                }
+
+                // 3. Third-party integration log (everything except Miracle)
+                if (matchedThirdParty && req.tenantDB) {
+                    insertThirdPartyLog(req.tenantDB, {
+                        integration: matchedThirdParty.integration,
+                        direction: matchedThirdParty.direction,
+                        module_name: matchedThirdParty.integration.toLowerCase(),
+                        url: req.originalUrl,
+                        method: req.method?.toUpperCase() || "POST",
+                        status_code: res.statusCode,
+                        status: res.statusCode >= 400 ? "FAILED" : "SUCCESS",
+                        response_time: responseTime,
+                        request_payload: req.body,
+                        response_payload: body,
+                        error_message: res.statusCode >= 400 ? (typeof body === 'string' ? body : JSON.stringify(body)) : null,
+                        company_masters_id: req.user?.company_id || null,
+                        a_application_login_id: req.body?.a_application_login_id || null,
                     });
                 }
             } catch (err) {
