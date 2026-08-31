@@ -47,9 +47,15 @@ import reminderRouter from "./activities/reminderRouter.js";
 import routePlannerRouter from "./activities/routePlannerRouter.js";
 import stockAdjustmentRouter from "./activities/stockAdjustmentRouter.js";
 import TaskManagement from './activities/taskManagementRouter.js';
+import TaskChecklist from './activities/taskChecklistRouter.js';
 import TaskMessageHistory from './activities/taskMessageHistoryRouter.js';
 import trackingRouter from "./activities/trackingRouter.js";
 import { default as getprintSetting, default as printSetting } from './company_setup/printSettingRouter.js';
+import documentPrintTemplateRouter from './company_setup/documentPrintTemplateRouter.js';
+import featureFlagRouter from './company_setup/featureFlagRouter.js';
+import reportPinRouter from './company_setup/reportPinRouter.js';
+import reportDefinitionRouter from './report_builder/reportDefinitionRouter.js';
+import reviewRouter from './company_setup/reviewRouter.js';
 import currencyRouter from "./configuration/currencyRouter.js";
 import updateTenent from "./configuration/updateTenentRouter.js";
 import allInsightsRouter from "./dashboard/allInsightsRouter.js";
@@ -153,8 +159,14 @@ export default () => {
   getCallReport(app);
   printSetting(app);
   getprintSetting(app);
+  documentPrintTemplateRouter(app);
+  featureFlagRouter(app);
+  reportPinRouter(app);
+  reportDefinitionRouter(app);
+  reviewRouter(app);
   TaskManagement(app);
   TaskMessageHistory(app);
+  TaskChecklist(app);
   getTeamAllTask(app)
   allAccountTranctionsReport(app)
   changeMobileNumberRouter(app)

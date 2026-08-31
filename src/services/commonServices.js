@@ -833,29 +833,44 @@ export const createCommon = async (req) => {
             });
             return user?.person_name || null;
           };
-          // Async function to fetch product category
+          // Async function to fetch product category(-ies) — category_id is
+          // a comma-separated list, same convention as product_id below.
           const Productcategory = async (category_id) => {
             if (!category_id) return null;
-            const user = await sequelize.models.categories.findOne({
+            const ids = String(category_id)
+              .split(",")
+              .map((id) => id.trim())
+              .filter(Boolean);
+            if (ids.length === 0) return null;
+            const users = await sequelize.models.categories.findAll({
               where: {
-                id: category_id,
+                id: { [Op.in]: ids },
                 isDelete: "0",
               },
               attributes: ["category_name"],
             });
-            return user?.category_name || null;
+            const names = users.map((u) => u.category_name).filter(Boolean);
+            return names.length > 0 ? names.join(", ") : null;
           };
-          // Async function to fetch product name
+          // Async function to fetch product name(s) — product_id is a
+          // comma-separated list (an inquiry can reference multiple
+          // products), e.g. "5,12,18"; a single product is just "5".
           const Product = async (product_id) => {
             if (!product_id) return null;
-            const user = await sequelize.models.products.findOne({
+            const ids = String(product_id)
+              .split(",")
+              .map((id) => id.trim())
+              .filter(Boolean);
+            if (ids.length === 0) return null;
+            const users = await sequelize.models.products.findAll({
               where: {
-                id: product_id,
+                id: { [Op.in]: ids },
                 isDelete: "0",
               },
               attributes: ["product_name"],
             });
-            return user?.product_name || null;
+            const names = users.map((u) => u.product_name).filter(Boolean);
+            return names.length > 0 ? names.join(", ") : null;
           };
           // Fetch data concurrently
           const [contactnameall, productcategory, product, username] =
@@ -1601,6 +1616,20 @@ export const updateCommon = async (req) => {
             })
           }
         }
+        else if (referanceColumn.form_type == 16) {
+          const cartColumnCheck = await sequelize.models.carts.update(updateColumn, {
+            where: {
+              id: { [Op.gt]: 0 },
+              type: 12
+            }
+          });
+
+          if (cartColumnCheck) {
+            return resSuccess({
+              ack_msg: "Custom form field and data is deleted successfully"
+            })
+          }
+        }
         else {
           return resError({
             developer_msg: "referanceColumn.form_type is not match please try another field"
@@ -1691,97 +1720,101 @@ export const updateCommon = async (req) => {
 
     if (table === "contact_masters" && parsedData.contact_status) {
       try {
+        // Wrapped in an IIFE so the early "nothing to notify" exits below
+        // only skip this notification step, not the whole updateCommon
+        // response (a bare `return` here previously aborted the entire
+        // function with no response body whenever the contact had no
+        // assigned owner - e.g. any status change on an unassigned contact).
+        await (async () => {
+          const assignedIds = Array.isArray(whereObj.id)
+            ? whereObj.id
+            : [whereObj.id];
+          const contactData = await sequelize.models.contact_masters.findAll({
+            where: { id: assignedIds },
+            attributes: ["a_application_login_id"],
+          });
 
-
-
-        const assignedIds = Array.isArray(whereObj.id)
-          ? whereObj.id
-          : [whereObj.id];
-        const contactData = await sequelize.models.contact_masters.findAll({
-          where: { id: assignedIds },
-          attributes: ["a_application_login_id"],
-        });
-
-        if (!contactData.length) {
-          return;
-        }
-
-        const loginIds = contactData
-          .map((contact) => contact.a_application_login_id)
-          .filter((id) => id);
-
-        if (!loginIds.length) {
-          return;
-        }
-
-        const assignedTokenData = await loginModel.findAll({
-          where: {
-            id: loginIds,
-            isDelete: 0,
-          },
-          attributes: [
-            "web_refresh_token",
-            "android_refresh_token",
-            "ios_refresh_token",
-            "reporting_member",
-          ],
-        });
-
-        if (!assignedTokenData.length) {
-          return;
-        }
-
-        const allTokens = [];
-        const reportingMemberIds = new Set();
-
-        for (const tokenData of assignedTokenData) {
-          allTokens.push(
-            tokenData.web_refresh_token,
-            tokenData.android_refresh_token,
-            tokenData.ios_refresh_token
-          );
-          if (tokenData.reporting_member) {
-            reportingMemberIds.add(tokenData.reporting_member);
+          if (!contactData.length) {
+            return;
           }
-        }
 
-        if (reportingMemberIds.size > 0) {
-          const reportingMemberData = await loginModel.findAll({
+          const loginIds = contactData
+            .map((contact) => contact.a_application_login_id)
+            .filter((id) => id);
+
+          if (!loginIds.length) {
+            return;
+          }
+
+          const assignedTokenData = await loginModel.findAll({
             where: {
-              id: Array.from(reportingMemberIds),
+              id: loginIds,
               isDelete: 0,
             },
             attributes: [
               "web_refresh_token",
               "android_refresh_token",
               "ios_refresh_token",
+              "reporting_member",
             ],
           });
 
-          for (const reportingMember of reportingMemberData) {
+          if (!assignedTokenData.length) {
+            return;
+          }
+
+          const allTokens = [];
+          const reportingMemberIds = new Set();
+
+          for (const tokenData of assignedTokenData) {
             allTokens.push(
-              reportingMember.web_refresh_token,
-              reportingMember.android_refresh_token,
-              reportingMember.ios_refresh_token
+              tokenData.web_refresh_token,
+              tokenData.android_refresh_token,
+              tokenData.ios_refresh_token
+            );
+            if (tokenData.reporting_member) {
+              reportingMemberIds.add(tokenData.reporting_member);
+            }
+          }
+
+          if (reportingMemberIds.size > 0) {
+            const reportingMemberData = await loginModel.findAll({
+              where: {
+                id: Array.from(reportingMemberIds),
+                isDelete: 0,
+              },
+              attributes: [
+                "web_refresh_token",
+                "android_refresh_token",
+                "ios_refresh_token",
+              ],
+            });
+
+            for (const reportingMember of reportingMemberData) {
+              allTokens.push(
+                reportingMember.web_refresh_token,
+                reportingMember.android_refresh_token,
+                reportingMember.ios_refresh_token
+              );
+            }
+          }
+
+          const uniqueTokens = [
+            ...new Set(allTokens.filter((token) => token && token.trim() !== "")),
+          ];
+
+          if (uniqueTokens.length > 0) {
+            await sendMultipleNotification({
+              deviceTokens: uniqueTokens,
+              title: "Contact status updated successfully",
+            });
+
+          } else {
+            console.log(
+              "No valid device tokens found for assigned users or their reporting members."
             );
           }
-        }
-
-        const uniqueTokens = [
-          ...new Set(allTokens.filter((token) => token && token.trim() !== "")),
-        ];
-
-        if (uniqueTokens.length > 0) {
-          await sendMultipleNotification({
-            deviceTokens: uniqueTokens,
-            title: "Contact status updated successfully",
-          });
-
-        } else {
-          console.log(
-            "No valid device tokens found for assigned users or their reporting members."
-          );
-        }
+        })();
       } catch (error) {
         console.log("Error processing notifications:", error.message);
       }
@@ -1928,7 +1961,10 @@ export const updateCommon = async (req) => {
     if (table === "reminder_messages") {
       if (!whereClause12) {
         console.log("whereClause12 is undefined or invalid");
-        return;
+        return resBadRequest({
+          ack_msg: "Invalid update target",
+          developer_msg: "whereClause12 is undefined or invalid",
+        });
       }
 
       const reminderMessages = await sequelize.models.reminder_messages.findAll({
@@ -2082,6 +2118,39 @@ export const updateCommon = async (req) => {
       }
     }
 
+    // change_status_team_ids gate — stage_status_masters.change_status_team_ids
+    // is already enforced on the READ side (statusLogServices.js's getStatus,
+    // action_flag "update"), but this generic passthrough never checked it on
+    // the WRITE side, so a Kanban drag (or any other caller of commonUpdate)
+    // could move a contact/task into a status the user isn't authorized to
+    // change into, as long as they could see the column at all. Company
+    // owner (company_flag === 1) is exempt, same as the read-side check.
+    if (
+      (table === "contact_masters" && parsedData.contact_status) ||
+      (table === "task_managements" && parsedData.status)
+    ) {
+      const targetStatusId = table === "contact_masters" ? parsedData.contact_status : parsedData.status;
+      const requesterLoginId = req.headers["x-tenant-id"];
+      const requesterCompany = await getCompanyByLoginId(requesterLoginId);
+      if (requesterCompany?.company_flag !== 1) {
+        const targetStatus = await sequelize.models.stage_status_masters.findOne({
+          where: { id: targetStatusId, isDelete: 0 },
+          attributes: ["change_status_team_ids"],
+        });
+        if (targetStatus && isValid(targetStatus.change_status_team_ids)) {
+          const allowedIds = targetStatus.change_status_team_ids
+            .split(",")
+            .map((i) => i.trim());
+          if (!allowedIds.includes(String(requesterLoginId))) {
+            return resError({
+              ack_msg: "You do not have permission to change status to this stage.",
+              developer_msg: "requesterLoginId not in stage_status_masters.change_status_team_ids for targetStatusId",
+            });
+          }
+        }
+      }
+    }
+
     const [rowsUpdated, updatedRows] = await sequelize.models[table].update(
       updateData,
       {
@@ -2183,7 +2252,7 @@ export const updateCommon = async (req) => {
         },
         attributes: ["username"],
       });
-      const message = "Task #" + whereObj.id + "'s status has been changed to " + statusName.name + " by " + loginName.username;
+      const message = "Task #" + whereObj.id + "'s status has been changed to " + (statusName?.name || parsedData.status) + " by " + loginName.username;
       await sequelize.models.task_message_histories.create({
         description: message,
         message_side: 1,
@@ -2262,14 +2331,14 @@ export const updateCommon = async (req) => {
               // Send notifications to all assigned members
               await sendMultipleNotification({
                 deviceTokens: uniqueTokens,
-                title: `Task #${whereObj.id}'s status has been changed to ${statusName.name} by ${loginName.username}`,
+                title: `Task #${whereObj.id}'s status has been changed to ${statusName?.name || parsedData.status} by ${loginName.username}`,
                 body: `Task: ${taskData.dataValues.task_title}`,
               });
             } catch (notificationError) {
               console.log("Notification failed (non-critical):", { notificationError });
             }
           } else {
-            req.console.log("No device tokens found for assigned team members.");
+            console.log("No device tokens found for assigned team members.");
           }
         }
       }
@@ -2337,7 +2406,7 @@ export const updateCommon = async (req) => {
               console.log("Notification failed (non-critical):", { notificationError });
             }
           } else {
-            req.console.log("No device tokens found for assigned team members.");
+            console.log("No device tokens found for assigned team members.");
           }
         }
       }
@@ -2361,7 +2430,7 @@ export const updateCommon = async (req) => {
         attributes: ["username"],
       });
 
-      const message = "Task #" + whereObj.id + "'s status has been changed to " + statusName.name + " by " + loginName.username;
+      const message = "Task #" + whereObj.id + "'s status has been changed to " + (statusName?.name || parsedData.external_status) + " by " + loginName.username;
       await sequelize.models.task_message_histories.create({
         description: message,
         message_side: 2,
@@ -2440,14 +2509,14 @@ export const updateCommon = async (req) => {
               // Send notifications to all assigned members
               await sendMultipleNotification({
                 deviceTokens: uniqueTokens,
-                title: `Task #${whereObj.id}'s status has been changed to ${statusName.name} by ${loginName.username}`,
+                title: `Task #${whereObj.id}'s status has been changed to ${statusName?.name || parsedData.external_status} by ${loginName.username}`,
                 body: `Task: ${taskData.dataValues.task_title}`,
               });
             } catch (notificationError) {
               console.log("Notification failed (non-critical):", { notificationError });
             }
           } else {
-            req.console.log("No device tokens found for assigned team members.");
+            console.log("No device tokens found for assigned team members.");
           }
         }
       }

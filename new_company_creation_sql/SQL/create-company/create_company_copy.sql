@@ -85,6 +85,7 @@ CREATE TABLE `departments` LIKE smalloffice_sample_tenant.departments;
 CREATE TABLE `machine_managements` LIKE smalloffice_sample_tenant.machine_managements;
 CREATE TABLE `task_managements` LIKE smalloffice_sample_tenant.task_managements;
 CREATE TABLE `task_message_histories` LIKE smalloffice_sample_tenant.task_message_histories;
+CREATE TABLE `task_checklist_items` LIKE smalloffice_sample_tenant.task_checklist_items;
 CREATE TABLE `custom_field_form_datavalues` LIKE smalloffice_sample_tenant.custom_field_form_datavalues;
 CREATE TABLE `wrkflw_auto_assignment_of_contacts` LIKE smalloffice_sample_tenant.wrkflw_auto_assignment_of_contacts;
 CREATE TABLE `task_templete_masters` LIKE smalloffice_sample_tenant.task_templete_masters;
@@ -117,6 +118,17 @@ CREATE TABLE `route_planners` LIKE smalloffice_sample_tenant.route_planners;
 CREATE TABLE `route_plan_vs_contacts` LIKE smalloffice_sample_tenant.route_plan_vs_contacts;
 CREATE TABLE `miracle_logs` LIKE smalloffice_sample_tenant.miracle_logs;
 CREATE TABLE `user_column_preferences` LIKE smalloffice_sample_tenant.user_column_preferences;
+CREATE TABLE `document_print_templates` LIKE smalloffice_sample_tenant.document_print_templates;
+ALTER TABLE `document_print_templates`  DISABLE KEYS;
+START TRANSACTION;
+INSERT INTO `document_print_templates` SELECT * FROM smalloffice_sample_tenant.document_print_templates;
+COMMIT;
+ALTER TABLE `document_print_templates` ENABLE KEYS;
+
+CREATE TABLE `document_print_template_versions` LIKE smalloffice_sample_tenant.document_print_template_versions;
+CREATE TABLE `audit_logs` LIKE smalloffice_sample_tenant.audit_logs;
+CREATE TABLE `report_definitions` LIKE smalloffice_sample_tenant.report_definitions;
+CREATE TABLE `report_runs` LIKE smalloffice_sample_tenant.report_runs;
 
 CREATE TABLE `adjustment_types` LIKE smalloffice_sample_tenant.adjustment_types;
 ALTER TABLE `adjustment_types`  DISABLE KEYS;
@@ -258,6 +270,84 @@ INSERT INTO `contact_message_histories` SELECT * FROM smalloffice_sample_tenant.
 COMMIT;
 ALTER TABLE `contact_message_histories` ENABLE KEYS;
 
-INSERT INTO smalloffice.tenant_masters (`id`, `a_application_login_id`, `company_masters_id`, `application_login_name`,  `db_host`, `db_user`, `db_password`, `db_name` , `created_date_time`,`isDelete`, `isActive`) VALUES (NULL, '${applicationId}', '${companyId}', '${applicationName}','${dbHost}', '${dbUser}', '', '${dbName}' , '${createDateTime}','0','1');
+-- Report Builder's stock_ledger_view (not a table, so no LIKE clone above) —
+-- must be created here too, after cart_items exists, or new companies get
+-- the "Stock Ledger" report source missing entirely. See alter.txt.
+CREATE OR REPLACE VIEW `stock_ledger_view` AS
+SELECT
+  ci.id,
+  ci.company_masters_id,
+  ci.item_product_id,
+  ci.cart_type,
+  ci.reference_type,
+  ci.cart_date,
+  ci.item_qty,
+  ci.stock_type,
+  ci.item_warehouse_id,
+  ci.a_application_login_id,
+  0 AS isDelete,
+  CASE
+    WHEN (ci.cart_type = 4 AND ci.reference_type != 8) OR ci.cart_type IN (6,8,10) THEN ci.item_qty
+    WHEN (ci.cart_type = 3 AND ci.reference_type != 9) OR ci.cart_type IN (7,9,11) THEN -ci.item_qty
+    ELSE 0
+  END AS qty_delta
+FROM `cart_items` ci
+WHERE ci.isDelete = 0
+  AND ci.cart_number IS NOT NULL AND ci.cart_number != ''
+  AND (
+    (ci.cart_type = 4 AND ci.reference_type != 8)
+    OR (ci.cart_type = 3 AND ci.reference_type != 9)
+    OR ci.cart_type IN (6,7,8,9,10,11)
+  );
+
+-- Report Builder's account_outstanding_view (not a table) — same reasoning
+-- as stock_ledger_view above, created after account_transactions exists.
+CREATE OR REPLACE VIEW `account_outstanding_view` AS
+SELECT
+  at.id,
+  at.company_masters_id,
+  at.contact_masters_id,
+  at.a_application_login_id,
+  at.type,
+  at.mode,
+  at.amount,
+  at.payment_date_time,
+  at.approve_date_time,
+  at.remark,
+  0 AS isDelete,
+  CASE
+    WHEN at.type = 2 THEN at.amount
+    WHEN at.type = 1 THEN -at.amount
+    ELSE 0
+  END AS amount_signed
+FROM `account_transactions` at
+WHERE at.isDelete = 0
+  AND at.approve_by_a_application_login_id != 0;
+
+-- Report Builder's employee_outstanding_view (not a table) — same reasoning,
+-- created after employee_account_transactions exists.
+CREATE OR REPLACE VIEW `employee_outstanding_view` AS
+SELECT
+  eat.id,
+  eat.company_masters_id,
+  eat.team_id,
+  eat.a_application_login_id,
+  eat.type,
+  eat.mode,
+  eat.amount,
+  eat.payment_date_time,
+  eat.approve_date_time,
+  eat.remark,
+  0 AS isDelete,
+  CASE
+    WHEN eat.type = 2 THEN eat.amount
+    WHEN eat.type = 1 THEN -eat.amount
+    ELSE 0
+  END AS amount_signed
+FROM `employee_account_transactions` eat
+WHERE eat.isDelete = 0
+  AND eat.approve_by_a_application_login_id != 0;
+
+INSERT INTO smalloffice.tenant_masters (`id`, `a_application_login_id`, `company_masters_id`, `application_login_name`,  `db_host`, `db_user`, `db_password`, `db_name` , `created_date_time`,`isDelete`, `isActive`) VALUES (NULL, '${applicationId}', '${companyId}', '${applicationName}','${dbHost}', '${dbUser}', '${dbPassword}', '${dbName}' , '${createDateTime}','0','1');
 
 

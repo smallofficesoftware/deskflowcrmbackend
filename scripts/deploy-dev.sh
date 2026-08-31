@@ -28,42 +28,46 @@ deploy_backend() {
   log "=== Backend deploy start ==="
   cd "$BACKEND_DIR" || { log "ERROR: cannot cd to $BACKEND_DIR"; return 1; }
 
-  local old_commit
-  old_commit="$(git rev-parse HEAD)"
   git fetch origin dev >> "$LOG_FILE" 2>&1
   git reset --hard origin/dev >> "$LOG_FILE" 2>&1
 
-  if lockfile_changed "$old_commit" package-lock.json; then
-    npm install >> "$LOG_FILE" 2>&1
-  else
-    log "package-lock.json unchanged, skipping npm install"
+  # package-lock.json is gitignored in this repo, so lockfile_changed's
+  # `git diff` against it is always empty and npm install was silently
+  # skipped on EVERY deploy — including ones that added new dependencies
+  # (e.g. @pdfme/*), which then made migrations that import them fail with
+  # "Cannot find module" and no visible error (see below). Always install.
+  npm install >> "$LOG_FILE" 2>&1
+  if [ $? -ne 0 ]; then
+    log "!!! MIGRATION-BLOCKING FAILURE: npm install failed, see above in this log !!!"
   fi
 
   NODE_ENV="$BACKEND_NODE_ENV" node src/scripts/runMigrations.js master migration up >> "$LOG_FILE" 2>&1
+  if [ $? -ne 0 ]; then
+    log "!!! MASTER MIGRATION FAILED — deploy continued anyway, DB may be out of sync, see above in this log !!!"
+  fi
   NODE_ENV="$BACKEND_NODE_ENV" node src/scripts/runMigrations.js tenant migration up >> "$LOG_FILE" 2>&1
+  if [ $? -ne 0 ]; then
+    log "!!! TENANT MIGRATION FAILED — deploy continued anyway, DB may be out of sync, see above in this log !!!"
+  fi
 
   pm2 restart "$PM2_BACKEND_NAME" >> "$LOG_FILE" 2>&1
   log "=== Backend deploy done ==="
 }
 
 deploy_frontend() {
-  log "=== Frontend deploy start ==="
+  # `npm run build` used to run right here on this server and OOM'd
+  # (webpack + @pdfme/* is too heavy for this box's RAM). The build now
+  # happens on a developer machine via scripts/deploy-dev-local-build.sh,
+  # which rsyncs the built build/ folder straight into $FRONTEND_DIR/build.
+  # This webhook path only keeps the git checkout in sync for reference —
+  # it deliberately does NOT install or build anymore.
+  log "=== Frontend deploy start (source sync only, build is done locally) ==="
   cd "$FRONTEND_DIR" || { log "ERROR: cannot cd to $FRONTEND_DIR"; return 1; }
 
-  local old_commit
-  old_commit="$(git rev-parse HEAD)"
   git fetch origin dev >> "$LOG_FILE" 2>&1
   git reset --hard origin/dev >> "$LOG_FILE" 2>&1
 
-  if lockfile_changed "$old_commit" package-lock.json; then
-    npm install >> "$LOG_FILE" 2>&1
-  else
-    log "package-lock.json unchanged, skipping npm install"
-  fi
-  npm run build >> "$LOG_FILE" 2>&1
-
-  # No restart needed -- nginx serves the rebuilt static files directly.
-  log "=== Frontend deploy done ==="
+  log "=== Frontend deploy done (run scripts/deploy-dev-local-build.sh locally to actually update build/) ==="
 }
 
 deploy_adminpanel() {
@@ -86,13 +90,14 @@ deploy_adminpanel() {
   pm2 restart "$PM2_ADMINPANEL_BACKEND_NAME" >> "$LOG_FILE" 2>&1 || pm2 start dist/server.js --name "$PM2_ADMINPANEL_BACKEND_NAME" >> "$LOG_FILE" 2>&1
   pm2 save >> "$LOG_FILE" 2>&1
 
-  cd "$ADMINPANEL_DIR/frontend" || { log "ERROR: cannot cd to $ADMINPANEL_DIR/frontend"; return 1; }
-  if lockfile_changed "$old_commit" frontend/package-lock.json; then
-    npm ci --legacy-peer-deps >> "$LOG_FILE" 2>&1
-  else
-    log "frontend/package-lock.json unchanged, skipping npm ci"
-  fi
-  npm run build >> "$LOG_FILE" 2>&1
+  # `npm run build` used to run right here and OOM'd (webpack + @pdfme/* is
+  # too heavy for this box's RAM — same failure frontend-document-designer
+  # already hit). The build now happens on a developer machine via
+  # frontend/scripts/deploy-dev-local-build.sh, which commits the built
+  # frontend/build/ folder straight into the repo — this webhook path only
+  # keeps the git checkout in sync (already done by the reset --hard above);
+  # it deliberately no longer installs or builds the frontend.
+  log "=== Adminpanel frontend: source sync only, build is done locally (frontend/scripts/deploy-dev-local-build.sh) ==="
 
   log "=== Adminpanel deploy done ==="
 }

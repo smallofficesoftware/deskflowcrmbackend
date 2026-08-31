@@ -18,6 +18,10 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import QRCode from "qrcode";
 import Sequelize, { Op } from "sequelize";
 import { getUserRights } from "../../helpers/rightsHelper.js";
+import { isFeatureEnabled } from "../company_setup/featureFlagServices.js";
+import { generateQuotationPdf } from "../pdfmeEngine/generateDocument.js";
+import { generateShippingLabelPdf } from "../pdfmeEngine/shippingLabelGenerate.js";
+import { sniffImageMime } from "../pdfmeEngine/imageOverlay.js";
 import { tenantMiddleware } from "../../middlewares/tenantMiddleware.js";
 import { accountTransactionsModel } from "../../models/activities/accountTransactionsModel.js";
 import { cartSerialNumberModel } from "../../models/activities/cartSerialNumberModel.js";
@@ -81,7 +85,7 @@ const orderTypesList = [
   { id: "7", type: "return_purchase_invoice" },
   { id: "8", type: "inward" },
   { id: "9", type: "dispatch" },
-  { id: "12", order_type: "Proforma Invoice" },
+  { id: "12", type: "proforma_invoice" },
 ];
 const orderTypesShowList = [
   { id: "1", type: "Quotation" },
@@ -93,7 +97,7 @@ const orderTypesShowList = [
   { id: "7", type: "Return Purchase Invoice" },
   { id: "8", type: "Inward" },
   { id: "9", type: "Dispatch" },
-  { id: "12", order_type: "Proforma Invoice" },
+  { id: "12", type: "Proforma Invoice" },
 ];
 const paymentModeList = [
   { id: "2", type: "Debit" },
@@ -3719,7 +3723,11 @@ export const covertOrderSystem = async (req, res) => {
         ...restAllCart,
         cart_number: financialYearDetail?.order_no || "",
         sr_by_number: financialYearDetail?.sr_by_no || 0,
-        sr_by_prifix: financialYearDetail?.sr_by_prifix || "cart",
+        // Blank, not "cart": the number/prefix is assigned on approve. A
+        // non-empty sr_by_prifix here is taken verbatim by getNumberSeries,
+        // so "cart" (or the spread-in source-doc prefix) would stick to the
+        // converted doc instead of its own type's default.
+        sr_by_prifix: financialYearDetail?.sr_by_prifix || "",
         type: cart_type,
         created_date_time: formattedDateTime,
         cart_date: formattedDate,
@@ -4001,7 +4009,11 @@ export const covertOrderSystem = async (req, res) => {
         ...restAllCart,
         cart_number: financialYearDetail?.order_no || "",
         sr_by_number: financialYearDetail?.sr_by_no || 0,
-        sr_by_prifix: financialYearDetail?.sr_by_prifix || "cart",
+        // Blank, not "cart": the number/prefix is assigned on approve. A
+        // non-empty sr_by_prifix here is taken verbatim by getNumberSeries,
+        // so "cart" (or the spread-in source-doc prefix) would stick to the
+        // converted doc instead of its own type's default.
+        sr_by_prifix: financialYearDetail?.sr_by_prifix || "",
         type: cart_type,
         created_date_time: formattedDateTime,
         cart_date: formattedDate,
@@ -4126,7 +4138,11 @@ export const covertOrderSystem = async (req, res) => {
     return resBadRequest({ developer_msg: error });
   }
 };
-export const pdfOrder = async (req, res) => {
+// Single-cart PDF generation - unchanged body, just renamed and no longer
+// exported directly. pdfOrder (below) is now a thin dispatcher: it calls
+// this once for a single cart_id (identical to today's behavior), or loops
+// it per id + merges the results for a multi-select "Generate Multi Print".
+const generateSingleOrderPdf = async (req, res) => {
   try {
     const orderId = req.body.cart_id;
     const CATModel = cartModel(req.tenantDB);
@@ -4288,7 +4304,7 @@ export const pdfOrder = async (req, res) => {
           customFieldsWhere.form_type = 13;
           dynamicPrintView = companyDetail.dispatch_view_formate;
         } else if (cartType == 12) {
-          customFieldsWhere.form_type = 15;
+          customFieldsWhere.form_type = 16;
           dynamicPrintView = companyDetail.proforma_invoice_view_formate;
         }
       }
@@ -4438,12 +4454,38 @@ export const pdfOrder = async (req, res) => {
         "utf-8"
       );
 
-      // Convert image to Base64
+      // Convert image to Base64 — mime sniffed from the real file bytes,
+      // not hardcoded to png. Was fine for the EJS/<img> path (browsers
+      // render most formats even with a wrong-labeled data URI), but
+      // pdfme's own image plugin (used for the §5 pdfme-enabled path's
+      // header/logo/footer/signature images AND the watermark overlay,
+      // both built from this same encoder) trusts the label to pick
+      // pdf-lib's embedPng vs embedJpg — a real JPEG mislabeled as PNG
+      // throws "The input is not a PNG file!" and takes down the whole
+      // generate, not just that one image.
+      // PhantomJS (html-pdf's rendering engine) is well known to hang/crash
+      // on oversized embedded base64 images — confirmed live: a company
+      // logo/signature saved as a full-size photo (100-230KB+ JPEGs,
+      // instead of a small optimized logo/signature) reliably crashed
+      // EVERY doc type's legacy PDF for that company with an unhandled
+      // 'error' event / EPIPE writing to PhantomJS's already-dead process
+      // (see generateSingleOrderPdf's write to PdfExec). These 4 images are
+      // meant to be small (header/footer banners, a logo, a signature) —
+      // 100KB is already generous for that; skip embedding (same graceful
+      // "" fallback already used for a missing file) rather than crash the
+      // whole PDF over one oversized image.
+      const MAX_EMBEDDED_IMAGE_BYTES = 100 * 1024;
       const encodeImageToBase64 = (filePath) => {
         try {
-
           const image = fs.readFileSync(filePath);
-          return `data:image/png;base64,${image.toString("base64")}`;
+          if (image.length > MAX_EMBEDDED_IMAGE_BYTES) {
+            console.error(
+              `Skipping oversized image (${image.length} bytes > ${MAX_EMBEDDED_IMAGE_BYTES} limit), would risk crashing PhantomJS: ${filePath}`
+            );
+            return "";
+          }
+          const mime = sniffImageMime(image) || "image/png";
+          return `data:${mime};base64,${image.toString("base64")}`;
         } catch (err) {
           console.error("Error reading image:", err);
           return "";
@@ -4473,7 +4515,7 @@ export const pdfOrder = async (req, res) => {
         { id: "7", type: "Return Purchase Invoice" },
         { id: "8", type: "Inward" },
         { id: "9", type: "Dispatch" },
-        { id: "12", order_type: "Proforma Invoice" },
+        { id: "12", type: "Proforma Invoice" },
       ];
 
       const selectedCurrency = currencyDetails[0]?.short_name || "INR";
@@ -4537,9 +4579,23 @@ export const pdfOrder = async (req, res) => {
       }
       const printSettingModels = printSettingModel(req.tenantDB);
 
+      // print_settings.type isn't always the same number as the cart's own
+      // `type` column — Proforma Invoice carts are type 12, but the print-
+      // settings UI (getprintSetting/printSettingController.js) stores its
+      // rows under type 15 for Proforma specifically. Passing the raw cart
+      // type (12) straight through found no row at all for any print_version
+      // that only exists under 15, silently falling back to an empty {}
+      // settingDetails - which then makes every printSetting.X check in the
+      // EJS false, hiding buyer info/columns/signature/etc. (confirmed live:
+      // type 15 has real, fully-configured rows for print_version 1-4).
+      const PRINT_SETTINGS_TYPE_BY_CART_TYPE = { 12: 15 };
+      const printSettingsType =
+        PRINT_SETTINGS_TYPE_BY_CART_TYPE[resultCartById.dataValues.type] ??
+        Number(resultCartById.dataValues.type);
+
       const printSettings = await printSettingModels.findOne({
         where: {
-          type: Number(resultCartById.dataValues.type),
+          type: printSettingsType,
           print_version: Number(viewFormate),
           isDelete: 0
         },
@@ -4593,7 +4649,6 @@ export const pdfOrder = async (req, res) => {
         qrSvg: qrSvg,
         BACKEND_OF_SMALL_OFFICE_CRM_END_POINT: BACKEND_OF_SMALL_OFFICE_CRM_END_POINT,
       });
-
 
       // ✅ Dynamic height calculation function
       const calculateHeaderDetailsHeight = () => {
@@ -4776,8 +4831,248 @@ export const pdfOrder = async (req, res) => {
         type: "",
       };
 
-      // Generate the main PDF
-      await pdf.create(document, options);
+      // pdfme Document Designer — opt-in per company. Started Quotation-only
+      // (cart type 1); Sales Order (cart type 2) added next, same engine
+      // (templates.js's DOC_TYPES/dataDictionary.js already support both —
+      // only this gate + generateQuotationPdf's doc_type param needed
+      // extending). Isolated to "how tempFilePath's bytes get produced":
+      // everything above (renderedHtml/options/document) and everything
+      // below (attachment merge, upload, response) is untouched either way.
+      const PDFME_DOC_TYPE_BY_CART_TYPE = {
+        1: "quotation",
+        2: "salesOrder",
+        3: "salesInvoice",
+        4: "purchaseInvoice",
+        5: "purchaseOrder",
+        6: "returnSalesInvoice",
+        7: "returnPurchaseInvoice",
+        8: "inward",
+        9: "dispatch",
+        12: "proformaInvoice",
+      };
+      // Pending Order / Pending Purchase Order print (openPendingPrint's
+      // PendingPrintViewV1) is a distinct document from the regular
+      // sales/purchase order, not a status-variant of it — selected via
+      // print_variant, not swapped in based on the cart's own state.
+      const PENDING_PDFME_DOC_TYPE_BY_CART_TYPE = {
+        2: "pendingSalesOrder",
+        5: "pendingPurchaseOrder",
+      };
+      const isPendingPrintVariant = req.body?.print_variant === "pending";
+      const pdfmeDocType = isPendingPrintVariant
+        ? PENDING_PDFME_DOC_TYPE_BY_CART_TYPE[resultCartById.dataValues.type]
+        : PDFME_DOC_TYPE_BY_CART_TYPE[resultCartById.dataValues.type];
+      const documentDesignerEnabled =
+        !!pdfmeDocType &&
+        (await isFeatureEnabled(companyDetail.id, "document_designer"));
+
+      // The legacy fallback below (pdf.create with the EJS-rendered regular
+      // order document) is the WRONG document for a pending-print request —
+      // there's no legacy renderer for it, so refuse rather than silently
+      // hand back a regular sales/purchase order PDF instead.
+      if (isPendingPrintVariant && !documentDesignerEnabled) {
+        return resError({
+          ack_msg: "Pending order print requires Document Designer to be enabled.",
+          developer_msg: "print_variant=pending requested but document_designer feature flag is off, or this cart type has no pending doc type mapping.",
+        });
+      }
+
+      // viewTitle/dynamicColor above were computed from the cart's normal
+      // type-based company settings (e.g. "Sales Order") — not right for
+      // the pending variant's own document title.
+      if (isPendingPrintVariant) {
+        viewTitle = pdfmeDocType === "pendingPurchaseOrder" ? "Pending Purchase Order" : "Pending Sales Order";
+      }
+
+      if (documentDesignerEnabled) {
+        const cartData = resultCartById.dataValues;
+
+        // encodeImageToBase64 (above) hardcodes a "data:image/png;..." prefix
+        // regardless of the file's real format — fine for the EJS/browser
+        // path (an <img> tag renders most formats even with a wrong-labeled
+        // data URI), but imageOverlay.js's detectImageFormat trusts this
+        // label to pick pdf-lib's embedPng vs embedJpg, and embedPng throws
+        // on real JPEG bytes. Product photos are uploaded as .jpg — needs an
+        // accurately-labeled encoder, not the shared header/logo one.
+        // Mime comes from the real file bytes (sniffImageMime), not the
+        // extension — a mislabeled/renamed file (".jpg" that's actually PNG
+        // bytes, or vice versa) makes pdf-lib's embedJpg throw "SOI not
+        // found in JPEG" since the bytes genuinely aren't the format the
+        // extension claimed.
+        const buildProductImageDataUri = (relativePath) => {
+          if (!relativePath) return "";
+          try {
+            const bytes = fs.readFileSync(
+              path.join(process.cwd(), "media-folder/product-images", relativePath)
+            );
+            const mime = sniffImageMime(bytes);
+            if (!mime) return "";
+            return `data:${mime};base64,${bytes.toString("base64")}`;
+          } catch {
+            return "";
+          }
+        };
+
+        // Mirrors the legacy EJS fix — item_discount_type (cart-level, same
+        // 1=percentage/2=flat convention as cash_discount_type) says which
+        // of item_discount_pct/item_discount_pr the user actually entered;
+        // NULL on carts saved before this field existed defaults to percentage.
+        const isFlatItemDiscount = Number(cartData.item_discount_type) === 2;
+
+        // pendingSalesOrder/pendingPurchaseOrder only — same referencing-cart
+        // lookup orderById's print_flag 1/2 branches already use for the
+        // legacy PendingPrintViewV1 (~line 1310-1332): sum item_qty of every
+        // cart that references THIS cart (referance_cart_id), per product —
+        // that's how much of the order has already been converted into a
+        // downstream sales/purchase invoice. Fully-fulfilled rows (pending
+        // qty === 0) are dropped, matching the legacy view's own filter.
+        let pendingItems;
+        if (isPendingPrintVariant) {
+          const referencingCartItems = await CATItemModel.findAll({
+            where: {
+              isDelete: 0,
+              referance_cart_id: cartData.id,
+              stock_type: { [Op.ne]: 0 },
+            },
+            attributes: ["item_qty", "item_product_id"],
+          });
+          const invoicedQtyByProduct = referencingCartItems.reduce((acc, ri) => {
+            const productId = ri.item_product_id;
+            acc[productId] = (acc[productId] || 0) + (ri.item_qty || 0);
+            return acc;
+          }, {});
+          pendingItems = finalData
+            .map((item) => {
+              const orderedQty = item.item_qty || 0;
+              const invoicedQty = invoicedQtyByProduct[item.item_product_id] || 0;
+              const pendingQty = orderedQty - invoicedQty;
+              const unit = item.item_unit_name ? ` / ${item.item_unit_name}` : "";
+              return {
+                description: item.item_product_name,
+                orderedQty: `${orderedQty}${unit}`,
+                invoicedQty: `${invoicedQty}${unit}`,
+                pendingQty: `${pendingQty}${unit}`,
+                rate: item.item_rate,
+                _pendingQtyRaw: pendingQty,
+              };
+            })
+            .filter((item) => item._pendingQtyRaw !== 0)
+            .map(({ _pendingQtyRaw, ...rest }) => rest);
+        }
+
+        const pdfmeItems = finalData.map((item) => ({
+          description: item.item_product_name,
+          hsn: item.item_hsn_code,
+          qty: item.item_unit_name ? `${item.item_qty} / ${item.item_unit_name}` : item.item_qty,
+          rate: item.item_rate,
+          discount: isFlatItemDiscount
+            ? `${currencySymbol} ${(Number(item.item_discount_pr) || 0).toFixed(2)}`
+            : `${(Number(item.item_discount_pct) || 0).toFixed(2)}%`,
+          total: item.item_total,
+          item_hsn_code: item.item_hsn_code,
+          item_total: item.item_total,
+        }));
+
+        const pdfmeItemImages = resultAllCartItems.map((item) => {
+          const product = productMap[item.item_product_id];
+          if (!product?.product_img) return "";
+          // productMap's product_img is PRODUCT_IMG_LINK_EXTENDED + the raw
+          // DB value ("<companyId>/<filename>.jpg") — strip only the URL
+          // prefix, not the whole path down to the basename, or the
+          // company-folder segment (part of the real on-disk path) is lost.
+          const relativePath = product.product_img.replace(PRODUCT_IMG_LINK_EXTENDED, "");
+          return buildProductImageDataUri(relativePath);
+        });
+
+        // "Product Page Designer" — 1:1 with pdfmeItems/pdfmeItemImages, in
+        // cart item order. Only consumed when the resolved main template's
+        // include_product_pages flag is on (generateDocument.js).
+        const pdfmeItemProductIds = resultAllCartItems.map((item) => item.item_product_id);
+
+        const buffer = await generateQuotationPdf({
+          documentTemplateId: req.body?.document_template_id,
+          company: {
+            id: companyDetail.id,
+            name: companyDetail.company_name,
+            address: companyDetail.address,
+            gstin: companyDetail.gst_number,
+            mobile: companyDetail.printed_number,
+            email: companyDetail.company_email,
+            state: companyStateName,
+            headerImage,
+            logoImage,
+            footerImage,
+            signImage,
+            watermark_in_print: companyDetail.watermark_in_print,
+            // Same viewTitle/dynamicColor the old EJS path already computed
+            // above (per-company <type>_title/<type>_view_color, falling
+            // back to the type's default) — keeps a company's title/color
+            // customization intact instead of resetting to the ported
+            // static default on every pdfme generate.
+            docTitle: viewTitle,
+            titleColor: dynamicColor,
+            // Same printSetting.paymentQR / companyDetail.upi_id/upi_name
+            // the old EJS path already reads above (~line 4491-4505) to
+            // decide whether to render the UPI payment QR code.
+            paymentQREnabled: !!settingDetails.paymentQR,
+            upiId: companyDetail.upi_id,
+            upiName: companyDetail.upi_name,
+          },
+          buyer: {
+            companyName: cartData.to_customer_company_name,
+            contactName: cartData.to_customer_name,
+            phone: cartData.to_customer_phone,
+            email: cartData.to_customer_email,
+            billingAddress: cartData.Address,
+            shippingAddress: cartData.shipping_address,
+            gstin: cartData.to_customer_gst_number,
+            supplyTo: [customerStateName, customerCityName].filter(Boolean).join(" - "),
+          },
+          order: {
+            number: cartData.cart_number,
+            dateTime: cartData.update_Date_time ? moment(cartData.update_Date_time).format("DD-MM-YYYY hh:mm A") : "",
+            contactPerson: loginDetail?.username,
+          },
+          items: pdfmeItems,
+          pendingItems,
+          cart: cartData,
+          numberTowords,
+          columnOptions: null,
+          itemImages: pdfmeItemImages,
+          itemProductIds: pdfmeItemProductIds,
+          customFieldRows: CartCustomFields,
+          cartValues: cartData,
+          tenantDB: req.tenantDB,
+          doc_type: pdfmeDocType,
+          // Same company-state-vs-customer-state comparison the old EJS path
+          // already computes above (customerStateName/companyStateName) —
+          // decides CGST+SGST split vs IGST in the HSN/GST summary table.
+          isSameState: !!companyStateName && companyStateName === customerStateName,
+          packingChargeLabel: cartData.packing_forwarding_charge_title || "Packing Charge",
+          transportChargeLabel: cartData.transport_charge_title || "Transport Charge",
+          tcsLabel: cartData.tcs_title || "TCS",
+          // bank_detail is rich-text (old EJS renders it raw/unescaped,
+          // <%- %>) — pdfme text fields don't render HTML, so it's flattened
+          // to plain text here: <br>/</p> become newlines, remaining tags
+          // are stripped.
+          bankDetails: (companyDetail.bank_detail || "")
+            .replace(/<br\s*\/?>/gi, "\n")
+            .replace(/<\/p>/gi, "\n")
+            .replace(/<[^>]+>/g, "")
+            .trim(),
+          remarks: cartData.cart_remark || "",
+          note: settingDetails.note ? cartData.cart_note || "" : "",
+          packingHSN: PACKING_FORWARDING_CHARGE_HSN_CODE,
+          packingGSTRate: PACKING_FORWARDING_CHARGE_GST,
+          transportHSN: TRANSPORT_CHARGE_HSN_CODE,
+          transportGSTRate: TRANSPORT_CHARGE__GST,
+        });
+
+        fs.writeFileSync(tempFilePath, buffer);
+      } else {
+        // Generate the main PDF
+        await pdf.create(document, options);
+      }
 
       // ✅ MERGE PDFs if attachments exist
       if (beforeAttachments.length > 0 || afterAttachments.length > 0) {
@@ -4996,6 +5291,80 @@ export const pdfOrder = async (req, res) => {
     }
   } catch (error) {
     console.log(`pdfOrder error ${error}`);
+    return resBadRequest({ developer_msg: `error ${error}` });
+  }
+};
+
+// Thin dispatcher: a single cart_id (number or 1-element array) goes
+// straight through to generateSingleOrderPdf unchanged (today's exact
+// behavior). 2+ ids ("Generate Multi Print") runs that same untouched
+// single-cart path once per id, then merges the resulting PDFs into one
+// file with PDFMerger - the same library already used a few hundred lines
+// up in generateSingleOrderPdf to splice uploaded attachments onto a
+// generated PDF. One print job for the whole selection, matching what the
+// legacy comma-joined print (openPrint(ids.join(","), viewFormate)) already
+// produces today.
+export const pdfOrder = async (req, res) => {
+  const rawCartId = req.body.cart_id;
+  const cartIds = Array.isArray(rawCartId) ? rawCartId : [rawCartId];
+
+  if (cartIds.length <= 1) {
+    req.body.cart_id = cartIds[0];
+    return await generateSingleOrderPdf(req, res);
+  }
+
+  try {
+    const mediaBaseDir = path.join(process.cwd(), "media-folder/cart");
+    const generatedFilePaths = [];
+    let firstResult = null;
+
+    // Sequential, not Promise.all - req.body.cart_id is mutated per
+    // iteration on this same shared req object, so calls must not overlap.
+    for (const id of cartIds) {
+      req.body.cart_id = id;
+      const result = await generateSingleOrderPdf(req, res);
+      if (result?.ack !== 1) {
+        return resError({
+          ack_msg: `Failed to generate PDF for order ${id}: ${result?.ack_msg || "unknown error"}`,
+        });
+      }
+      if (!firstResult) firstResult = result;
+
+      const relativePath = result.data.path.replace(PDF_LINK_EXTENDED, "");
+      generatedFilePaths.push(path.join(mediaBaseDir, relativePath));
+    }
+
+    const companySegment = generatedFilePaths[0].split(path.sep).slice(-2)[0];
+    const mergedFileName = `cart_multi_${Date.now()}.pdf`;
+    const mergedRelativePath = `${companySegment}/${mergedFileName}`;
+    const mergedFullPath = path.join(mediaBaseDir, mergedRelativePath);
+
+    const merger = new PDFMerger();
+    for (const filePath of generatedFilePaths) {
+      await merger.add(filePath);
+    }
+    await merger.save(mergedFullPath);
+
+    // Clean up the individual per-cart files now that they're merged into one.
+    for (const filePath of generatedFilePaths) {
+      try {
+        fs.unlinkSync(filePath);
+      } catch {
+        // Best-effort cleanup - a leftover temp file isn't worth failing the request for.
+      }
+    }
+
+    return resSuccess({
+      ack_msg: "Pdf generated",
+      data: {
+        title: `Multiple_Orders_${cartIds.length}_${Date.now()}`,
+        path: PDF_LINK_EXTENDED + mergedRelativePath,
+        customer_phone: firstResult.data.customer_phone,
+        sessionName: firstResult.data.sessionName,
+      },
+    });
+  } catch (error) {
+    console.log(`pdfOrder multi-print error ${error}`);
     return resBadRequest({ developer_msg: `error ${error}` });
   }
 };
@@ -5757,32 +6126,6 @@ export const fetchShippingLabelPrint = async (req, res) => {
       dynamicTerms = company.sales_invoice_terms_conditions;
     }
 
-    //QR (ONLY sr_number)
-    let qrSvg = "";
-    if (cart.sr_by_number) {
-      qrSvg = await QRCode.toString(cart.sr_by_number.toString(), {
-        type: "svg",
-      });
-    }
-
-    //Create folder
-    const htmlTemplate = fs.readFileSync(
-      path.join(__dirnameConstant, "../views/ShippingLabel/shippingLabel.ejs"),
-      "utf-8"
-    );
-
-    //Render HTML
-    const renderedHtml = ejs.render(htmlTemplate, {
-      cart,
-      items,
-      company,
-      qrSvg,
-      printSetting,
-      matchedCartFields,
-      customFields,
-      dynamicTerms,
-    });
-
     //Create folder
     const uploadDir = path.resolve(
       __dirnameConstant,
@@ -5800,21 +6143,76 @@ export const fetchShippingLabelPrint = async (req, res) => {
     //Public path
     const pdfPath = `${company.id}/${fileName}`;
 
-    //Generate PDF
-    const document = {
-      html: renderedHtml,
-      data: {},
-      path: fullPath,
-      type: "",
-    };
+    // pdfme Document Designer — same per-company opt-in as §5's cart-doc
+    // path (orderServices.js:4810). document_template_id (from the
+    // frontend's picker, when the company has 2+ shippingLabel templates)
+    // selects a company-customized template; otherwise the company's
+    // default row (if any) or the built-in fixed layout is used.
+    const documentDesignerEnabled = await isFeatureEnabled(company.id, "document_designer");
 
-    const options = {
-      format: "A5",
-      orientation: "portrait",
-      border: "5mm",
-    };
+    if (documentDesignerEnabled) {
+      let qrDataUri = "";
+      if (cart.sr_by_number) {
+        qrDataUri = await QRCode.toDataURL(cart.sr_by_number.toString(), {
+          margin: 1,
+          color: { dark: "#000000", light: "#FFFFFF" },
+        });
+      }
 
-    await pdf.create(document, options);
+      const buffer = await generateShippingLabelPdf({
+        cart,
+        company,
+        items,
+        qrDataUri,
+        documentTemplateId: req.body.document_template_id,
+        tenantDB: req.tenantDB,
+        dynamicTerms,
+        showProductSection: !!printSetting?.ProductSection,
+      });
+
+      fs.writeFileSync(fullPath, buffer);
+    } else {
+      //QR (ONLY sr_number)
+      let qrSvg = "";
+      if (cart.sr_by_number) {
+        qrSvg = await QRCode.toString(cart.sr_by_number.toString(), {
+          type: "svg",
+        });
+      }
+
+      const htmlTemplate = fs.readFileSync(
+        path.join(__dirnameConstant, "../views/ShippingLabel/shippingLabel.ejs"),
+        "utf-8"
+      );
+
+      //Render HTML
+      const renderedHtml = ejs.render(htmlTemplate, {
+        cart,
+        items,
+        company,
+        qrSvg,
+        printSetting,
+        matchedCartFields,
+        customFields,
+        dynamicTerms,
+      });
+
+      //Generate PDF
+      const document = {
+        html: renderedHtml,
+        data: {},
+        path: fullPath,
+        type: "",
+      };
+
+      const options = {
+        format: "A5",
+        orientation: "portrait",
+        border: "5mm",
+      };
+
+      await pdf.create(document, options);
+    }
 
     //Response
     return resSuccess({

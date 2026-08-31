@@ -78,7 +78,16 @@ export const getTeamReminderReport = async (req) => {
         if (showAllData) {
             baseWhereClause.company_masters_id = companyId;
         } else if (showPersonalData) {
-            baseWhereClause.a_application_login_id = a_application_login_id;
+            // Owner OR assigned-to-me — matches crm-insight's totalReminderCount
+            // definition (buildAccessAnd's ownerOrAssigned). Previously only checked
+            // a_application_login_id (creator), so a reminder someone else created
+            // and assigned to this login silently never showed up here even though
+            // the Insight card counted it.
+            baseWhereClause.company_masters_id = companyId;
+            baseWhereClause[Op.or] = [
+                { a_application_login_id: a_application_login_id },
+                { assigned_to: a_application_login_id },
+            ];
         } else {
             // No rights → return empty
             return resSuccess({

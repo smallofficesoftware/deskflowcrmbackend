@@ -205,6 +205,8 @@ export const getCrmInsight = async (req) => {
         const inquiryAnd = await buildFor({
             pageId: PAGE_ID.INQUIRY,
             ownerCol: "a_application_login_id",
+            assigneeCols: ["inquiry_assigned_team_member"],
+            csv: true, // CSV column ("3424,3425") → FIND_IN_SET, not exact Op.in match
         });
         const whereClauseInquiry = {
             isDelete: "0",
@@ -253,7 +255,8 @@ export const getCrmInsight = async (req) => {
         const supportAnd = await buildFor({
             pageId: PAGE_ID.SUPPORT_TICKET,
             ownerCol: "a_application_login_id",
-            assigneeCols: ["assigned_team_member"]
+            assigneeCols: ["assigned_team_member"],
+            csv: true, // CSV column ("3424,3425") → FIND_IN_SET, not exact Op.in match
         });
         const whereClauseSupportTicket = {
             isDelete: "0",
@@ -270,14 +273,22 @@ export const getCrmInsight = async (req) => {
         const taskAnd = await buildFor({
             pageId: PAGE_ID.TASK_MANAGEMENT,
             ownerCol: "a_application_login_id",
-            assigneeCols: ["assigned_team_member"]
+            assigneeCols: ["assigned_team_member"],
+            csv: true, // CSV column ("3424,3425") → FIND_IN_SET, not exact Op.in match
         });
         const whereClauseTask = {
             isDelete: "0",
             is_support_ticket: "0",
             task_template: "0",
             is_not_visible: "0",
-            [Op.and]: [...taskAnd, dateAnd("created_date_time", start, end)],
+            // status=-6 is a completed sticky note (same table, set by completeStickeyNote) —
+            // get-task's buildAllTaskWhere excludes it the same way, sticky notes aren't tasks.
+            status: { [Op.ne]: -6 },
+            [Op.and]: [
+                ...taskAnd,
+                Sequelize.where(Sequelize.fn("DATE", Sequelize.col("task_fromdate")), { [Op.gte]: start }),
+                Sequelize.where(Sequelize.fn("DATE", Sequelize.col("task_enddate")), { [Op.lte]: end }),
+            ],
         };
         const TotalTaskCount = await TaskModel.count({ where: whereClauseTask });
 
@@ -565,7 +576,7 @@ export const getCrmInsight = async (req) => {
                 const orderData = await CATModel.findOne({
                     attributes: [
                         [Sequelize.fn("COUNT", Sequelize.col("id")), "count"],
-                        [Sequelize.fn("SUM", Sequelize.col("grand_total")), "amount"],
+                        [Sequelize.fn("SUM", Sequelize.col("taxable_amt")), "amount"],
                     ],
                     where: {
                         isDelete: "0",
@@ -579,7 +590,7 @@ export const getCrmInsight = async (req) => {
                 const invoiceData = await CATModel.findOne({
                     attributes: [
                         [Sequelize.fn("COUNT", Sequelize.col("id")), "count"],
-                        [Sequelize.fn("SUM", Sequelize.col("grand_total")), "amount"],
+                        [Sequelize.fn("SUM", Sequelize.col("taxable_amt")), "amount"],
                     ],
                     where: {
                         isDelete: "0",
@@ -849,6 +860,7 @@ export const getHrmsInsight = async (req) => {
         let totalVisitCount = 0;
         let onLeave = 0;
         let totalExpense = 0;
+        let birthdayCount = 0;
 
         if (start && end) {
 
@@ -893,6 +905,28 @@ export const getHrmsInsight = async (req) => {
             });
 
             totalExpense = Number(expense?.totalExpense || 0);
+
+            // Birthdays on the selected date (month+day match, year ignored)
+            const birthdayMembers = await companyVsApplicationLoginModel.findAll({
+                where: { isDelete: 0, company_masters_id: companyId },
+                attributes: ["a_application_login_id"],
+                raw: true,
+            });
+            const birthdayMemberIds = birthdayMembers.map((m) => m.a_application_login_id);
+            const selectedDay = moment(start);
+            birthdayCount = birthdayMemberIds.length
+                ? await loginModel.count({
+                    where: {
+                        id: { [Op.in]: birthdayMemberIds },
+                        isDelete: "0",
+                        date_of_birth: { [Op.not]: null },
+                        [Op.and]: [
+                            Sequelize.where(fn("MONTH", col("date_of_birth")), selectedDay.month() + 1),
+                            Sequelize.where(fn("DAY", col("date_of_birth")), selectedDay.date()),
+                        ],
+                    },
+                })
+                : 0;
         }
 
         // =============================
@@ -939,7 +973,8 @@ export const getHrmsInsight = async (req) => {
                 monthlyBarchart,
                 totalVisitCount,
                 onLeave,
-                expense: totalExpense
+                expense: totalExpense,
+                birthdayCount,
             },
         });
 

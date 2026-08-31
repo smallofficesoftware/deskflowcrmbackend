@@ -520,6 +520,7 @@ const orderTypesCustomInquiryList = [
   { id: "11", order_type_display: "page_text" },
   { id: "12", order_type_display: "page_url" },
   { id: "13", order_type_display: "attechments" },
+  { id: "14", order_type_display: "designer_page" },
 ];
 
 
@@ -606,6 +607,9 @@ export const getColumnName = async ({ dataType, companyId, formType, req }) => {
       return findColum;
     } else if (Number(formType) === 15) {
       const findColum = `task_column_${findDataTypeName}_${firstAvailable}`;
+      return findColum;
+    } else if (Number(formType) === 16) {
+      const findColum = `carts_column_${findDataTypeName}_${firstAvailable}`;
       return findColum;
     }
   }
@@ -851,6 +855,28 @@ export function isValid(value) {
   if (typeof value === "object") return isValidObject(value);
 
   return true;
+}
+
+/**
+ * Company-wide "is this a duplicate contact?" rule, keyed off
+ * company_masters.is_contact_validation (1 = Off, 2 = On).
+ *
+ * Off (default): a matching mobile number alone is always a duplicate —
+ * the existing behavior every contact-creation path had before this flag
+ * existed.
+ * On: a matching mobile number is only a duplicate if the person name also
+ * matches (case/whitespace-insensitive) — lets the same number be reused by
+ * a genuinely different person (e.g. a shared reception line), while still
+ * catching a literal re-submission of the same contact.
+ */
+export function isDuplicateContact(isContactValidationFlag, existingName, newName) {
+  if (Number(isContactValidationFlag) !== 2) return true;
+
+  const normalize = (name) => String(name || "").trim().toLowerCase();
+  const existing = normalize(existingName);
+  const incoming = normalize(newName);
+
+  return existing.length > 0 && existing === incoming;
 }
 
 

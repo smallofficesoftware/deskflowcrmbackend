@@ -53,9 +53,9 @@ Free — no paid GitHub plan needed, webhooks work on every plan/repo visibility
 
 1. GitHub sends a `push` event to `POST https://demobackend.smalloffice.in/webhook/github-dev-deploy` on every push (any branch).
 2. The route (`src/routes/webhook/githubDeployWebhookRouter.js`) verifies the request really came from GitHub via the `X-Hub-Signature-256` header (HMAC-SHA256 with a shared secret), ignores anything that isn't a push to `refs/heads/dev`, then runs `scripts/deploy-dev.sh <backend|frontend>` in the background (immediately returns 200 so GitHub doesn't time out).
-3. `deploy-dev.sh` does `git fetch` + `git reset --hard origin/dev` → `npm install`, then:
-   - **backend**: runs pending master+tenant migrations (`NODE_ENV=DEMO`) → `pm2 restart deskflowcrm-backend`.
-   - **frontend**: `npm run build` (no restart needed — nginx's `root` points at `demo.smalloffice.in/build`, serving the fresh build directly on the next request).
+3. `deploy-dev.sh` does `git fetch` + `git reset --hard origin/dev`, then:
+   - **backend**: `npm install` (only if `package-lock.json` changed — see the gotcha below) → runs pending master+tenant migrations (`NODE_ENV=DEMO`) → `pm2 restart deskflowcrm-backend`.
+   - **frontend**: nothing else — the server used to run `npm run build` here, but that OOM-crashed (webpack + `@pdfme/*` needs more RAM than the box has). The build now happens on a developer's own machine and gets committed straight into `build/` (see "Frontend builds happen locally now" below); the server's `git reset --hard` just picks up whatever `build/` was last committed to `dev`. No restart needed either way — nginx's `root` points at `demo.smalloffice.in/build`.
 
    Logs to `backend/logs/deploy-dev.log`.
 
@@ -100,3 +100,39 @@ Push a trivial commit to `dev` on either repo and check `backend/logs/deploy-dev
 - The route only matches `req.body.repository.name` of `deskflowcrmbackend` or `deskflowcrmfrontend` (from `REPO_TO_APP` in the router file) — if the GitHub repo is named differently on your account, update that mapping.
 - `git reset --hard origin/dev` is used instead of `git pull` so a script re-run always converges to exactly what's on `dev`, even if something odd happened to the working tree — it does **not** touch untracked files (so a local, gitignored `.env.development` on the server is safe), but it **will discard any uncommitted tracked-file edits** in that repo on the server, so don't hand-edit tracked files directly on the dev server.
 - Only `dev` branch pushes trigger a deploy; everything else gets a 200 + ignored, so this is safe to leave on permanently.
+
+## Frontend builds happen locally now
+
+`npm run build` on the dev server OOM-crashes (webpack + `@pdfme/*` needs more RAM than that box has). Build on your own machine instead and commit the result:
+
+```
+cd frontend           # the frontend repo, on the branch you're deploying
+scripts/deploy-dev-local-build.sh demo         # dev/demo server
+scripts/deploy-dev-local-build.sh production   # prod server (fill in scripts/deploy-targets/production.env first)
+```
+
+This runs `npm run build` locally, commits the built `build/` folder, and pushes — the server's webhook then just `git reset --hard`s the committed `build/` in, no build step needed there. `build/` is intentionally tracked in this repo (not gitignored) for exactly this reason.
+
+Each target's `.env` file (which CRA env values to build with) lives in `scripts/deploy-targets/<name>.env` and points at a machine-local, gitignored `.env.demo` / `.env.production` file — those hold real per-server values (API endpoints, keys) and must never be committed. If one doesn't exist yet, pull the real values off the server once: `ssh <server> cat <app-dir>/.env.production > .env.demo` (or `.env.production`), then reuse it for future builds.
+
+## Submitting changes to `dev` (for future sessions)
+
+This is a 3-repo project (`deskflowcrmbackend`, `deskflowcrmfrontend`, `deskflowadminpanel`) and `dev` auto-deploys per-repo as described above. The workflow that's worked this session, repeated per repo you touched:
+
+1. Work on a feature branch (a git worktree checked out from `dev` is fine — see `EnterWorktree`). Commit as you go.
+2. `git push origin <your-branch>` — publishes your branch, doesn't touch `dev`.
+3. Fast-forward `dev` once you're ready to actually deploy: `git push origin <your-branch>:dev`. This only works cleanly if `dev` hasn't moved since you branched — `git fetch origin dev && git merge origin/dev` first if it has (or just re-branch).
+4. **Schema changes**: migration file under `migration/{master,tenant}/migrations/` + an entry in `alter.txt`, per the checklist at the top of this repo's `CLAUDE.md`. The dev server runs pending master+tenant migrations automatically on every backend deploy (`NODE_ENV=DEMO node src/scripts/runMigrations.js master migration up`, same for tenant) — but there's **no `set -e` in `deploy-dev.sh`**, so a failing migration does NOT fail the deploy or show up as an error anywhere obvious. Always manually re-run the migration command on the server after a schema-change deploy and read its actual output:
+   ```
+   cd /var/www/demobackend.smalloffice.in
+   NODE_ENV=DEMO node src/scripts/runMigrations.js master migration up
+   NODE_ENV=DEMO node src/scripts/runMigrations.js master status
+   ```
+5. **Frontend changes**: after step 3 lands on `dev`, also run the local build + push (see above) — pushing source alone does not update the live site.
+
+### Gotchas hit this session (read before adding a new `a_application_pages` row)
+
+- **Hardcoded IDs must be checked against the real server, not your local dev DB.** `a_application_pages`/`plan_vs_pages` rows are usually inserted with an explicit `id` (not `NULL`) so the frontend's `PAGE_ID` enum (`src/helpers/AppEnum.ts` in the frontend repo) can reference a fixed number. Your local `smalloffice` DB can be missing rows that already exist on the real server (e.g. an entire batch of AdminPanel entitlement pages existed on the demo server's DB but not locally) — inserting at "the next free id locally" can collide with something already live and throw a validation/duplicate error, or silently insert into the wrong logical slot. Before hardcoding an id, run `SELECT MAX(id) FROM a_application_pages` (and eyeball the surrounding rows) on the actual target server, not just locally.
+- **Master migrations need `--env` explicitly.** `src/config/database-master.js` keys its exported config by the real `NODE_ENV` (`development`/`production`/`DEMO`/...), but `sequelize-cli` defaults `--env` to `"development"` when it's not passed. `src/scripts/runMigrations.js` now passes `--env $NODE_ENV` for all master commands — if you ever see `ERROR: Dialect needs to be explicitly supplied as of v4.0.0` running a master migration, this is almost certainly the cause (check the fix wasn't reverted).
+- **`.env.development` (and any per-server `.env.*`) is never committed with real/local values.** Check `git status` before every commit/push in this repo — a stray `TENANT_DB_HOST_NAME=localhost` or similar personal override committed to `dev` breaks the shared config for everyone else.
+- **A worktree's backend can silently never be running.** This repo and the main `backend` repo both default to `PORT=2424`. Only one process can bind it — whichever started first wins, and the other's `nodemon` crashes into "waiting for file changes" and stays dead with a stale log, no error surfaced anywhere obvious. Before trusting that a code change here took effect, confirm the process actually listening on 2424 is this worktree's own (fresh `logs/crm_backend.log` mtime, or check the owning PID's `CommandLine` via `Get-CimInstance Win32_Process`) — not the main repo's leftover server.

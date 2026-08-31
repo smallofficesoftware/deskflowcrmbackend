@@ -19,12 +19,14 @@ import { applicationLoginTypeRightModel } from "../../models/application_login/a
 import loginModel from "../../models/application_login/loginModel.js";
 import companyModel from "../../models/company_setup/companyModel.js";
 import companyVsApplicationLoginModel from "../../models/company_setup/companyVsApplicationLoginModel.js";
+import { cityModel } from "../../models/masters/cityModel.js";
 import { labelModel } from "../../models/masters/labelModel.js";
 import { sourceTypesModel } from "../../models/masters/sourceTypeMode.js";
 import { stagestatusModel } from "../../models/masters/stagestatusModel.js";
+import { stateModel } from "../../models/masters/stateModel.js";
 import { customFieldFormModel } from "../../models/other_settings/customFieldFormModel.js";
 import { priceListMastersModel } from "../../models/product_settings/priceListMastersModel.js";
-import { CONTACT_AUTO_REFRESH_INACTIVITY_DELAY, CONTACT_AUTO_REFRESH_ON, CONTACT_AUTO_REFRESH_TIMEOUT, EXPORTS_LINK_EXTENDED, JWT_TOKEN_SIGNATURE, VISITING_CARD_VIEW } from "../../utils/appConstants.js";
+import { CONTACT_AUTO_REFRESH_INACTIVITY_DELAY, CONTACT_AUTO_REFRESH_ON, CONTACT_AUTO_REFRESH_TIMEOUT, EXPORTS_LINK_EXTENDED, JWT_TOKEN_SIGNATURE, PDF_LINK_CONTACT_PRINT, VISITING_CARD_VIEW } from "../../utils/appConstants.js";
 import { GOOGLE_API, PAGE_ID } from "../../utils/AppEnumeration.js";
 import { exportData } from "../../utils/exporter.js";
 import logger from "../../utils/logger.js";
@@ -33,6 +35,7 @@ import {
   customFormFiledDataAddToChatHistory,
   formatDateAndTimeCreateDateTime,
   generateOTP,
+  isDuplicateContact,
   isValid,
   normalizeToTenDigit,
   resBadRequest,
@@ -40,9 +43,11 @@ import {
   resSuccess,
   sanitizeObjectOfNull
 } from "../../utils/sharedFunctions.js";
-import { getCompanyByLoginId, insertStagesAndStatusLogs } from "../commonServices.js";
+import { getCompanyByLoginId, getCompanyDetailByLoginId, insertStagesAndStatusLogs } from "../commonServices.js";
+import { isFeatureEnabled } from "../company_setup/featureFlagServices.js";
 import { ClaudeOfficeWhatsAppOtp, sendMultipleNotification } from "../company_setup/thirdPartyIntegrationService.js";
 import { autoAssignmentContactIdsGet, prepareMailAndWhatsappSenderToTheContact } from "../other_settings/wrkflwAutoAssignmentContactService.js";
+import { generateContactAddressPdf, generateContactEnvelopePdf } from "../pdfmeEngine/contactPrintGenerate.js";
 const oauth2Client = new google.auth.OAuth2(
   GOOGLE_API.GOOGLE_CLIENT_ID,
   GOOGLE_API.GOOGLE_CLIENT_SECRET
@@ -103,6 +108,72 @@ export const getContactByIds = async (req) => {
   } catch (e) {
     throw e;
   }
+};
+
+// Contact address label / envelope print — pdfme Document Designer path for
+// the "Print Address"/"Print Envelope" buttons in Profile.tsx. Unlike
+// shippingLabel there's no backend legacy fallback here (the legacy print is
+// pure frontend, ContactAddressPrintView1.tsx/ContactAddressEnvelopePrintView.tsx
+// call window.print() directly, never hitting the backend) — Profile.tsx
+// checks the flag before ever calling these routes, so a flag-off request
+// reaching here is refused rather than silently rendered.
+const fetchContactPrint = async (req, docType, generateFn) => {
+  try {
+    const contactRes = await getContactByIds(req);
+    // resSuccess coerces a null/not-found data into [] (truthy), so check for
+    // a real contact row (contact.id) rather than just truthiness.
+    const contact = contactRes?.data;
+    if (!contact || !contact.id) return resError({ ack_msg: "Contact not found" });
+
+    const findCompanyId = await getCompanyByLoginId(req.body.a_application_login_id);
+    const company = await getCompanyDetailByLoginId(req.body.a_application_login_id);
+
+    const City = cityModel(req.tenantDB);
+    const State = stateModel(req.tenantDB);
+    const companyCity = await City.findOne({ where: { id: company.city_id, isDelete: 0 }, attributes: ["city_name"], raw: true });
+    const companyState = await State.findOne({ where: { id: company.state_id, isDelete: 0 }, attributes: ["state_name"], raw: true });
+    company.city_name = companyCity?.city_name || "";
+    company.state_name = companyState?.state_name || "";
+
+    const documentDesignerEnabled = await isFeatureEnabled(findCompanyId.company_masters_id, "document_designer");
+    if (!documentDesignerEnabled) {
+      return resBadRequest({ ack_msg: "Document Designer is not enabled for this company" });
+    }
+
+    const outputDir = `media-folder/ContactPrint/${findCompanyId.company_masters_id}`;
+    const uploadDir = path.resolve(process.cwd(), outputDir);
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+
+    const fileName = `contact_${docType === "contactAddress" ? "address" : "envelope"}_${Date.now()}.pdf`;
+    const fullPath = path.join(uploadDir, fileName);
+    const pdfPath = `${findCompanyId.company_masters_id}/${fileName}`;
+
+    const buffer = await generateFn({
+      contact,
+      company: { ...company, id: findCompanyId.company_masters_id },
+      documentTemplateId: req.body.document_template_id,
+      tenantDB: req.tenantDB,
+    });
+    fs.writeFileSync(fullPath, buffer);
+
+    return resSuccess({
+      ack_msg: "PDF Generated",
+      data: { path: PDF_LINK_CONTACT_PRINT + pdfPath, file_name: fileName },
+    });
+  } catch (err) {
+    console.log("ContactPrint Error:", err);
+    return resBadRequest({ developer_msg: err.message });
+  }
+};
+
+export const fetchContactAddressPrint = async (req, res) => {
+  return fetchContactPrint(req, "contactAddress", generateContactAddressPdf);
+};
+
+export const fetchContactEnvelopePrint = async (req, res) => {
+  return fetchContactPrint(req, "contactEnvelope", generateContactEnvelopePdf);
 };
 
 export const getAllContact = async (req, feed = false, onlyMyBlog = false) => {
@@ -172,6 +243,12 @@ export const getAllContact = async (req, feed = false, onlyMyBlog = false) => {
       order.push(...relevanceOrder);
     }
 
+
+    if (stageStatusId) {
+      // Kanban board fetch (single stage column) — respect the drag-order
+      // within this column; NULL (never dragged) sorts last.
+      order.push(Sequelize.literal("position IS NULL, position ASC"));
+    }
     order.push([
       Sequelize.literal(
         `FIND_IN_SET(${isPinByApplicationId || 0}, is_pin_by_a_application_login_id)`
@@ -665,17 +742,24 @@ export const addContact = async (req, res) => {
     const a_company_name = companyData.dataValues.company_name;
     const a_company_id = companyData.dataValues.id;
 
-    if (companyData?.is_contact_validation == 1) {
+    {
       const existingMobileNum = await COTModel.findOne({
         where: {
           mobile_number: contactBody.mobile_number,
           company_masters_id: findCompanyId.company_masters_id,
           isDelete: 0,
         },
-        attributes: ["mobile_number", "id"],
+        attributes: ["mobile_number", "person_name", "id"],
       });
 
-      if (existingMobileNum && existingMobileNum.dataValues.mobile_number) {
+      if (
+        existingMobileNum?.dataValues?.mobile_number &&
+        isDuplicateContact(
+          companyData?.is_contact_validation,
+          existingMobileNum.dataValues.person_name,
+          contactBody.person_name,
+        )
+      ) {
         return resError({
           ack_msg: "Mobile number already exists in this company.",
           developer_msg: "Mobile number already exists in this company.",
@@ -835,6 +919,7 @@ export const addContact = async (req, res) => {
         contact_master_id: contactCreate.dataValues.id,
         description: req.body.description || "",
         qty: req.body.qty || "",
+        product_remarks: req.body.product_remarks || "",
         category_id: req.body.category_id || 0,
         product_id: req.body.product_id || 0,
         source_type_id: req.body.source_type_id || "",
@@ -1074,7 +1159,7 @@ export const addContactByQR = async (req, res) => {
     // Find company details by QR code
     const companyData = await companyModel.findOne({
       where: { qr_code, isDelete: 0 },
-      attributes: ["id", "a_application_login_id", "qr_code", "company_name"],
+      attributes: ["id", "a_application_login_id", "qr_code", "company_name", "is_contact_validation"],
     });
     if (!companyData) {
       return resError({
@@ -1161,8 +1246,16 @@ export const addContactByQR = async (req, res) => {
     let contactCreate;
     contactCreate = await contactData.findOne({
       where: { mobile_number, company_masters_id, isDelete: 0 },
-      attributes: ["mobile_number", "id"],
+      attributes: ["mobile_number", "person_name", "id"],
     });
+    if (
+      contactCreate &&
+      !isDuplicateContact(companyData.dataValues.is_contact_validation, contactCreate.person_name, contact_name)
+    ) {
+      // Same mobile, different name, and this company allows it - treat as a
+      // brand-new lead rather than attaching to the existing contact.
+      contactCreate = null;
+    }
     if (!contactCreate) {
       const whatsappEmailSendTeamPersonList = [];
       /* Contact Assignment */
@@ -3069,51 +3162,6 @@ export const CreateContactWithReminder = async (req, res) => {
     }
     /* Contact Assignment */
     const assinged_to_work_a_application_id = contactAssignedIdsStr || a_application_login_id;
-    // if (isContactDuplicationAllowed[0]?.is_contact_validation == 1) {
-    //   // Duplication ALLOWED → Always create NEW contact
-    //   const contactBody = {
-    //     source_type_id: source_type_id || "",
-    //     person_name: person_name || "",
-    //     mobile_number: normalizedMobile,
-    //     company_masters_id: findCompanyId.company_masters_id,
-    //     a_application_login_id,
-    //     assinged_to_work_a_application_id: assinged_to_work_a_application_id,
-    //   };
-    //   contactData = await COTModel.create(contactBody);
-    //   isNewContact = true;
-    // }
-    //  else {
-    //   // Duplication NOT allowed → Check for existing contact
-    //   contactData = await COTModel.findOne({
-    //     where: {
-    //       company_masters_id: findCompanyId.company_masters_id,
-    //       mobile_number: normalizedMobile,
-    //       isDelete: 0,
-    //     },
-    //   });
-
-    //   if (!contactData) {
-    //     // No existing → create new
-    //     const contactBody = {
-    //       source_type_id: source_type_id || "",
-    //       person_name: person_name || "",
-    //       mobile_number: normalizedMobile,
-    //       company_masters_id: findCompanyId.company_masters_id,
-    //       assinged_to_work_a_application_id: assinged_to_work_a_application_id,
-    //       a_application_login_id,
-    //     };
-    //     contactData = await COTModel.create(contactBody);
-    //     isNewContact = true;
-    //   }
-    // }
-
-    // contactData = await COTModel.findOne({
-    //   where: {
-    //     company_masters_id: findCompanyId.company_masters_id,
-    //     mobile_number: normalizedMobile,
-    //     isDelete: 0,
-    //   },
-    // });
     let contactData;
     contactData = await COTModel.findOne({
       where: {
@@ -3150,7 +3198,14 @@ export const CreateContactWithReminder = async (req, res) => {
       });
     }
 
-
+    if (
+      contactData &&
+      !isDuplicateContact(isContactDuplicationAllowed[0]?.dataValues?.is_contact_validation, contactData.person_name, person_name)
+    ) {
+      // Same mobile, different name, and this company allows it - treat as a
+      // brand-new contact rather than attaching to the existing one.
+      contactData = null;
+    }
 
     if (!contactData) {
       // No existing → create new
@@ -4084,7 +4139,7 @@ export const assignReadUnreadContact = async (req) => {
 
 export const checkContactMobileDuplicate = async (req, res) => {
   try {
-    const { mobile_number, a_application_login_id } = req.body;
+    const { mobile_number, a_application_login_id, person_name } = req.body;
 
     // Basic validation
     if (!mobile_number) {
@@ -4106,17 +4161,24 @@ export const checkContactMobileDuplicate = async (req, res) => {
     });
     let isDuplicate = false;
     let ack_msg = "Mobile number is available.";
-    if (companyData?.is_contact_validation == 1) {
+    {
       const existingMobileNum = await COTModel.findOne({
         where: {
           mobile_number: normalizedMobile,
           company_masters_id: findCompanyId.company_masters_id,
           isDelete: 0,
         },
-        attributes: ["mobile_number", "id"],
+        attributes: ["mobile_number", "person_name", "id"],
       });
 
-      if (existingMobileNum && existingMobileNum.dataValues.mobile_number) {
+      if (
+        existingMobileNum?.dataValues?.mobile_number &&
+        isDuplicateContact(
+          companyData?.is_contact_validation,
+          existingMobileNum.dataValues.person_name,
+          person_name,
+        )
+      ) {
         isDuplicate = true;
         ack_msg = `Mobile number ${normalizedMobile} already exists in this company.`;
       }

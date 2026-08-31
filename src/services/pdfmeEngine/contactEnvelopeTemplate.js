@@ -1,0 +1,141 @@
+// Contact envelope print — a fixed port of ContactAddressEnvelopePrintView.tsx's
+// layout: full A4 landscape sheet with content confined to the top-left
+// 220x110mm envelope-box region (matches the legacy view's .envelope-box),
+// so a printer fed with an actual envelope gets the same placement as today.
+import { textField } from "./buildTemplate.js";
+
+const PAGE = { width: 297, height: 210 }; // A4 landscape
+
+export function buildContactEnvelopeTemplate() {
+  return {
+    basePdf: { width: PAGE.width, height: PAGE.height, padding: [0, 0, 0, 0] },
+    schemas: [
+      [
+        textField({
+          name: "toLabel",
+          position: { x: 6, y: 6 },
+          width: 60,
+          height: 7,
+          fontSize: 15,
+          fontName: "Poppins Bold",
+          content: "TO",
+          readOnly: true,
+        }),
+        textField({
+          name: "toLocationLine",
+          position: { x: 6, y: 14 },
+          width: 200,
+          height: 6,
+          fontSize: 13,
+          fontName: "Poppins Bold",
+          content: "Area, City, State, Country - Pincode",
+          visibilityCondition: { mode: "hideIfEmpty" },
+        }),
+        textField({
+          name: "toCompanyName",
+          position: { x: 6, y: 21 },
+          width: 200,
+          height: 5,
+          fontSize: 10,
+          content: "Company: Sample Co.",
+          visibilityCondition: { mode: "hideIfEmpty" },
+        }),
+        textField({
+          name: "toName",
+          position: { x: 6, y: 27 },
+          width: 200,
+          height: 5,
+          fontSize: 10,
+          content: "Name: John Doe",
+          visibilityCondition: { mode: "hideIfEmpty" },
+        }),
+        textField({
+          name: "toPhone",
+          position: { x: 6, y: 33 },
+          width: 200,
+          height: 5,
+          fontSize: 10,
+          content: "Contact No.: 9876543210",
+          visibilityCondition: { mode: "hideIfEmpty" },
+        }),
+        textField({
+          name: "toEmail",
+          position: { x: 6, y: 39 },
+          width: 200,
+          height: 5,
+          fontSize: 10,
+          content: "Email: sample@example.com",
+          visibilityCondition: { mode: "hideIfEmpty" },
+        }),
+        textField({
+          name: "toAddress",
+          position: { x: 6, y: 45 },
+          width: 200,
+          height: 10,
+          fontSize: 10,
+          lineHeight: 1.25,
+          content: "Address: 123 Sample Street",
+          visibilityCondition: { mode: "hideIfEmpty" },
+        }),
+
+        textField({
+          name: "fromLabel",
+          position: { x: 6, y: 60 },
+          width: 60,
+          height: 7,
+          fontSize: 15,
+          fontName: "Poppins Bold",
+          content: "FROM",
+          readOnly: true,
+        }),
+        textField({
+          name: "fromLocationLine",
+          position: { x: 6, y: 68 },
+          width: 200,
+          height: 6,
+          fontSize: 13,
+          fontName: "Poppins Bold",
+          content: "City, State",
+          visibilityCondition: { mode: "hideIfEmpty" },
+        }),
+        textField({
+          name: "fromCompanyName",
+          position: { x: 6, y: 75 },
+          width: 200,
+          height: 5,
+          fontSize: 10,
+          content: "Company: Your Company",
+          visibilityCondition: { mode: "hideIfEmpty" },
+        }),
+        textField({
+          name: "fromPhone",
+          position: { x: 6, y: 81 },
+          width: 200,
+          height: 5,
+          fontSize: 10,
+          content: "Contact No.: 9876543210",
+          visibilityCondition: { mode: "hideIfEmpty" },
+        }),
+        textField({
+          name: "fromEmail",
+          position: { x: 6, y: 87 },
+          width: 200,
+          height: 5,
+          fontSize: 10,
+          content: "Email: sample@example.com",
+          visibilityCondition: { mode: "hideIfEmpty" },
+        }),
+        textField({
+          name: "fromAddress",
+          position: { x: 6, y: 93 },
+          width: 200,
+          height: 10,
+          fontSize: 10,
+          lineHeight: 1.25,
+          content: "Address: 456 Company Street",
+          visibilityCondition: { mode: "hideIfEmpty" },
+        }),
+      ],
+    ],
+  };
+}

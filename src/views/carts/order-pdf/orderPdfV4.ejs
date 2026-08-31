@@ -181,7 +181,9 @@
       } else if (orderType.id == 8) {
         dynamicColor = companyDetail.inward_color || "#cfcfcf"; 
       } else if (orderType.id == 9) {
-        dynamicColor = companyDetail.dispatch_color || "#cfcfcf"; 
+        dynamicColor = companyDetail.dispatch_color || "#cfcfcf";
+      } else if (orderType.id == 12) {
+        dynamicColor = companyDetail.proforma_invoice_view_color || "#cfcfcf";
       }
 
       let dynamicTitle = "";
@@ -202,7 +204,9 @@
       } else if (orderType.id == 8) {
         dynamicTitle = companyDetail.inward_title || "Goods Received Note"; 
       } else if (orderType.id == 9) {
-        dynamicTitle = companyDetail.dispatch_title || "Dispatch"; 
+        dynamicTitle = companyDetail.dispatch_title || "Dispatch";
+      } else if (orderType.id == 12) {
+        dynamicTitle = companyDetail.proforma_invoice_title || "Proforma Invoice";
       }
 
       const groupedItems = items.reduce((acc, item) => {
@@ -267,7 +271,9 @@
 
   <div style="position: relative">
     <div class="watermark" style="position: absolute; top: 27%; left: 25%; opacity: 0.2">
+      <% if (company_logo) { %>
       <img src="<%= company_logo %>" alt="" style="width: 50mm; display: none" />
+      <% } %>
     </div>
     <div class="header" style="text-align: center; display: none; height:1px !important;">
       <% if (headerImg == "" ) { %>
@@ -497,7 +503,7 @@
             </th>
 
             <% if (printSetting.discountColumn) { %>
-            <th class="text-center" style="width: 8%;">Dis(%)</th>
+            <th class="text-center" style="width: 8%;">Dis(<%= Number(cart.item_discount_type) === 2 ? currency : '%' %>)</th>
             <% } %>
             <% if (totalGstAmount > 0) { %>
             <th>GST(%)</th>
@@ -652,7 +658,11 @@
 
             <% if (printSetting.discountColumn) { %>
             <td style="text-align: right;<%= productDescBorderStyle %>">
-              <%= formatNum(item.item_discount_pct || 0, 2) %>
+              <% if (Number(cart.item_discount_type) === 2) { %>
+                <%= currency %> <%= formatNum(item.item_discount_pr || 0, 2) %>
+              <% } else { %>
+                <%= formatNum(item.item_discount_pct || 0, 2) %>%
+              <% } %>
             </td>
             <% } %>
             <% if (totalGstAmount > 0) { %>
@@ -1148,7 +1158,9 @@
   </div>
 </div>
   <div class="footer" style="text-align: center; display: none;">
+    <% if (footerImg) { %>
     <img src="<%= footerImg%>" style="width: 100%;" alt="">
+    <% } %>
   </div>
 </body>
 

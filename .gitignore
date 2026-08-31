@@ -47,3 +47,4 @@ out/
 # Test coverage
 coverage/
 .nyc_output/
+.env.development

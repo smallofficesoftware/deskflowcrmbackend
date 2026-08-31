@@ -2,6 +2,7 @@ import {
   accountPDFv1,
   accountTransactionById,
   allAccountTransactionOfContactPDF,
+  allAccountTransactionOfContactPDFOnlineStore,
   createAccountTransaction,
   generateAccountTransactionSampleSheet,
   getAllAccountTransactions,
@@ -76,6 +77,15 @@ export const allContactAccountTransactionPDF = async (req, res) => {
     res,
     allAccountTransactionOfContactPDF(req),
     "allAccountTransactionOfContact"
+  );
+};
+
+export const allContactAccountTransactionPDFOnlineStore = async (req, res) => {
+  await callServiceMethod(
+    req,
+    res,
+    allAccountTransactionOfContactPDFOnlineStore(req),
+    "allAccountTransactionOfContactPDFOnlineStore"
   );
 };
 

@@ -24,6 +24,10 @@ export const BACKEND_OF_WPPCONNECT = process.env.BACKEND_OF_WPPCONNECT;
 export const APP_URL_SMALL_OFFICE_CRM = process.env.APP_URL_SMALL_OFFICE_CRM;
 export const MASTER_OTP = process.env.MASTER_OTP;
 export const MASTER_PIN = process.env.MASTER_PIN;
+// Shared owner+PIN gate for build/author actions across the Report Builder
+// AND the pdfme Document Designer — separate value from MASTER_PIN (that
+// one's an internal login/OTP-bypass secret), same plain-equality pattern.
+export const REPORT_PIN = process.env.REPORT_PIN;
 export const CALL_HELPER_APP_VERSION = process.env.CALL_HELPER_APP_VERSION;
 export const CALL_TRACKER_APP_URL = process.env.CALL_TRACKER_APP_URL;
 export const SUPER_ADMIN_WHATSAPP_APP_KEY = process.env.SUPER_ADMIN_WHATSAPP_APP_KEY;
@@ -69,6 +73,7 @@ export const ORDER_ATTACHMENT_LINK_EXTENDED = `${BACKEND_OF_SMALL_OFFICE_CRM_END
 export const EXPORTS_LINK_EXTENDED = `${BACKEND_OF_SMALL_OFFICE_CRM_END_POINT}/export/`;
 export const PRODUCT_BOM_IMG_LINK_EXTENDED = `${BACKEND_OF_SMALL_OFFICE_CRM_END_POINT}/product-bom-img/`;
 export const PDF_LINK_SHIPPING_LABEL = `${BACKEND_OF_SMALL_OFFICE_CRM_END_POINT}/shipping_label_view/`;
+export const PDF_LINK_CONTACT_PRINT = `${BACKEND_OF_SMALL_OFFICE_CRM_END_POINT}/contact_print_view/`;
 export const MIRACLE_LEDGER_PDF = `${BACKEND_OF_SMALL_OFFICE_CRM_END_POINT}/mcusledger/`;
 export const CAMPAIGN_EXCEL_GENEREATE_LINK = `${BACKEND_OF_SMALL_OFFICE_CRM_END_POINT}/camp-gen-excel/`;
 export const WHATSAPP_TEMPLATE_STATIC_ATTACHMENT_GENEREATE_LINK = `${BACKEND_OF_SMALL_OFFICE_CRM_END_POINT}/whatsapp-template-att/`;
@@ -94,6 +99,15 @@ export const ENCRYPTION_SECRET = process.env.ENCRYPTION_SECRET;
 export const ENCRYPT_SMALL_OFFICE_CRM_RESPONSE = process.env.ENCRYPT_SMALL_OFFICE_CRM_RESPONSE === "true";
 export const ENCRYPT_WHATSAPP_RESPONSE = process.env.ENCRYPT_WHATSAPP_RESPONSE === "true";
 export const WHATSAPP_PAYLOAD_ENCRYPTION_KEY = process.env.WHATSAPP_PAYLOAD_ENCRYPTION_KEY;
+
+// In-app review prompt (system-review + store-review) — global settings, not per-company
+export const REVIEW_PROMPT_ENABLED = process.env.REVIEW_PROMPT_ENABLED !== "false";
+export const REVIEW_INITIAL_PROMPT_DAYS = Number(process.env.REVIEW_INITIAL_PROMPT_DAYS) || 30;
+export const REVIEW_RETRY_INTERVAL_DAYS = Number(process.env.REVIEW_RETRY_INTERVAL_DAYS) || 3;
+export const REVIEW_STORE_PROMPT_DELAY_DAYS = Number(process.env.REVIEW_STORE_PROMPT_DELAY_DAYS) || 7;
+export const REVIEW_PROMPT_DELAY_SECONDS = Number(process.env.REVIEW_PROMPT_DELAY_SECONDS) || 60;
+export const REVIEW_MIN_STAR_FOR_STORE_PROMPT = Number(process.env.REVIEW_MIN_STAR_FOR_STORE_PROMPT) || 4;
+export const REVIEW_COMMENT_MIN_LENGTH = Number(process.env.REVIEW_COMMENT_MIN_LENGTH) || 30;
 
 
 export const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID;

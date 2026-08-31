@@ -957,6 +957,21 @@ export const addProductByExcelSheetUpdateData = async (req) => {
             });
         }
 
+        // order_qty_unit: 1=Quantity only, 2=+Inner, 3=+Outer, 4=+Inner+Outer
+        // -- same gate as the sample-sheet generator (productServices.js),
+        // so a company that doesn't use inner/outer packaging can't write
+        // to a field its own UI never lets it set in the first place.
+        const companyOrderQtySetting = await companyModel.findOne({
+            where: { id: findCompanyId.company_masters_id, isDelete: 0 },
+            attributes: ["order_qty_unit"],
+        });
+        const orderQtyUnitSetting = Number(companyOrderQtySetting?.order_qty_unit) || 1;
+        // 2 (+Inner) and 4 (+Inner+Outer) show inner; 3 (+Outer) and 4 show
+        // outer — NOT a single "either is on" flag, a company on 2 has no
+        // outer packaging and one on 3 has no inner packaging.
+        const innerQtyActive = orderQtyUnitSetting === 2 || orderQtyUnitSetting === 4;
+        const outerQtyActive = orderQtyUnitSetting === 3 || orderQtyUnitSetting === 4;
+
         const formattedDate = moment(new Date()).format("YYYY-MM-DD HH:mm:ss");
 
         // ================= READ EXCEL =================
@@ -997,6 +1012,14 @@ export const addProductByExcelSheetUpdateData = async (req) => {
             "sales_gst_label": "gst_id",
             "purchase_rate": "purchase_rate",
             "purchase_gst_label": "purchase_gst_id",
+            ...(innerQtyActive && {
+                "product_inner_qty": "product_inner_qty",
+                "product_inner_unit": "product_inner_unit",
+            }),
+            ...(outerQtyActive && {
+                "product_outer_qty": "product_outer_qty",
+                "product_outer_unit": "product_outer_unit",
+            }),
         };
 
         // ================= CUSTOM FIELD =================
@@ -1164,8 +1187,9 @@ export const addProductByExcelSheetUpdateData = async (req) => {
         const taxModelInstance = taxModel(req.tenantDB);
         const CTcategoryModel = categoryModel(req.tenantDB);
         const CTProductGroupModel = productGroupModel(req.tenantDB);
+        const CTProductUnitMasterModel = productUnitMasterModel(req.tenantDB);
 
-        const [existingCategories, existingProductGroups, existingProducts, taxMasterList] = await Promise.all([
+        const [existingCategories, existingProductGroups, existingProducts, taxMasterList, unitMasterList] = await Promise.all([
             CTcategoryModel.findAll({
                 where: {
                     company_masters_id: findCompanyId.company_masters_id,
@@ -1198,7 +1222,23 @@ export const addProductByExcelSheetUpdateData = async (req) => {
                 raw: true,
                 attributes: ["name", "id", "value"]
             }),
+            CTProductUnitMasterModel.findAll({
+                where: {
+                    isDelete: 0,
+                },
+                raw: true,
+                attributes: ["unit", "id"],
+            }),
         ]);
+
+        // Same lookup addProductByExcelSheetV2 (create sheet) builds for
+        // resolving product_inner_unit/product_outer_unit's typed unit name
+        // (e.g. "Box") to product_unit_masters.id.
+        const unitMasterListSet = new Map(
+            unitMasterList
+                .filter(p => p.unit)
+                .map(p => [String(p.unit).trim().toLowerCase(), p.id])
+        );
 
         const existingProductsGroupSet = new Map(
             existingProductGroups.map((g) => [
@@ -1269,6 +1309,22 @@ export const addProductByExcelSheetUpdateData = async (req) => {
 
             const max_stock_quantity =
                 parseInt(v.max_stock_quantity) || 0;
+
+            const product_inner_qty = innerQtyActive
+                ? (parseFloat(v.product_inner_qty) || 0)
+                : undefined;
+
+            const product_outer_qty = outerQtyActive
+                ? (parseFloat(v.product_outer_qty) || 0)
+                : undefined;
+
+            const product_inner_unit = innerQtyActive && isValid(v.product_inner_unit)
+                ? (unitMasterListSet.get(String(v.product_inner_unit).trim().toLowerCase()) || undefined)
+                : undefined;
+
+            const product_outer_unit = outerQtyActive && isValid(v.product_outer_unit)
+                ? (unitMasterListSet.get(String(v.product_outer_unit).trim().toLowerCase()) || undefined)
+                : undefined;
 
             const product_group = isValid(v.product_group)
                 ? v.product_group.toString().trim()
@@ -1398,6 +1454,11 @@ export const addProductByExcelSheetUpdateData = async (req) => {
 
                 min_stock_quantity,
                 max_stock_quantity,
+
+                ...(product_inner_qty !== undefined && { product_inner_qty }),
+                ...(product_outer_qty !== undefined && { product_outer_qty }),
+                ...(product_inner_unit !== undefined && { product_inner_unit }),
+                ...(product_outer_unit !== undefined && { product_outer_unit }),
                 ...(product_group_id !== undefined && { product_group_id }),
                 ...(category_id !== undefined && { category_id }),
             };

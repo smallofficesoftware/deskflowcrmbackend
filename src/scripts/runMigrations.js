@@ -63,10 +63,31 @@ const makeTempConfigContent = (tenant, dialect) => {
 };\n`;
 };
 
+// smalloffice_sample_tenant isn't a real tenant_masters row - it's the
+// structure template new-company signup clones via `CREATE TABLE x LIKE
+// smalloffice_sample_tenant.x` (see create_company_copy.sql). It lives on
+// the same MySQL server as the master DB. Historically it only got tenant
+// migrations' SQL applied by hand (alter.txt), never through this runner,
+// so every server's copy needs a one-time SequelizeMeta backfill for
+// already-applied migrations before this starts covering it - otherwise
+// `up` will try to replay old CREATE TABLE/ADD COLUMN migrations against
+// structure that's already there and fail. See migration/tenant/README or
+// alter.txt history for the backfill statement.
+const SAMPLE_TENANT_DB_NAME = 'smalloffice_sample_tenant';
+
 const getTenants = async (masterSequelize) => {
     try {
         const [rows] = await masterSequelize.query(tenantQuery);
-        return rows || [];
+        const tenants = rows || [];
+        tenants.push({
+            id: 'sample',
+            company_masters_id: null,
+            db_name: SAMPLE_TENANT_DB_NAME,
+            db_user: process.env.TENANT_DB_USER_NAME,
+            db_password: process.env.TENANT_DB_PASSWORD,
+            db_host: process.env.TENANT_DB_HOST_NAME,
+        });
+        return tenants;
     } catch (error) {
         console.error('Error fetching tenants:', error.message);
         return [];
@@ -107,20 +128,26 @@ async function runMaster(category, action) {
         await sequelize.close?.();
         return;
     }
+    // database-master.js exports its config keyed by the ACTUAL NODE_ENV
+    // (development/production/DEMO/...), not a fixed "development" key —
+    // sequelize-cli defaults --env to "development" when not passed, so
+    // without this flag it looks up a key that doesn't exist whenever
+    // NODE_ENV isn't literally "development" (e.g. DEMO/production) and
+    // fails with "Dialect needs to be explicitly supplied".
     if (category === 'status') {
-        await spawnCommandStream('npx', ['sequelize-cli', 'db:migrate:status', '--config', masterDBConfigPath, '--migrations-path', migrationsPath]);
+        await spawnCommandStream('npx', ['sequelize-cli', 'db:migrate:status', '--config', masterDBConfigPath, '--migrations-path', migrationsPath, '--env', NODE_ENV]);
         return;
     }
     const isSeeder = category === 'seeder';
     const baseCommand = isSeeder ? 'db:seed' : 'db:migrate';
     if (action === 'up') {
-        const args = ['sequelize-cli', `${baseCommand}${isSeeder ? ':all' : ''}`, '--config', masterDBConfigPath];
+        const args = ['sequelize-cli', `${baseCommand}${isSeeder ? ':all' : ''}`, '--config', masterDBConfigPath, '--env', NODE_ENV];
         if (isSeeder) args.push('--seeders-path', seedersPath);
         else args.push('--migrations-path', migrationsPath);
         await spawnCommandStream('npx', args);
     } else if (action === 'down') {
         for (let i = 0; i < stepsArg; i++) {
-            const args = ['sequelize-cli', `${baseCommand}:undo`, '--config', masterDBConfigPath];
+            const args = ['sequelize-cli', `${baseCommand}:undo`, '--config', masterDBConfigPath, '--env', NODE_ENV];
             if (isSeeder) args.push('--seeders-path', seedersPath);
             else args.push('--migrations-path', migrationsPath);
             await spawnCommandStream('npx', args);

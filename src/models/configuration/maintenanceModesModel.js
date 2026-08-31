@@ -13,6 +13,14 @@ const maintenanceModesModel = sequelize.define("maintenance_modes", {
   is_logout_strict: {
     type: INTEGER,
   },
+  is_socket_disabled: {
+    type: INTEGER,
+    defaultValue: 0,
+  },
+  is_training_disabled: {
+    type: INTEGER,
+    defaultValue: 0,
+  },
   created_date_time: {
     type: DATE,
     defaultValue: NOW,

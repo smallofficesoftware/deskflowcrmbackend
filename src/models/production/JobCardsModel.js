@@ -22,6 +22,10 @@ export const JobCardsModel = (sequelize) => {
         item_id: {
             type: INTEGER,
         },
+        job_card_type: {
+            type: TINYINT,
+            defaultValue: 1, // 1 = from order, 2 = direct product, 3 = for customer
+        },
         production_qty: {
             type: DOUBLE,
         },

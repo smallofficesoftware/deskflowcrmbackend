@@ -690,6 +690,49 @@ export const productCreate = async (req) => {
     });
   }
 };
+// "Product Page Designer" — sets/clears which document_print_templates row
+// (template_purpose='product_page') this product's own extra page splices
+// from at generate time, when the resolved main template's
+// include_product_pages flag is on (see generateDocument.js). Deliberately
+// its own small endpoint rather than folding into productUpdate's much
+// larger required-field validation below — this is a single-column,
+// independently-triggered save from ProductPageDesignerEditorView.tsx's
+// "Use This Page" action, not a general product edit.
+export const setProductDesignerPage = async (req) => {
+  try {
+    const { product_id, document_template_id } = req.body || {};
+    if (!product_id) {
+      return resError({ developer_msg: "product_id is required" });
+    }
+
+    const Product = productModel(req.tenantDB);
+    // No company_masters_id filter — confirmed against getAllProduct above,
+    // this table isn't scoped by that column (it sits at 0 on every row in
+    // a single-company tenant DB); real scoping is tenant-DB isolation
+    // alone, same convention every other product query in this file uses.
+    //
+    // Checked via a real existence lookup, not update()'s "affected rows"
+    // count — MySQL/Sequelize report 0 affected rows when the new value
+    // equals the existing one (e.g. re-saving the same page, or explicitly
+    // clearing an already-null link), which is a legitimate no-op save,
+    // not a "row not found" — using the update's own return value here
+    // would wrongly error on exactly that case.
+    const product = await Product.findOne({ where: { id: product_id, isDelete: 0 }, attributes: ["id"] });
+    if (!product) {
+      return resError({ developer_msg: "Product not found" });
+    }
+    await Product.update(
+      { document_template_id: document_template_id || null },
+      { where: { id: product_id, isDelete: 0 } },
+    );
+
+    return resSuccess({ ack_msg: "Product page saved" });
+  } catch (e) {
+    console.log(e);
+    return resError({ developer_msg: `Failed to Catch ${e}` });
+  }
+};
+
 export const productUpdate = async (req) => {
   const {
     product_name,
@@ -1382,6 +1425,8 @@ export const getExportsProducts = async (req) => {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
 
+    const customFormFieldModelIntance = customFieldFormModel(req.tenantDB);
+
     /* get custome form field */
     let getCustomFormFieldR = await customFormFieldModelIntance.findAll({
       where: { form_type: 4, isDelete: 0 },
@@ -1498,6 +1543,21 @@ export const getExportsProductsForUpdateData = async (req) => {
 
     const companyDetail = await getCompanyByLoginId(a_application_login_id);
 
+    // order_qty_unit: 1=Quantity only, 2=+Inner, 3=+Outer, 4=+Inner+Outer
+    // (NewCreateCompanyController.ts's orderQtyList) -- inner/outer packaging
+    // isn't a concept this company uses at all when left at the "1" default,
+    // so those 2 columns would just be permanently-empty noise in the sheet.
+    const companyOrderQtySetting = await companyModel.findOne({
+      where: { id: companyDetail.company_masters_id, isDelete: 0 },
+      attributes: ["order_qty_unit"],
+    });
+    const orderQtyUnitSetting = Number(companyOrderQtySetting?.order_qty_unit) || 1;
+    // 2 (+Inner) and 4 (+Inner+Outer) show inner; 3 (+Outer) and 4 show
+    // outer — NOT a single "either is on" flag, a company on 2 has no
+    // outer packaging and one on 3 has no inner packaging.
+    const innerQtyActive = orderQtyUnitSetting === 2 || orderQtyUnitSetting === 4;
+    const outerQtyActive = orderQtyUnitSetting === 3 || orderQtyUnitSetting === 4;
+
     let whereClause = {
       isDelete: "0",
     };
@@ -1582,6 +1642,14 @@ export const getExportsProductsForUpdateData = async (req) => {
       gst_id: "sales_gst_label",
       purchase_rate: "purchase_rate",
       purchase_gst_id: "purchase_gst_label",
+      ...(innerQtyActive && {
+        product_inner_qty: "product_inner_qty",
+        product_inner_unit: "product_inner_unit",
+      }),
+      ...(outerQtyActive && {
+        product_outer_qty: "product_outer_qty",
+        product_outer_unit: "product_outer_unit",
+      }),
     };
 
     const excelColumnDefineArrayDy = {
@@ -1621,13 +1689,22 @@ export const getExportsProductsForUpdateData = async (req) => {
       },
     });
 
-    const [taxMasterList] = await Promise.all([
+    const unitModelInstance = productUnitMasterModel(req.tenantDB);
+
+    const [taxMasterList, unitMasterList] = await Promise.all([
       taxModelInstance.findAll({
         where: {
           isDelete: 0,
         },
         raw: true,
         attributes: ["name", "id", "value"]
+      }),
+      unitModelInstance.findAll({
+        where: {
+          isDelete: 0,
+        },
+        raw: true,
+        attributes: ["unit", "id"],
       }),
     ]);
 
@@ -1638,12 +1715,28 @@ export const getExportsProductsForUpdateData = async (req) => {
       ])
     );
 
+    // Same id -> name resolution as gst_id/purchase_gst_id above — the sheet
+    // shows a human-readable unit name (e.g. "NOS"), not the raw
+    // product_unit_masters id the column actually stores.
+    const unitMasterIdGroupSet = new Map(
+      unitMasterList.map(p => [
+        Number(p.id),
+        p.unit
+      ])
+    );
+
     const sanitizedContacts = productsList.map((productItem) => {
       const sanitized = sanitizeObjectOfNull(productItem.toJSON());
       sanitized['gst_id'] = sanitized['gst_id'] ? taxMasterIdGroupSet.get(Number(sanitized['gst_id'])) : ''
       sanitized['purchase_gst_id'] = sanitized['purchase_gst_id'] ? taxMasterIdGroupSet.get(Number(sanitized['purchase_gst_id'])) : ''
       sanitized['product_group'] = sanitized['group_name'] || ''
       sanitized['product_category'] = sanitized['category_name'] || ''
+      if (innerQtyActive) {
+        sanitized['product_inner_unit'] = sanitized['product_inner_unit'] ? unitMasterIdGroupSet.get(Number(sanitized['product_inner_unit'])) || '' : ''
+      }
+      if (outerQtyActive) {
+        sanitized['product_outer_unit'] = sanitized['product_outer_unit'] ? unitMasterIdGroupSet.get(Number(sanitized['product_outer_unit'])) || '' : ''
+      }
       let objectTemp = {};
 
       Object.keys(excelColumnDefineArrayDy).map((k) => {

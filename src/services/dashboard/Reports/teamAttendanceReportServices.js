@@ -145,17 +145,42 @@ export const getTeamAttendanceReport = async (req) => {
 
 
   if (selectedTeamMembers.length > 0) {
-    whereClause.a_application_login_id = {
-      [Op.in]: selectedTeamMembers,
-    };
+    if (whereClause.a_application_login_id) {
+      // showPersonalData already scoped this to the requester's own id -
+      // intersect with the filter instead of overwriting it, otherwise a
+      // personal-data-only user could pick someone else's name in the
+      // team-member filter and see their attendance (the old code just
+      // replaced the personal restriction with whatever the filter said).
+      whereClause[Op.and] = [
+        { a_application_login_id: whereClause.a_application_login_id },
+        { a_application_login_id: { [Op.in]: selectedTeamMembers } },
+      ];
+      delete whereClause.a_application_login_id;
+    } else {
+      whereClause.a_application_login_id = {
+        [Op.in]: selectedTeamMembers,
+      };
+    }
   }
 
-  const companyVsApplicationLoginResult =
+  const companyVsApplicationLoginResultRaw =
     await companyVsApplicationLoginModel.findAll({
       where: whereClause,
       offset: (offset !== undefined && limit !== undefined && Number(limit) > 0) ? Number(offset) : undefined,
       limit: (limit !== undefined && Number(limit) > 0) ? Number(limit) : undefined,
     });
+
+  // Attendance/leave lookups below are scoped only by a_application_login_id
+  // (not company_masters_id), so a user with memberships in multiple
+  // workspaces (parent + sub-workspaces, both in targetCompanyIds) matched
+  // one row per membership here and produced identical duplicate report
+  // rows - dedupe to one row per login id.
+  const seenLoginIds = new Set();
+  const companyVsApplicationLoginResult = companyVsApplicationLoginResultRaw.filter((item) => {
+    if (seenLoginIds.has(item.a_application_login_id)) return false;
+    seenLoginIds.add(item.a_application_login_id);
+    return true;
+  });
 
   const companyCurrency = await companyModel.findOne({
     where: {
@@ -420,9 +445,15 @@ export const getTeamAttendanceReport = async (req) => {
         leaveData.forEach((leave) => {
 
           const start = moment(leave.leave_date).startOf("day");
+          // Same fallback as the leave-count block above (reporting_date is
+          // exclusive; without one, treat it as a single-day leave) - this
+          // used to default end to `start` itself, so `current.isBefore(end)`
+          // was false on the very first check and the loop never ran,
+          // leaving single-day leaves (the normal case) out of
+          // leaveDateMap entirely - they never showed "L" in the report.
           const end = leave.reporting_date
             ? moment(leave.reporting_date).startOf("day")
-            : start;
+            : start.clone().add(1, "day");
 
           const leaveTypeName =
             leaveTypes.find(l => l.id === leave.leave_type_id)?.leave_type || null;

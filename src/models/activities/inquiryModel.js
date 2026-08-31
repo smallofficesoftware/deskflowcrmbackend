@@ -31,14 +31,28 @@ export const inquiryModel = (sequelize) => {
     inquiry_assigned_team_member: {
       type: TEXT
     },
+    // Comma-separated qtys, positionally paired with product_id below
+    // (index N in one lines up with index N in the other) — an inquiry can
+    // reference multiple products, each with its own qty.
     qty: {
-      type: INTEGER,
+      type: STRING,
     },
+    // Per-product remarks, positionally paired with product_id/qty. Free
+    // text (commas/newlines) so it can't reuse the comma-join those use —
+    // instead joined with the distinctive delimiter "||$||"
+    // (e.g. "remark 1||$||remark 2"). NULL / "" both mean "no remarks".
+    product_remarks: {
+      type: TEXT("long"),
+    },
+    // Comma-separated category ids, positionally paired with product_id/qty
+    // (each row's product was picked under its own category filter).
     category_id: {
-      type: INTEGER,
+      type: STRING,
     },
+    // Comma-separated product ids, e.g. "5,12,18" — a single product is
+    // just "5". See qty above for the pairing convention.
     product_id: {
-      type: INTEGER,
+      type: STRING,
     },
     source_type_id: {
       type: INTEGER,

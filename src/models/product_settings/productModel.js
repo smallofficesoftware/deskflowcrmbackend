@@ -136,6 +136,15 @@ export const productModel = (sequelize) => {
       hsn_code: {
         type: STRING,
       },
+      // "Product Page Designer" — links to a document_print_templates row
+      // (template_purpose='product_page'), spliced after the main document
+      // at print time when the resolved main template's
+      // include_product_pages flag is on.
+      document_template_id: {
+        type: INTEGER,
+        allowNull: true,
+        defaultValue: null,
+      },
       isActive: {
         type: TINYINT,
         defaultValue: "1",

@@ -42,6 +42,11 @@ export const contactModel = (sequelize) => {
       type: INTEGER,
       defaultValue: "-1",
     },
+    // Kanban drag-order within a contact_status column; NULL sorts last (never dragged yet).
+    position: {
+      type: INTEGER,
+      allowNull: true,
+    },
     country: {
       type: STRING,
     },

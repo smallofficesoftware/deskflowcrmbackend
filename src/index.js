@@ -5,10 +5,13 @@ import path from "path";
 import { Server } from "socket.io";
 import apiLogger from "./middlewares/apiLogger.js";
 import maintenanceMode from "./middlewares/maintenanceMode.js";
+import maintenanceModesModel from "./models/configuration/maintenanceModesModel.js";
 import { decryptRequest, encryptRequest } from "./middlewares/payloadSecurity.js";
 import pinoMiddleware from './middlewares/pinoMiddleware.js';
 import routers from "./routes/indexRouter.js";
 import storeSocketId from "./services/1socketIOServices/storeSocketId.js";
+import { getCompanyByLoginId } from "./services/commonServices.js";
+import { startVersionRetentionCron } from "./services/pdfmeEngine/versionRetentionCron.js";
 import { baseURL, ENCRYPT_SMALL_OFFICE_CRM_RESPONSE, NODE_ENV, PORT } from "./utils/appConstants.js";
 import logger from "./utils/logger.js";
 import { parseSession, resError } from "./utils/sharedFunctions.js";
@@ -90,22 +93,46 @@ app.use((err, req, res, next) => {
         developer_msg: "Internal Server Error",
     })
 })
+// Admin-panel kill-switch: when maintenance_modes.is_socket_disabled = 1 the
+// backend refuses every new socket.io connection (and reconnect attempt).
+// Fails open on a DB error so a lookup blip can't take live sync down.
+io.use(async (socket, next) => {
+    try {
+        const setting = await maintenanceModesModel.findOne({ where: { isDelete: 0 } });
+        if (setting && setting.dataValues.is_socket_disabled === 1) {
+            return next(new Error("socket connections are disabled"));
+        }
+    } catch (error) {
+        logger.error("[Deskflow CRM:socketGate]:[Error]", error);
+    }
+    return next();
+});
 io.on("connection", (socket) => {
     logger.info("[Deskflow CRM:connection]: socket connection successful with id: ", socket.id)
     socket.on(
         "storeSocketID",
         async ({ sessions, socketID }) => {
             try {
-                sessions.length > 0 && sessions.map(async (session) => {
-                    const { a_application_login_id, company_masters_id } = parseSession(session);
-                    if (socketID && socketID.length > 0) {
-                        await storeSocketId({
-                            socketId: socketID,
-                            applicationLoginId: a_application_login_id,
-                            companyId: company_masters_id,
-                        });
-                    }
-                });
+                if (Array.isArray(sessions) && sessions.length > 0) {
+                    await Promise.all(
+                        sessions.map(async (session) => {
+                            const { a_application_login_id, company_masters_id } = parseSession(session);
+                            if (company_masters_id) {
+                                // Company-scoped room for broadcast events (task/contact live sync
+                                // etc.) — every teammate connected for this company receives the
+                                // same emit, without per-user socket-id lookups.
+                                socket.join(`company-${company_masters_id}`);
+                            }
+                            if (socketID && socketID.length > 0) {
+                                await storeSocketId({
+                                    socketId: socketID,
+                                    applicationLoginId: a_application_login_id,
+                                    companyId: company_masters_id,
+                                });
+                            }
+                        })
+                    );
+                }
             } catch (error) {
                 socket.emit("socket-error", {
                     message: "Failed to register socket IDs",
@@ -116,11 +143,27 @@ io.on("connection", (socket) => {
             }
         }
     );
+    socket.on(
+        "joinCompanyRoom",
+        async ({ a_application_login_id }) => {
+            try {
+                if (!a_application_login_id) return;
+                const company = await getCompanyByLoginId(a_application_login_id);
+                if (company?.company_masters_id) {
+                    socket.join(`company-${company.company_masters_id}`);
+                    logger.info(`[Deskflow CRM:joinCompanyRoom]: socket ${socket.id} joined company-${company.company_masters_id}`);
+                }
+            } catch (error) {
+                logger.error("[Deskflow CRM:joinCompanyRoom]:[Error]", error);
+            }
+        }
+    );
     socket.on("disconnect", (reason) => {
         logger.info(`[Deskflow CRM:disconnect]: Socket ID ${socket.id} disconnected due to ${reason}`)
     });
 });
 app.set('whatsAppSocket', io);
+app.set('io', io);
 app.use(express.urlencoded({ extended: true }));
 app.use(apiLogger);
 app.use("/api", routers());
@@ -206,6 +249,9 @@ app.use("/order_view", express.static(findOrderView));
 const findShippingLabelView = path.join(process.cwd(), "media-folder/ShippingLabel");
 app.use("/shipping_label_view", express.static(findShippingLabelView));
 
+const findContactPrintView = path.join(process.cwd(), "media-folder/ContactPrint");
+app.use("/contact_print_view", express.static(findContactPrintView));
+
 const findAccountTransactionView = path.join(process.cwd(), "media-folder/accountTransaction");
 app.use("/accountTransactions", express.static(findAccountTransactionView));
 
@@ -241,6 +287,7 @@ server.listen(PORT, () => {
     logger.info(`Environment Mode: ${NODE_ENV}`)
     logger.info(`Response data encryption: ${ENCRYPT_SMALL_OFFICE_CRM_RESPONSE}`)
     logger.info(`Server running on ${baseURL}`)
+    startVersionRetentionCron();
 });
 // } catch (error) {
 //     logger.fatal('App failed to start:', err);

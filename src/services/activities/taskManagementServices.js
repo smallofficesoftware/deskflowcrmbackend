@@ -17,6 +17,8 @@ import {
   sanitizeObjectOfNull
 } from "../../utils/sharedFunctions.js";
 import { getCompanyByLoginId, insertStagesAndStatusLogs } from "../commonServices.js";
+import { isFeatureEnabled } from "../company_setup/featureFlagServices.js";
+import { generateTaskDueListPdf } from "../pdfmeEngine/taskDueListGenerate.js";
 
 import { randomUUID } from "crypto";
 import moment from "moment";
@@ -27,6 +29,7 @@ import { tenantMiddleware } from "../../middlewares/tenantMiddleware.js";
 import { contactMessageHistory } from "../../models/activities/contactMessageHistoryModel.js";
 import { contactModel } from "../../models/activities/contactModel.js";
 import { reminderMessagesModel } from "../../models/activities/reminderMessagesModel.js";
+import { taskChecklistItemModel } from "../../models/activities/taskChecklistItemModel.js";
 import { taskManagementModel } from "../../models/activities/taskManagementModel.js";
 import { taskMessageHistroyModel } from "../../models/activities/taskMessageHistroyModel.js";
 import companyModel from "../../models/company_setup/companyModel.js";
@@ -554,10 +557,15 @@ export const buildAllTaskWhere = ({
 
   /* ================= ORDER ================= */
 
-  const order = [
-    ["task_priority", "DESC"],
-    ["id", "DESC"]
-  ];
+  const order = [];
+
+  if (statusFilter) {
+    // Kanban board fetch (single status column) — respect the drag-order
+    // within this column; NULL (never dragged) sorts last.
+    order.push(Sequelize.literal("position IS NULL, position ASC"));
+  }
+
+  order.push(["task_priority", "DESC"], ["id", "DESC"]);
 
   if (relevanceOrder && relevanceOrder.length > 0) {
     order.push(...relevanceOrder);
@@ -765,6 +773,25 @@ export const AllTaskGet = async (req, res) => {
             LIMIT 1
           )`),
             "external_status_color"
+          ],
+          [
+            Sequelize.literal(`(
+            SELECT COUNT(*)
+            FROM task_checklist_items
+            WHERE task_checklist_items.task_id = task_managements.id
+              AND task_checklist_items.isDelete = 0
+          )`),
+            "checklist_total"
+          ],
+          [
+            Sequelize.literal(`(
+            SELECT COUNT(*)
+            FROM task_checklist_items
+            WHERE task_checklist_items.task_id = task_managements.id
+              AND task_checklist_items.isDelete = 0
+              AND task_checklist_items.is_done = 1
+          )`),
+            "checklist_done"
           ]
         ],
 
@@ -817,9 +844,40 @@ export const AllTaskGet = async (req, res) => {
       );
     }
 
+    /* ================= CUSTOM FIELDS ================= */
+    // Same dynamicFormType/report_print_or_not/customForm shape
+    // teamAllTaskReportServices.js's getTeamTaskReport already builds
+    // correctly - this endpoint (AllTaskGet, /get-task) never fetched
+    // custom field definitions at all, so a custom field configured for
+    // Task (form_type 14) or Support Ticket (form_type 15) never showed up
+    // anywhere that reads from THIS endpoint, even though the raw
+    // task_column_* value was always present on the row.
+    const dynamicFormType = Number(supportTicketFlag) === 1 ? 15 : 14;
+    const customFormFields = await customFieldFormModel(req.tenantDB).findAll({
+      where: {
+        form_type: dynamicFormType,
+        company_masters_id: companyId,
+        isDelete: 0,
+        report_print_or_not: 1,
+        data_type: { [Op.ne]: 11 },
+      },
+      raw: true,
+    });
+
     /* ================= FORMAT TASKS ================= */
 
     const tasksWithEnhancement = resultTasks.map(task => {
+      const customForm = customFormFields.map((field) => ({
+        id: field.id,
+        a_application_login_id: field.a_application_login_id,
+        company_masters_id: field.company_masters_id,
+        title: field.title,
+        reference_column_name: field.reference_column_name,
+        data_type: field.data_type,
+        value: field.reference_column_name && Object.prototype.hasOwnProperty.call(task, field.reference_column_name)
+          ? task[field.reference_column_name]
+          : "",
+      }));
 
       let assignedUsernames = "";
 
@@ -874,6 +932,7 @@ export const AllTaskGet = async (req, res) => {
         category_name: category?.task_category_name || "",
         category_color_code: category?.task_color || "",
         is_unread: isUnread,
+        customForm,
       };
     });
 
@@ -2058,6 +2117,18 @@ export const AllTaskDelete = async (req) => {
       }
     );
 
+    // Soft delete this task's checklist items alongside it
+    const ChecklistItemModel = taskChecklistItemModel(req.tenantDB);
+    await ChecklistItemModel.update(
+      { isDelete: 1 },
+      {
+        where: {
+          task_id: { [Sequelize.Op.in]: taskIds },
+          isDelete: 0,
+        },
+      }
+    );
+
     return resSuccess({
       ack_msg:
         affectedCount > 1
@@ -2410,6 +2481,199 @@ export const createAttachment = async (req) => {
     return resBadRequest({
       developer_msg: error,
     });
+  }
+};
+
+// ================= TASK CHECKLIST ITEMS =================
+// Lightweight checklist ("subtask") items nested under a parent task —
+// title + done/not-done + order only, no assignee/dates/priority/status of
+// their own. Same shape/conventions as task_message_histories (comments):
+// own isDelete/isActive, plain task_id FK, no wiring into baseController.js's
+// SOCKET_EVENT_MAP (a checkbox tick shouldn't refetch every viewer's whole
+// list/board — comments already establish this precedent).
+
+// Every checklist read/write is scoped to a task the requester's OWN
+// company actually owns — without this, guessing a task_id/item id from a
+// different tenant would let a request read/write across companies.
+const assertOwnTask = async (tenantDB, taskId, companyId) => {
+  const TaskModel = taskManagementModel(tenantDB);
+  const task = await TaskModel.findOne({
+    where: { id: taskId, company_masters_id: companyId, isDelete: 0 },
+    attributes: ["id"],
+    raw: true,
+  });
+  return !!task;
+};
+
+export const getTaskChecklistItems = async (req) => {
+  try {
+    const { task_id, a_application_login_id } = req.body;
+    if (!task_id) {
+      return resBadRequest({ ack_msg: "Task ID required", developer_msg: "Missing task_id" });
+    }
+    const findCompanyId = await getCompanyByLoginId(a_application_login_id);
+    if (!findCompanyId?.company_masters_id) {
+      return resError({ ack_msg: "Invalid login ID", developer_msg: "Company not found" });
+    }
+    const ownsTask = await assertOwnTask(req.tenantDB, task_id, findCompanyId.company_masters_id);
+    if (!ownsTask) {
+      return resError({ ack_msg: "Task not found", developer_msg: "task_id does not belong to this company" });
+    }
+
+    const ChecklistItemModel = taskChecklistItemModel(req.tenantDB);
+    const items = await ChecklistItemModel.findAll({
+      where: { task_id, company_masters_id: findCompanyId.company_masters_id, isDelete: 0 },
+      order: [["position", "ASC"], ["id", "ASC"]],
+      raw: true,
+    });
+
+    return resSuccess({ data: { item: items } });
+  } catch (error) {
+    return resBadRequest({ developer_msg: error.message || error });
+  }
+};
+
+export const createTaskChecklistItem = async (req) => {
+  try {
+    const { task_id, title, a_application_login_id } = req.body;
+    if (!task_id || !isValid(title)) {
+      return resBadRequest({ ack_msg: "Task ID and title required", developer_msg: "Missing task_id or title" });
+    }
+    const findCompanyId = await getCompanyByLoginId(a_application_login_id);
+    if (!findCompanyId?.company_masters_id) {
+      return resError({ ack_msg: "Invalid login ID", developer_msg: "Company not found" });
+    }
+    const ownsTask = await assertOwnTask(req.tenantDB, task_id, findCompanyId.company_masters_id);
+    if (!ownsTask) {
+      return resError({ ack_msg: "Task not found", developer_msg: "task_id does not belong to this company" });
+    }
+
+    const ChecklistItemModel = taskChecklistItemModel(req.tenantDB);
+    const lastItem = await ChecklistItemModel.findOne({
+      where: { task_id, isDelete: 0 },
+      order: [["position", "DESC"]],
+      attributes: ["position"],
+      raw: true,
+    });
+    const nextPosition = (lastItem?.position || 0) + 1000;
+
+    const created = await ChecklistItemModel.create({
+      task_id,
+      title: String(title).trim(),
+      is_done: 0,
+      position: nextPosition,
+      company_masters_id: findCompanyId.company_masters_id,
+      a_application_login_id,
+      created_date_time: moment(new Date()).format("YYYY-MM-DD HH:mm:ss"),
+    });
+
+    return resSuccess({ data: { item: created }, ack_msg: "Checklist item added" });
+  } catch (error) {
+    return resBadRequest({ developer_msg: error.message || error });
+  }
+};
+
+export const updateTaskChecklistItem = async (req) => {
+  try {
+    const { id, title, is_done, a_application_login_id } = req.body;
+    if (!id) {
+      return resBadRequest({ ack_msg: "Checklist item ID required", developer_msg: "Missing id" });
+    }
+    const findCompanyId = await getCompanyByLoginId(a_application_login_id);
+    if (!findCompanyId?.company_masters_id) {
+      return resError({ ack_msg: "Invalid login ID", developer_msg: "Company not found" });
+    }
+
+    const ChecklistItemModel = taskChecklistItemModel(req.tenantDB);
+    const existing = await ChecklistItemModel.findOne({
+      where: { id, company_masters_id: findCompanyId.company_masters_id, isDelete: 0 },
+    });
+    if (!existing) {
+      return resError({ ack_msg: "Checklist item not found", developer_msg: "id not found for this company" });
+    }
+
+    const updateData = {};
+    if (isValid(title)) updateData.title = String(title).trim();
+    if (is_done !== undefined) {
+      updateData.is_done = is_done ? 1 : 0;
+      if (is_done) {
+        updateData.completed_date = moment(new Date()).format("YYYY-MM-DD HH:mm:ss");
+        updateData.completed_by = a_application_login_id;
+      } else {
+        updateData.completed_date = null;
+        updateData.completed_by = null;
+      }
+    }
+
+    await existing.update(updateData);
+
+    return resSuccess({ data: { item: existing }, ack_msg: "Checklist item updated" });
+  } catch (error) {
+    return resBadRequest({ developer_msg: error.message || error });
+  }
+};
+
+export const deleteTaskChecklistItem = async (req) => {
+  try {
+    const { id, a_application_login_id } = req.body;
+    if (!id) {
+      return resBadRequest({ ack_msg: "Checklist item ID required", developer_msg: "Missing id" });
+    }
+    const findCompanyId = await getCompanyByLoginId(a_application_login_id);
+    if (!findCompanyId?.company_masters_id) {
+      return resError({ ack_msg: "Invalid login ID", developer_msg: "Company not found" });
+    }
+
+    const ChecklistItemModel = taskChecklistItemModel(req.tenantDB);
+    const [affectedCount] = await ChecklistItemModel.update(
+      { isDelete: 1 },
+      { where: { id, company_masters_id: findCompanyId.company_masters_id, isDelete: 0 } },
+    );
+    if (affectedCount === 0) {
+      return resError({ ack_msg: "Checklist item not found", developer_msg: "id not found for this company" });
+    }
+
+    return resSuccess({ ack_msg: "Checklist item deleted" });
+  } catch (error) {
+    return resBadRequest({ developer_msg: error.message || error });
+  }
+};
+
+export const reorderTaskChecklistItems = async (req) => {
+  try {
+    const { task_id, orderedIds, a_application_login_id } = req.body;
+    if (!task_id || !Array.isArray(orderedIds) || orderedIds.length === 0) {
+      return resBadRequest({ ack_msg: "task_id and orderedIds required", developer_msg: "Missing task_id or orderedIds" });
+    }
+    const findCompanyId = await getCompanyByLoginId(a_application_login_id);
+    if (!findCompanyId?.company_masters_id) {
+      return resError({ ack_msg: "Invalid login ID", developer_msg: "Company not found" });
+    }
+    const ownsTask = await assertOwnTask(req.tenantDB, task_id, findCompanyId.company_masters_id);
+    if (!ownsTask) {
+      return resError({ ack_msg: "Task not found", developer_msg: "task_id does not belong to this company" });
+    }
+
+    const ChecklistItemModel = taskChecklistItemModel(req.tenantDB);
+    await Promise.all(
+      orderedIds.map((itemId, index) =>
+        ChecklistItemModel.update(
+          { position: (index + 1) * 1000 },
+          {
+            where: {
+              id: itemId,
+              task_id,
+              company_masters_id: findCompanyId.company_masters_id,
+              isDelete: 0,
+            },
+          },
+        )
+      )
+    );
+
+    return resSuccess({ ack_msg: "Checklist reordered" });
+  } catch (error) {
+    return resBadRequest({ developer_msg: error.message || error });
   }
 };
 
@@ -3360,22 +3624,6 @@ export const generateDueTaskPdfandSendMail = async (req) => {
     //     }
     //   })
     // );
-    let dynamicPrintView = 1;
-    const htmlTemplate = fs.readFileSync(
-      path.join(
-        __dirnameConstant,
-        `../views/task/dueTaskListViewV${dynamicPrintView}.ejs`
-      ),
-      "utf-8"
-    );
-
-    const renderedHtml = await ejs.render(htmlTemplate,
-      {
-        companyData,
-        teamWiseTaskList,
-        currentDate: moment(currentDate).format("DD-MM-YYYY")
-      });
-
     const uploadDir = path.resolve(
       __dirnameConstant,
       `../../media-folder/task_cron/${companyData.id.toString()}`
@@ -3385,32 +3633,58 @@ export const generateDueTaskPdfandSendMail = async (req) => {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
 
-    const options = {
-      format: "A4",
-      orientation: "landscape",
-      border: "15mm",
-      footer: {
-        height: "5mm",
-        contents: {
-          default: `<span style="color: #444;">{{page}}</span>/<span>{{pages}}</span>`,
-        },
-      },
-    };
-
     const file_name = generateFileName("due_task_mail_data")
     const filePath = path.join(uploadDir, `${file_name}.pdf`);
     const pdfPath = `${companyData.id.toString()}/${file_name}.pdf`;
 
-    const document = {
-      html: renderedHtml,
-      data: {},
-      path: filePath,
-      type: "",
-    };
-
     const fileLinkPath = PDF_LINK_EXTENDED_TASK_CRONE + pdfPath;
 
-    await pdf.create(document, options);
+    // pdfme Document Designer — same per-company opt-in as §5's cart-doc path
+    // (orderServices.js:4810). This report isn't Designer-customizable yet
+    // (taskDueListTemplate.js is a fixed port), just a renderer switch.
+    const documentDesignerEnabled = await isFeatureEnabled(companyData.id, "document_designer");
+
+    if (documentDesignerEnabled) {
+      const buffer = await generateTaskDueListPdf({ companyData, teamWiseTaskList });
+      fs.writeFileSync(filePath, buffer);
+    } else {
+      let dynamicPrintView = 1;
+      const htmlTemplate = fs.readFileSync(
+        path.join(
+          __dirnameConstant,
+          `../views/task/dueTaskListViewV${dynamicPrintView}.ejs`
+        ),
+        "utf-8"
+      );
+
+      const renderedHtml = await ejs.render(htmlTemplate,
+        {
+          companyData,
+          teamWiseTaskList,
+          currentDate: moment(currentDate).format("DD-MM-YYYY")
+        });
+
+      const options = {
+        format: "A4",
+        orientation: "landscape",
+        border: "15mm",
+        footer: {
+          height: "5mm",
+          contents: {
+            default: `<span style="color: #444;">{{page}}</span>/<span>{{pages}}</span>`,
+          },
+        },
+      };
+
+      const document = {
+        html: renderedHtml,
+        data: {},
+        path: filePath,
+        type: "",
+      };
+
+      await pdf.create(document, options);
+    }
 
     if (!fs.existsSync(filePath)) {
       console.error("PDF file was not created at:", filePath);

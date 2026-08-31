@@ -1205,14 +1205,14 @@ const executeSQLFile = async (
 
     let sql = await fs.readFile(filePath, "utf8");
     sql = sql
-      .replace(/\$\{dbName\}/g, dbName)
-      .replace(/\$\{applicationId\}/g, applicationId)
-      .replace(/\$\{companyId\}/g, companyId)
-      .replace(/\$\{applicationName\}/g, application_login_name)
-      .replace(/\$\{dbHost\}/g, TENANT_DB_HOST_NAME)
-      .replace(/\$\{dbUser\}/g, TENANT_DB_USER_NAME)
-      .replace(/\$\{dbPassword\}/g, TENANT_DB_PASSWORD)
-      .replace(/\$\{createDateTime\}/g, formatDateAndTimeCreateDateTime);
+      .replace(/\$\{dbName\}/g, () => dbName)
+      .replace(/\$\{applicationId\}/g, () => applicationId)
+      .replace(/\$\{companyId\}/g, () => companyId)
+      .replace(/\$\{applicationName\}/g, () => application_login_name)
+      .replace(/\$\{dbHost\}/g, () => TENANT_DB_HOST_NAME)
+      .replace(/\$\{dbUser\}/g, () => TENANT_DB_USER_NAME)
+      .replace(/\$\{dbPassword\}/g, () => TENANT_DB_PASSWORD)
+      .replace(/\$\{createDateTime\}/g, () => formatDateAndTimeCreateDateTime);
 
     logger.info(`Executing SQL for database: ${dbName}`);
     await mysqlSequelize.query(sql);

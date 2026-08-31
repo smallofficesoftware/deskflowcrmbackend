@@ -7,6 +7,8 @@ import {
   assignSourceContactsProvider,
   assignStatusContactsProvider,
   checkContactNumberDuplication,
+  contactAddressPrint,
+  contactEnvelopePrint,
   contactWithReminder,
   createContact,
   createContactByOnlineStore,
@@ -40,6 +42,8 @@ export default (app) => {
   app.post("/export-contact", authenticateToken, tenantMiddleware, exportsContacts);
   app.post("/contact-with-reminder", authenticateToken, tenantMiddleware, contactWithReminder);
   app.post("/getContactById", authenticateToken, tenantMiddleware, getContactById);
+  app.post("/contact-address-pdf", authenticateToken, tenantMiddleware, contactAddressPrint);
+  app.post("/contact-envelope-pdf", authenticateToken, tenantMiddleware, contactEnvelopePrint);
   app.post(
     "/read-visiting-card",
     authenticateToken,
