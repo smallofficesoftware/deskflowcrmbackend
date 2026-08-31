@@ -198,6 +198,40 @@ const attachTaskAssignees = async (req, eventName, payload) => {
   }
 };
 
+// task_managements rows double as support tickets (is_support_ticket flag),
+// and every FN_name that touches this table is mapped to BOTH "task-changed"
+// and "support-ticket-changed" unconditionally - Task views and the
+// Support Ticket list are separate UIs/components, so a plain task edit was
+// also refetching every open Support Ticket list company-wide (and vice
+// versa) for no reason. When we can resolve which one a specific row
+// actually is (an id is present), narrow eventNames down to just that one.
+// Left alone (both kept) for id-less bulk/new-row cases, and for
+// convertSupportTicketAllTask specifically - that action changes what a row
+// IS, so both sides genuinely need to refresh.
+const narrowTaskEventNames = async (req, FN_name, eventNames, payload) => {
+  const hasBoth =
+    eventNames.includes("task-changed") && eventNames.includes("support-ticket-changed");
+  // convertSupportTicketAllTask changes is_support_ticket itself - narrowing
+  // by its POST-update value would tell only the side it moved TO, leaving
+  // the side it moved FROM never told the row is gone.
+  if (!hasBoth || FN_name === "convertSupportTicketAllTask" || !payload?.id || !req.tenantDB) {
+    return eventNames;
+  }
+  try {
+    const Task = taskManagementModel(req.tenantDB);
+    const task = await Task.findOne({
+      where: { id: payload.id },
+      attributes: ["is_support_ticket"],
+      raw: true,
+    });
+    if (!task) return eventNames;
+    return [task.is_support_ticket ? "support-ticket-changed" : "task-changed"];
+  } catch (error) {
+    console.error("[socket] failed to resolve is_support_ticket", error);
+    return eventNames;
+  }
+};
+
 const callServiceMethod = async (req, res, serviceMethodToCall, FN_name) => {
   try {
     const data = await serviceMethodToCall;
@@ -206,7 +240,8 @@ const callServiceMethod = async (req, res, serviceMethodToCall, FN_name) => {
     const eventNames = resolveSocketEvents(FN_name, req);
     if (eventNames.length && data?.ack === 1 && !(await isSocketDisabled())) {
       const payload = resolveSocketPayload(FN_name, req, data);
-      for (const eventName of eventNames) {
+      const narrowedEventNames = await narrowTaskEventNames(req, FN_name, eventNames, payload);
+      for (const eventName of narrowedEventNames) {
         let enrichedPayload = await attachContactAssignees(req, eventName, payload);
         enrichedPayload = await attachTaskAssignees(req, eventName, enrichedPayload);
         emitSocketEventForResult(req, eventName, enrichedPayload);
