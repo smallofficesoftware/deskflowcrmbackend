@@ -2872,30 +2872,7 @@ DROP TABLE IF EXISTS `quotations`;
 ALTER TABLE `socket_connections` MODIFY COLUMN `id` INT(11) NOT NULL AUTO_INCREMENT COMMENT 'Primary key: Unique identifier for each socket connection';
 
 27-08-2026 Deep
-CREATE TABLE `event_type_masters`(
-    `id` INT(11) NOT NULL AUTO_INCREMENT,
-    `event_type_name` TEXT NOT NULL,
-    `event_type_color` VARCHAR(255) NOT NULL,
-    `created_date_time` DATETIME NOT NULL,
-    `modified_date` DATETIME NULL DEFAULT NULL,
-    `s_timestemp` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    `isDelete` TINYINT(4) NOT NULL DEFAULT '0',
-    `isActive` TINYINT(4) NOT NULL DEFAULT '1',
-    PRIMARY KEY(`id`)
-) ENGINE = InnoDB;
 
-CREATE TABLE `event_masters`(
-    `id` INT(11) NOT NULL AUTO_INCREMENT,
-    `event_type_id` INT(11) NOT NULL,
-    `event_title` VARCHAR(255) NOT NULL,
-    `event_date` DATE NOT NULL,
-    `created_date_time` DATETIME NOT NULL,
-    `modified_date` DATETIME NULL DEFAULT NULL,
-    `s_timestemp` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    `isDelete` TINYINT(4) NOT NULL DEFAULT '0',
-    `isActive` TINYINT(4) NOT NULL DEFAULT '1',
-    PRIMARY KEY(`id`)
-) ENGINE = InnoDB;
 
 CREATE TABLE `event_participate_masters`(
     `id` INT(11) NOT NULL AUTO_INCREMENT,
