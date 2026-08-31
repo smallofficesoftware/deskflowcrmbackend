@@ -145,9 +145,22 @@ export const getTeamAttendanceReport = async (req) => {
 
 
   if (selectedTeamMembers.length > 0) {
-    whereClause.a_application_login_id = {
-      [Op.in]: selectedTeamMembers,
-    };
+    if (whereClause.a_application_login_id) {
+      // showPersonalData already scoped this to the requester's own id -
+      // intersect with the filter instead of overwriting it, otherwise a
+      // personal-data-only user could pick someone else's name in the
+      // team-member filter and see their attendance (the old code just
+      // replaced the personal restriction with whatever the filter said).
+      whereClause[Op.and] = [
+        { a_application_login_id: whereClause.a_application_login_id },
+        { a_application_login_id: { [Op.in]: selectedTeamMembers } },
+      ];
+      delete whereClause.a_application_login_id;
+    } else {
+      whereClause.a_application_login_id = {
+        [Op.in]: selectedTeamMembers,
+      };
+    }
   }
 
   const companyVsApplicationLoginResult =
