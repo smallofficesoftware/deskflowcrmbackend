@@ -412,6 +412,19 @@ function getOutStatus(checkOutTime, dailyOutTime, gracePeriod = 15) {
   return "On Time";
 }
 
+// Minutes checkInTime falls after referenceTime (HH:mm:ss), floored at 0 -
+// an early/on-time check-in is never "negative late".
+function getLateMinutes(checkInTime, referenceTime) {
+  if (!checkInTime || !referenceTime) return 0;
+
+  const toMinutes = (timeStr) => {
+    const [hours, mins] = timeStr.split(":").map(Number);
+    return hours * 60 + mins;
+  };
+
+  const diff = toMinutes(checkInTime) - toMinutes(referenceTime);
+  return diff > 0 ? diff : 0;
+}
 
 //request flag 1 ===> check in/out ma last status get karva
 //request flag 2 ===> data get karva     My Team --> Attendance History
@@ -577,6 +590,15 @@ export const attendanceView = async (req) => {
         gracePeriod
       );
 
+      // actual_late_minutes: how late against the real shift start time,
+      // regardless of grace (0 whenever check-in isn't after dailyInTime).
+      // late_minutes_after_grace: how late past the grace-adjusted cutoff -
+      // this is what actually drives in_status "Late In" above; 0 while
+      // still inside the grace window even if actual_late_minutes > 0.
+      const actualLateMinutes = getLateMinutes(firstEntry.attendanceTime, dailyInTime);
+      const graceTime = addMinutesToTime(dailyInTime, gracePeriod);
+      const lateMinutesAfterGrace = getLateMinutes(firstEntry.attendanceTime, graceTime);
+
       const groupObj = {
         date: date,
         messages: records,
@@ -587,6 +609,9 @@ export const attendanceView = async (req) => {
         out_status: outStatus,
         daily_in_time: dailyInTime,
         daily_out_time: dailyOutTime,
+        grace_period: gracePeriod,
+        actual_late_minutes: actualLateMinutes,
+        late_minutes_after_grace: lateMinutesAfterGrace,
       };
 
       result.push(groupObj);
