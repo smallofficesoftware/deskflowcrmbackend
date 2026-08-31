@@ -163,12 +163,24 @@ export const getTeamAttendanceReport = async (req) => {
     }
   }
 
-  const companyVsApplicationLoginResult =
+  const companyVsApplicationLoginResultRaw =
     await companyVsApplicationLoginModel.findAll({
       where: whereClause,
       offset: (offset !== undefined && limit !== undefined && Number(limit) > 0) ? Number(offset) : undefined,
       limit: (limit !== undefined && Number(limit) > 0) ? Number(limit) : undefined,
     });
+
+  // Attendance/leave lookups below are scoped only by a_application_login_id
+  // (not company_masters_id), so a user with memberships in multiple
+  // workspaces (parent + sub-workspaces, both in targetCompanyIds) matched
+  // one row per membership here and produced identical duplicate report
+  // rows - dedupe to one row per login id.
+  const seenLoginIds = new Set();
+  const companyVsApplicationLoginResult = companyVsApplicationLoginResultRaw.filter((item) => {
+    if (seenLoginIds.has(item.a_application_login_id)) return false;
+    seenLoginIds.add(item.a_application_login_id);
+    return true;
+  });
 
   const companyCurrency = await companyModel.findOne({
     where: {

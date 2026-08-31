@@ -348,6 +348,6 @@ FROM `employee_account_transactions` eat
 WHERE eat.isDelete = 0
   AND eat.approve_by_a_application_login_id != 0;
 
-INSERT INTO smalloffice.tenant_masters (`id`, `a_application_login_id`, `company_masters_id`, `application_login_name`,  `db_host`, `db_user`, `db_password`, `db_name` , `created_date_time`,`isDelete`, `isActive`) VALUES (NULL, '${applicationId}', '${companyId}', '${applicationName}','${dbHost}', '${dbUser}', '', '${dbName}' , '${createDateTime}','0','1');
+INSERT INTO smalloffice.tenant_masters (`id`, `a_application_login_id`, `company_masters_id`, `application_login_name`,  `db_host`, `db_user`, `db_password`, `db_name` , `created_date_time`,`isDelete`, `isActive`) VALUES (NULL, '${applicationId}', '${companyId}', '${applicationName}','${dbHost}', '${dbUser}', '${dbPassword}', '${dbName}' , '${createDateTime}','0','1');
 
 
