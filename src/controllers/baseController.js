@@ -22,6 +22,11 @@ const SOCKET_EVENT_MAP = {
   assignStatusContactsProvider: "contact-changed",
   assignLableContactsProvider: "contact-changed",
   assignContactsProvider: "contact-changed",
+  assignSourceContactsProvider: "contact-changed",
+  recoverContact: "contact-changed",
+  contactarchive: "contact-changed",
+  CreateContactWithReminder: "contact-changed",
+  visitingCardReadInsertContactProvider: "contact-changed",
   createcreateCustomerSupportTicketAllTask: "support-ticket-changed",
   convertSupportTicketAllTask: ["task-changed", "support-ticket-changed"],
 };
@@ -94,11 +99,12 @@ const resolveSocketPayload = (FN_name, req, data) => {
   // for the record id (verified against the actual service functions, not
   // guessed): AllTaskUpdate uses `editId`; AllTaskDelete/archiveAllTask/
   // unarchiveAllTask use `TaskId`; deleteContact uses `contactId`;
-  // assignContactsProvider/assignStatusContactsProvider/
-  // assignLableContactsProvider use `appliedTo` (single id, or the literal
-  // string "all" for a filter-driven bulk apply). Several of these can be
-  // an array/"all" for bulk actions - kept unscoped rather than guessing
-  // how a listener should compare against a list.
+  // recoverContact uses `contactIds`; contactarchive uses
+  // `contact_master_id`; assignContactsProvider/assignStatusContactsProvider/
+  // assignLableContactsProvider/assignSourceContactsProvider use `appliedTo`
+  // (single id, or the literal string "all" for a filter-driven bulk apply).
+  // Several of these can be an array/"all" for bulk actions - kept unscoped
+  // rather than guessing how a listener should compare against a list.
   const rawId =
     req.body?.id ??
     req.body?.task_id ??
@@ -106,6 +112,8 @@ const resolveSocketPayload = (FN_name, req, data) => {
     req.body?.editId ??
     req.body?.TaskId ??
     req.body?.contactId ??
+    req.body?.contactIds ??
+    req.body?.contact_master_id ??
     (req.body?.appliedTo !== "all" ? req.body?.appliedTo : undefined);
   const id = Array.isArray(rawId) ? undefined : rawId;
   return id ? { id } : {};
