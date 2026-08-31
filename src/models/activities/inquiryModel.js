@@ -37,9 +37,10 @@ export const inquiryModel = (sequelize) => {
     qty: {
       type: STRING,
     },
-    // Per-product remarks, positionally paired with product_id/qty. JSON
-    // array string (e.g. ["remark 1","remark 2"]) — free text so it can't
-    // reuse the comma-join. NULL / "" / "[]" all mean "no remarks".
+    // Per-product remarks, positionally paired with product_id/qty. Free
+    // text (commas/newlines) so it can't reuse the comma-join those use —
+    // instead joined with the distinctive delimiter "||$||"
+    // (e.g. "remark 1||$||remark 2"). NULL / "" both mean "no remarks".
     product_remarks: {
       type: TEXT("long"),
     },

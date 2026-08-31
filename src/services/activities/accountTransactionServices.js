@@ -1767,6 +1767,20 @@ export const importAccountTransactionByExcel = async (req) => {
       raw: true,
     });
 
+    // Duplicate guard: a row is a duplicate when an account transaction with the
+    // same contact + payment date-time + amount already exists (re-importing the
+    // same sheet is the common case). Also de-dupes rows repeated within one file.
+    const dupKey = (contactId, dateStr, amt) =>
+      `${contactId}|${moment(dateStr).format("YYYY-MM-DD HH:mm:ss")}|${Number(amt)}`;
+    const existingTxns = await accountTransaction.findAll({
+      where: { company_masters_id: findCompanyId.company_masters_id, isDelete: 0 },
+      attributes: ["contact_masters_id", "payment_date_time", "amount"],
+      raw: true,
+    });
+    const seenKeys = new Set(
+      existingTxns.map((t) => dupKey(t.contact_masters_id, t.payment_date_time, t.amount))
+    );
+
     const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
     const sheetName = workbook.SheetNames[0];
     const worksheet = workbook.Sheets[sheetName];
@@ -1787,6 +1801,7 @@ export const importAccountTransactionByExcel = async (req) => {
 
     const rows = data.slice(1);
     let errorRows = [];
+    let duplicateRows = [];
     let finalData = [];
     const now = new Date();
     const formattedNowStr = moment(now).format("YYYY-MM-DD HH:mm:ss");
@@ -1887,6 +1902,17 @@ export const importAccountTransactionByExcel = async (req) => {
         }
       }
 
+      // Skip if this contact already has a transaction with the same
+      // date-time and amount (existing in DB, or an earlier row in this sheet).
+      const key = dupKey(matchedContact.id, paymentDateTime, amountVal);
+      if (seenKeys.has(key)) {
+        duplicateRows.push(
+          `Row ${rowNumber}: Duplicate — ${matchedContact.person_name || rawClientCode} already has ${amountVal} on ${paymentDateTime}`
+        );
+        continue;
+      }
+      seenKeys.add(key);
+
       finalData.push({
         contact_masters_id: matchedContact.id,
         a_application_login_id,
@@ -1903,10 +1929,13 @@ export const importAccountTransactionByExcel = async (req) => {
     }
 
     if (!finalData.length) {
+      const messages = [...errorRows, ...duplicateRows];
       return resError({
-        ack_msg: "No valid transaction data to import",
-        developer_msg: errorRows.join("<br/>"),
-        data: errorRows.join("<br/>"),
+        ack_msg: duplicateRows.length
+          ? "No new transactions to import — all rows are duplicates or invalid"
+          : "No valid transaction data to import",
+        developer_msg: messages.join("<br/>"),
+        data: messages.join("<br/>"),
       });
     }
 
@@ -1949,8 +1978,8 @@ export const importAccountTransactionByExcel = async (req) => {
     }
 
     return resSuccess({
-      ack_msg: `Successfully imported ${finalData.length} account transactions.${isApproveRight ? " All transactions approved automatically." : ""}`,
-      data: errorRows.length ? errorRows.join("<br/>") : "",
+      ack_msg: `Successfully imported ${finalData.length} account transactions.${duplicateRows.length ? ` ${duplicateRows.length} duplicate row(s) skipped.` : ""}${isApproveRight ? " All transactions approved automatically." : ""}`,
+      data: [...errorRows, ...duplicateRows].join("<br/>"),
     });
   } catch (error) {
     console.error("importAccountTransactionByExcel Error:", error);

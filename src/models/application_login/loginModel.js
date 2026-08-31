@@ -1,4 +1,4 @@
-import { DATE, FLOAT, INTEGER, SMALLINT, STRING, TEXT, TIME, TINYINT } from "sequelize";
+import { DATE, DATEONLY, FLOAT, INTEGER, SMALLINT, STRING, TEXT, TIME, TINYINT } from "sequelize";
 import sequelize from "../../config/sequelize.js";
 
 const loginModel = sequelize.define("a_application_logins", {
@@ -222,6 +222,9 @@ const loginModel = sequelize.define("a_application_logins", {
   },
   date_of_joining: {
     type: DATE
+  },
+  date_of_birth: {
+    type: DATEONLY
   },
   isDelete: {
     type: TINYINT,

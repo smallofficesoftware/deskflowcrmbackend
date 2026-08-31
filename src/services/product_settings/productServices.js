@@ -1551,7 +1551,12 @@ export const getExportsProductsForUpdateData = async (req) => {
       where: { id: companyDetail.company_masters_id, isDelete: 0 },
       attributes: ["order_qty_unit"],
     });
-    const innerOuterQtyActive = Number(companyOrderQtySetting?.order_qty_unit) > 1;
+    const orderQtyUnitSetting = Number(companyOrderQtySetting?.order_qty_unit) || 1;
+    // 2 (+Inner) and 4 (+Inner+Outer) show inner; 3 (+Outer) and 4 show
+    // outer — NOT a single "either is on" flag, a company on 2 has no
+    // outer packaging and one on 3 has no inner packaging.
+    const innerQtyActive = orderQtyUnitSetting === 2 || orderQtyUnitSetting === 4;
+    const outerQtyActive = orderQtyUnitSetting === 3 || orderQtyUnitSetting === 4;
 
     let whereClause = {
       isDelete: "0",
@@ -1637,9 +1642,13 @@ export const getExportsProductsForUpdateData = async (req) => {
       gst_id: "sales_gst_label",
       purchase_rate: "purchase_rate",
       purchase_gst_id: "purchase_gst_label",
-      ...(innerOuterQtyActive && {
+      ...(innerQtyActive && {
         product_inner_qty: "product_inner_qty",
+        product_inner_unit: "product_inner_unit",
+      }),
+      ...(outerQtyActive && {
         product_outer_qty: "product_outer_qty",
+        product_outer_unit: "product_outer_unit",
       }),
     };
 
@@ -1680,13 +1689,22 @@ export const getExportsProductsForUpdateData = async (req) => {
       },
     });
 
-    const [taxMasterList] = await Promise.all([
+    const unitModelInstance = productUnitMasterModel(req.tenantDB);
+
+    const [taxMasterList, unitMasterList] = await Promise.all([
       taxModelInstance.findAll({
         where: {
           isDelete: 0,
         },
         raw: true,
         attributes: ["name", "id", "value"]
+      }),
+      unitModelInstance.findAll({
+        where: {
+          isDelete: 0,
+        },
+        raw: true,
+        attributes: ["unit", "id"],
       }),
     ]);
 
@@ -1697,12 +1715,28 @@ export const getExportsProductsForUpdateData = async (req) => {
       ])
     );
 
+    // Same id -> name resolution as gst_id/purchase_gst_id above — the sheet
+    // shows a human-readable unit name (e.g. "NOS"), not the raw
+    // product_unit_masters id the column actually stores.
+    const unitMasterIdGroupSet = new Map(
+      unitMasterList.map(p => [
+        Number(p.id),
+        p.unit
+      ])
+    );
+
     const sanitizedContacts = productsList.map((productItem) => {
       const sanitized = sanitizeObjectOfNull(productItem.toJSON());
       sanitized['gst_id'] = sanitized['gst_id'] ? taxMasterIdGroupSet.get(Number(sanitized['gst_id'])) : ''
       sanitized['purchase_gst_id'] = sanitized['purchase_gst_id'] ? taxMasterIdGroupSet.get(Number(sanitized['purchase_gst_id'])) : ''
       sanitized['product_group'] = sanitized['group_name'] || ''
       sanitized['product_category'] = sanitized['category_name'] || ''
+      if (innerQtyActive) {
+        sanitized['product_inner_unit'] = sanitized['product_inner_unit'] ? unitMasterIdGroupSet.get(Number(sanitized['product_inner_unit'])) || '' : ''
+      }
+      if (outerQtyActive) {
+        sanitized['product_outer_unit'] = sanitized['product_outer_unit'] ? unitMasterIdGroupSet.get(Number(sanitized['product_outer_unit'])) || '' : ''
+      }
       let objectTemp = {};
 
       Object.keys(excelColumnDefineArrayDy).map((k) => {
