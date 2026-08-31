@@ -420,9 +420,15 @@ export const getTeamAttendanceReport = async (req) => {
         leaveData.forEach((leave) => {
 
           const start = moment(leave.leave_date).startOf("day");
+          // Same fallback as the leave-count block above (reporting_date is
+          // exclusive; without one, treat it as a single-day leave) - this
+          // used to default end to `start` itself, so `current.isBefore(end)`
+          // was false on the very first check and the loop never ran,
+          // leaving single-day leaves (the normal case) out of
+          // leaveDateMap entirely - they never showed "L" in the report.
           const end = leave.reporting_date
             ? moment(leave.reporting_date).startOf("day")
-            : start;
+            : start.clone().add(1, "day");
 
           const leaveTypeName =
             leaveTypes.find(l => l.id === leave.leave_type_id)?.leave_type || null;
