@@ -2889,3 +2889,37 @@ ALTER TABLE `inquiries` ADD `product_remarks` LONGTEXT NULL DEFAULT NULL AFTER `
 -- the distinctive delimiter "||$||" ("remark 1||$||remark 2"). Also apply
 -- to smalloffice_sample_tenant.
 -- migration: migration/tenant/migrations/20260830130000-add-product-remarks-to-inquiries.js
+
+31-08-2026 Dhaval
+-- Admin Panel (deskflowadminpanel repo) own master DB, NOT the CRM tenant DB -
+-- do not apply to smalloffice_sample_tenant or any tenant DB.
+CREATE TABLE `page_group_masters` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `group_name` VARCHAR(255) NOT NULL,
+  `page_ids` TEXT NOT NULL,
+  `created_date_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `isActive` TINYINT NOT NULL DEFAULT 1,
+  `isDelete` TINYINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+INSERT INTO `a_application_pages` (`page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `isDelete`, `isActive`) VALUES ('Page Groups', 'Platform', 'page-groups', 'Page Groups', 1, 15, 0, 1, NOW(), 0, 1);
+
+INSERT INTO `superadmin_role_page_rights` (`role_id`, `page_id`, `rights_json`, `created_date_time`, `isActive`, `isDelete`)
+SELECT r.id, p.id, '{"view":1,"add":1,"edit":1,"delete":1}', NOW(), 1, 0
+FROM `superadmin_roles` r, `a_application_pages` p
+WHERE r.name = 'Super Admin' AND p.page_slug = 'page-groups';
+
+31-08-2026 Dhaval
+-- Admin Panel own master DB (schema pivot: page->group link now lives on
+-- the page, not as a page_ids list on the group). Not the CRM tenant DB.
+ALTER TABLE `a_application_pages` ADD `group_id` INT NULL DEFAULT NULL;
+ALTER TABLE `a_application_pages` ADD INDEX `a_application_pages_group_id` (`group_id`);
+ALTER TABLE `page_group_masters` DROP COLUMN `page_ids`;
+
+INSERT INTO `a_application_pages` (`page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `isDelete`, `isActive`) VALUES ('Application Pages', 'Platform', 'application-pages', 'Application Pages', 1, 16, 0, 1, NOW(), 0, 1);
+
+INSERT INTO `superadmin_role_page_rights` (`role_id`, `page_id`, `rights_json`, `created_date_time`, `isActive`, `isDelete`)
+SELECT r.id, p.id, '{"view":1,"add":1,"edit":1,"delete":1}', NOW(), 1, 0
+FROM `superadmin_roles` r, `a_application_pages` p
+WHERE r.name = 'Super Admin' AND p.page_slug = 'application-pages';
