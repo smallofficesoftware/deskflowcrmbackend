@@ -1810,6 +1810,56 @@ ALTER TABLE `job_cards` ADD PRIMARY KEY (`id`);
 
 ALTER TABLE `job_cards` MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
+04-07-2026 Dhaval
+-- Admin Panel own master DB (not the CRM tenant DB). Backfilled retroactively
+-- from migrations 20260704120000/1/2/20260704150000 - never logged at the time.
+CREATE TABLE `superadmin_roles` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `name` VARCHAR(100) NOT NULL UNIQUE,
+  `description` VARCHAR(255) NULL,
+  `created_date_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `isActive` TINYINT NOT NULL DEFAULT 1,
+  `isDelete` TINYINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE `superadmin_users` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `role_id` INT NOT NULL,
+  `name` VARCHAR(150) NOT NULL,
+  `username` VARCHAR(100) NOT NULL UNIQUE,
+  `email` VARCHAR(150) NOT NULL UNIQUE,
+  `password_hash` VARCHAR(255) NOT NULL,
+  `last_login_at` DATETIME NULL,
+  `created_date_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `isActive` TINYINT NOT NULL DEFAULT 1,
+  `isDelete` TINYINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  CONSTRAINT `superadmin_users_role_id_fk` FOREIGN KEY (`role_id`) REFERENCES `superadmin_roles` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE `superadmin_role_page_rights` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `role_id` INT NOT NULL,
+  `page_id` INT NOT NULL COMMENT 'References a_application_pages.id (existing legacy table)',
+  `rights_json` LONGTEXT NOT NULL COMMENT 'JSON string, e.g. {"view":1,"add":1,"edit":1,"delete":0}',
+  `created_date_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `isActive` TINYINT NOT NULL DEFAULT 1,
+  `isDelete` TINYINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `role_id_page_id_unique` (`role_id`, `page_id`),
+  CONSTRAINT `superadmin_role_page_rights_role_id_fk` FOREIGN KEY (`role_id`) REFERENCES `superadmin_roles` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+ALTER TABLE `company_vs_plans` ADD `entry_type` TINYINT NOT NULL DEFAULT 1 COMMENT '1 = online (Razorpay), 2 = manual/offline entry by staff';
+ALTER TABLE `company_vs_plans` ADD `payment_mode` VARCHAR(50) NULL COMMENT 'cash | bank_transfer | cheque | upi (manual entries only)';
+ALTER TABLE `company_vs_plans` ADD `payment_reference` VARCHAR(255) NULL;
+ALTER TABLE `company_vs_plans` ADD `notes` TEXT NULL;
+ALTER TABLE `company_vs_plans` ADD `is_refunded` TINYINT NOT NULL DEFAULT 0;
+ALTER TABLE `company_vs_plans` ADD `refund_reason` TEXT NULL;
+ALTER TABLE `company_vs_plans` ADD `refunded_at` DATETIME NULL;
+ALTER TABLE `company_vs_plans` ADD `refunded_by_superadmin_user_id` INT NULL;
+
 
 06-07-2026 Keval
 
@@ -3018,3 +3068,7 @@ INSERT INTO `superadmin_role_page_rights` (`role_id`, `page_id`, `rights_json`, 
 SELECT r.id, p.id, '{"view":1,"add":1,"edit":1,"delete":1}', NOW(), 1, 0
 FROM `superadmin_roles` r, `a_application_pages` p
 WHERE r.name = 'Super Admin' AND p.page_slug = 'application-pages';
+
+31-08-2026 Dhaval
+-- Admin Panel own master DB (not the CRM tenant DB).
+ALTER TABLE `page_group_masters` ADD `display_order` INT NOT NULL DEFAULT 0;
