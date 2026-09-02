@@ -36,6 +36,7 @@ import getTeamAttendanceReport from "./dashboard/Reports/teamAttendanceReportRou
 import getTeamDayExpense from "./dashboard/Reports/teamDaywiseExpenseReportRouter.js";
 import getTeamPendingWorkReport from "./dashboard/Reports/teamPendingWorkReportRouter.js";
 import getTeamPerformanceReport from "./dashboard/Reports/teamPerformanceReportRouter.js";
+import genericReportExportRouter from "./dashboard/Reports/genericReportExportRouter.js";
 import attendanceRouter from "./hr/attendanceRouter.js";
 import categoryDelete from "./product_settings/categoryDeleteRouter.js";
 // import ConnectionRouter from "./connectionRouter.js";
@@ -139,6 +140,7 @@ export default () => {
   statistics(app);
   accountOutstandingReport(app);
   getTeamPerformanceReport(app);
+  genericReportExportRouter(app);
   getTeamPendingWorkReport(app);
   getProductInventoryReport(app);
   reminderNotificationRouter(app);
