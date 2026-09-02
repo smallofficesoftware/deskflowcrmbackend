@@ -185,11 +185,35 @@ const flattenVisitReportRows = (result) => {
 // Pending Order / Pending Purchase reuse getTeamAllCarts, but the on-screen
 // grid applies a small field-aliasing pass the raw service response doesn't
 // have under these exact keys - replicate it so cart_status/update_Date_time
-// columns aren't blank.
+// columns aren't blank. Also had the same missing-Excel-branch composition
+// gap as composeCartDisplayFields (no phone in to_customer_name here).
 const flattenCart = (row) => ({
   ...row,
   cart_status: row.statusDetails?.name || row.cart_status,
   update_Date_time: row.update_Date_time || row.approve_date_time,
+  cart_number: `${row.cart_number || "XXXXXXX"} (${row.is_approve?.name || "-"})`,
+  to_customer_name: `${row.to_customer_company_name || ""}(${row.to_customer_name || ""})`,
+});
+
+// Purchase Order, Dispatch, Proforma Invoice, detailed Order Report:
+// getExportCellValue's Excel branch composed cart_number with the approval
+// status suffix and to_customer_name with the company name prefix (unlike
+// the sibling cart reports, whose Excel branch used the plain fields) -
+// port that composition onto the same keys so it lands in the existing
+// cart_number/to_customer_name columns without needing new ones.
+const composeCartDisplayFields = (row) => ({
+  ...row,
+  cart_number: `${row.cart_number || "XXXXXXX"} (${row.is_approve?.name || "-"})`,
+  to_customer_name: `${row.to_customer_company_name || ""}(${row.to_customer_name || "-"})`,
+});
+
+// Sales Order, Quotation, Sales Invoice: same missing-Excel-branch gap as
+// composeCartDisplayFields above, but their to_customer_name composition
+// also folds in the phone number.
+const composeCartDisplayFieldsWithPhone = (row) => ({
+  ...row,
+  cart_number: `${row.cart_number || "XXXXXXX"} (${row.is_approve?.name || "-"})`,
+  to_customer_name: `${row.to_customer_company_name || "-"} (${row.to_customer_name || "-"}) - ${row.to_customer_phone || "-"}`,
 });
 
 // Attendance & Salary Report: the on-screen grid is fixed summary columns,
@@ -449,19 +473,19 @@ export const reportExportRegistry = {
   // (pageIdMap confirmed in teamAllCartsReportServices.js:54-65).
   quotation_report: {
     fetchPage: (req) => getTeamAllCarts({ ...req, body: { ...req.body, type: 1 } }),
-    extractRows: itemArray,
+    extractRows: (result) => itemArray(result).map(composeCartDisplayFieldsWithPhone),
   },
   sales_order_report: {
     fetchPage: (req) => getTeamAllCarts({ ...req, body: { ...req.body, type: 2 } }),
-    extractRows: itemArray,
+    extractRows: (result) => itemArray(result).map(composeCartDisplayFieldsWithPhone),
   },
   sales_invoice_report: {
     fetchPage: (req) => getTeamAllCarts({ ...req, body: { ...req.body, type: 3 } }),
-    extractRows: itemArray,
+    extractRows: (result) => itemArray(result).map(composeCartDisplayFieldsWithPhone),
   },
   purchase_order_report: {
     fetchPage: (req) => getTeamAllCarts({ ...req, body: { ...req.body, type: 4 } }),
-    extractRows: itemArray,
+    extractRows: (result) => itemArray(result).map(composeCartDisplayFields),
   },
   purchase_invoice_report: {
     fetchPage: (req) => getTeamAllCarts({ ...req, body: { ...req.body, type: 5 } }),
@@ -481,18 +505,18 @@ export const reportExportRegistry = {
   },
   dispatch_report: {
     fetchPage: (req) => getTeamAllCarts({ ...req, body: { ...req.body, type: 9 } }),
-    extractRows: itemArray,
+    extractRows: (result) => itemArray(result).map(composeCartDisplayFields),
   },
   proforma_invoice_report: {
     fetchPage: (req) => getTeamAllCarts({ ...req, body: { ...req.body, type: 12 } }),
-    extractRows: itemArray,
+    extractRows: (result) => itemArray(result).map(composeCartDisplayFields),
   },
   // Unreachable in the current UI (ReportsModel.tsx's entry is commented
   // out) - registered anyway since it costs nothing and the view already
   // wires the shared export service directly.
   detailed_order_report: {
     fetchPage: (req) => getTeamAllCarts(req),
-    extractRows: itemArray,
+    extractRows: (result) => itemArray(result).map(composeCartDisplayFields),
   },
   pending_order_report: {
     fetchPage: (req) => getTeamAllCarts({ ...req, body: { ...req.body, type: 2 } }),
