@@ -629,6 +629,28 @@ export const runQueryReport = async (definition, req) => {
       return resError({ ack_msg: "No access to this report", developer_msg: "No report_definition_team_rights grant for this login on this report" });
     }
 
+    // ---- free-text search — deliberately narrower than the legacy
+    // globalSearch convention (inquiryReportServices.js etc.), which
+    // introspects a model's raw Sequelize attributes and LIKEs every
+    // STRING/TEXT/CHAR/VARCHAR column, whitelisted or not. This engine
+    // never references a column that isn't already in effectiveColumns —
+    // search is no exception, scoped to this report's own already-
+    // whitelisted `type: "string"` columns only. Relation columns and
+    // aggregate aliases are excluded (not real base-table columns to LIKE
+    // against). ----
+    const searchTerm = typeof req.body?.search === "string" ? req.body.search.trim() : "";
+    const searchClauses = [];
+    if (searchTerm) {
+      const searchableColumns = Object.entries(effectiveColumns)
+        .filter(([, def]) => def.type === "string")
+        .map(([key]) => key);
+      if (searchableColumns.length > 0) {
+        searchClauses.push({
+          [Op.or]: searchableColumns.map((key) => ({ [key]: { [Op.like]: `%${searchTerm}%` } })),
+        });
+      }
+    }
+
     // ---- tenant/company scope injected LAST so a filter can never override it ----
     const baseWhere = {
       ...userWhere,
@@ -639,7 +661,7 @@ export const runQueryReport = async (definition, req) => {
     // blankAwareWhereClauses (Op.or fragments) can't merge into a plain
     // object the way {col: {op: val}} fragments can — combined via Op.and
     // instead. Flat shape (unchanged from before) when there are none.
-    const extraWhereClauses = [...csvWhereClauses, ...blankAwareWhereClauses];
+    const extraWhereClauses = [...csvWhereClauses, ...blankAwareWhereClauses, ...searchClauses];
     const where = extraWhereClauses.length > 0 ? { [Op.and]: [baseWhere, ...extraWhereClauses] } : baseWhere;
 
     const requestedLimit = Number(req.body.limit) || DEFAULT_ROW_LIMIT;
