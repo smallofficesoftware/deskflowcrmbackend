@@ -1150,6 +1150,26 @@ export const MODEL_REGISTRY = {
 
 export const getRegisteredModel = (modelKey) => MODEL_REGISTRY[modelKey];
 
+// Lightweight, non-PIN-safe slice of a table's registry entry — just the
+// generalFilters slot map + each target column's `type` (needed to pick
+// findInSet vs in on the frontend adapter, see generalFilterAdapter.ts).
+// Deliberately excludes columns/relations/filterable flags — those stay
+// behind getModelRegistry's PIN gate since they expose the full build
+// surface; Custom Reports viewers (non-owners running an existing report)
+// only ever need this much to drive CheckBoxFilterModal.
+export const getGeneralFilterMeta = (modelKey) => {
+  const entry = MODEL_REGISTRY[modelKey];
+  if (!entry) return null;
+  const generalFilters = entry.generalFilters || {};
+  const columnTypes = {};
+  for (const target of Object.values(generalFilters)) {
+    if (typeof target === "string" && entry.columns[target]) {
+      columnTypes[target] = entry.columns[target].type;
+    }
+  }
+  return { generalFilters, columnTypes };
+};
+
 // Serializable view for the frontend's table/column picker — strips
 // getModel (a function, not meaningful to a client) and reshapes into
 // arrays the builder form can map over directly. Relation columns are

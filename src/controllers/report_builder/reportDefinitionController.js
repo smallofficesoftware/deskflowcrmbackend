@@ -2,6 +2,7 @@ import {
   copyFromSystemReportDefinition,
   createReportDefinition,
   deleteReportDefinition,
+  getGeneralFilterConfig,
   getMetricsRegistry,
   getModelRegistry,
   getPluginRegistry,
@@ -55,6 +56,10 @@ export const copyFromSystemReportDefinitionController = async (req, res) => {
 
 export const listRunnableReportDefinitionsController = async (req, res) => {
   await callServiceMethod(req, res, listRunnableReportDefinitions(req), "listRunnableReportDefinitions");
+};
+
+export const getGeneralFilterConfigController = async (req, res) => {
+  await callServiceMethod(req, res, getGeneralFilterConfig(req), "getGeneralFilterConfig");
 };
 
 export const saveReportTeamRightsController = async (req, res) => {

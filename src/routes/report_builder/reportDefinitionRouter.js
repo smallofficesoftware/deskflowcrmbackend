@@ -4,6 +4,7 @@ import {
   deleteReportDefinitionController,
   exportReportExcelController,
   exportReportPdfController,
+  getGeneralFilterConfigController,
   getMetricsRegistryController,
   getModelRegistryController,
   getPluginRegistryController,
@@ -69,6 +70,10 @@ export default (app) => {
   // is enforced inside listRunnableReportDefinitions via
   // report_definition_team_rights (no page-level fallback — Step 7).
   app.post("/report-definitions/list-runnable", authenticateToken, tenantMiddleware, requireReportBuilderFlag, listRunnableReportDefinitionsController);
+  // generalFilters slot map + column types for one model_key — flag only,
+  // no PIN, same tier as list-runnable. Feeds CheckBoxFilterModal on the
+  // run screen for any granted (or owner) login, not just the build UI.
+  app.post("/report-definitions/general-filter-config", authenticateToken, tenantMiddleware, requireReportBuilderFlag, getGeneralFilterConfigController);
   // Run routes — feature flag at the route layer; the actual per-report
   // access check now happens inside runQueryReport/runCompositeReport via
   // getReportDataScope (report_definition_team_rights, Step 7) — a login

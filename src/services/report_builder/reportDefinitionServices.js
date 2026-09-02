@@ -12,7 +12,7 @@ import { getCompanyByLoginId } from "../commonServices.js";
 import { runCompositeReport } from "./compositeEngine.js";
 import { setReportTeamRights } from "./dataScopeService.js";
 import { getRegisteredMetric, listMetricsRegistry } from "./metricsRegistry.js";
-import { getRegisteredModel, listModelRegistry } from "./modelRegistry.js";
+import { getGeneralFilterMeta, getRegisteredModel, listModelRegistry } from "./modelRegistry.js";
 import { getRegisteredPlugin, listPluginRegistry } from "./pluginRegistry.js";
 import { runQueryReport } from "./queryEngine.js";
 
@@ -388,6 +388,31 @@ export const listRunnableReportDefinitions = async (req) => {
     return resSuccess({ data: { item: rows } });
   } catch (e) {
     console.error("listRunnableReportDefinitions error:", e);
+    return resError({ developer_msg: `Failed to Catch ${e}` });
+  }
+};
+
+// Step 2's CheckBoxFilterModal integration — the run screen (any granted
+// non-owner, not just the build-tier owner) needs a table's generalFilters
+// slot map + target-column types to compute filtersToShow and pick
+// findInSet vs in (generalFilterAdapter.ts). getModelRegistry stays
+// PIN-gated (full build surface); this is the deliberately narrow,
+// no-PIN slice of it — same run-tier as list-runnable/run itself, no
+// separate access check needed since model_key alone reveals nothing a
+// runnable report's own response doesn't already.
+export const getGeneralFilterConfig = async (req) => {
+  try {
+    const { model_key } = req.body || {};
+    if (!model_key) {
+      return resError({ developer_msg: "model_key is required" });
+    }
+    const meta = getGeneralFilterMeta(model_key);
+    if (!meta) {
+      return resError({ ack_msg: "Unknown model_key", developer_msg: `No registry entry for model_key ${model_key}` });
+    }
+    return resSuccess({ data: meta });
+  } catch (e) {
+    console.error("getGeneralFilterConfig error:", e);
     return resError({ developer_msg: `Failed to Catch ${e}` });
   }
 };
