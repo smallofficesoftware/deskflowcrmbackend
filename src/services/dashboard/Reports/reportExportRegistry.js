@@ -35,6 +35,8 @@ import { getTargetIncentiveReport } from "./targetIncentiveReportServices.js";
 import { getTeamPendingWorkReport } from "./teamPendingWorkReportServices.js";
 import { getTeamAttendanceReport } from "./teamAttendanceReportServices.js";
 import { processAttendanceGet } from "./processAttendanceReportServices.js";
+import { getTeamTaskReport } from "./teamAllTaskReportServices.js";
+import { getCustomerSalesPurchaseReport } from "./customerSalesPurchaseReportServices.js";
 
 // Most report services return { data: { item: [...] } }; a few vary:
 // - Account Outstanding pre-aggregates then slices in memory -> { data: [...] }
@@ -453,5 +455,13 @@ export const reportExportRegistry = {
   attendance_report: {
     fetchPage: (req) => getTeamAttendanceReport(req),
     extractRows: flattenAttendanceRows,
+  },
+  all_task_report: {
+    fetchPage: (req) => getTeamTaskReport(req),
+    extractRows: nestedDataArray,
+  },
+  customer_sales_purchase_report: {
+    fetchPage: (req) => getCustomerSalesPurchaseReport(req),
+    extractRows: itemArray,
   },
 };
