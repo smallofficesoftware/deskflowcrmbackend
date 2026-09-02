@@ -129,6 +129,7 @@ CREATE TABLE `document_print_template_versions` LIKE smalloffice_sample_tenant.d
 CREATE TABLE `audit_logs` LIKE smalloffice_sample_tenant.audit_logs;
 CREATE TABLE `report_definitions` LIKE smalloffice_sample_tenant.report_definitions;
 CREATE TABLE `report_runs` LIKE smalloffice_sample_tenant.report_runs;
+CREATE TABLE `report_definition_team_rights` LIKE smalloffice_sample_tenant.report_definition_team_rights;
 
 CREATE TABLE `adjustment_types` LIKE smalloffice_sample_tenant.adjustment_types;
 ALTER TABLE `adjustment_types`  DISABLE KEYS;

@@ -23,7 +23,10 @@ const REPORT_PIN_TOKEN_EXPIRES_IN = "2h";
 // company_flag: 1 => self (the login that actually owns/created the
 // company), 2 => join (an invited member) — same field, same "1 = owner"
 // meaning already used in whatsappService.js/visitTypeMasterServices.js.
-async function isCompanyOwner(a_application_login_id, company_masters_id) {
+// Exported — dataScopeService.js's getReportDataScope reuses this exact
+// owner check rather than duplicating the companyVsApplicationLoginModel
+// query, same "one owner check everywhere" precedent as this whole file.
+export async function isCompanyOwner(a_application_login_id, company_masters_id) {
   const row = await companyVsApplicationLoginModel.findOne({
     where: { a_application_login_id, company_masters_id, company_flag: 1, isDelete: 0 },
     attributes: ["id"],

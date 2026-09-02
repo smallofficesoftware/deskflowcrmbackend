@@ -6,9 +6,11 @@ import {
   getModelRegistry,
   getPluginRegistry,
   listReportDefinitions,
+  listRunnableReportDefinitions,
   listSystemReportDefinitions,
   runBatchReportDefinitions,
   runReportDefinition,
+  saveReportTeamRights,
   updateReportDefinition,
 } from "../../services/report_builder/reportDefinitionServices.js";
 import { exportReportExcel, exportReportPdf } from "../../services/report_builder/reportPdfExport.js";
@@ -48,6 +50,14 @@ export const listSystemReportDefinitionsController = async (req, res) => {
 
 export const copyFromSystemReportDefinitionController = async (req, res) => {
   await callServiceMethod(req, res, copyFromSystemReportDefinition(req), "copyFromSystemReportDefinition");
+};
+
+export const listRunnableReportDefinitionsController = async (req, res) => {
+  await callServiceMethod(req, res, listRunnableReportDefinitions(req), "listRunnableReportDefinitions");
+};
+
+export const saveReportTeamRightsController = async (req, res) => {
+  await callServiceMethod(req, res, saveReportTeamRights(req), "saveReportTeamRights");
 };
 
 export const runReportDefinitionController = async (req, res) => {

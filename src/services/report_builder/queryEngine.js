@@ -1,7 +1,7 @@
 import { col, fn, Op, where as sequelizeWhere } from "sequelize";
-import { getUserRights } from "../../helpers/rightsHelper.js";
 import { resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { getCompanyByLoginId } from "../commonServices.js";
+import { buildChainWhere, getReportDataScope } from "./dataScopeService.js";
 import { getRegisteredModel, resolveDynamicColumns } from "./modelRegistry.js";
 
 const HARD_ROW_LIMIT = 5000; // absolute ceiling regardless of what's requested
@@ -158,11 +158,11 @@ export const runQueryReport = async (definition, req) => {
     if (!definition.page_id) {
       throw new Error(`report_definitions row ${definition.id} has no page_id`);
     }
-    const { showAllData, showPersonalData } = await getUserRights({
-      company_masters_id: resolvedCompanyId,
+    const { scope } = await getReportDataScope({
+      report_definition_id: definition.id,
       a_application_login_id,
-      page_id: definition.page_id,
-      tenentId: req.tenantDB,
+      company_masters_id: resolvedCompanyId,
+      tenantDB: req.tenantDB,
     });
 
     // Per-company dynamic custom-field columns, merged into a LOCAL copy —
@@ -614,12 +614,19 @@ export const runQueryReport = async (definition, req) => {
 
     // ---- rights-based scope — fail closed, never fall back to unscoped ----
     let rightsWhere = {};
-    if (showAllData) {
+    if (scope === "all") {
       rightsWhere = { company_masters_id: resolvedCompanyId };
-    } else if (showPersonalData) {
+    } else if (scope === "own") {
       rightsWhere = { company_masters_id: resolvedCompanyId, a_application_login_id };
+    } else if (scope === "chain") {
+      rightsWhere = await buildChainWhere({
+        model_key: definition.model_key,
+        tenantDB: req.tenantDB,
+        company_masters_id: resolvedCompanyId,
+        a_application_login_id,
+      });
     } else {
-      return resError({ ack_msg: "No access to this report", developer_msg: "User has neither showAllData nor showPersonalData rights" });
+      return resError({ ack_msg: "No access to this report", developer_msg: "No report_definition_team_rights grant for this login on this report" });
     }
 
     // ---- tenant/company scope injected LAST so a filter can never override it ----

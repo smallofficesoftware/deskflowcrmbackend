@@ -8,9 +8,11 @@ import {
   getModelRegistryController,
   getPluginRegistryController,
   listReportDefinitionsController,
+  listRunnableReportDefinitionsController,
   listSystemReportDefinitionsController,
   runBatchReportDefinitionsController,
   runReportDefinitionController,
+  saveReportTeamRightsController,
   updateReportDefinitionController,
 } from "../../controllers/report_builder/reportDefinitionController.js";
 import { authenticateToken } from "../../middlewares/auth.js";
@@ -59,11 +61,25 @@ export default (app) => {
   // report_definitions is a build action so it needs one, same as create.
   app.post("/report-definitions/system-gallery/list", authenticateToken, tenantMiddleware, requireReportBuilderFlag, listSystemReportDefinitionsController);
   app.post("/report-definitions/system-gallery/copy", authenticateToken, tenantMiddleware, requireReportBuilderFlag, requireReportPin, copyFromSystemReportDefinitionController);
-  // Run routes — feature flag only, no PIN (anyone with normal rights can run/view a report someone else built).
+  // Manage Access — build action (writes report_definition_team_rights), owner+PIN gated like create/update/delete.
+  app.post("/report-definitions/:id/team-rights", authenticateToken, tenantMiddleware, requireReportBuilderFlag, requireReportPin, saveReportTeamRightsController);
+  // Discovery for "Custom Reports" — flag only, no PIN. Visibility itself
+  // is enforced inside listRunnableReportDefinitions via
+  // report_definition_team_rights (no page-level fallback — Step 7).
+  app.post("/report-definitions/list-runnable", authenticateToken, tenantMiddleware, requireReportBuilderFlag, listRunnableReportDefinitionsController);
+  // Run routes — feature flag at the route layer; the actual per-report
+  // access check now happens inside runQueryReport/runCompositeReport via
+  // getReportDataScope (report_definition_team_rights, Step 7) — a login
+  // with no grant for this specific report gets denied there, not here.
+  // (Plugin-type definitions are the one exception: they keep obeying
+  // their own wrapped service's existing rights behavior unchanged, same
+  // "wrapping a plugin doesn't change its rights" rule createReportDefinition
+  // already documents — this Step 7 system doesn't apply to them.)
   app.post("/report-definitions/:id/run", authenticateToken, tenantMiddleware, requireReportBuilderFlag, runReportDefinitionController);
   app.post("/report-definitions/run-batch", authenticateToken, tenantMiddleware, requireReportBuilderFlag, runBatchReportDefinitionsController);
-  // Export routes — flag-only, same tier as /run (no PIN: anyone with
-  // normal rights can export/print a report someone else built).
+  // Export routes — same tier as /run; exportReportExcel/exportReportPdf
+  // both dispatch through runDefinitionByType, so they inherit the exact
+  // same per-report scope enforcement query/composite runs already get.
   app.post("/report-definitions/:id/export/excel", authenticateToken, tenantMiddleware, requireReportBuilderFlag, exportReportExcelController);
   app.post("/report-definitions/:id/export/pdf", authenticateToken, tenantMiddleware, requireReportBuilderFlag, exportReportPdfController);
 };

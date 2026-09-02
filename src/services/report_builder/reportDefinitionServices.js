@@ -1,5 +1,8 @@
 import moment from "moment";
+import { Op } from "sequelize";
+import { isCompanyOwner } from "../../middlewares/reportPinAuth.js";
 import { reportDefinitionModel } from "../../models/report_builder/reportDefinitionModel.js";
+import { reportDefinitionTeamRightModel } from "../../models/report_builder/reportDefinitionTeamRightModel.js";
 import { reportRunModel } from "../../models/report_builder/reportRunModel.js";
 import systemReportDefinitionModel from "../../models/report_builder/systemReportDefinitionModel.js";
 import { PAGE_ID } from "../../utils/AppEnumeration.js";
@@ -7,6 +10,7 @@ import { resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { logAuditEvent } from "../company_setup/auditLogServices.js";
 import { getCompanyByLoginId } from "../commonServices.js";
 import { runCompositeReport } from "./compositeEngine.js";
+import { setReportTeamRights } from "./dataScopeService.js";
 import { getRegisteredMetric, listMetricsRegistry } from "./metricsRegistry.js";
 import { getRegisteredModel, listModelRegistry } from "./modelRegistry.js";
 import { getRegisteredPlugin, listPluginRegistry } from "./pluginRegistry.js";
@@ -325,6 +329,109 @@ export const listReportDefinitions = async (req) => {
     return resSuccess({ data: { item: rows } });
   } catch (e) {
     console.error("listReportDefinitions error:", e);
+    return resError({ developer_msg: `Failed to Catch ${e}` });
+  }
+};
+
+// Discovery for a non-owner — "Custom Reports" (ReportsTileView's dynamic
+// section) calls this instead of listReportDefinitions, which stays
+// owner+PIN only. Visibility is per-definition_team_rights ONLY (Step 7's
+// simplified design — no page-level a_application_login_type_rights
+// fallback at all): a login sees exactly the reports it has an explicit,
+// non-deleted grant row for. The owner still sees everything, same bypass
+// every other gate in this file has.
+export const listRunnableReportDefinitions = async (req) => {
+  try {
+    const { a_application_login_id } = req.body || {};
+    if (!a_application_login_id) {
+      return resError({ developer_msg: "a_application_login_id is required" });
+    }
+
+    const findCompanyId = await getCompanyByLoginId(a_application_login_id);
+    if (!findCompanyId) {
+      return resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" });
+    }
+    const company_masters_id = findCompanyId.company_masters_id;
+
+    const ReportDefinition = reportDefinitionModel(req.tenantDB);
+    // Build-internal fields (columns_json/filters_json/group_by_json) stay
+    // private to the owner+PIN listReportDefinitions — this is a trimmed,
+    // run-only shape.
+    const attributes = ["id", "name", "type", "category", "description", "page_id", "model_key", "plugin_key", "created_date_time"];
+
+    const owner = await isCompanyOwner(a_application_login_id, company_masters_id);
+    if (owner) {
+      const rows = await ReportDefinition.findAll({
+        where: { company_masters_id, isDelete: 0 },
+        attributes,
+        order: [["id", "DESC"]],
+      });
+      return resSuccess({ data: { item: rows } });
+    }
+
+    const RightsModel = reportDefinitionTeamRightModel(req.tenantDB);
+    const grants = await RightsModel.findAll({
+      where: { a_application_login_id, company_masters_id, isDelete: 0 },
+      attributes: ["report_definition_id"],
+      raw: true,
+    });
+    const grantedIds = grants.map((g) => g.report_definition_id);
+    if (grantedIds.length === 0) {
+      return resSuccess({ data: { item: [] } });
+    }
+
+    const rows = await ReportDefinition.findAll({
+      where: { id: { [Op.in]: grantedIds }, company_masters_id, isDelete: 0 },
+      attributes,
+      order: [["id", "DESC"]],
+    });
+    return resSuccess({ data: { item: rows } });
+  } catch (e) {
+    console.error("listRunnableReportDefinitions error:", e);
+    return resError({ developer_msg: `Failed to Catch ${e}` });
+  }
+};
+
+// Manage Access modal's save (build-tier, owner+PIN gated at the route
+// layer, same as create/update/delete).
+export const saveReportTeamRights = async (req) => {
+  try {
+    const { id } = req.params || {};
+    const { a_application_login_id, grants, removals } = req.body || {};
+    if (!id || !a_application_login_id) {
+      return resError({ developer_msg: "id (param) and a_application_login_id are required" });
+    }
+
+    const findCompanyId = await getCompanyByLoginId(a_application_login_id);
+    if (!findCompanyId) {
+      return resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" });
+    }
+    const company_masters_id = findCompanyId.company_masters_id;
+
+    const ReportDefinition = reportDefinitionModel(req.tenantDB);
+    const definition = await ReportDefinition.findOne({
+      where: { id, company_masters_id, isDelete: 0 },
+    });
+    if (!definition) {
+      return resError({ code: 404, ack_msg: "Report not found", developer_msg: "No matching report definition for this company" });
+    }
+
+    await setReportTeamRights(
+      { report_definition_id: definition.id, company_masters_id, grants: Array.isArray(grants) ? grants : [], removals: Array.isArray(removals) ? removals : [] },
+      req.tenantDB,
+    );
+
+    await logAuditEvent(req, {
+      module_key: "report_builder",
+      action: "update_team_rights",
+      entity_type: "report_definition",
+      entity_id: definition.id,
+      details: { grants, removals },
+    });
+
+    return resSuccess({ ack_msg: "Access updated successfully" });
+  } catch (e) {
+    console.error("saveReportTeamRights error:", e);
     return resError({ developer_msg: `Failed to Catch ${e}` });
   }
 };
