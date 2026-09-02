@@ -668,6 +668,39 @@ export const runQueryReport = async (definition, req) => {
     const limit = Math.min(Math.max(requestedLimit, 1), HARD_ROW_LIMIT);
     const offset = Number(req.body.offset) || 0;
 
+    // ---- sort — validated the same way every other reference in this
+    // engine is: a plain base column must be tagged sortable:true in
+    // effectiveColumns (relation columns are select/display-only, never
+    // sortable, same rule they already have everywhere else here), or it
+    // must be one of THIS request's own computed aliases (an aggregate,
+    // running-total, or compute/case column) — never an arbitrary string.
+    // Also fixes a correctness bug, not just a UI nicety: without SOME
+    // deterministic ORDER BY, offset-based paging has no guaranteed row
+    // order between two calls to the same "unsorted" query — a scrolling
+    // grid could silently see the same row twice or skip one. Defaulting
+    // to `id ASC` when nothing is requested is what actually closes that,
+    // independent of whether the caller ever sends `sort` at all. ----
+    let sortSpec = null;
+    const rawSort = req.body.sort;
+    if (rawSort && typeof rawSort === "object" && typeof rawSort.column === "string") {
+      // When GROUP BY is active, a plain base column is only a valid ORDER
+      // BY target if it's also one of the grouped columns — MySQL's
+      // ONLY_FULL_GROUP_BY would otherwise reject an ungrouped, non-
+      // aggregated column in ORDER BY the same way it already would in
+      // SELECT. No such restriction when there's no grouping at all.
+      const isSortableBase =
+        effectiveColumns[rawSort.column]?.sortable === true &&
+        (sqlGroupColumns.length === 0 || sqlGroupColumns.includes(rawSort.column));
+      const isComputedAlias = computedAliases.has(rawSort.column);
+      if (isSortableBase || isComputedAlias) {
+        sortSpec = { column: rawSort.column, direction: String(rawSort.direction).toUpperCase() === "DESC" ? "DESC" : "ASC" };
+      }
+      // An invalid/unrecognized sort column is silently ignored (falls
+      // through to the default order below) rather than erroring the whole
+      // request — same "don't fail an otherwise-valid run over one bad
+      // optional param" leniency runtimeFilters already has.
+    }
+
     const Model = registryEntry.getModel(req.tenantDB);
 
     const timeoutGuard = new Promise((_, reject) =>
@@ -689,6 +722,13 @@ export const runQueryReport = async (definition, req) => {
         Model.findAll({
           attributes: [...rawFetchColumns],
           where,
+          // Default order only here — the CSV-group branch re-buckets rows
+          // in JS after this fetch (splitting the CSV column, aggregating
+          // per id), so a user-chosen `sort` on a display column wouldn't
+          // map onto the final grouped rows anyway. Still needs a
+          // deterministic order for the same offset-pagination-correctness
+          // reason every branch does, hence the plain id default.
+          order: [["id", "ASC"]],
           limit,
           offset,
           raw: true,
@@ -737,7 +777,21 @@ export const runQueryReport = async (definition, req) => {
           attributes: attributes.length ? attributes : undefined,
           where,
           group: sqlGroupColumns.length ? sqlGroupColumns : undefined,
-          order: runningTotalSpec ? [[runningTotalSpec.orderBy, "ASC"], ["id", "ASC"]] : undefined,
+          // runningTotalSpec's own order wins outright (the cumulative sum
+          // below depends on rows arriving in that exact order) — otherwise
+          // the caller's validated sort, or a deterministic default so
+          // offset pagination is stable even when nobody asked for a sort.
+          // The default can't just be `id` when GROUP BY is active — `id`
+          // isn't one of the grouped columns, and MySQL's ONLY_FULL_GROUP_BY
+          // would reject ordering by it the same way it would in SELECT —
+          // so the default there is the first grouped column instead.
+          order: runningTotalSpec
+            ? [[runningTotalSpec.orderBy, "ASC"], ["id", "ASC"]]
+            : sortSpec
+              ? [[sortSpec.column, sortSpec.direction]]
+              : sqlGroupColumns.length > 0
+                ? [[sqlGroupColumns[0], "ASC"]]
+                : [["id", "ASC"]],
           limit,
           offset,
           raw: true,
