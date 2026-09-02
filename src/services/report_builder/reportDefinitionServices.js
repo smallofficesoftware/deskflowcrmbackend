@@ -10,7 +10,7 @@ import { resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { logAuditEvent } from "../company_setup/auditLogServices.js";
 import { getCompanyByLoginId } from "../commonServices.js";
 import { runCompositeReport } from "./compositeEngine.js";
-import { setReportTeamRights } from "./dataScopeService.js";
+import { getReportDataScope, setReportTeamRights } from "./dataScopeService.js";
 import { getRegisteredMetric, listMetricsRegistry } from "./metricsRegistry.js";
 import { getGeneralFilterMeta, getRegisteredModel, listModelRegistry } from "./modelRegistry.js";
 import { getRegisteredPlugin, listPluginRegistry } from "./pluginRegistry.js";
@@ -518,6 +518,33 @@ export const runDefinitionByType = async (definition, req, res) => {
     const plugin = getRegisteredPlugin(definition.plugin_key);
     if (!plugin) {
       return resError({ ack_msg: "Unknown report source", developer_msg: `plugin_key "${definition.plugin_key}" is not registered` });
+    }
+
+    // query-type/composite-type both fail closed on this same check
+    // INSIDE their own engines (runQueryReport/runCompositeReport) — but
+    // plugin dispatch is pass-through by design (each wrapped service's
+    // own rights behavior runs unchanged, see the comment above this
+    // function), and at least one registered plugin
+    // (productInventoryReport) has none at all (hasOwnRightsCheck: false
+    // in pluginRegistry.js). Without this, any login satisfying just the
+    // company feature flag — no report_definition_team_rights grant
+    // needed — could run/export a plugin-type report_definition by
+    // guessing its numeric id. Checked here, not query/composite's own
+    // engines, purely to avoid a redundant DB round trip where the same
+    // check already fail-closes.
+    const { a_application_login_id } = req.body || {};
+    const findCompanyId = await getCompanyByLoginId(a_application_login_id);
+    if (!findCompanyId) {
+      return resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" });
+    }
+    const { scope } = await getReportDataScope({
+      report_definition_id: definition.id,
+      a_application_login_id,
+      company_masters_id: findCompanyId.company_masters_id,
+      tenantDB: req.tenantDB,
+    });
+    if (!scope) {
+      return resError({ ack_msg: "No access to this report", developer_msg: "No report_definition_team_rights grant for this login on this report" });
     }
     // filters_json for a plugin-type definition is a plain object keyed to
     // THAT plugin's own bespoke param names (e.g. selected_dates,
