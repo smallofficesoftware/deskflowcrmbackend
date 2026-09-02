@@ -1,4 +1,5 @@
 import {
+  copyFromSystemReportDefinitionController,
   createReportDefinitionController,
   deleteReportDefinitionController,
   exportReportExcelController,
@@ -7,6 +8,7 @@ import {
   getModelRegistryController,
   getPluginRegistryController,
   listReportDefinitionsController,
+  listSystemReportDefinitionsController,
   runBatchReportDefinitionsController,
   runReportDefinitionController,
   updateReportDefinitionController,
@@ -52,6 +54,11 @@ export default (app) => {
   app.post("/report-definitions/list", authenticateToken, tenantMiddleware, requireReportBuilderFlag, requireReportPin, listReportDefinitionsController);
   app.post("/report-definitions/:id/update", authenticateToken, tenantMiddleware, requireReportBuilderFlag, requireReportPin, updateReportDefinitionController);
   app.post("/report-definitions/:id/delete", authenticateToken, tenantMiddleware, requireReportBuilderFlag, requireReportPin, deleteReportDefinitionController);
+  // System gallery — browsing the list needs no PIN (same tier Document
+  // Designer's own system-gallery/list uses), copying into the tenant's own
+  // report_definitions is a build action so it needs one, same as create.
+  app.post("/report-definitions/system-gallery/list", authenticateToken, tenantMiddleware, requireReportBuilderFlag, listSystemReportDefinitionsController);
+  app.post("/report-definitions/system-gallery/copy", authenticateToken, tenantMiddleware, requireReportBuilderFlag, requireReportPin, copyFromSystemReportDefinitionController);
   // Run routes — feature flag only, no PIN (anyone with normal rights can run/view a report someone else built).
   app.post("/report-definitions/:id/run", authenticateToken, tenantMiddleware, requireReportBuilderFlag, runReportDefinitionController);
   app.post("/report-definitions/run-batch", authenticateToken, tenantMiddleware, requireReportBuilderFlag, runBatchReportDefinitionsController);

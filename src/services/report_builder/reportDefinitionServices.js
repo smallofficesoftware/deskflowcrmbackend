@@ -1,8 +1,10 @@
 import moment from "moment";
 import { reportDefinitionModel } from "../../models/report_builder/reportDefinitionModel.js";
 import { reportRunModel } from "../../models/report_builder/reportRunModel.js";
+import systemReportDefinitionModel from "../../models/report_builder/systemReportDefinitionModel.js";
 import { PAGE_ID } from "../../utils/AppEnumeration.js";
 import { resError, resSuccess } from "../../utils/sharedFunctions.js";
+import { logAuditEvent } from "../company_setup/auditLogServices.js";
 import { getCompanyByLoginId } from "../commonServices.js";
 import { runCompositeReport } from "./compositeEngine.js";
 import { getRegisteredMetric, listMetricsRegistry } from "./metricsRegistry.js";
@@ -40,9 +42,80 @@ export const getMetricsRegistry = async () => {
   return resSuccess({ data: { item: listMetricsRegistry() } });
 };
 
+// Gallery browse — reads system_report_definitions off the MASTER connection
+// (systemReportDefinitionModel is bound to the default `sequelize` import,
+// same pattern systemDocumentTemplateModel.js already uses for Document
+// Designer's own gallery). No company/tenant scoping needed — the gallery is
+// the same for every company, only category/type ever filter it.
+export const listSystemReportDefinitions = async (req) => {
+  try {
+    const { category, type } = req.body || {};
+    const where = { isDelete: 0, isActive: 1 };
+    if (category) where.category = category;
+    if (type) where.type = type;
+
+    const rows = await systemReportDefinitionModel.findAll({
+      where,
+      attributes: ["id", "name", "type", "category", "description", "priority", "display_order"],
+      order: [["display_order", "ASC"], ["id", "ASC"]],
+    });
+
+    return resSuccess({ data: { item: rows } });
+  } catch (e) {
+    console.error("listSystemReportDefinitions error:", e);
+    return resError({ developer_msg: `Failed to Catch ${e}` });
+  }
+};
+
+// The one place a service needs both connections at once: the master
+// connection to read the gallery row, req.tenantDB (via createReportDefinition)
+// to write the copy — same shape copyFromSystemTemplate (Document Designer)
+// already uses.
+export const copyFromSystemReportDefinition = async (req) => {
+  try {
+    const { system_report_definition_id } = req.body || {};
+    if (!system_report_definition_id) {
+      return resError({ developer_msg: "system_report_definition_id is required" });
+    }
+
+    const systemDefinition = await systemReportDefinitionModel.findOne({
+      where: { id: system_report_definition_id, isDelete: 0, isActive: 1 },
+    });
+    if (!systemDefinition) {
+      return resError({ developer_msg: "Gallery report not found" });
+    }
+
+    req.body.name = systemDefinition.name;
+    req.body.type = systemDefinition.type;
+    req.body.model_key = systemDefinition.model_key;
+    req.body.plugin_key = systemDefinition.plugin_key;
+    req.body.columns_json = systemDefinition.columns_json;
+    req.body.filters_json = systemDefinition.filters_json;
+    req.body.group_by_json = systemDefinition.group_by_json;
+    req.body.source_system_report_definition_id = systemDefinition.id;
+
+    const result = await createReportDefinition(req);
+
+    if (result?.ack === 1) {
+      await logAuditEvent(req, {
+        module_key: "report_builder",
+        action: "copy_from_gallery",
+        entity_type: "report_definition",
+        entity_id: result?.data?.item?.id,
+        details: { system_report_definition_id },
+      });
+    }
+
+    return result;
+  } catch (e) {
+    console.error("copyFromSystemReportDefinition error:", e);
+    return resError({ developer_msg: `Failed to Catch ${e}` });
+  }
+};
+
 export const createReportDefinition = async (req) => {
   try {
-    const { a_application_login_id, name, type = "query", model_key, plugin_key, columns_json, filters_json, group_by_json } = req.body || {};
+    const { a_application_login_id, name, type = "query", model_key, plugin_key, columns_json, filters_json, group_by_json, source_system_report_definition_id } = req.body || {};
     if (!a_application_login_id || !name || !columns_json) {
       return resError({ developer_msg: "a_application_login_id, name and columns_json are required" });
     }
@@ -104,6 +177,7 @@ export const createReportDefinition = async (req) => {
     if (!findCompanyId) {
       return resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" });
     }
+    req.body.company_masters_id = findCompanyId.company_masters_id; // for logAuditEvent below
 
     const ReportDefinition = reportDefinitionModel(req.tenantDB);
     const created = await ReportDefinition.create({
@@ -117,8 +191,23 @@ export const createReportDefinition = async (req) => {
       columns_json: asJsonString(columns_json),
       filters_json: filters_json ? asJsonString(filters_json) : null,
       group_by_json: group_by_json ? asJsonString(group_by_json) : null,
+      source_system_report_definition_id: source_system_report_definition_id || null,
       created_date_time: now(),
     });
+
+    // copyFromSystemReportDefinition logs its own "copy_from_gallery" audit
+    // event separately (with the gallery source id in details) — skip the
+    // generic "create" event here for that path so a gallery copy isn't
+    // logged twice under two different actions.
+    if (!source_system_report_definition_id) {
+      await logAuditEvent(req, {
+        module_key: "report_builder",
+        action: "create",
+        entity_type: "report_definition",
+        entity_id: created.id,
+        details: { name, type },
+      });
+    }
 
     return resSuccess({ data: { item: created }, ack_msg: "Report definition created successfully" });
   } catch (e) {
@@ -139,6 +228,7 @@ export const updateReportDefinition = async (req) => {
     if (!findCompanyId) {
       return resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" });
     }
+    req.body.company_masters_id = findCompanyId.company_masters_id; // for logAuditEvent below
 
     const ReportDefinition = reportDefinitionModel(req.tenantDB);
     // IDOR guard — id must belong to the resolved company, never trusted alone.
@@ -156,6 +246,14 @@ export const updateReportDefinition = async (req) => {
     if (group_by_json !== undefined) patch.group_by_json = group_by_json ? asJsonString(group_by_json) : null;
 
     await definition.update(patch);
+
+    await logAuditEvent(req, {
+      module_key: "report_builder",
+      action: "update",
+      entity_type: "report_definition",
+      entity_id: definition.id,
+      details: { name: definition.name },
+    });
 
     return resSuccess({ data: { item: definition }, ack_msg: "Report definition updated successfully" });
   } catch (e) {
@@ -176,6 +274,7 @@ export const deleteReportDefinition = async (req) => {
     if (!findCompanyId) {
       return resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" });
     }
+    req.body.company_masters_id = findCompanyId.company_masters_id; // for logAuditEvent below
 
     const ReportDefinition = reportDefinitionModel(req.tenantDB);
     const definition = await ReportDefinition.findOne({
@@ -189,6 +288,14 @@ export const deleteReportDefinition = async (req) => {
     // (the tables that would reference a definition) don't exist until
     // Phase 4/6, so there's nothing to check against yet.
     await definition.update({ isDelete: 1, modified_date: now() });
+
+    await logAuditEvent(req, {
+      module_key: "report_builder",
+      action: "delete",
+      entity_type: "report_definition",
+      entity_id: definition.id,
+      details: { name: definition.name },
+    });
 
     return resSuccess({ ack_msg: "Report definition deleted successfully" });
   } catch (e) {

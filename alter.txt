@@ -3084,3 +3084,29 @@ ALTER TABLE `reminder_messages` ADD INDEX `idx_reminder_messages_login_flag_stat
 
 01-09-2026 Dhaval
 ALTER TABLE `company_masters` ADD INDEX `parent_company_id` (`parent_company_id`);
+
+02-09-2026 Dhaval
+CREATE TABLE `system_report_definitions` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `name` VARCHAR(255) NULL,
+  `type` VARCHAR(255) NOT NULL DEFAULT 'query',
+  `model_key` VARCHAR(255) NULL,
+  `plugin_key` VARCHAR(255) NULL,
+  `columns_json` TEXT NULL,
+  `filters_json` TEXT NULL,
+  `group_by_json` TEXT NULL,
+  `filters_to_show` TEXT NULL,
+  `category` VARCHAR(255) NULL,
+  `description` TEXT NULL,
+  `priority` ENUM('critical','high','normal') NULL,
+  `display_order` INT(11) NOT NULL DEFAULT 0,
+  `isDelete` TINYINT(4) NOT NULL DEFAULT 0,
+  `isActive` TINYINT(4) NOT NULL DEFAULT 1,
+  `created_date_time` DATETIME NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+ALTER TABLE `system_report_definitions` ADD INDEX(`category`);
+
+02-09-2026 Dhaval
+ALTER TABLE `report_definitions` ADD `source_system_report_definition_id` INT(11) NULL DEFAULT NULL AFTER `group_by_json`;

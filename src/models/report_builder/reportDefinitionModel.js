@@ -40,6 +40,13 @@ export const reportDefinitionModel = (sequelize) => {
       group_by_json: {
         type: TEXT,
       },
+      // system_report_definitions.id (master DB) this row was copied from
+      // via copyFromSystemReportDefinition, or null for a report the tenant
+      // built from scratch — see migration
+      // 20260902100001-add-source-system-report-definition-id-to-report-definitions.js.
+      source_system_report_definition_id: {
+        type: INTEGER,
+      },
       s_timestemp: {
         type: STRING,
       },

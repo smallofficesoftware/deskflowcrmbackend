@@ -1,10 +1,12 @@
 import {
+  copyFromSystemReportDefinition,
   createReportDefinition,
   deleteReportDefinition,
   getMetricsRegistry,
   getModelRegistry,
   getPluginRegistry,
   listReportDefinitions,
+  listSystemReportDefinitions,
   runBatchReportDefinitions,
   runReportDefinition,
   updateReportDefinition,
@@ -38,6 +40,14 @@ export const deleteReportDefinitionController = async (req, res) => {
 
 export const listReportDefinitionsController = async (req, res) => {
   await callServiceMethod(req, res, listReportDefinitions(req), "listReportDefinitions");
+};
+
+export const listSystemReportDefinitionsController = async (req, res) => {
+  await callServiceMethod(req, res, listSystemReportDefinitions(req), "listSystemReportDefinitions");
+};
+
+export const copyFromSystemReportDefinitionController = async (req, res) => {
+  await callServiceMethod(req, res, copyFromSystemReportDefinition(req), "copyFromSystemReportDefinition");
 };
 
 export const runReportDefinitionController = async (req, res) => {
