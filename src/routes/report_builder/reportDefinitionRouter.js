@@ -7,6 +7,7 @@ import {
   getMetricsRegistryController,
   getModelRegistryController,
   getPluginRegistryController,
+  getReportTeamRightsController,
   listReportDefinitionsController,
   listRunnableReportDefinitionsController,
   listSystemReportDefinitionsController,
@@ -61,7 +62,8 @@ export default (app) => {
   // report_definitions is a build action so it needs one, same as create.
   app.post("/report-definitions/system-gallery/list", authenticateToken, tenantMiddleware, requireReportBuilderFlag, listSystemReportDefinitionsController);
   app.post("/report-definitions/system-gallery/copy", authenticateToken, tenantMiddleware, requireReportBuilderFlag, requireReportPin, copyFromSystemReportDefinitionController);
-  // Manage Access — build action (writes report_definition_team_rights), owner+PIN gated like create/update/delete.
+  // Manage Access — build-tier gated like create/update/delete, both read and write.
+  app.post("/report-definitions/:id/team-rights/list", authenticateToken, tenantMiddleware, requireReportBuilderFlag, requireReportPin, getReportTeamRightsController);
   app.post("/report-definitions/:id/team-rights", authenticateToken, tenantMiddleware, requireReportBuilderFlag, requireReportPin, saveReportTeamRightsController);
   // Discovery for "Custom Reports" — flag only, no PIN. Visibility itself
   // is enforced inside listRunnableReportDefinitions via

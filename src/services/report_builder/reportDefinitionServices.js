@@ -392,6 +392,45 @@ export const listRunnableReportDefinitions = async (req) => {
   }
 };
 
+// Manage Access modal's initial load — current grants for one report,
+// build-tier gated the same as the save below (build internals, not for
+// the run-only surface).
+export const getReportTeamRights = async (req) => {
+  try {
+    const { id } = req.params || {};
+    const { a_application_login_id } = req.body || {};
+    if (!id || !a_application_login_id) {
+      return resError({ developer_msg: "id (param) and a_application_login_id are required" });
+    }
+
+    const findCompanyId = await getCompanyByLoginId(a_application_login_id);
+    if (!findCompanyId) {
+      return resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" });
+    }
+    const company_masters_id = findCompanyId.company_masters_id;
+
+    const ReportDefinition = reportDefinitionModel(req.tenantDB);
+    const definition = await ReportDefinition.findOne({
+      where: { id, company_masters_id, isDelete: 0 },
+    });
+    if (!definition) {
+      return resError({ code: 404, ack_msg: "Report not found", developer_msg: "No matching report definition for this company" });
+    }
+
+    const RightsModel = reportDefinitionTeamRightModel(req.tenantDB);
+    const rows = await RightsModel.findAll({
+      where: { report_definition_id: definition.id, company_masters_id, isDelete: 0 },
+      attributes: ["a_application_login_id", "data_scope"],
+      raw: true,
+    });
+
+    return resSuccess({ data: { item: rows } });
+  } catch (e) {
+    console.error("getReportTeamRights error:", e);
+    return resError({ developer_msg: `Failed to Catch ${e}` });
+  }
+};
+
 // Manage Access modal's save (build-tier, owner+PIN gated at the route
 // layer, same as create/update/delete).
 export const saveReportTeamRights = async (req) => {

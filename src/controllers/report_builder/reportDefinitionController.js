@@ -5,6 +5,7 @@ import {
   getMetricsRegistry,
   getModelRegistry,
   getPluginRegistry,
+  getReportTeamRights,
   listReportDefinitions,
   listRunnableReportDefinitions,
   listSystemReportDefinitions,
@@ -58,6 +59,10 @@ export const listRunnableReportDefinitionsController = async (req, res) => {
 
 export const saveReportTeamRightsController = async (req, res) => {
   await callServiceMethod(req, res, saveReportTeamRights(req), "saveReportTeamRights");
+};
+
+export const getReportTeamRightsController = async (req, res) => {
+  await callServiceMethod(req, res, getReportTeamRights(req), "getReportTeamRights");
 };
 
 export const runReportDefinitionController = async (req, res) => {
