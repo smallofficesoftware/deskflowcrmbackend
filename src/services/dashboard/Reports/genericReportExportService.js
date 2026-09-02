@@ -20,6 +20,14 @@ function ensureUploadDir(subPath) {
 // for its on-screen paginated view, but none has a "return everything" mode
 // - the frontend used to loop this itself for export. Same loop, moved here
 // so it can feed one shared xlsx generator instead of 46 client-side ones.
+//
+// `extractRows` must stay a per-page, 1:1-ish transform (its output length
+// drives the "more pages?" check below) - a report that needs to GROUP rows
+// (e.g. summing cart items into one row per product/category) has to do
+// that grouping once over the *complete* accumulated set via an optional
+// `postProcess(allRows)`, not per-page inside extractRows. Grouping per
+// page would silently split one product/category's totals across however
+// many pages its cart items happened to fall into.
 const fetchAllRows = async (registryEntry, req) => {
   const rows = [];
   let offset = 0;
@@ -35,7 +43,7 @@ const fetchAllRows = async (registryEntry, req) => {
     offset += PAGE_LIMIT;
   }
 
-  return rows;
+  return registryEntry.postProcess ? registryEntry.postProcess(rows) : rows;
 };
 
 const getNested = (obj, keyPath) => {

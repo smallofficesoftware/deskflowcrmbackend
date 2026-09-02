@@ -4,11 +4,9 @@
 // keys match the `useColumnPreferences` reportKey each report already uses
 // on the frontend (already a stable, per-report, server-persisted id).
 //
-// A report whose frontend always supplies `rows` directly (grid selection,
-// or a pre-pivoted client fetch too different in shape to reuse here - e.g.
-// All Task Report, Category Pending, Category Sales & Purchase, Customer
-// Sales Purchase Report, Product Pending) needs no entry at all - the
-// generic export service skips the registry whenever `rows` is provided.
+// A report whose frontend always supplies `rows` directly (grid selection)
+// needs no entry at all - the generic export service skips the registry
+// whenever `rows` is provided.
 import { getAllContactReport } from "./allContactReportServices.js";
 import { getAccountOutstandingReport, getAllAccountTranstionsReport } from "./accountReportServices.js";
 import { getTeamPerformanceReport } from "./teamPerformanceReportServices.js";
@@ -28,6 +26,7 @@ import { salaryRegistrationGet } from "./SalaryRegisterReportServices.js";
 import { lableReport } from "./lableWiseReportServices.js";
 import { productInventoryReport } from "./productInventoryReportServices.js";
 import { getProductSalesPurchase } from "./productSalesPurchaseServices.js";
+import { getCategorySalesPurchase } from "./categorySalesPurchaseServices.js";
 import { statusWiseReport } from "./statusWiseReportServices.js";
 import { sourceReport } from "./sourceReportServices.js";
 import { statusWiseContactCountReportGet } from "./statusWiseContactCountReportServices.js";
@@ -47,6 +46,25 @@ const itemsArray = (result) => result?.data?.items || [];
 const flatArray = (result) => (Array.isArray(result?.data) ? result.data : []);
 const nestedDataArray = (result) => result?.data?.data || [];
 
+// All Reminder Report always appended a "Total Reminders: N" summary row
+// after the data - ported from the old client-side exportExcel.
+const appendReminderTotalRow = (rows) => {
+  if (!rows.length) return rows;
+  return [
+    ...rows,
+    {
+      id: `Total Reminders: ${rows.length}`,
+      contact_name: "",
+      reminder_data_time: "",
+      status_display: "",
+      completed_date_time: "",
+      assigned_to_name: "",
+      created_by_username: "",
+      remark: "",
+    },
+  ];
+};
+
 // All Call Report groups rows as [{ user, calls: [...] }] server-side;
 // flatten to one row per call, same shape the old client export produced.
 const CALL_TYPE_LABELS = {
@@ -57,6 +75,27 @@ const CALL_TYPE_LABELS = {
   5: "Blocked",
   7: "Outgoing Call Not Connected",
   9: "Answered Externally",
+};
+// Ported from calculateDuration1 in AllCallReportView.tsx - raw `duration`
+// is either seconds (number) or a "MM:SS" string; both render as "Xh Ym Zs".
+const formatCallDuration = (input) => {
+  if (!input) return "-";
+  if (typeof input === "number") {
+    const hours = Math.floor(input / 3600);
+    const minutes = Math.floor((input % 3600) / 60);
+    const seconds = Math.floor(input % 60);
+    return `${hours}h ${minutes}m ${seconds}s`;
+  }
+  if (typeof input === "string" && input.includes(":")) {
+    const parts = input.split(":");
+    if (parts.length !== 2) return "-";
+    const minutes = parseInt(parts[0], 10);
+    const seconds = parseInt(parts[1], 10);
+    if (isNaN(minutes) || isNaN(seconds)) return "-";
+    const hours = Math.floor(minutes / 60);
+    return `${hours}h ${minutes % 60}m ${seconds}s`;
+  }
+  return "-";
 };
 const flattenCallReportRows = (result) => {
   const groups = flatArray(result);
@@ -72,7 +111,7 @@ const flattenCallReportRows = (result) => {
         call_type: call.call_type,
         call_status: CALL_TYPE_LABELS[callType] || "Unknown",
         call_date_time: call.call_date_time,
-        duration: call.duration,
+        duration: formatCallDuration(call.duration),
         mobile_number: call.mobile_number,
         remark: call.remark,
         call_name: call.call_name,
@@ -230,37 +269,126 @@ const flattenAttendanceRows = (result, req) => {
   });
 };
 
-// Product Sales & Purchase: backend returns 5 parallel arrays (quotation,
-// salesOrder, salesInvoice, purchaseInvoice, purchaseOrder); pivot by
-// product into one row per product with a composite "qty(amount)" cell per
-// document type, same as the old client-side pivotData().
-const PRODUCT_SALES_PURCHASE_SOURCES = {
+// Product/Category Sales & Purchase family (4 reportTypes): backend
+// returns 5 parallel arrays (quotation, salesOrder, salesInvoice,
+// purchaseInvoice, purchaseOrder) built from a paginated cart-item query
+// - a single product/category's items can land on either side of a page
+// boundary. extractRows here only tags+flattens each page's 5 arrays into
+// one list (safe to concat across pages, count preserved 1:1 with the
+// page's raw cart-item fetch so the "more pages?" check in
+// genericReportExportService.js still works); the actual grouping runs
+// ONCE via `postProcess` over the complete accumulated set, ported from
+// the old client-side pivotData() in each report's *Controller.ts (fixes
+// a latent bug: the previous per-page pivot here would have silently
+// split one product/category's totals across pages for a large dataset).
+const CART_SOURCE_TO_FIELD = {
   quotation: "quotation",
   salesOrder: "salesorder",
   salesInvoice: "salesinvoice",
   purchaseInvoice: "purchaseinvoice",
   purchaseOrder: "purchaseorder",
 };
-const pivotProductSalesPurchase = (result) => {
+const flattenCartSourcePages = (result) => {
   const data = result?.data || {};
-  const grouped = {};
-  for (const [sourceKey, fieldKey] of Object.entries(PRODUCT_SALES_PURCHASE_SOURCES)) {
+  const rows = [];
+  for (const [sourceKey, fieldKey] of Object.entries(CART_SOURCE_TO_FIELD)) {
     for (const item of data[sourceKey] || []) {
-      const key = `${item.item_product_id}_${item.item_product_name}`;
-      if (!grouped[key]) {
-        grouped[key] = {
-          item_product_id: item.item_product_id,
-          item_product_name: item.item_product_name,
-          item_product_code: item.item_product_code,
-          item_category_name: item.item_category_name,
-          item_unit_name: item.item_unit_name,
-        };
-      }
-      grouped[key][fieldKey] = `${item.total_quantity}(${item.total_amount})`;
+      rows.push({ ...item, __field: fieldKey });
     }
+  }
+  return rows;
+};
+const groupCartRowsBy = (rows, idKey, nameKey, extraKeys = []) => {
+  const grouped = {};
+  for (const item of rows) {
+    const key = `${item[idKey]}_${item[nameKey]}`;
+    if (!grouped[key]) {
+      grouped[key] = { [idKey]: item[idKey], [nameKey]: item[nameKey] };
+      for (const extraKey of extraKeys) grouped[key][extraKey] = item[extraKey];
+    }
+    grouped[key][item.__field] = `${item.total_quantity}(${item.total_amount})`;
   }
   return Object.values(grouped);
 };
+
+// Pending-quantity derivation (order minus invoice, quantity and amount)
+// shared by Category Pending and Product Pending - ported from their
+// near-identical parseQuantityAmount/calculatePending in *View.tsx.
+const parseQuantityAmount = (value) => {
+  if (!value || value === "-") return { quantity: 0, amount: 0 };
+  const match = String(value).match(/^(\d+)\(₹?(\d*\.?\d*)\)?$/);
+  if (!match) return { quantity: 0, amount: 0 };
+  return { quantity: parseInt(match[1], 10) || 0, amount: parseFloat(match[2]) || 0 };
+};
+const calculatePending = (order, invoice) => {
+  const orderValues = parseQuantityAmount(order);
+  const invoiceValues = parseQuantityAmount(invoice);
+  const pendingQuantity = orderValues.quantity - invoiceValues.quantity;
+  const pendingAmount = orderValues.amount - invoiceValues.amount;
+  return pendingQuantity >= 0 && pendingAmount >= 0
+    ? `${pendingQuantity}(${pendingAmount.toFixed(2)})`
+    : "-";
+};
+// Composite "qty(symbol+amount)" column sum, for the "Total" row Category
+// Sales & Purchase and Category Pending append - ported from their
+// calculateColumnTotals in *View.tsx.
+const sumCompositeColumn = (rows, field) => {
+  let quantity = 0;
+  let amount = 0;
+  let symbol = "";
+  for (const item of rows) {
+    const value = item[field];
+    if (!value) continue;
+    const str = String(value);
+    const qtyMatch = str.match(/^(\d+)/);
+    if (qtyMatch) quantity += parseInt(qtyMatch[1], 10);
+    const amtMatch = str.match(/\(([^)]+)\)/);
+    if (amtMatch) {
+      const raw = amtMatch[1];
+      amount += parseFloat(raw.replace(/[^0-9.]/g, "")) || 0;
+      const extractedSymbol = raw.replace(/[0-9.,\s]/g, "");
+      if (extractedSymbol) symbol = extractedSymbol;
+    }
+  }
+  return quantity > 0 || amount > 0 ? `${quantity}(${symbol}${amount.toFixed(2)})` : "-";
+};
+
+const postProcessProductSalesPurchase = (rows) =>
+  groupCartRowsBy(rows, "item_product_id", "item_product_name", [
+    "item_product_code",
+    "item_category_name",
+    "item_unit_name",
+  ]);
+
+const postProcessCategoryMovement = (rows) => {
+  const grouped = groupCartRowsBy(rows, "item_category_id", "item_category_name");
+  const fields = ["quotation", "salesorder", "salesinvoice", "purchaseorder", "purchaseinvoice"];
+  const totalsRow = { item_category_name: "Total" };
+  for (const field of fields) totalsRow[field] = sumCompositeColumn(grouped, field);
+  return [...grouped, totalsRow];
+};
+
+const postProcessCategoryPending = (rows) => {
+  const grouped = groupCartRowsBy(rows, "item_category_id", "item_category_name").map((row) => ({
+    ...row,
+    pending_sales: calculatePending(row.salesorder, row.salesinvoice),
+    pending_purchase: calculatePending(row.purchaseorder, row.purchaseinvoice),
+  }));
+  const fields = ["salesorder", "salesinvoice", "pending_sales", "purchaseorder", "purchaseinvoice", "pending_purchase"];
+  const totalsRow = { item_category_name: "Total" };
+  for (const field of fields) totalsRow[field] = sumCompositeColumn(grouped, field);
+  return [...grouped, totalsRow];
+};
+
+const postProcessProductPending = (rows) =>
+  groupCartRowsBy(rows, "item_product_id", "item_product_name", [
+    "item_product_code",
+    "item_category_name",
+  ]).map((row) => ({
+    ...row,
+    pending_sales: calculatePending(row.salesorder, row.salesinvoice),
+    pending_purchase: calculatePending(row.purchaseorder, row.purchaseinvoice),
+  }));
 
 // Status Wise Report: nested data.item.internal/external.{support_ticket,
 // normal_task} - pivot by status name into flat {group,name,support_ticket,
@@ -310,6 +438,7 @@ export const reportExportRegistry = {
   all_reminder_report: {
     fetchPage: (req) => getTeamReminderReport(req),
     extractRows: nestedDataArray,
+    postProcess: appendReminderTotalRow,
   },
   all_inquiry_report: {
     fetchPage: (req) => inquiryReport(req),
@@ -421,7 +550,23 @@ export const reportExportRegistry = {
   },
   product_sales_purchase_report: {
     fetchPage: (req) => getProductSalesPurchase(req),
-    extractRows: pivotProductSalesPurchase,
+    extractRows: flattenCartSourcePages,
+    postProcess: postProcessProductSalesPurchase,
+  },
+  product_pending_report: {
+    fetchPage: (req) => getProductSalesPurchase(req),
+    extractRows: flattenCartSourcePages,
+    postProcess: postProcessProductPending,
+  },
+  category_sales_purchase_report: {
+    fetchPage: (req) => getCategorySalesPurchase(req),
+    extractRows: flattenCartSourcePages,
+    postProcess: postProcessCategoryMovement,
+  },
+  category_pending_report: {
+    fetchPage: (req) => getCategorySalesPurchase(req),
+    extractRows: flattenCartSourcePages,
+    postProcess: postProcessCategoryPending,
   },
   status_wise_report: {
     fetchPage: (req) => statusWiseReport(req),
