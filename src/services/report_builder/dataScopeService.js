@@ -59,7 +59,11 @@ export const resolveChainContactIds = async (tenantDB, company_masters_id, a_app
 // Finds this table's OWN contact-relation foreign key — never assumes the
 // relation is literally named "contact" (carts names it "customer") or
 // that one exists at all. Returns null when the table has no contact
-// relation (task_managements, expenses, ...) or IS contacts itself
+// relation (expenses, salary_registers, attendance, target_vs_incentives,
+// products, stock_ledger, employee_transactions, employee_outstanding,
+// cart_items — confirmed by checking every MODEL_REGISTRY entry directly,
+// not assumed; task_managements DOES have one via modelKey:"contacts",
+// corrected after an earlier wrong assumption here) or IS contacts itself
 // (filtered on its own `id`, not a relation, see callers).
 export const findContactForeignKey = (model_key) => {
   const registryEntry = getRegisteredModel(model_key);

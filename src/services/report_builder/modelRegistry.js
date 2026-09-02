@@ -72,6 +72,12 @@ export const MODEL_REGISTRY = {
     label: "Products",
     getModel: (tenantDB) => productModel(tenantDB),
     columns: PRODUCT_COLUMNS,
+    // No slot 8 (Active/Deactivate) — no isActive-type column currently
+    // registered in PRODUCT_COLUMNS, left unconfirmed rather than guessed.
+    generalFilters: {
+      1: "created_date_time",
+      7: "category_id",
+    },
   },
 
   contacts: {
@@ -110,6 +116,22 @@ export const MODEL_REGISTRY = {
       is_archive: { label: "Archived", type: "lookup", filterable: true, sortable: false, groupable: true },
       a_application_login_id: { label: "Created By (Team Member)", type: "lookup", filterable: true, sortable: false, groupable: true },
       ...COUNT_COLUMN,
+    },
+    // Step 2 of the plan — which CheckBoxFilterModal.tsx slots apply to
+    // this table, and which whitelisted column (above) each resolves to.
+    // Slot legend: 1 Date Range, 2 Label, 3 Source Type, 4 Stage/Status,
+    // 5/9 Team Member, 6 Demography, 18 Search Contact, 20 Unassign.
+    // Operator per slot isn't fixed here — the run-time adapter reads
+    // that target column's own `type` above (csv -> findInSet, lookup -> in).
+    generalFilters: {
+      1: "created_date_time",
+      2: "lable",
+      3: "source_type_id",
+      4: "contact_status",
+      5: "a_application_login_id",
+      9: "a_application_login_id",
+      6: true, // demography — country/state/city/area, all 4 already whitelisted above
+      20: "a_application_login_id", // unassign — IS NULL, handled specially by the adapter
     },
     relations: {
       sourceType: {
@@ -214,6 +236,14 @@ export const MODEL_REGISTRY = {
       created_date_time: { label: "Created Date", type: "date", filterable: true, sortable: true, groupable: false },
       ...COUNT_COLUMN,
     },
+    // Trimmed from the earlier draft in the plan — no salesperson/label/
+    // GST/series column is actually registered on carts, so slots
+    // 5/9/15/22 don't apply here despite seeming plausible.
+    generalFilters: {
+      1: "cart_date",
+      4: "cart_status",
+      18: "to_customer_id",
+    },
     relations: {
       customer: {
         label: "Customer",
@@ -268,6 +298,11 @@ export const MODEL_REGISTRY = {
       item_rate: { label: "Rate", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
       item_total: { label: "Total", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
       ...COUNT_COLUMN,
+    },
+    // No date column of its own (inherits the parent cart's) — no slot 1.
+    generalFilters: {
+      7: "item_category_id", // "Category / Product" — item_product_id covered by slot 19 below, both point at real whitelisted columns
+      19: "item_product_id",
     },
     relations: {
       product: {
@@ -324,7 +359,30 @@ export const MODEL_REGISTRY = {
       // Real TINYINT flag (confirmed in taskManagementModel.js) —
       // teamAllTaskReportServices.js's is_support_ticket_flag filter.
       is_support_ticket: { label: "Is Support Ticket", type: "lookup", filterable: true, sortable: false, groupable: true },
+      // Real scalar INTEGER FK (confirmed in taskManagementModel.js),
+      // already used as the `contact` relation's own foreignKey below —
+      // added as its own whitelisted column for the same reason
+      // inquiries.contact_master_id was: a relation foreignKey isn't
+      // automatically filterable on its own, found while wiring Step 2's
+      // general filters (slot 18).
+      contact_masters_id: { label: "Contact", type: "lookup", filterable: true, sortable: false, groupable: true },
       ...COUNT_COLUMN,
+    },
+    // 12 (Show Only Template Task) doesn't apply — no "template" concept
+    // exists anywhere in this table's registered columns, would need a new
+    // column added to the registry first, not just a slot mapping. 1 picks
+    // task_fromdate over task_enddate/created_date_time — the other two
+    // are equally plausible candidates for "Date Range", not a hard rule.
+    generalFilters: {
+      1: "task_fromdate",
+      2: "label_id",
+      4: "status", // "external_status" covered separately by slot 21 below
+      5: "assigned_team_member",
+      9: "assigned_team_member",
+      10: "assigned_team_member", // unassign — IS NULL/empty, handled specially by the adapter
+      11: "task_type",
+      18: "contact_masters_id",
+      21: "external_status",
     },
     relations: {
       label: {
@@ -423,7 +481,23 @@ export const MODEL_REGISTRY = {
       // / task_managements.label_id, this one is scalar, not CSV).
       label_id: { label: "Label", type: "lookup", filterable: true, sortable: false, groupable: true },
       inquiry_date_time: { label: "Inquiry Date", type: "date", filterable: true, sortable: true, groupable: false },
+      // Real scalar INTEGER FK (confirmed in inquiryModel.js), already used
+      // as the `contact` relation's own foreignKey below — but relation
+      // foreignKeys aren't automatically filterable columns in their own
+      // right (queryEngine.js's filter builder only ever validates against
+      // this whitelist, never a relation definition), so it needs its own
+      // entry here too, found while wiring Step 2's general filters (slot
+      // 18, Search Contact) — the plan's original registry-gap list missed
+      // this one, only flagged attendance/visits/call_histories/reminder_messages.
+      contact_master_id: { label: "Contact", type: "lookup", filterable: true, sortable: false, groupable: true },
       ...COUNT_COLUMN,
+    },
+    generalFilters: {
+      1: "inquiry_date_time",
+      2: "label_id", // scalar, not csv — adapter uses op:"in", not findInSet
+      3: "source_type_id",
+      4: "contact_status",
+      18: "contact_master_id",
     },
     relations: {
       label: {
@@ -503,7 +577,20 @@ export const MODEL_REGISTRY = {
       mode: { label: "Payment Mode", type: "lookup", filterable: true, sortable: false, groupable: true },
       payment_date_time: { label: "Payment Date", type: "date", filterable: true, sortable: true, groupable: false },
       remark: { label: "Remark", type: "string", filterable: true, sortable: false, groupable: false },
+      // Real scalar INTEGER FK, already used as the `contact` relation's own
+      // foreignKey below — added as its own whitelisted column, same
+      // "relation foreignKey isn't automatically filterable" reasoning as
+      // inquiries.contact_master_id, found while wiring Step 2.
+      contact_masters_id: { label: "Contact", type: "lookup", filterable: true, sortable: false, groupable: true },
       ...COUNT_COLUMN,
+    },
+    // type: 1 = credit, 2 = debit (confirmed in accountReportServices.js:149-153).
+    generalFilters: {
+      1: "payment_date_time",
+      13: "type", // Credit — adapter filters type=1
+      14: "type", // Debit — adapter filters type=2
+      18: "contact_masters_id",
+      25: "mode",
     },
     relations: {
       contact: {
@@ -577,6 +664,12 @@ export const MODEL_REGISTRY = {
       payment_date_time: { label: "Payment Date", type: "date", filterable: true, sortable: true, groupable: false },
       ...COUNT_COLUMN,
     },
+    generalFilters: {
+      1: "payment_date_time",
+      13: "type",
+      14: "type",
+      18: "contact_masters_id",
+    },
     relations: {
       contact: {
         label: "Contact",
@@ -608,6 +701,14 @@ export const MODEL_REGISTRY = {
       payment_date_time: { label: "Payment Date", type: "date", filterable: true, sortable: true, groupable: false },
       remark: { label: "Remark", type: "string", filterable: true, sortable: false, groupable: false },
       ...COUNT_COLUMN,
+    },
+    generalFilters: {
+      1: "payment_date_time",
+      5: "team_id",
+      9: "team_id",
+      13: "type",
+      14: "type",
+      25: "mode",
     },
     relations: {
       employee: {
@@ -665,6 +766,13 @@ export const MODEL_REGISTRY = {
       payment_date_time: { label: "Payment Date", type: "date", filterable: true, sortable: true, groupable: false },
       ...COUNT_COLUMN,
     },
+    generalFilters: {
+      1: "payment_date_time",
+      5: "team_id",
+      9: "team_id",
+      13: "type",
+      14: "type",
+    },
     relations: {
       employee: {
         label: "Employee",
@@ -690,6 +798,14 @@ export const MODEL_REGISTRY = {
       start_date: { label: "Start Date", type: "date", filterable: true, sortable: true, groupable: false },
       end_date: { label: "End Date", type: "date", filterable: true, sortable: true, groupable: false },
       created_date_time: { label: "Created Date", type: "date", filterable: true, sortable: true, groupable: false },
+      // Real scalar INTEGER FK, already used as the `contact` relation's
+      // own foreignKey below — added as its own whitelisted column, the
+      // registry gap Step 2 originally flagged (found while wiring slot 18).
+      contact_id: { label: "Contact", type: "lookup", filterable: true, sortable: false, groupable: true },
+    },
+    generalFilters: {
+      1: "created_date_time",
+      18: "contact_id",
     },
     relations: {
       contact: {
@@ -717,7 +833,13 @@ export const MODEL_REGISTRY = {
       call_type: { label: "Call Type", type: "lookup", filterable: true, sortable: false, groupable: true },
       call_date_time: { label: "Call Date", type: "date", filterable: true, sortable: true, groupable: false },
       duration: { label: "Duration (sec)", type: "number", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      // Same registry-gap fix as visits.contact_id above.
+      contact_id: { label: "Contact", type: "lookup", filterable: true, sortable: false, groupable: true },
       ...COUNT_COLUMN,
+    },
+    generalFilters: {
+      1: "call_date_time",
+      18: "contact_id",
     },
     relations: {
       contact: {
@@ -748,7 +870,19 @@ export const MODEL_REGISTRY = {
       // not a CSV/polymorphic field.
       completed_date_time: { label: "Completed Date", type: "date", filterable: true, sortable: true, groupable: false },
       remark: { label: "Remark", type: "string", filterable: true, sortable: false, groupable: false },
+      // Same registry-gap fix as visits/call_histories' contact_id above.
+      contact_masters_id: { label: "Contact", type: "lookup", filterable: true, sortable: false, groupable: true },
+      // Real scalar INTEGER FK, already used as the `createdBy` relation's
+      // own foreignKey below — added as its own whitelisted column for
+      // slots 5/9 (Team Member), same reasoning as everywhere else here.
+      a_application_login_id: { label: "Created By (Team Member)", type: "lookup", filterable: true, sortable: false, groupable: true },
       ...COUNT_COLUMN,
+    },
+    generalFilters: {
+      1: "reminder_data_time",
+      5: "a_application_login_id",
+      9: "a_application_login_id",
+      18: "contact_masters_id",
     },
     relations: {
       contact: {
@@ -796,7 +930,18 @@ export const MODEL_REGISTRY = {
       expense_date: { label: "Expense Date", type: "date", filterable: true, sortable: true, groupable: false },
       expense_status: { label: "Status", type: "lookup", filterable: true, sortable: false, groupable: true },
       remark: { label: "Remark", type: "string", filterable: true, sortable: false, groupable: false },
+      // Real scalar INTEGER FK, already used as the `employee` relation's
+      // own foreignKey below — added as its own whitelisted column for
+      // slots 5/9 (Team Member).
+      a_application_login_id: { label: "Employee", type: "lookup", filterable: true, sortable: false, groupable: true },
       ...COUNT_COLUMN,
+    },
+    generalFilters: {
+      1: "expense_date",
+      5: "a_application_login_id",
+      9: "a_application_login_id",
+      27: "expense_type_id",
+      28: "expense_status",
     },
     relations: {
       expenseType: {
@@ -839,7 +984,18 @@ export const MODEL_REGISTRY = {
       total_earning: { label: "Total Earning", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
       total_deduction: { label: "Total Deduction", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
       net_bank_pay: { label: "Net Pay", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      // Real scalar INTEGER FK, already used as the `employee` relation's
+      // own foreignKey below — added as its own whitelisted column for
+      // slots 5/9 (Team Member).
+      employee_id: { label: "Employee", type: "lookup", filterable: true, sortable: false, groupable: true },
       ...COUNT_COLUMN,
+    },
+    // No slot 1 (Date Range) — year/month are separate integers, not a
+    // date-range column, doesn't fit that slot's shape at all (settled in
+    // the plan: already covered by the static filter rows, no gap).
+    generalFilters: {
+      5: "employee_id",
+      9: "employee_id",
     },
     relations: {
       employee: {
@@ -894,6 +1050,12 @@ export const MODEL_REGISTRY = {
       stock_type: { label: "Stock Type", type: "lookup", filterable: true, sortable: false, groupable: true },
       ...COUNT_COLUMN,
     },
+    // Category not directly on this table — product-only for slot 7.
+    generalFilters: {
+      1: "cart_date",
+      7: "item_product_id",
+      17: "stock_type",
+    },
     relations: {
       product: {
         label: "Product",
@@ -919,7 +1081,17 @@ export const MODEL_REGISTRY = {
       // row is a punch event, not a daily present/absent summary.
       attendance_status: { label: "Punch Type", type: "lookup", filterable: true, sortable: false, groupable: true },
       check_in_out_date_time: { label: "Punch Date/Time", type: "date", filterable: true, sortable: true, groupable: false },
+      // Real scalar INTEGER FK, already used as the `employee` relation's
+      // own foreignKey below — added as its own whitelisted column for
+      // slots 5/9 (Team Member) — the 4th of the registry gaps the plan
+      // doc originally flagged.
+      a_application_login_id: { label: "Employee", type: "lookup", filterable: true, sortable: false, groupable: true },
       ...COUNT_COLUMN,
+    },
+    generalFilters: {
+      1: "check_in_out_date_time",
+      5: "a_application_login_id",
+      9: "a_application_login_id",
     },
     relations: {
       employee: {
@@ -953,6 +1125,14 @@ export const MODEL_REGISTRY = {
       incentive_type: { label: "Incentive Type", type: "lookup", filterable: true, sortable: false, groupable: true },
       incentive_value: { label: "Incentive Value", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
       ...COUNT_COLUMN,
+    },
+    // Two date columns (target_fromdate/target_todate) — target_fromdate
+    // picked for slot 1, same "equally plausible, pick one" call as
+    // task_managements' own Date Range ambiguity.
+    generalFilters: {
+      1: "target_fromdate",
+      5: "assigned_team_member",
+      9: "assigned_team_member",
     },
     relations: {
       employee: {
@@ -1015,6 +1195,12 @@ export const listModelRegistry = async (tenantDB, company_masters_id) =>
               })),
             }))
           : [],
+        // Step 2 of the plan — which CheckBoxFilterModal.tsx slot numbers
+        // apply to this table and which whitelisted column (or `true` for
+        // slot 6, Demography) each resolves to. {} for a table with none
+        // registered yet, same "always an object, never undefined" shape
+        // dynamicColumns already has.
+        generalFilters: entry.generalFilters || {},
       };
     }),
   );
