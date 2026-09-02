@@ -33,6 +33,7 @@ import { sourceReport } from "./sourceReportServices.js";
 import { statusWiseContactCountReportGet } from "./statusWiseContactCountReportServices.js";
 import { getTargetIncentiveReport } from "./targetIncentiveReportServices.js";
 import { getTeamPendingWorkReport } from "./teamPendingWorkReportServices.js";
+import { getTeamAttendanceReport } from "./teamAttendanceReportServices.js";
 import { processAttendanceGet } from "./processAttendanceReportServices.js";
 
 // Most report services return { data: { item: [...] } }; a few vary:
@@ -149,6 +150,83 @@ const flattenCart = (row) => ({
   cart_status: row.statusDetails?.name || row.cart_status,
   update_Date_time: row.update_Date_time || row.approve_date_time,
 });
+
+// Attendance & Salary Report: the on-screen grid is fixed summary columns,
+// but its export interleaves one column PER DATE in the selected range
+// (not derivable from a static columns list) - the frontend builds
+// `columns` dynamically for this reportType instead of using
+// useColumnPreferences directly, and this extractRows flattens each row's
+// attendanceData[] into matching per-date keys, porting the exact
+// cell-format logic (status + leave_type + check-in/out time pairs) and
+// the total-working-hours computation from the old client-side
+// exportExcel in AttendanceReportView.tsx.
+const pad2 = (n) => String(n).padStart(2, "0");
+const attendanceDateKey = (date) => `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+const attendanceDateRange = (selectedDates) => {
+  if (!Array.isArray(selectedDates) || selectedDates.length !== 2) return [];
+  let start = new Date(selectedDates[0]);
+  let end = new Date(selectedDates[1]);
+  if (start > end) [start, end] = [end, start];
+  const dates = [];
+  const cur = new Date(start);
+  while (cur <= end) {
+    dates.push(new Date(cur));
+    cur.setDate(cur.getDate() + 1);
+  }
+  return dates;
+};
+const parseWorkingHoursToMinutes = (timeStr) => {
+  const [h, m, s] = String(timeStr || "").split(":").map(Number);
+  if (isNaN(h) || isNaN(m) || isNaN(s)) return 0;
+  return h * 60 + m + s / 60;
+};
+const formatMinutesToHHMMSS = (totalMinutes) => {
+  if (totalMinutes <= 0) return "00:00:00";
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = Math.floor(totalMinutes % 60);
+  const seconds = Math.round((totalMinutes % 1) * 60);
+  return `${pad2(hours)}:${pad2(minutes)}:${pad2(seconds)}`;
+};
+const flattenAttendanceRows = (result, req) => {
+  const rows = itemArray(result);
+  const dates = attendanceDateRange(req?.body?.selectedDates);
+  return rows.map((row) => {
+    const flat = { ...row };
+    let totalWorkingMinutes = 0;
+    for (const date of dates) {
+      const key = attendanceDateKey(date);
+      const attendance = (row.attendanceData || []).find((a) => a.date === key);
+      let cellValue = "-";
+      if (attendance) {
+        cellValue =
+          attendance.status === "L" && attendance.leave_type
+            ? `${attendance.status} (${attendance.leave_type})`
+            : attendance.status;
+        const messages = attendance.messages || [];
+        const times = messages
+          .filter((m) => m.attendanceDate === key)
+          .map((m) => m.attendanceTime);
+        if (times.length) {
+          const pairs = [];
+          for (let i = 0; i < times.length; i += 2) pairs.push(times.slice(i, i + 2).join(" - "));
+          cellValue += ` (${pairs.join(", ")})`;
+        }
+        messages.forEach((m) => {
+          if (m.attendanceDate === key && m.total_working_hour) {
+            totalWorkingMinutes += parseWorkingHoursToMinutes(m.total_working_hour);
+          }
+        });
+      }
+      flat[key] = cellValue;
+    }
+    flat.total_working_hours = formatMinutesToHHMMSS(Math.round(totalWorkingMinutes * 100) / 100);
+    flat.company_paid_leave = row.companyPaidLeave ?? "-";
+    flat.employee_paid_leave = row.employeePaidLeave ?? "-";
+    flat.paid_days_paid_hours = `${row.totalPaidDays ?? 0}/${row.totalPaidHours ?? "00:00:00"}`;
+    flat.salary = row.finalSalary ?? "0";
+    return flat;
+  });
+};
 
 // Product Sales & Purchase: backend returns 5 parallel arrays (quotation,
 // salesOrder, salesInvoice, purchaseInvoice, purchaseOrder); pivot by
@@ -371,5 +449,9 @@ export const reportExportRegistry = {
   team_performance_report: {
     fetchPage: (req) => getTeamPerformanceReport(req),
     extractRows: itemArray,
+  },
+  attendance_report: {
+    fetchPage: (req) => getTeamAttendanceReport(req),
+    extractRows: flattenAttendanceRows,
   },
 };

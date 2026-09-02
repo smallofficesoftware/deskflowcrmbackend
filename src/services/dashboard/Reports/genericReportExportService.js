@@ -27,7 +27,7 @@ const fetchAllRows = async (registryEntry, req) => {
   while (true) {
     const page = { ...req, body: { ...req.body, ul: offset, ll: PAGE_LIMIT } };
     const result = await registryEntry.fetchPage(page);
-    const pageRows = registryEntry.extractRows(result);
+    const pageRows = registryEntry.extractRows(result, page);
 
     rows.push(...pageRows);
 
