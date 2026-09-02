@@ -36,6 +36,7 @@ import { getTeamAttendanceReport } from "./teamAttendanceReportServices.js";
 import { processAttendanceGet } from "./processAttendanceReportServices.js";
 import { getTeamTaskReport } from "./teamAllTaskReportServices.js";
 import { getCustomerSalesPurchaseReport } from "./customerSalesPurchaseReportServices.js";
+import { fetchReportBuilderExportPage } from "../../report_builder/reportDefinitionServices.js";
 
 // Most report services return { data: { item: [...] } }; a few vary:
 // - Account Outstanding pre-aggregates then slices in memory -> { data: [...] }
@@ -415,6 +416,16 @@ const pivotStatusWiseReport = (result) => {
 };
 
 export const reportExportRegistry = {
+  // One entry serves every Report Builder report (query/plugin/composite
+  // alike) — unlike every other entry here, "report_builder" isn't a
+  // per-report reportType, it's one constant every export shares; the
+  // actual report_definition_id rides in the filters payload instead
+  // (see fetchReportBuilderExportPage's own comment). extractRows reads
+  // runDefinitionByType's own {data:{rows,...}} envelope directly.
+  report_builder: {
+    fetchPage: (req) => fetchReportBuilderExportPage(req),
+    extractRows: (result) => result?.data?.rows || [],
+  },
   all_contact_report: {
     fetchPage: (req) => getAllContactReport(req),
     extractRows: itemArray,

@@ -474,6 +474,38 @@ export const runDefinitionByType = async (definition, req, res) => {
   return runQueryReport(definition, req);
 };
 
+// reportExportRegistry.js's `fetchPage` for the single "report_builder"
+// reportType every Report Builder export shares (item 7 of the plan —
+// one generic entry serving all report_definitions, not one per report the
+// way the ~46 hand-coded legacy reports need). genericReportExportService's
+// fetchAllRows sets `ul`/`ll` on req.body before each call; translated here
+// into the limit/offset runDefinitionByType's engines already expect.
+// The specific report_definition_id rides in req.body.report_definition_id
+// (part of ExportExcelMenuItem's `filters` prop, a generic passthrough —
+// never the registry key itself, which stays a static string).
+export const fetchReportBuilderExportPage = async (req) => {
+  const { report_definition_id, a_application_login_id, ul, ll } = req.body || {};
+  if (!report_definition_id || !a_application_login_id) {
+    return resError({ developer_msg: "report_definition_id and a_application_login_id are required" });
+  }
+
+  const findCompanyId = await getCompanyByLoginId(a_application_login_id);
+  if (!findCompanyId) {
+    return resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" });
+  }
+
+  const ReportDefinition = reportDefinitionModel(req.tenantDB);
+  const definition = await ReportDefinition.findOne({
+    where: { id: report_definition_id, company_masters_id: findCompanyId.company_masters_id, isDelete: 0 },
+  });
+  if (!definition) {
+    return resError({ code: 404, ack_msg: "Report not found", developer_msg: "No matching report definition for this company" });
+  }
+
+  const pageReq = { ...req, body: { ...req.body, limit: ll, offset: ul } };
+  return runDefinitionByType(definition, pageReq);
+};
+
 export const runReportDefinition = async (req, res) => {
   const startedAt = Date.now();
   try {
