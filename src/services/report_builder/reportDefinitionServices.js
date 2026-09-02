@@ -9,6 +9,7 @@ import { PAGE_ID } from "../../utils/AppEnumeration.js";
 import { resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { logAuditEvent } from "../company_setup/auditLogServices.js";
 import { getCompanyByLoginId } from "../commonServices.js";
+import { isFeatureEnabled } from "../company_setup/featureFlagServices.js";
 import { runCompositeReport } from "./compositeEngine.js";
 import { getReportDataScope, setReportTeamRights } from "./dataScopeService.js";
 import { getRegisteredMetric, listMetricsRegistry } from "./metricsRegistry.js";
@@ -586,6 +587,18 @@ export const fetchReportBuilderExportPage = async (req) => {
   const findCompanyId = await getCompanyByLoginId(a_application_login_id);
   if (!findCompanyId) {
     return resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" });
+  }
+
+  // /reports/export-excel is a shared, reportType-agnostic route (see
+  // genericReportExportRouter.js) with no per-feature gating of its own —
+  // every OTHER reportType in this registry has no company feature flag
+  // to check, so nothing gates them here. report_builder is the one
+  // exception: every other entry point into it (create/list/run/...) goes
+  // through requireReportBuilderFlag at the route layer, and this is the
+  // one reachable path that doesn't, so it has to check for itself.
+  const enabled = await isFeatureEnabled(findCompanyId.company_masters_id, "report_builder");
+  if (!enabled) {
+    return resError({ ack_msg: "Report Builder is not enabled for this company", developer_msg: "company_feature_flags.report_builder is not set" });
   }
 
   const ReportDefinition = reportDefinitionModel(req.tenantDB);
