@@ -3066,3 +3066,21 @@ CREATE TABLE `addon_vs_pages`(
 ) ENGINE = InnoDB;
 
 ALTER TABLE `company_vs_addon_masters` ADD `addon_type` TINYINT(4) NOT NULL COMMENT '1: Addon, 2: Page' AFTER `addon_id`;
+
+01-09-2026 Dhaval
+ALTER TABLE `contact_masters` ADD INDEX `company_masters_id` (`company_masters_id`);
+
+01-09-2026 Dhaval
+ALTER TABLE `carts` ADD INDEX `company_masters_id` (`company_masters_id`);
+
+01-09-2026 Dhaval
+ALTER TABLE `location_trackings` ADD INDEX `company_masters_id` (`company_masters_id`);
+
+01-09-2026 Dhaval
+ALTER TABLE `task_managements` ADD INDEX `idx_task_managements_list_filter` (`company_masters_id`, `is_archive`, `is_not_visible`, `status`, `task_template`, `task_type`);
+
+01-09-2026 Dhaval
+ALTER TABLE `reminder_messages` ADD INDEX `idx_reminder_messages_login_flag_status` (`a_application_login_id`, `is_reminder_app_flag`, `status`);
+
+01-09-2026 Dhaval
+ALTER TABLE `company_masters` ADD INDEX `parent_company_id` (`parent_company_id`);

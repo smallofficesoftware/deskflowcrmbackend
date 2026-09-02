@@ -12,10 +12,13 @@
  */
 
 export const up = async (queryInterface, Sequelize) => {
-  await queryInterface.addColumn("document_print_templates", "template_purpose", {
-    type: Sequelize.STRING,
-    defaultValue: "main",
-  });
+  const table = await queryInterface.describeTable("document_print_templates");
+  if (!table.template_purpose) {
+    await queryInterface.addColumn("document_print_templates", "template_purpose", {
+      type: Sequelize.STRING,
+      defaultValue: "main",
+    });
+  }
 };
 
 export const down = async (queryInterface) => {
