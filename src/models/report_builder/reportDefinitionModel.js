@@ -47,6 +47,12 @@ export const reportDefinitionModel = (sequelize) => {
       source_system_report_definition_id: {
         type: INTEGER,
       },
+      // JSON array of general-filter slot numbers (see
+      // generalFilterAdapter.ts) the author picked as this report's
+      // default — NULL means "show every slot this table has."
+      filters_to_show: {
+        type: TEXT,
+      },
       s_timestemp: {
         type: STRING,
       },

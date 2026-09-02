@@ -96,6 +96,7 @@ export const copyFromSystemReportDefinition = async (req) => {
     req.body.columns_json = systemDefinition.columns_json;
     req.body.filters_json = systemDefinition.filters_json;
     req.body.group_by_json = systemDefinition.group_by_json;
+    req.body.filters_to_show = systemDefinition.filters_to_show;
     req.body.source_system_report_definition_id = systemDefinition.id;
 
     const result = await createReportDefinition(req);
@@ -119,7 +120,7 @@ export const copyFromSystemReportDefinition = async (req) => {
 
 export const createReportDefinition = async (req) => {
   try {
-    const { a_application_login_id, name, type = "query", model_key, plugin_key, columns_json, filters_json, group_by_json, source_system_report_definition_id } = req.body || {};
+    const { a_application_login_id, name, type = "query", model_key, plugin_key, columns_json, filters_json, group_by_json, source_system_report_definition_id, filters_to_show } = req.body || {};
     if (!a_application_login_id || !name || !columns_json) {
       return resError({ developer_msg: "a_application_login_id, name and columns_json are required" });
     }
@@ -196,6 +197,7 @@ export const createReportDefinition = async (req) => {
       filters_json: filters_json ? asJsonString(filters_json) : null,
       group_by_json: group_by_json ? asJsonString(group_by_json) : null,
       source_system_report_definition_id: source_system_report_definition_id || null,
+      filters_to_show: filters_to_show ? asJsonString(filters_to_show) : null,
       created_date_time: now(),
     });
 
@@ -223,7 +225,7 @@ export const createReportDefinition = async (req) => {
 export const updateReportDefinition = async (req) => {
   try {
     const { id } = req.params || {};
-    const { a_application_login_id, name, columns_json, filters_json, group_by_json } = req.body || {};
+    const { a_application_login_id, name, columns_json, filters_json, group_by_json, filters_to_show } = req.body || {};
     if (!id || !a_application_login_id) {
       return resError({ developer_msg: "id (param) and a_application_login_id are required" });
     }
@@ -248,6 +250,7 @@ export const updateReportDefinition = async (req) => {
     if (columns_json !== undefined) patch.columns_json = asJsonString(columns_json);
     if (filters_json !== undefined) patch.filters_json = filters_json ? asJsonString(filters_json) : null;
     if (group_by_json !== undefined) patch.group_by_json = group_by_json ? asJsonString(group_by_json) : null;
+    if (filters_to_show !== undefined) patch.filters_to_show = filters_to_show ? asJsonString(filters_to_show) : null;
 
     await definition.update(patch);
 
@@ -357,7 +360,7 @@ export const listRunnableReportDefinitions = async (req) => {
     // Build-internal fields (columns_json/filters_json/group_by_json) stay
     // private to the owner+PIN listReportDefinitions — this is a trimmed,
     // run-only shape.
-    const attributes = ["id", "name", "type", "category", "description", "page_id", "model_key", "plugin_key", "created_date_time"];
+    const attributes = ["id", "name", "type", "category", "description", "page_id", "model_key", "plugin_key", "filters_to_show", "created_date_time"];
 
     const owner = await isCompanyOwner(a_application_login_id, company_masters_id);
     if (owner) {

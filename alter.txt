@@ -3124,3 +3124,6 @@ CREATE TABLE `report_definition_team_rights` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uniq_report_login` (`report_definition_id`, `a_application_login_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+02-09-2026 Dhaval
+ALTER TABLE `report_definitions` ADD `filters_to_show` TEXT NULL DEFAULT NULL AFTER `source_system_report_definition_id`;
