@@ -3169,3 +3169,6 @@ ALTER TABLE `report_runs` ADD `trigger_type` ENUM('manual','scheduled') NOT NULL
 
 03-09-2026 Dhaval
 ALTER TABLE `report_definitions` ADD `description` TEXT NULL DEFAULT NULL AFTER `report_group_id`;
+
+03-09-2026 Dhaval
+ALTER TABLE `report_definitions` ADD `icon` VARCHAR(255) NULL DEFAULT NULL AFTER `description`;

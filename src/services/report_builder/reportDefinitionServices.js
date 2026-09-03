@@ -313,7 +313,7 @@ export const deleteReportGroup = async (req) => {
 
 export const createReportDefinition = async (req) => {
   try {
-    const { a_application_login_id, name, type = "query", model_key, plugin_key, columns_json, filters_json, group_by_json, source_system_report_definition_id, filters_to_show, report_group_id, description } = req.body || {};
+    const { a_application_login_id, name, type = "query", model_key, plugin_key, columns_json, filters_json, group_by_json, source_system_report_definition_id, filters_to_show, report_group_id, description, icon } = req.body || {};
     if (!a_application_login_id || !name || !columns_json) {
       return resError({ developer_msg: "a_application_login_id, name and columns_json are required" });
     }
@@ -393,6 +393,7 @@ export const createReportDefinition = async (req) => {
       filters_to_show: filters_to_show ? asJsonString(filters_to_show) : null,
       report_group_id: report_group_id || null,
       description: description || null,
+      icon: icon || null,
       created_date_time: now(),
     });
 
@@ -420,7 +421,7 @@ export const createReportDefinition = async (req) => {
 export const updateReportDefinition = async (req) => {
   try {
     const { id } = req.params || {};
-    const { a_application_login_id, name, columns_json, filters_json, group_by_json, filters_to_show, report_group_id, description } = req.body || {};
+    const { a_application_login_id, name, columns_json, filters_json, group_by_json, filters_to_show, report_group_id, description, icon } = req.body || {};
     if (!id || !a_application_login_id) {
       return resError({ developer_msg: "id (param) and a_application_login_id are required" });
     }
@@ -448,6 +449,7 @@ export const updateReportDefinition = async (req) => {
     if (filters_to_show !== undefined) patch.filters_to_show = filters_to_show ? asJsonString(filters_to_show) : null;
     if (report_group_id !== undefined) patch.report_group_id = report_group_id || null;
     if (description !== undefined) patch.description = description || null;
+    if (icon !== undefined) patch.icon = icon || null;
 
     await definition.update(patch);
 
@@ -568,7 +570,7 @@ export const listRunnableReportDefinitions = async (req) => {
     // migrated onto this table, surfacing as "Unknown column 'category'"
     // the first time a real tenant hit this endpoint — see the
     // add-description-to-report-definitions migration's own comment.
-    const attributes = ["id", "name", "type", "description", "page_id", "model_key", "plugin_key", "filters_to_show", "group_by_json", "report_group_id", "created_date_time"];
+    const attributes = ["id", "name", "type", "description", "icon", "page_id", "model_key", "plugin_key", "filters_to_show", "group_by_json", "report_group_id", "created_date_time"];
     // Step 9's Compare Period is only offered for aggregated results
     // (composite is always per-team-member aggregates; a query-type report
     // is aggregated iff it has a non-empty group_by_json) — comparing a

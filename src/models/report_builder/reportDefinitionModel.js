@@ -63,6 +63,11 @@ export const reportDefinitionModel = (sequelize) => {
       description: {
         type: TEXT,
       },
+      // Which named icon (frontend's reportIcons.tsx REPORT_ICON_PATHS
+      // key) this report's tile shows — NULL falls back to "report".
+      icon: {
+        type: STRING,
+      },
       s_timestemp: {
         type: STRING,
       },
