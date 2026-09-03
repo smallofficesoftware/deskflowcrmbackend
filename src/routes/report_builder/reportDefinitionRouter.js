@@ -22,6 +22,7 @@ import {
   listReportSchedulesController,
   listRunnableReportDefinitionsController,
   listSystemReportDefinitionsController,
+  previewReportDefinitionController,
   reportScheduleDispatchCroneTabController,
   runBatchReportDefinitionsController,
   runReportDefinitionController,
@@ -69,6 +70,10 @@ export default (app) => {
   app.post("/report-definitions/plugin-registry", authenticateToken, tenantMiddleware, requireReportBuilderFlag, requireReportPin, getPluginRegistryController);
   app.post("/report-definitions/metrics-registry", authenticateToken, tenantMiddleware, requireReportBuilderFlag, requireReportPin, getMetricsRegistryController);
   app.post("/report-definitions/create", authenticateToken, tenantMiddleware, requireReportBuilderFlag, requireReportPin, createReportDefinitionController);
+  // Live preview (Step 12 visual pass #3) — same build tier as create, runs
+  // an in-progress/unsaved definition against this company's own data,
+  // capped small (see previewReportDefinition's own comment).
+  app.post("/report-definitions/preview", authenticateToken, tenantMiddleware, requireReportBuilderFlag, requireReportPin, previewReportDefinitionController);
   // Import — same tier as create (build action, needs the PIN); it's just
   // createReportDefinition fed from an uploaded file.
   app.post("/report-definitions/import", authenticateToken, tenantMiddleware, requireReportBuilderFlag, requireReportPin, importReportDefinitionController);

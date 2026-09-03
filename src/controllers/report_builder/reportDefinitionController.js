@@ -7,6 +7,7 @@ import {
   duplicateReportDefinition,
   exportReportDefinition,
   importReportDefinition,
+  previewReportDefinition,
   getGeneralFilterConfig,
   getMetricsRegistry,
   getModelRegistry,
@@ -72,6 +73,10 @@ export const copyFromSystemReportDefinitionController = async (req, res) => {
 
 export const duplicateReportDefinitionController = async (req, res) => {
   await callServiceMethod(req, res, duplicateReportDefinition(req), "duplicateReportDefinition");
+};
+
+export const previewReportDefinitionController = async (req, res) => {
+  await callServiceMethod(req, res, previewReportDefinition(req), "previewReportDefinition");
 };
 
 export const exportReportDefinitionController = async (req, res) => {

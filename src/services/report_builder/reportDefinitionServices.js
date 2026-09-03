@@ -276,6 +276,55 @@ export const importReportDefinition = async (req) => {
   }
 };
 
+// Live preview for the wizard's build-in-progress form (Step 12's visual
+// pass #3) — same "synthetic id:0 definition, straight to
+// runDefinitionByType" shape testRunReportDefinition below already uses,
+// but against THIS request's own req.tenantDB (the real company the
+// logged-in owner belongs to), not the fixed admin test tenant — a wizard
+// author needs to see their own real data, not synthetic sample rows.
+// Query-type only for this pass (plugin/composite previews are a real step
+// up in complexity, not part of the original 19-feature parity list — a
+// possible follow-up, not silently folded in here). No report_definitions
+// row is written, no report_runs row is logged (same reasoning
+// testRunReportDefinition's own comment already documents — the PIN gate
+// on this route means the caller IS the owner, so getReportDataScope's
+// owner bypass covers id:0 with no report_definition_team_rights lookup
+// needed). Capped to a small row count — a preview, not a real run.
+export const previewReportDefinition = async (req) => {
+  try {
+    const { a_application_login_id, model_key, columns_json, filters_json, group_by_json } = req.body || {};
+    if (!a_application_login_id || !columns_json) {
+      return resError({ developer_msg: "a_application_login_id and columns_json are required" });
+    }
+    if (!getRegisteredModel(model_key)) {
+      return resError({ ack_msg: "Unknown report source", developer_msg: `model_key "${model_key}" is not whitelisted` });
+    }
+
+    const findCompanyId = await getCompanyByLoginId(a_application_login_id);
+    if (!findCompanyId) {
+      return resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" });
+    }
+
+    const definition = {
+      id: 0,
+      type: "query",
+      model_key,
+      plugin_key: null,
+      columns_json: asJsonString(columns_json),
+      filters_json: filters_json ? asJsonString(filters_json) : null,
+      group_by_json: group_by_json ? asJsonString(group_by_json) : null,
+      page_id: PAGE_ID.REPORT_BUILDER,
+      company_masters_id: findCompanyId.company_masters_id,
+    };
+    const previewReq = { ...req, body: { ...req.body, limit: 8, offset: 0 } };
+
+    return runDefinitionByType(definition, previewReq);
+  } catch (e) {
+    console.error("previewReportDefinition error:", e);
+    return resError({ developer_msg: `Failed to Catch ${e}` });
+  }
+};
+
 // Admin authoring test-run (plan Step 1) — runs a NOT-YET-SAVED draft
 // (from adminpanel's system_report_definitions editor) against
 // WEBSITE_LEAD_HANDLE_DB_NAME, a dedicated test tenant DB, never a real
