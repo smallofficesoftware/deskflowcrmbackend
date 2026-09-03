@@ -22,6 +22,7 @@ import {
   fillMissingInputsFromContent,
   resolveDataSources,
 } from "../pdfmeEngine/orderInputMapper.js";
+import { getRegisteredModel } from "./modelRegistry.js";
 import { runDefinitionByType } from "./reportDefinitionServices.js";
 
 const fontMap = loadFonts();
@@ -134,6 +135,46 @@ async function ensureDefaultReportTemplate(req, definition, company_masters_id, 
   return doc_type;
 }
 
+// A small "what was this export filtered by" summary, additive to
+// rawInputs below — a default/existing template never references
+// "appliedFilters" so it goes unused (fillMissingInputsFromContent's own
+// "unknown input ignored" behavior), but a custom template CAN bind a
+// textField's dataSource to it. Query-type only: plugin's filters_json is a
+// differently-shaped {paramKey:value} object with no column-registry
+// labels to resolve, and composite has no filters at all today.
+function buildAppliedFiltersSummary(definition, req) {
+  if (definition.type !== "query" || !definition.model_key) return "";
+  const registryEntry = getRegisteredModel(definition.model_key);
+  if (!registryEntry) return "";
+
+  const staticFilters = (() => {
+    try {
+      const parsed = JSON.parse(definition.filters_json || "[]");
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  })();
+  // Runtime overrides (the run screen's general-filter/CheckBoxFilterModal
+  // selections for THIS export) win per column — same "last one wins"
+  // merge queryEngine.js's own combined filters array already relies on.
+  const runtimeFilters = Array.isArray(req.body?.filters) ? req.body.filters : [];
+  const merged = new Map();
+  [...staticFilters, ...runtimeFilters].forEach((f) => {
+    if (f && f.column && f.value !== undefined && f.value !== null && f.value !== "") {
+      merged.set(f.column, f.value);
+    }
+  });
+
+  return [...merged.entries()]
+    .map(([column, value]) => {
+      const label = registryEntry.columns?.[column]?.label || humanize(column);
+      const displayValue = Array.isArray(value) ? value.join(", ") : String(value);
+      return `${label}: ${displayValue}`;
+    })
+    .join(", ");
+}
+
 function ensureUploadDir(subPath) {
   const uploadDir = path.resolve(process.cwd(), subPath);
   if (!fs.existsSync(uploadDir)) {
@@ -227,6 +268,7 @@ export const exportReportPdf = async (req, res) => {
     const rawInputs = {
       reportTitle: definition.name,
       reportTable: JSON.stringify(tableRows),
+      appliedFilters: buildAppliedFiltersSummary(definition, req),
     };
 
     const template = JSON.parse(templateRow.published_template_json);
