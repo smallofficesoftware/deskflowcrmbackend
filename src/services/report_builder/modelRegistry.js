@@ -65,6 +65,14 @@ const PRODUCT_COLUMNS = {
   purchase_rate: { label: "Purchase Rate", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
   purchase_net_rate: { label: "Purchase Net Rate", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
   created_date_time: { label: "Created Date", type: "date", filterable: true, sortable: true, groupable: false },
+  // Real DB columns, previously unwhitelisted (found via a registry-vs-DB
+  // diff) — GST/SKU-oriented product reports were impossible without these.
+  product_code: { label: "Product Code", type: "string", filterable: true, sortable: true, groupable: false },
+  hsn_code: { label: "HSN Code", type: "string", filterable: true, sortable: false, groupable: true },
+  gst_id: { label: "GST", type: "lookup", filterable: true, sortable: false, groupable: true },
+  net_rate: { label: "Net Rate", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+  unit_id: { label: "Unit", type: "lookup", filterable: true, sortable: false, groupable: true },
+  product_barcode_number: { label: "Barcode", type: "string", filterable: true, sortable: false, groupable: false },
 };
 
 export const MODEL_REGISTRY = {
@@ -115,6 +123,12 @@ export const MODEL_REGISTRY = {
       // is_archive filter.
       is_archive: { label: "Archived", type: "lookup", filterable: true, sortable: false, groupable: true },
       a_application_login_id: { label: "Created By (Team Member)", type: "lookup", filterable: true, sortable: false, groupable: true },
+      // Real DB columns, previously unwhitelisted (found via a registry-vs-DB
+      // diff) — commonly-wanted contact-export fields.
+      email_id: { label: "Email", type: "string", filterable: true, sortable: false, groupable: false },
+      gst_number: { label: "GST Number", type: "string", filterable: true, sortable: false, groupable: false },
+      address: { label: "Address", type: "string", filterable: true, sortable: false, groupable: false },
+      pincode: { label: "Pincode", type: "string", filterable: true, sortable: false, groupable: true },
       ...COUNT_COLUMN,
     },
     // Step 2 of the plan — which CheckBoxFilterModal.tsx slots apply to
@@ -234,11 +248,25 @@ export const MODEL_REGISTRY = {
       to_customer_id: { label: "Customer", type: "lookup", filterable: true, sortable: false, groupable: true },
       grand_total: { label: "Grand Total", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
       created_date_time: { label: "Created Date", type: "date", filterable: true, sortable: true, groupable: false },
+      // Real DB columns, previously unwhitelisted (found via a registry-vs-DB
+      // diff) — several "Later" items in the plan (Discount Analysis, GST
+      // Summary, Payment Due Forecast) turn out to just need these, not a
+      // real limitation.
+      due_date: { label: "Due Date", type: "date", filterable: true, sortable: true, groupable: false },
+      discount_pct: { label: "Discount %", type: "number", filterable: true, sortable: false, groupable: false, aggregatable: ["avg", "min", "max"] },
+      taxable_amt: { label: "Taxable Amount", type: "currency", filterable: true, sortable: false, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      gst_amt: { label: "GST Amount", type: "currency", filterable: true, sortable: false, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      payment_type: { label: "Payment Type", type: "lookup", filterable: true, sortable: false, groupable: true },
+      to_customer_email: { label: "Customer Email", type: "string", filterable: true, sortable: false, groupable: false },
+      to_customer_phone: { label: "Customer Phone", type: "string", filterable: true, sortable: false, groupable: false },
+      to_customer_gst_number: { label: "Customer GST Number", type: "string", filterable: true, sortable: false, groupable: false },
       ...COUNT_COLUMN,
     },
-    // Trimmed from the earlier draft in the plan — no salesperson/label/
-    // GST/series column is actually registered on carts, so slots
-    // 5/9/15/22 don't apply here despite seeming plausible.
+    // Trimmed from the earlier draft in the plan — no salesperson/series
+    // column is actually registered on carts, so slots 5/9/15 don't apply
+    // here despite seeming plausible. GST/payment_type ARE now registered
+    // (above) but not wired into generalFilters below — cheap follow-up
+    // if slot 22/25 turn out to be wanted on the run screen.
     generalFilters: {
       1: "cart_date",
       4: "cart_status",
@@ -297,6 +325,11 @@ export const MODEL_REGISTRY = {
       item_qty: { label: "Quantity", type: "number", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
       item_rate: { label: "Rate", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
       item_total: { label: "Total", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      // Real DB columns, previously unwhitelisted (found via a registry-vs-DB
+      // diff) — item-level GST/discount reports were impossible without these.
+      item_hsn_code: { label: "HSN Code", type: "string", filterable: true, sortable: false, groupable: true },
+      item_gst: { label: "GST %", type: "number", filterable: true, sortable: false, groupable: false, aggregatable: ["avg"] },
+      item_discount_pct: { label: "Discount %", type: "number", filterable: true, sortable: false, groupable: false, aggregatable: ["avg", "min", "max"] },
       ...COUNT_COLUMN,
     },
     // No date column of its own (inherits the parent cart's) — no slot 1.
@@ -356,6 +389,10 @@ export const MODEL_REGISTRY = {
       task_fromdate: { label: "From Date", type: "date", filterable: true, sortable: true, groupable: false },
       task_enddate: { label: "Due Date", type: "date", filterable: true, sortable: true, groupable: false },
       created_date_time: { label: "Created Date", type: "date", filterable: true, sortable: true, groupable: false },
+      // Real DB columns, previously unwhitelisted (found via a registry-vs-DB
+      // diff) — no notes field or actual-completion-date was reportable before.
+      task_remark: { label: "Remark", type: "string", filterable: true, sortable: false, groupable: false },
+      completed_date: { label: "Completed Date", type: "date", filterable: true, sortable: true, groupable: false },
       // Real TINYINT flag (confirmed in taskManagementModel.js) —
       // teamAllTaskReportServices.js's is_support_ticket_flag filter.
       is_support_ticket: { label: "Is Support Ticket", type: "lookup", filterable: true, sortable: false, groupable: true },
@@ -435,6 +472,9 @@ export const MODEL_REGISTRY = {
           task_color: { label: "Category Colour", type: "string" },
         },
       },
+      // Widened to match carts.customer's field set (the richest existing
+      // precedent) — was person_name/company_name only, thinner than
+      // what's actually useful on a task report.
       contact: {
         label: "Contact",
         foreignKey: "contact_masters_id",
@@ -444,6 +484,9 @@ export const MODEL_REGISTRY = {
         columns: {
           person_name: { label: "Contact Name", type: "string" },
           company_name: { label: "Company Name", type: "string" },
+          mobile_number: { label: "Mobile", type: "string" },
+          gst_number: { label: "GSTIN", type: "string" },
+          email_id: { label: "Email", type: "string" },
         },
       },
       createdBy: {
@@ -490,6 +533,13 @@ export const MODEL_REGISTRY = {
       // 18, Search Contact) — the plan's original registry-gap list missed
       // this one, only flagged attendance/visits/call_histories/reminder_messages.
       contact_master_id: { label: "Contact", type: "lookup", filterable: true, sortable: false, groupable: true },
+      // Real DB columns, previously unwhitelisted (found via a registry-vs-DB
+      // diff). inquiry_assigned_team_member confirms the plan's own "Later:
+      // Salesperson Inquiry Performance (no salesperson dimension)" was a
+      // registry gap, not a real limitation — column exists, just never
+      // registered. Same CSV-of-login-ids shape as task_managements.assigned_team_member.
+      inquiry_assigned_team_member: { label: "Assigned To (has member)", type: "csv", filterable: true, sortable: false, groupable: false },
+      product_remarks: { label: "Product Remarks", type: "string", filterable: true, sortable: false, groupable: false },
       ...COUNT_COLUMN,
     },
     generalFilters: {
@@ -518,6 +568,9 @@ export const MODEL_REGISTRY = {
         columns: {
           person_name: { label: "Contact Name", type: "string" },
           company_name: { label: "Company Name", type: "string" },
+          mobile_number: { label: "Mobile", type: "string" },
+          gst_number: { label: "GSTIN", type: "string" },
+          email_id: { label: "Email", type: "string" },
         },
       },
       // Both category_id and product_id are now CSV-of-ids (migrations
@@ -603,6 +656,8 @@ export const MODEL_REGISTRY = {
           person_name: { label: "Contact Name", type: "string" },
           company_name: { label: "Company Name", type: "string" },
           mobile_number: { label: "Mobile", type: "string" },
+          gst_number: { label: "GSTIN", type: "string" },
+          email_id: { label: "Email", type: "string" },
         },
       },
       paymentType: {
@@ -662,6 +717,10 @@ export const MODEL_REGISTRY = {
       amount: { label: "Amount", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
       amount_signed: { label: "Signed Amount", type: "currency", filterable: false, sortable: false, groupable: false, aggregatable: ["sum"] },
       payment_date_time: { label: "Payment Date", type: "date", filterable: true, sortable: true, groupable: false },
+      // Real DB columns, previously unwhitelisted (found via a registry-vs-DB
+      // diff) — present on account_transactions already, were missing here.
+      mode: { label: "Payment Mode", type: "lookup", filterable: true, sortable: false, groupable: true },
+      remark: { label: "Remark", type: "string", filterable: true, sortable: false, groupable: false },
       ...COUNT_COLUMN,
     },
     generalFilters: {
@@ -669,6 +728,7 @@ export const MODEL_REGISTRY = {
       13: "type",
       14: "type",
       18: "contact_masters_id",
+      25: "mode",
     },
     relations: {
       contact: {
@@ -681,6 +741,8 @@ export const MODEL_REGISTRY = {
           person_name: { label: "Contact Name", type: "string" },
           company_name: { label: "Company Name", type: "string" },
           mobile_number: { label: "Mobile", type: "string" },
+          gst_number: { label: "GSTIN", type: "string" },
+          email_id: { label: "Email", type: "string" },
         },
       },
     },
@@ -764,6 +826,10 @@ export const MODEL_REGISTRY = {
       amount: { label: "Amount", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
       amount_signed: { label: "Signed Amount", type: "currency", filterable: false, sortable: false, groupable: false, aggregatable: ["sum"] },
       payment_date_time: { label: "Payment Date", type: "date", filterable: true, sortable: true, groupable: false },
+      // Real DB columns, previously unwhitelisted (found via a registry-vs-DB
+      // diff) — present on account_transactions already, were missing here.
+      mode: { label: "Payment Mode", type: "lookup", filterable: true, sortable: false, groupable: true },
+      remark: { label: "Remark", type: "string", filterable: true, sortable: false, groupable: false },
       ...COUNT_COLUMN,
     },
     generalFilters: {
@@ -772,6 +838,7 @@ export const MODEL_REGISTRY = {
       9: "team_id",
       13: "type",
       14: "type",
+      25: "mode",
     },
     relations: {
       employee: {
@@ -817,6 +884,9 @@ export const MODEL_REGISTRY = {
         columns: {
           person_name: { label: "Contact Name", type: "string" },
           company_name: { label: "Company Name", type: "string" },
+          mobile_number: { label: "Mobile", type: "string" },
+          gst_number: { label: "GSTIN", type: "string" },
+          email_id: { label: "Email", type: "string" },
         },
       },
     },
@@ -852,6 +922,8 @@ export const MODEL_REGISTRY = {
           person_name: { label: "Contact Name", type: "string" },
           company_name: { label: "Company Name", type: "string" },
           mobile_number: { label: "Mobile", type: "string" },
+          gst_number: { label: "GSTIN", type: "string" },
+          email_id: { label: "Email", type: "string" },
         },
       },
     },
@@ -894,6 +966,9 @@ export const MODEL_REGISTRY = {
         columns: {
           person_name: { label: "Contact Name", type: "string" },
           company_name: { label: "Company Name", type: "string" },
+          mobile_number: { label: "Mobile", type: "string" },
+          gst_number: { label: "GSTIN", type: "string" },
+          email_id: { label: "Email", type: "string" },
         },
       },
       createdBy: {
@@ -988,6 +1063,28 @@ export const MODEL_REGISTRY = {
       // own foreignKey below — added as its own whitelisted column for
       // slots 5/9 (Team Member).
       employee_id: { label: "Employee", type: "lookup", filterable: true, sortable: false, groupable: true },
+      // Real DB columns, previously unwhitelisted (found via a registry-vs-DB
+      // diff) — only summary totals (gross_salary/total_earning/total_deduction/
+      // net_bank_pay above) were reportable before; no detailed payroll
+      // breakdown was possible at all.
+      basic_da: { label: "Basic + DA", type: "currency", filterable: true, sortable: false, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      hra: { label: "HRA", type: "currency", filterable: true, sortable: false, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      conveyance_allowance: { label: "Conveyance Allowance", type: "currency", filterable: true, sortable: false, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      medical_allowance: { label: "Medical Allowance", type: "currency", filterable: true, sortable: false, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      special_allowance: { label: "Special Allowance", type: "currency", filterable: true, sortable: false, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      per_day_salary: { label: "Per Day Salary", type: "currency", filterable: true, sortable: false, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      bonus_amount: { label: "Bonus", type: "currency", filterable: true, sortable: false, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      earn_sub_total: { label: "Earnings Sub-total", type: "currency", filterable: true, sortable: false, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      regular_ot_hours: { label: "Regular OT Hours", type: "number", filterable: true, sortable: false, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      extra_ot_hours: { label: "Extra OT Hours", type: "number", filterable: true, sortable: false, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      regular_ot_payable_amt: { label: "Regular OT Payable", type: "currency", filterable: true, sortable: false, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      extra_ot_payable_amt: { label: "Extra OT Payable", type: "currency", filterable: true, sortable: false, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      ded_emp_pf: { label: "Employee PF", type: "currency", filterable: true, sortable: false, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      ded_pradhan_mantri_pf: { label: "Pradhan Mantri PF", type: "currency", filterable: true, sortable: false, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      ded_esi_employee: { label: "ESI (Employee)", type: "currency", filterable: true, sortable: false, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      ded_esi_company: { label: "ESI (Company)", type: "currency", filterable: true, sortable: false, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      ded_pt: { label: "Professional Tax", type: "currency", filterable: true, sortable: false, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      ded_insurance: { label: "Insurance Deduction", type: "currency", filterable: true, sortable: false, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
       ...COUNT_COLUMN,
     },
     // No slot 1 (Date Range) — year/month are separate integers, not a
@@ -1048,12 +1145,16 @@ export const MODEL_REGISTRY = {
         runningTotal: { partitionBy: "item_product_id", orderBy: "cart_date" },
       },
       stock_type: { label: "Stock Type", type: "lookup", filterable: true, sortable: false, groupable: true },
+      // Real column, previously unwhitelisted (found via registry-vs-DB
+      // diff) — no per-warehouse breakdown was possible before.
+      item_warehouse_id: { label: "Warehouse", type: "lookup", filterable: true, sortable: false, groupable: true },
       ...COUNT_COLUMN,
     },
     // Category not directly on this table — product-only for slot 7.
     generalFilters: {
       1: "cart_date",
       7: "item_product_id",
+      16: "item_warehouse_id",
       17: "stock_type",
     },
     relations: {
@@ -1086,6 +1187,9 @@ export const MODEL_REGISTRY = {
       // slots 5/9 (Team Member) — the 4th of the registry gaps the plan
       // doc originally flagged.
       a_application_login_id: { label: "Employee", type: "lookup", filterable: true, sortable: false, groupable: true },
+      // Real column, previously unwhitelisted (found via registry-vs-DB
+      // diff) — total hours worked per punch pair.
+      total_working_hour: { label: "Total Working Hours", type: "number", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
       ...COUNT_COLUMN,
     },
     generalFilters: {
@@ -1124,6 +1228,9 @@ export const MODEL_REGISTRY = {
       target_value: { label: "Target Value", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
       incentive_type: { label: "Incentive Type", type: "lookup", filterable: true, sortable: false, groupable: true },
       incentive_value: { label: "Incentive Value", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      // Real column, previously unwhitelisted (found via registry-vs-DB
+      // diff) — lets a target/incentive row be scoped to one product.
+      product_id: { label: "Product", type: "lookup", filterable: true, sortable: false, groupable: true },
       ...COUNT_COLUMN,
     },
     // Two date columns (target_fromdate/target_todate) — target_fromdate
@@ -1133,6 +1240,7 @@ export const MODEL_REGISTRY = {
       1: "target_fromdate",
       5: "assigned_team_member",
       9: "assigned_team_member",
+      7: "product_id",
     },
     relations: {
       employee: {
@@ -1142,6 +1250,15 @@ export const MODEL_REGISTRY = {
         targetKey: "id",
         columns: {
           username: { label: "Team Member", type: "string" },
+        },
+      },
+      product: {
+        label: "Product",
+        foreignKey: "product_id",
+        getModel: (tenantDB) => productModel(tenantDB),
+        targetKey: "id",
+        columns: {
+          product_name: PRODUCT_COLUMNS.product_name,
         },
       },
     },
