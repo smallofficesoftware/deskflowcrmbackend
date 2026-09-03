@@ -22,6 +22,13 @@ import {
   updateReportGroup,
 } from "../../services/report_builder/reportDefinitionServices.js";
 import { exportReportExcel, exportReportPdf } from "../../services/report_builder/reportPdfExport.js";
+import {
+  createReportSchedule,
+  deleteReportSchedule,
+  listReportSchedules,
+  reportScheduleDispatchCroneTabRunner,
+  updateReportSchedule,
+} from "../../services/report_builder/reportScheduleServices.js";
 import callServiceMethod from "../baseController.js";
 
 export const getModelRegistryController = async (req, res) => {
@@ -114,4 +121,24 @@ export const updateReportGroupController = async (req, res) => {
 
 export const deleteReportGroupController = async (req, res) => {
   await callServiceMethod(req, res, deleteReportGroup(req), "deleteReportGroup");
+};
+
+export const listReportSchedulesController = async (req, res) => {
+  await callServiceMethod(req, res, listReportSchedules(req), "listReportSchedules");
+};
+
+export const createReportScheduleController = async (req, res) => {
+  await callServiceMethod(req, res, createReportSchedule(req), "createReportSchedule");
+};
+
+export const updateReportScheduleController = async (req, res) => {
+  await callServiceMethod(req, res, updateReportSchedule(req), "updateReportSchedule");
+};
+
+export const deleteReportScheduleController = async (req, res) => {
+  await callServiceMethod(req, res, deleteReportSchedule(req), "deleteReportSchedule");
+};
+
+export const reportScheduleDispatchCroneTabController = async (req, res) => {
+  await callServiceMethod(req, res, reportScheduleDispatchCroneTabRunner(req, res), "reportScheduleDispatchCroneTabRunner");
 };

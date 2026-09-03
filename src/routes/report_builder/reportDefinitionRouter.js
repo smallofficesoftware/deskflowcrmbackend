@@ -2,8 +2,10 @@ import {
   copyFromSystemReportDefinitionController,
   createReportDefinitionController,
   createReportGroupController,
+  createReportScheduleController,
   deleteReportDefinitionController,
   deleteReportGroupController,
+  deleteReportScheduleController,
   exportReportExcelController,
   exportReportPdfController,
   getGeneralFilterConfigController,
@@ -14,14 +16,17 @@ import {
   listReportDefinitionsController,
   listReportGroupsController,
   listReportRunsController,
+  listReportSchedulesController,
   listRunnableReportDefinitionsController,
   listSystemReportDefinitionsController,
+  reportScheduleDispatchCroneTabController,
   runBatchReportDefinitionsController,
   runReportDefinitionController,
   saveReportTeamRightsController,
   testRunReportDefinitionController,
   updateReportDefinitionController,
   updateReportGroupController,
+  updateReportScheduleController,
 } from "../../controllers/report_builder/reportDefinitionController.js";
 import { authenticateToken } from "../../middlewares/auth.js";
 import { requireReportPin, requireServiceSecret } from "../../middlewares/reportPinAuth.js";
@@ -118,4 +123,23 @@ export default (app) => {
   app.post("/report-groups/create", authenticateToken, tenantMiddleware, requireReportBuilderFlag, requireReportPin, createReportGroupController);
   app.post("/report-groups/:id/update", authenticateToken, tenantMiddleware, requireReportBuilderFlag, requireReportPin, updateReportGroupController);
   app.post("/report-groups/:id/delete", authenticateToken, tenantMiddleware, requireReportBuilderFlag, requireReportPin, deleteReportGroupController);
+
+  // Schedules (Step 8a) — build-tier owner+PIN, same as everything else
+  // that configures a report. :id below is report_definition_id (list/
+  // create scoped to one report); :scheduleId (update/delete) is the
+  // schedule's own id, since a report can have more than one schedule.
+  app.post("/report-definitions/:id/schedules/list", authenticateToken, tenantMiddleware, requireReportBuilderFlag, requireReportPin, listReportSchedulesController);
+  app.post("/report-definitions/:id/schedules/create", authenticateToken, tenantMiddleware, requireReportBuilderFlag, requireReportPin, createReportScheduleController);
+  app.post("/report-schedules/:scheduleId/update", authenticateToken, tenantMiddleware, requireReportBuilderFlag, requireReportPin, updateReportScheduleController);
+  app.post("/report-schedules/:scheduleId/delete", authenticateToken, tenantMiddleware, requireReportBuilderFlag, requireReportPin, deleteReportScheduleController);
+
+  // External-cron dispatch entry point (Step 8a) — same shape as every
+  // other *CroneTabRunner in cronJobsRouter.js: no authenticateToken/
+  // tenantMiddleware here (there's no CRM user session — the caller is
+  // an external cron tab, and tenantMiddleware runs once per tenant
+  // INSIDE the runner itself, not at the route layer). Inert by default:
+  // gated by EXTERNAL_CRONE_RUNNING_FLAG + a cron_jobs kill-switch row,
+  // both requiring deliberate action outside this codebase before this
+  // endpoint does anything even if called.
+  app.post("/report-schedule-dispatch-crone-tab/:offset/:limit", reportScheduleDispatchCroneTabController);
 };

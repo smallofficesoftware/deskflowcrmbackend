@@ -131,6 +131,7 @@ CREATE TABLE `report_definitions` LIKE smalloffice_sample_tenant.report_definiti
 CREATE TABLE `report_runs` LIKE smalloffice_sample_tenant.report_runs;
 CREATE TABLE `report_definition_team_rights` LIKE smalloffice_sample_tenant.report_definition_team_rights;
 CREATE TABLE `report_groups` LIKE smalloffice_sample_tenant.report_groups;
+CREATE TABLE `report_schedules` LIKE smalloffice_sample_tenant.report_schedules;
 
 CREATE TABLE `adjustment_types` LIKE smalloffice_sample_tenant.adjustment_types;
 ALTER TABLE `adjustment_types`  DISABLE KEYS;

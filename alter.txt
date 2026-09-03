@@ -3142,3 +3142,27 @@ CREATE TABLE `report_groups` (
 
 03-09-2026 Dhaval
 ALTER TABLE `report_definitions` ADD `report_group_id` INT(11) NULL DEFAULT NULL AFTER `filters_to_show`;
+
+03-09-2026 Dhaval
+CREATE TABLE `report_schedules` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `company_masters_id` INT(11) NOT NULL,
+  `report_definition_id` INT(11) NOT NULL,
+  `a_application_login_id` INT(11) NOT NULL,
+  `frequency` ENUM('daily','weekly','monthly') NOT NULL,
+  `send_time` VARCHAR(10) NOT NULL,
+  `day_of_week` TINYINT(4) NULL DEFAULT NULL,
+  `day_of_month` TINYINT(4) NULL DEFAULT NULL,
+  `delivery_format` ENUM('excel','pdf','both') NOT NULL DEFAULT 'excel',
+  `recipients` TEXT NOT NULL,
+  `next_run_at` DATETIME NOT NULL,
+  `last_run_at` DATETIME NULL DEFAULT NULL,
+  `created_date_time` DATETIME NOT NULL,
+  `isDelete` TINYINT(4) NOT NULL DEFAULT 0,
+  `isActive` TINYINT(4) NOT NULL DEFAULT 1,
+  PRIMARY KEY (`id`),
+  INDEX `idx_report_schedules_due` (`next_run_at`, `isActive`, `isDelete`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+03-09-2026 Dhaval
+ALTER TABLE `report_runs` ADD `trigger_type` ENUM('manual','scheduled') NOT NULL DEFAULT 'manual' AFTER `error_message`;
