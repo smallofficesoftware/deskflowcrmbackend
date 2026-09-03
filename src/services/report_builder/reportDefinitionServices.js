@@ -442,7 +442,29 @@ export const listRunnableReportDefinitions = async (req) => {
     // Build-internal fields (columns_json/filters_json/group_by_json) stay
     // private to the owner+PIN listReportDefinitions — this is a trimmed,
     // run-only shape.
-    const attributes = ["id", "name", "type", "category", "description", "page_id", "model_key", "plugin_key", "filters_to_show", "created_date_time"];
+    // group_by_json is fetched only to derive is_aggregated below, then
+    // stripped back out — the raw column list itself stays build-internal
+    // (owner+PIN listReportDefinitions only), same boundary the comment
+    // above already draws for columns_json/filters_json.
+    const attributes = ["id", "name", "type", "category", "description", "page_id", "model_key", "plugin_key", "filters_to_show", "group_by_json", "created_date_time"];
+    // Step 9's Compare Period is only offered for aggregated results
+    // (composite is always per-team-member aggregates; a query-type report
+    // is aggregated iff it has a non-empty group_by_json) — comparing a
+    // raw ungrouped row listing period-over-period has no clean meaning.
+    const toRunnableShape = (row) => {
+      const plain = row.get({ plain: true });
+      let is_aggregated = plain.type === "composite";
+      if (!is_aggregated && plain.type === "query") {
+        try {
+          const groupBy = JSON.parse(plain.group_by_json || "[]");
+          is_aggregated = Array.isArray(groupBy) && groupBy.length > 0;
+        } catch {
+          is_aggregated = false;
+        }
+      }
+      delete plain.group_by_json;
+      return { ...plain, is_aggregated };
+    };
 
     const owner = await isCompanyOwner(a_application_login_id, company_masters_id);
     if (owner) {
@@ -451,7 +473,7 @@ export const listRunnableReportDefinitions = async (req) => {
         attributes,
         order: [["id", "DESC"]],
       });
-      return resSuccess({ data: { item: rows } });
+      return resSuccess({ data: { item: rows.map(toRunnableShape) } });
     }
 
     const RightsModel = reportDefinitionTeamRightModel(req.tenantDB);
@@ -470,7 +492,7 @@ export const listRunnableReportDefinitions = async (req) => {
       attributes,
       order: [["id", "DESC"]],
     });
-    return resSuccess({ data: { item: rows } });
+    return resSuccess({ data: { item: rows.map(toRunnableShape) } });
   } catch (e) {
     console.error("listRunnableReportDefinitions error:", e);
     return resError({ developer_msg: `Failed to Catch ${e}` });
