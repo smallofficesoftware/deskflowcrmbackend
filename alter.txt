@@ -3166,3 +3166,6 @@ CREATE TABLE `report_schedules` (
 
 03-09-2026 Dhaval
 ALTER TABLE `report_runs` ADD `trigger_type` ENUM('manual','scheduled') NOT NULL DEFAULT 'manual' AFTER `error_message`;
+
+03-09-2026 Dhaval
+ALTER TABLE `report_definitions` ADD `description` TEXT NULL DEFAULT NULL AFTER `report_group_id`;

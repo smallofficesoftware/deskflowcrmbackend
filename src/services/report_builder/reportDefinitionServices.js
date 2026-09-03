@@ -102,6 +102,7 @@ export const copyFromSystemReportDefinition = async (req) => {
     req.body.filters_json = systemDefinition.filters_json;
     req.body.group_by_json = systemDefinition.group_by_json;
     req.body.filters_to_show = systemDefinition.filters_to_show;
+    req.body.description = systemDefinition.description;
     req.body.source_system_report_definition_id = systemDefinition.id;
 
     const result = await createReportDefinition(req);
@@ -312,7 +313,7 @@ export const deleteReportGroup = async (req) => {
 
 export const createReportDefinition = async (req) => {
   try {
-    const { a_application_login_id, name, type = "query", model_key, plugin_key, columns_json, filters_json, group_by_json, source_system_report_definition_id, filters_to_show, report_group_id } = req.body || {};
+    const { a_application_login_id, name, type = "query", model_key, plugin_key, columns_json, filters_json, group_by_json, source_system_report_definition_id, filters_to_show, report_group_id, description } = req.body || {};
     if (!a_application_login_id || !name || !columns_json) {
       return resError({ developer_msg: "a_application_login_id, name and columns_json are required" });
     }
@@ -391,6 +392,7 @@ export const createReportDefinition = async (req) => {
       source_system_report_definition_id: source_system_report_definition_id || null,
       filters_to_show: filters_to_show ? asJsonString(filters_to_show) : null,
       report_group_id: report_group_id || null,
+      description: description || null,
       created_date_time: now(),
     });
 
@@ -418,7 +420,7 @@ export const createReportDefinition = async (req) => {
 export const updateReportDefinition = async (req) => {
   try {
     const { id } = req.params || {};
-    const { a_application_login_id, name, columns_json, filters_json, group_by_json, filters_to_show, report_group_id } = req.body || {};
+    const { a_application_login_id, name, columns_json, filters_json, group_by_json, filters_to_show, report_group_id, description } = req.body || {};
     if (!id || !a_application_login_id) {
       return resError({ developer_msg: "id (param) and a_application_login_id are required" });
     }
@@ -445,6 +447,7 @@ export const updateReportDefinition = async (req) => {
     if (group_by_json !== undefined) patch.group_by_json = group_by_json ? asJsonString(group_by_json) : null;
     if (filters_to_show !== undefined) patch.filters_to_show = filters_to_show ? asJsonString(filters_to_show) : null;
     if (report_group_id !== undefined) patch.report_group_id = report_group_id || null;
+    if (description !== undefined) patch.description = description || null;
 
     await definition.update(patch);
 
@@ -558,7 +561,14 @@ export const listRunnableReportDefinitions = async (req) => {
     // stripped back out — the raw column list itself stays build-internal
     // (owner+PIN listReportDefinitions only), same boundary the comment
     // above already draws for columns_json/filters_json.
-    const attributes = ["id", "name", "type", "category", "description", "page_id", "model_key", "plugin_key", "filters_to_show", "group_by_json", "report_group_id", "created_date_time"];
+    // No "category" here — that column only ever existed on the master-DB
+    // system gallery (system_report_definitions); a tenant's own reports
+    // are organized via report_group_id instead (Step 10). Was
+    // incorrectly requested here for a real tenant column that was never
+    // migrated onto this table, surfacing as "Unknown column 'category'"
+    // the first time a real tenant hit this endpoint — see the
+    // add-description-to-report-definitions migration's own comment.
+    const attributes = ["id", "name", "type", "description", "page_id", "model_key", "plugin_key", "filters_to_show", "group_by_json", "report_group_id", "created_date_time"];
     // Step 9's Compare Period is only offered for aggregated results
     // (composite is always per-team-member aggregates; a query-type report
     // is aggregated iff it has a non-empty group_by_json) — comparing a

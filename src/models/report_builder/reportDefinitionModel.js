@@ -58,6 +58,11 @@ export const reportDefinitionModel = (sequelize) => {
       report_group_id: {
         type: INTEGER,
       },
+      // Report-picker search matches name + description (Step 5's "Search
+      // scope" decision).
+      description: {
+        type: TEXT,
+      },
       s_timestemp: {
         type: STRING,
       },
