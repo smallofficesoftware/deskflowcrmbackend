@@ -186,6 +186,96 @@ export const duplicateReportDefinition = async (req) => {
   }
 };
 
+// Downloadable backup/portability of ONE of this company's own report
+// definitions — mirrors Document Designer's own exportDocumentTemplate
+// (documentPrintTemplateServices.js:585). Real JSON values, not
+// double-stringified — a human can open the downloaded file and read it.
+// report_group_id / source_system_report_definition_id are deliberately
+// excluded: both are ids meaningful only inside THIS tenant, dangling or
+// wrong once imported elsewhere.
+export const exportReportDefinition = async (req) => {
+  try {
+    const { id } = req.params || {};
+    const { a_application_login_id } = req.body || {};
+    if (!id || !a_application_login_id) {
+      return resError({ developer_msg: "id (param) and a_application_login_id are required" });
+    }
+
+    const findCompanyId = await getCompanyByLoginId(a_application_login_id);
+    if (!findCompanyId) {
+      return resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" });
+    }
+
+    const ReportDefinition = reportDefinitionModel(req.tenantDB);
+    // IDOR guard — id must belong to the resolved company, never trusted alone.
+    const row = await ReportDefinition.findOne({
+      where: { id, company_masters_id: findCompanyId.company_masters_id, isDelete: 0 },
+      attributes: ["name", "type", "model_key", "plugin_key", "columns_json", "filters_json", "group_by_json", "filters_to_show", "description", "icon"],
+    });
+    if (!row) {
+      return resError({ code: 404, ack_msg: "Report not found", developer_msg: "No matching report definition for this company" });
+    }
+
+    const parseOrNull = (value) => {
+      if (!value) return null;
+      try {
+        return JSON.parse(value);
+      } catch {
+        return null;
+      }
+    };
+
+    await logAuditEvent(req, {
+      module_key: "report_builder",
+      action: "export",
+      entity_type: "report_definition",
+      entity_id: id,
+    });
+
+    return resSuccess({
+      data: {
+        item: {
+          name: row.name,
+          type: row.type,
+          model_key: row.model_key,
+          plugin_key: row.plugin_key,
+          columns_json: parseOrNull(row.columns_json),
+          filters_json: parseOrNull(row.filters_json),
+          group_by_json: parseOrNull(row.group_by_json),
+          filters_to_show: parseOrNull(row.filters_to_show),
+          description: row.description,
+          icon: row.icon,
+        },
+      },
+    });
+  } catch (e) {
+    console.error("exportReportDefinition error:", e);
+    return resError({ developer_msg: `Failed to Catch ${e}` });
+  }
+};
+
+// Importing is just createReportDefinition fed from an uploaded file
+// instead of the build form / a gallery copy — same delegation shape
+// importDocumentTemplate already uses (documentPrintTemplateServices.js:623).
+// createReportDefinition's own checks (model_key/plugin_key whitelisted,
+// composite metric keys valid, etc.) apply unchanged — this only adds the
+// minimal "is this even a report-definition-shaped file" sanity check
+// importDocumentTemplate's own basePdf/schemas check mirrors.
+export const importReportDefinition = async (req) => {
+  try {
+    const { type, columns_json } = req.body || {};
+    if (!type || !columns_json) {
+      return resError({ developer_msg: "Invalid report file — missing type/columns_json" });
+    }
+
+    req.body.name = req.body.name ? `${req.body.name} (Imported)` : "Imported Report";
+    return await createReportDefinition(req);
+  } catch (e) {
+    console.error("importReportDefinition error:", e);
+    return resError({ developer_msg: `Failed to Catch ${e}` });
+  }
+};
+
 // Admin authoring test-run (plan Step 1) — runs a NOT-YET-SAVED draft
 // (from adminpanel's system_report_definitions editor) against
 // WEBSITE_LEAD_HANDLE_DB_NAME, a dedicated test tenant DB, never a real

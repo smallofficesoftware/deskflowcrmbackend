@@ -5,6 +5,8 @@ import {
   deleteReportDefinition,
   deleteReportGroup,
   duplicateReportDefinition,
+  exportReportDefinition,
+  importReportDefinition,
   getGeneralFilterConfig,
   getMetricsRegistry,
   getModelRegistry,
@@ -70,6 +72,14 @@ export const copyFromSystemReportDefinitionController = async (req, res) => {
 
 export const duplicateReportDefinitionController = async (req, res) => {
   await callServiceMethod(req, res, duplicateReportDefinition(req), "duplicateReportDefinition");
+};
+
+export const exportReportDefinitionController = async (req, res) => {
+  await callServiceMethod(req, res, exportReportDefinition(req), "exportReportDefinition");
+};
+
+export const importReportDefinitionController = async (req, res) => {
+  await callServiceMethod(req, res, importReportDefinition(req), "importReportDefinition");
 };
 
 export const listRunnableReportDefinitionsController = async (req, res) => {

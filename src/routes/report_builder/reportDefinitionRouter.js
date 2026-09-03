@@ -7,6 +7,7 @@ import {
   deleteReportGroupController,
   deleteReportScheduleController,
   duplicateReportDefinitionController,
+  exportReportDefinitionController,
   exportReportExcelController,
   exportReportPdfController,
   getGeneralFilterConfigController,
@@ -14,6 +15,7 @@ import {
   getModelRegistryController,
   getPluginRegistryController,
   getReportTeamRightsController,
+  importReportDefinitionController,
   listReportDefinitionsController,
   listReportGroupsController,
   listReportRunsController,
@@ -67,6 +69,9 @@ export default (app) => {
   app.post("/report-definitions/plugin-registry", authenticateToken, tenantMiddleware, requireReportBuilderFlag, requireReportPin, getPluginRegistryController);
   app.post("/report-definitions/metrics-registry", authenticateToken, tenantMiddleware, requireReportBuilderFlag, requireReportPin, getMetricsRegistryController);
   app.post("/report-definitions/create", authenticateToken, tenantMiddleware, requireReportBuilderFlag, requireReportPin, createReportDefinitionController);
+  // Import — same tier as create (build action, needs the PIN); it's just
+  // createReportDefinition fed from an uploaded file.
+  app.post("/report-definitions/import", authenticateToken, tenantMiddleware, requireReportBuilderFlag, requireReportPin, importReportDefinitionController);
   app.post("/report-definitions/list", authenticateToken, tenantMiddleware, requireReportBuilderFlag, requireReportPin, listReportDefinitionsController);
   app.post("/report-definitions/:id/update", authenticateToken, tenantMiddleware, requireReportBuilderFlag, requireReportPin, updateReportDefinitionController);
   app.post("/report-definitions/:id/delete", authenticateToken, tenantMiddleware, requireReportBuilderFlag, requireReportPin, deleteReportDefinitionController);
@@ -105,6 +110,10 @@ export default (app) => {
   // same per-report scope enforcement query/composite runs already get.
   app.post("/report-definitions/:id/export/excel", authenticateToken, tenantMiddleware, requireReportBuilderFlag, exportReportExcelController);
   app.post("/report-definitions/:id/export/pdf", authenticateToken, tenantMiddleware, requireReportBuilderFlag, exportReportPdfController);
+  // Export-as-JSON (backup/portability of the definition's own build shape,
+  // not a data export) — flag-only, same tier as the two above; reading
+  // your own report's shape needs no PIN, only WRITING one (import) does.
+  app.post("/report-definitions/:id/export-json", authenticateToken, tenantMiddleware, requireReportBuilderFlag, exportReportDefinitionController);
 
   // Admin authoring test-run (plan Step 1) — the ONE service-to-service
   // route in this router. Called only by adminpanel's own backend, never
