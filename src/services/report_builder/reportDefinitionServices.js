@@ -636,7 +636,7 @@ export const listRunnableReportDefinitions = async (req) => {
     // migrated onto this table, surfacing as "Unknown column 'category'"
     // the first time a real tenant hit this endpoint — see the
     // add-description-to-report-definitions migration's own comment.
-    const attributes = ["id", "name", "type", "description", "icon", "page_id", "model_key", "plugin_key", "filters_to_show", "group_by_json", "report_group_id", "created_date_time"];
+    const attributes = ["id", "name", "type", "description", "icon", "page_id", "model_key", "plugin_key", "filters_to_show", "group_by_json", "columns_json", "report_group_id", "created_date_time"];
     // Step 9's Compare Period is only offered for aggregated results
     // (composite is always per-team-member aggregates; a query-type report
     // is aggregated iff it has a non-empty group_by_json) — comparing a
@@ -662,7 +662,31 @@ export const listRunnableReportDefinitions = async (req) => {
         }
       }
       delete plain.group_by_json;
-      return { ...plain, is_aggregated, group_by_columns };
+
+      // hidden_grid_columns: just the display-key list a column resolves to
+      // (same key-derivation resolveDisplayColumns()/queryEngine.js already
+      // uses) for whichever picks the author marked showInGrid:false — no
+      // aggregate/label/showTotal internals ride along, only the bare keys
+      // ReportRunnerView.tsx needs to drop from its own row-derived column
+      // list. composite-type columns_json is a plain metric-key string
+      // array (no per-column flags exist there), so this is always empty
+      // for that type.
+      let hidden_grid_columns = [];
+      if (plain.type === "query") {
+        try {
+          const cols = JSON.parse(plain.columns_json || "[]");
+          if (Array.isArray(cols)) {
+            hidden_grid_columns = cols
+              .filter((c) => c && typeof c === "object" && c.showInGrid === false)
+              .map((c) => (c.aggregate ? c.alias || `${c.aggregate}_${c.column}` : c.column));
+          }
+        } catch {
+          hidden_grid_columns = [];
+        }
+      }
+      delete plain.columns_json;
+
+      return { ...plain, is_aggregated, group_by_columns, hidden_grid_columns };
     };
 
     const owner = await isCompanyOwner(a_application_login_id, company_masters_id);
