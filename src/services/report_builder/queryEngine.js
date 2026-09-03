@@ -171,8 +171,19 @@ export const runQueryReport = async (definition, req) => {
     const dynamicColumns = await resolveDynamicColumns(req.tenantDB, resolvedCompanyId, registryEntry.customFieldFormType);
     const effectiveColumns = { ...registryEntry.columns, ...dynamicColumns };
 
-    const columns = JSON.parse(definition.columns_json || "[]");
-    const groupBy = JSON.parse(definition.group_by_json || "[]");
+    // Drill Down (Step 9) — req.body.suppressGroupBy:true reuses this
+    // exact SAME "no group_by" code path every ungrouped query-type report
+    // already exercises correctly, for one request, without touching the
+    // GROUP BY machinery's internals at all: groupBy simply comes back
+    // empty (so sqlGroupColumns/csvGroupColumn naturally stay empty/null
+    // downstream, no separate branch needed), and each column's own
+    // `aggregate` is stripped so SUM/AVG/etc. don't collapse the result
+    // back down to one row per FN() with no GROUP BY to pair it with —
+    // the whole point is the underlying raw rows a grouped/aggregated row
+    // was built from, not another aggregate.
+    const suppressGroupBy = req.body?.suppressGroupBy === true;
+    const columns = JSON.parse(definition.columns_json || "[]").map((c) => (suppressGroupBy ? { ...c, aggregate: undefined } : c));
+    const groupBy = suppressGroupBy ? [] : JSON.parse(definition.group_by_json || "[]");
     // Per-run filter override — the saved definition's own filters_json,
     // PLUS whatever the caller passes at run time (req.body.filters, same
     // {column,op,value}/{column,having,op,value}/{column,childFilters}
@@ -187,7 +198,11 @@ export const runQueryReport = async (definition, req) => {
     // type definitions never had (runDefinitionByType already merges
     // req.body over a plugin's own saved filters_json the same way).
     const runtimeFilters = Array.isArray(req.body?.filters) ? req.body.filters : [];
-    const filters = [...JSON.parse(definition.filters_json || "[]"), ...runtimeFilters];
+    // A having-filter targets a computedAlias (an aggregate) that no
+    // longer exists once suppressGroupBy has stripped every column's
+    // aggregate above — dropped here rather than left to throw, since a
+    // drill-down request legitimately has nothing to filter it against.
+    const filters = [...JSON.parse(definition.filters_json || "[]"), ...runtimeFilters].filter((f) => !(suppressGroupBy && f.having));
 
     // Relation-required filters — "drop this row if its relation lookup
     // found nothing" (e.g. categorySalesPurchaseServices.js's NOT EXISTS

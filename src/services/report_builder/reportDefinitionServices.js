@@ -453,17 +453,26 @@ export const listRunnableReportDefinitions = async (req) => {
     // raw ungrouped row listing period-over-period has no clean meaning.
     const toRunnableShape = (row) => {
       const plain = row.get({ plain: true });
+      // group_by_columns: just the column-key list (Step 9's Drill Down —
+      // needed to merge a clicked group row's own values into filters,
+      // see runQueryReport's suppressGroupBy), not the raw group_by_json —
+      // no aggregate/having internals ride along, only base column names,
+      // and only for query-type (Drill Down v1 scope per the plan;
+      // composite has no defined meaning for it, dimensioned by team
+      // member, not a grouped column).
       let is_aggregated = plain.type === "composite";
-      if (!is_aggregated && plain.type === "query") {
+      let group_by_columns = [];
+      if (plain.type === "query") {
         try {
           const groupBy = JSON.parse(plain.group_by_json || "[]");
-          is_aggregated = Array.isArray(groupBy) && groupBy.length > 0;
+          group_by_columns = Array.isArray(groupBy) ? groupBy : [];
+          is_aggregated = group_by_columns.length > 0;
         } catch {
           is_aggregated = false;
         }
       }
       delete plain.group_by_json;
-      return { ...plain, is_aggregated };
+      return { ...plain, is_aggregated, group_by_columns };
     };
 
     const owner = await isCompanyOwner(a_application_login_id, company_masters_id);
