@@ -1150,13 +1150,17 @@ export const MODEL_REGISTRY = {
 
 export const getRegisteredModel = (modelKey) => MODEL_REGISTRY[modelKey];
 
-// Lightweight, non-PIN-safe slice of a table's registry entry — just the
+// Lightweight, non-PIN-safe slice of a table's registry entry — the
 // generalFilters slot map + each target column's `type` (needed to pick
-// findInSet vs in on the frontend adapter, see generalFilterAdapter.ts).
-// Deliberately excludes columns/relations/filterable flags — those stay
-// behind getModelRegistry's PIN gate since they expose the full build
-// surface; Custom Reports viewers (non-owners running an existing report)
-// only ever need this much to drive CheckBoxFilterModal.
+// findInSet vs in on the frontend adapter, see generalFilterAdapter.ts),
+// plus every column's own filterable/type/label (needed for the run
+// screen's row-level per-column filters, so it can only offer a filter
+// on a column queryEngine.js will actually accept — it throws hard on a
+// non-filterable one, e.g. any aggregate alias or relation-dotted key).
+// Deliberately still excludes relations, groupable/aggregatable flags,
+// and dynamic custom-field columns (those need company context this
+// endpoint doesn't take) — those stay behind getModelRegistry's PIN
+// gate since they're build-surface, not needed to just run a report.
 export const getGeneralFilterMeta = (modelKey) => {
   const entry = MODEL_REGISTRY[modelKey];
   if (!entry) return null;
@@ -1167,7 +1171,13 @@ export const getGeneralFilterMeta = (modelKey) => {
       columnTypes[target] = entry.columns[target].type;
     }
   }
-  return { generalFilters, columnTypes };
+  const filterableColumns = {};
+  for (const [key, def] of Object.entries(entry.columns)) {
+    if (def.filterable) {
+      filterableColumns[key] = { type: def.type, label: def.label };
+    }
+  }
+  return { generalFilters, columnTypes, filterableColumns };
 };
 
 // Serializable view for the frontend's table/column picker — strips
