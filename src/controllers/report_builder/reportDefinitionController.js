@@ -8,6 +8,7 @@ import {
   getPluginRegistry,
   getReportTeamRights,
   listReportDefinitions,
+  listReportRuns,
   listRunnableReportDefinitions,
   listSystemReportDefinitions,
   runBatchReportDefinitions,
@@ -60,6 +61,10 @@ export const listRunnableReportDefinitionsController = async (req, res) => {
 
 export const getGeneralFilterConfigController = async (req, res) => {
   await callServiceMethod(req, res, getGeneralFilterConfig(req), "getGeneralFilterConfig");
+};
+
+export const listReportRunsController = async (req, res) => {
+  await callServiceMethod(req, res, listReportRuns(req), "listReportRuns");
 };
 
 export const saveReportTeamRightsController = async (req, res) => {

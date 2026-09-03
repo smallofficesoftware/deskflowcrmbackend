@@ -10,6 +10,7 @@ import {
   getPluginRegistryController,
   getReportTeamRightsController,
   listReportDefinitionsController,
+  listReportRunsController,
   listRunnableReportDefinitionsController,
   listSystemReportDefinitionsController,
   runBatchReportDefinitionsController,
@@ -66,6 +67,7 @@ export default (app) => {
   // Manage Access — build-tier gated like create/update/delete, both read and write.
   app.post("/report-definitions/:id/team-rights/list", authenticateToken, tenantMiddleware, requireReportBuilderFlag, requireReportPin, getReportTeamRightsController);
   app.post("/report-definitions/:id/team-rights", authenticateToken, tenantMiddleware, requireReportBuilderFlag, requireReportPin, saveReportTeamRightsController);
+  app.post("/report-definitions/:id/run-history/list", authenticateToken, tenantMiddleware, requireReportBuilderFlag, requireReportPin, listReportRunsController);
   // Discovery for "Custom Reports" — flag only, no PIN. Visibility itself
   // is enforced inside listRunnableReportDefinitions via
   // report_definition_team_rights (no page-level fallback — Step 7).

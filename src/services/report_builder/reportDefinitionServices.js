@@ -504,6 +504,51 @@ export const saveReportTeamRights = async (req) => {
   }
 };
 
+// Run History (small addition — report_runs already gets a row written by
+// runReportDefinition/runBatchReportDefinitions on every run; nothing read
+// it back until now). Build-tier gated the same as Manage Access — a
+// report's run log is a build/debugging surface, not something a
+// run-tier viewer needs. Paginated the same limit/offset convention every
+// other list here uses; executed_by comes back as a raw login id, resolved
+// to a display name client-side off the same team-member list Manage
+// Access already fetches (fetchCompanyTeamApi) rather than joining here.
+export const listReportRuns = async (req) => {
+  try {
+    const { id } = req.params || {};
+    const { a_application_login_id, limit = 50, offset = 0 } = req.body || {};
+    if (!id || !a_application_login_id) {
+      return resError({ developer_msg: "id (param) and a_application_login_id are required" });
+    }
+
+    const findCompanyId = await getCompanyByLoginId(a_application_login_id);
+    if (!findCompanyId) {
+      return resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" });
+    }
+    const company_masters_id = findCompanyId.company_masters_id;
+
+    const ReportDefinition = reportDefinitionModel(req.tenantDB);
+    const definition = await ReportDefinition.findOne({
+      where: { id, company_masters_id, isDelete: 0 },
+    });
+    if (!definition) {
+      return resError({ code: 404, ack_msg: "Report not found", developer_msg: "No matching report definition for this company" });
+    }
+
+    const ReportRun = reportRunModel(req.tenantDB);
+    const rows = await ReportRun.findAll({
+      where: { report_definition_id: definition.id, company_masters_id },
+      order: [["executed_at", "DESC"]],
+      limit: Math.min(Number(limit) || 50, 200),
+      offset: Number(offset) || 0,
+    });
+
+    return resSuccess({ data: { item: rows } });
+  } catch (e) {
+    console.error("listReportRuns error:", e);
+    return resError({ developer_msg: `Failed to Catch ${e}` });
+  }
+};
+
 // Shared by runReportDefinition (single) and runBatchReportDefinitions —
 // dispatches by definition.type. Plugin dispatch is pass-through only: the
 // wrapped service's own rights behavior (or lack of it, see
