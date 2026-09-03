@@ -6,6 +6,7 @@ import {
   deleteReportDefinitionController,
   deleteReportGroupController,
   deleteReportScheduleController,
+  duplicateReportDefinitionController,
   exportReportExcelController,
   exportReportPdfController,
   getGeneralFilterConfigController,
@@ -69,6 +70,8 @@ export default (app) => {
   app.post("/report-definitions/list", authenticateToken, tenantMiddleware, requireReportBuilderFlag, requireReportPin, listReportDefinitionsController);
   app.post("/report-definitions/:id/update", authenticateToken, tenantMiddleware, requireReportBuilderFlag, requireReportPin, updateReportDefinitionController);
   app.post("/report-definitions/:id/delete", authenticateToken, tenantMiddleware, requireReportBuilderFlag, requireReportPin, deleteReportDefinitionController);
+  // Duplicate — same tier as create (build action, needs the PIN).
+  app.post("/report-definitions/:id/duplicate", authenticateToken, tenantMiddleware, requireReportBuilderFlag, requireReportPin, duplicateReportDefinitionController);
   // System gallery — browsing the list needs no PIN (same tier Document
   // Designer's own system-gallery/list uses), copying into the tenant's own
   // report_definitions is a build action so it needs one, same as create.

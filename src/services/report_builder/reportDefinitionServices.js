@@ -104,6 +104,7 @@ export const copyFromSystemReportDefinition = async (req) => {
     req.body.filters_to_show = systemDefinition.filters_to_show;
     req.body.description = systemDefinition.description;
     req.body.source_system_report_definition_id = systemDefinition.id;
+    req.body.__skipCreateAuditLog = true;
 
     const result = await createReportDefinition(req);
 
@@ -120,6 +121,67 @@ export const copyFromSystemReportDefinition = async (req) => {
     return result;
   } catch (e) {
     console.error("copyFromSystemReportDefinition error:", e);
+    return resError({ developer_msg: `Failed to Catch ${e}` });
+  }
+};
+
+// Clone one of THIS company's own report definitions — same "populate
+// req.body from a source row, then delegate to createReportDefinition"
+// shape copyFromSystemReportDefinition already uses, just reading the
+// source off the tenant DB (this company's own row, IDOR-guarded) instead
+// of the master-DB gallery. Mirrors Document Designer's own
+// duplicateDocumentTemplate (documentPrintTemplateServices.js:531).
+export const duplicateReportDefinition = async (req) => {
+  try {
+    const { id } = req.params || {};
+    const { a_application_login_id } = req.body || {};
+    if (!id || !a_application_login_id) {
+      return resError({ developer_msg: "id (param) and a_application_login_id are required" });
+    }
+
+    const findCompanyId = await getCompanyByLoginId(a_application_login_id);
+    if (!findCompanyId) {
+      return resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" });
+    }
+
+    const ReportDefinition = reportDefinitionModel(req.tenantDB);
+    // IDOR guard — id must belong to the resolved company, never trusted alone.
+    const source = await ReportDefinition.findOne({
+      where: { id, company_masters_id: findCompanyId.company_masters_id, isDelete: 0 },
+    });
+    if (!source) {
+      return resError({ code: 404, ack_msg: "Report not found", developer_msg: "No matching report definition for this company" });
+    }
+
+    req.body.name = `${source.name} (Copy)`;
+    req.body.type = source.type;
+    req.body.model_key = source.model_key;
+    req.body.plugin_key = source.plugin_key;
+    req.body.columns_json = source.columns_json;
+    req.body.filters_json = source.filters_json;
+    req.body.group_by_json = source.group_by_json;
+    req.body.filters_to_show = source.filters_to_show;
+    req.body.report_group_id = source.report_group_id;
+    req.body.description = source.description;
+    req.body.icon = source.icon;
+    req.body.source_system_report_definition_id = source.source_system_report_definition_id;
+    req.body.__skipCreateAuditLog = true;
+
+    const result = await createReportDefinition(req);
+
+    if (result?.ack === 1) {
+      await logAuditEvent(req, {
+        module_key: "report_builder",
+        action: "duplicate",
+        entity_type: "report_definition",
+        entity_id: result?.data?.item?.id,
+        details: { source_id: id, name: req.body.name },
+      });
+    }
+
+    return result;
+  } catch (e) {
+    console.error("duplicateReportDefinition error:", e);
     return resError({ developer_msg: `Failed to Catch ${e}` });
   }
 };
@@ -397,11 +459,15 @@ export const createReportDefinition = async (req) => {
       created_date_time: now(),
     });
 
-    // copyFromSystemReportDefinition logs its own "copy_from_gallery" audit
-    // event separately (with the gallery source id in details) — skip the
-    // generic "create" event here for that path so a gallery copy isn't
-    // logged twice under two different actions.
-    if (!source_system_report_definition_id) {
+    // copyFromSystemReportDefinition / duplicateReportDefinition each log
+    // their own audit event separately (with the source id in details) —
+    // skip the generic "create" event for those callers so nothing gets
+    // logged twice under two different actions. Deliberately a dedicated
+    // flag rather than reusing `source_system_report_definition_id` itself
+    // — that field can be null on a duplicate's SOURCE row (a plain
+    // tenant-built report, no gallery lineage) while the create call still
+    // came from a caller that already logs its own event.
+    if (!req.body.__skipCreateAuditLog) {
       await logAuditEvent(req, {
         module_key: "report_builder",
         action: "create",
