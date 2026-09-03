@@ -12,9 +12,10 @@
 // encryption" for the PIN itself), and — unlike the old in-memory Map —
 // survives a server restart, since the proof lives in the client's token,
 // not this process's memory.
+import { timingSafeEqual } from "crypto";
 import jwt from "jsonwebtoken";
 import companyVsApplicationLoginModel from "../models/company_setup/companyVsApplicationLoginModel.js";
-import { REPORT_PIN, JWT_TOKEN_SIGNATURE } from "../utils/appConstants.js";
+import { REPORT_BUILDER_TEST_SECRET, REPORT_PIN, JWT_TOKEN_SIGNATURE } from "../utils/appConstants.js";
 import { resError } from "../utils/sharedFunctions.js";
 import { getCompanyByLoginId } from "../services/commonServices.js";
 
@@ -107,4 +108,28 @@ export const requireReportPin = async (req, res, next) => {
     console.error("requireReportPin error:", error);
     return res.status(200).send(resError({ developer_msg: `Failed to Catch ${error}` }));
   }
+};
+
+// Gate for the ONE service-to-service route in this file's territory —
+// adminpanel's system-report-gallery editor test-running a draft
+// definition (testRunReportDefinition). There is no CRM user session on
+// this request at all (the caller is adminpanel's own backend, already
+// authenticated on ITS side), so authenticateToken/requireReportPin don't
+// apply here — this checks a shared secret instead. Fails closed: if
+// REPORT_BUILDER_TEST_SECRET isn't set on THIS service, every request is
+// denied regardless of what header is sent, so the endpoint stays inert
+// until both sides are explicitly configured with the same value — never
+// silently open. timingSafeEqual (not ===) so a wrong guess can't be
+// narrowed down by response-time differences.
+export const requireServiceSecret = (req, res, next) => {
+  const provided = req.headers["x-service-secret"];
+  if (!REPORT_BUILDER_TEST_SECRET || typeof provided !== "string") {
+    return res.status(200).send(resError({ code: 403, ack_msg: "Not available", developer_msg: "REPORT_BUILDER_TEST_SECRET is not configured, or no secret header was sent" }));
+  }
+  const expected = Buffer.from(REPORT_BUILDER_TEST_SECRET);
+  const given = Buffer.from(provided);
+  if (expected.length !== given.length || !timingSafeEqual(expected, given)) {
+    return res.status(200).send(resError({ code: 403, ack_msg: "Not available", developer_msg: "Secret mismatch" }));
+  }
+  next();
 };

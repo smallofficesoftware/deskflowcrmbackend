@@ -28,6 +28,13 @@ export const MASTER_PIN = process.env.MASTER_PIN;
 // AND the pdfme Document Designer — separate value from MASTER_PIN (that
 // one's an internal login/OTP-bypass secret), same plain-equality pattern.
 export const REPORT_PIN = process.env.REPORT_PIN;
+// Service-to-service shared secret for adminpanel's system-report-gallery
+// editor to test-run a draft against WEBSITE_LEAD_HANDLE_DB_NAME (see
+// reportDefinitionServices.js's testRunReportDefinition + requireServiceSecret
+// in reportPinAuth.js). Unset by default on both sides — the endpoint is
+// inert (fails closed) until both this and adminpanel's own copy are
+// explicitly set to the same value.
+export const REPORT_BUILDER_TEST_SECRET = process.env.REPORT_BUILDER_TEST_SECRET;
 export const CALL_HELPER_APP_VERSION = process.env.CALL_HELPER_APP_VERSION;
 export const CALL_TRACKER_APP_URL = process.env.CALL_TRACKER_APP_URL;
 export const SUPER_ADMIN_WHATSAPP_APP_KEY = process.env.SUPER_ADMIN_WHATSAPP_APP_KEY;

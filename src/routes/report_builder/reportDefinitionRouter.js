@@ -16,10 +16,11 @@ import {
   runBatchReportDefinitionsController,
   runReportDefinitionController,
   saveReportTeamRightsController,
+  testRunReportDefinitionController,
   updateReportDefinitionController,
 } from "../../controllers/report_builder/reportDefinitionController.js";
 import { authenticateToken } from "../../middlewares/auth.js";
-import { requireReportPin } from "../../middlewares/reportPinAuth.js";
+import { requireReportPin, requireServiceSecret } from "../../middlewares/reportPinAuth.js";
 import { tenantMiddleware } from "../../middlewares/tenantMiddleware.js";
 import { isFeatureEnabled } from "../../services/company_setup/featureFlagServices.js";
 import { getCompanyByLoginId } from "../../services/commonServices.js";
@@ -77,13 +78,14 @@ export default (app) => {
   // run screen for any granted (or owner) login, not just the build UI.
   app.post("/report-definitions/general-filter-config", authenticateToken, tenantMiddleware, requireReportBuilderFlag, getGeneralFilterConfigController);
   // Run routes — feature flag at the route layer; the actual per-report
-  // access check now happens inside runQueryReport/runCompositeReport via
+  // access check now happens inside runDefinitionByType's dispatch via
   // getReportDataScope (report_definition_team_rights, Step 7) — a login
   // with no grant for this specific report gets denied there, not here.
-  // (Plugin-type definitions are the one exception: they keep obeying
-  // their own wrapped service's existing rights behavior unchanged, same
-  // "wrapping a plugin doesn't change its rights" rule createReportDefinition
-  // already documents — this Step 7 system doesn't apply to them.)
+  // query/composite check this inside their own engines
+  // (runQueryReport/runCompositeReport); plugin-type checks it in
+  // runDefinitionByType itself, since dispatch there is otherwise a
+  // pass-through to the wrapped service's own (sometimes nonexistent)
+  // rights behavior — see reportDefinitionServices.js's runDefinitionByType.
   app.post("/report-definitions/:id/run", authenticateToken, tenantMiddleware, requireReportBuilderFlag, runReportDefinitionController);
   app.post("/report-definitions/run-batch", authenticateToken, tenantMiddleware, requireReportBuilderFlag, runBatchReportDefinitionsController);
   // Export routes — same tier as /run; exportReportExcel/exportReportPdf
@@ -91,4 +93,14 @@ export default (app) => {
   // same per-report scope enforcement query/composite runs already get.
   app.post("/report-definitions/:id/export/excel", authenticateToken, tenantMiddleware, requireReportBuilderFlag, exportReportExcelController);
   app.post("/report-definitions/:id/export/pdf", authenticateToken, tenantMiddleware, requireReportBuilderFlag, exportReportPdfController);
+
+  // Admin authoring test-run (plan Step 1) — the ONE service-to-service
+  // route in this router. Called only by adminpanel's own backend, never
+  // a CRM client, so it deliberately skips authenticateToken/
+  // tenantMiddleware/requireReportBuilderFlag entirely (there's no CRM
+  // user session or company feature flag to check here — the target is
+  // always WEBSITE_LEAD_HANDLE_DB_NAME, resolved inside the service
+  // itself) and is gated only by requireServiceSecret, which fails closed
+  // whenever REPORT_BUILDER_TEST_SECRET isn't configured.
+  app.post("/report-definitions/test-run", requireServiceSecret, testRunReportDefinitionController);
 };

@@ -1,11 +1,14 @@
 import moment from "moment";
 import { Op } from "sequelize";
+import { getTenantDB } from "../../config/dbManager.js";
 import { isCompanyOwner } from "../../middlewares/reportPinAuth.js";
+import tenantMasterModel from "../../models/configuration/tenantMasterModel.js";
 import { reportDefinitionModel } from "../../models/report_builder/reportDefinitionModel.js";
 import { reportDefinitionTeamRightModel } from "../../models/report_builder/reportDefinitionTeamRightModel.js";
 import { reportRunModel } from "../../models/report_builder/reportRunModel.js";
 import systemReportDefinitionModel from "../../models/report_builder/systemReportDefinitionModel.js";
 import { PAGE_ID } from "../../utils/AppEnumeration.js";
+import { WEBSITE_LEAD_HANDLE_DB_NAME } from "../../utils/appConstants.js";
 import { resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { logAuditEvent } from "../company_setup/auditLogServices.js";
 import { getCompanyByLoginId } from "../commonServices.js";
@@ -115,6 +118,84 @@ export const copyFromSystemReportDefinition = async (req) => {
     return result;
   } catch (e) {
     console.error("copyFromSystemReportDefinition error:", e);
+    return resError({ developer_msg: `Failed to Catch ${e}` });
+  }
+};
+
+// Admin authoring test-run (plan Step 1) — runs a NOT-YET-SAVED draft
+// (from adminpanel's system_report_definitions editor) against
+// WEBSITE_LEAD_HANDLE_DB_NAME, a dedicated test tenant DB, never a real
+// customer's. Reached only via a separate service-to-service route
+// (requireServiceSecret, not authenticateToken/tenantMiddleware — there
+// is no CRM user session here, the caller is adminpanel's own backend),
+// so this resolves its own tenantDB rather than reading req.body.
+// a_application_login_id, mirroring the exact tenant_masters lookup
+// companyService.js's own WEBSITE_LEAD_HANDLE_DB_NAME flows already use.
+//
+// No report_definitions row exists yet for this draft — id: 0 is a
+// synthetic placeholder, never written anywhere. getReportDataScope's
+// report_definition_team_rights lookup for id 0 will find nothing, but
+// the resolved test tenant's own login IS that company's owner
+// (confirmed: the same signup flow that provisions WEBSITE_LEAD_HANDLE_
+// DB_NAME's tenant_masters row also creates it with company_flag: 1),
+// so isCompanyOwner's bypass covers it — no special-casing needed here.
+// Capped to 20 rows (a preview, not a real run) and never written to
+// report_runs (this isn't a tracked run against a real report).
+export const testRunReportDefinition = async (req) => {
+  try {
+    const { type = "query", model_key, plugin_key, columns_json, filters_json, group_by_json } = req.body || {};
+    if (!columns_json) {
+      return resError({ developer_msg: "columns_json is required" });
+    }
+
+    let page_id;
+    if (type === "plugin") {
+      const plugin = getRegisteredPlugin(plugin_key);
+      if (!plugin) {
+        return resError({ ack_msg: "Unknown report source", developer_msg: `plugin_key "${plugin_key}" is not registered` });
+      }
+      page_id = plugin.page_id;
+    } else if (type === "composite") {
+      page_id = PAGE_ID.REPORT_BUILDER;
+    } else {
+      if (!getRegisteredModel(model_key)) {
+        return resError({ ack_msg: "Unknown report source", developer_msg: `model_key "${model_key}" is not whitelisted` });
+      }
+      page_id = PAGE_ID.REPORT_BUILDER;
+    }
+
+    if (!WEBSITE_LEAD_HANDLE_DB_NAME) {
+      return resError({ developer_msg: "WEBSITE_LEAD_HANDLE_DB_NAME is not configured — test-run is unavailable until it is" });
+    }
+    const tenantDBFind = await tenantMasterModel.findOne({
+      where: { isDelete: 0, db_name: WEBSITE_LEAD_HANDLE_DB_NAME },
+      attributes: ["a_application_login_id", "company_masters_id"],
+    });
+    if (!tenantDBFind) {
+      return resError({ developer_msg: "Test tenant not found for WEBSITE_LEAD_HANDLE_DB_NAME" });
+    }
+    const tenantDB = (await getTenantDB(tenantDBFind.a_application_login_id, tenantDBFind.company_masters_id)).sequelize;
+
+    const definition = {
+      id: 0,
+      type,
+      model_key: type === "plugin" ? null : model_key,
+      plugin_key: type === "plugin" ? plugin_key : null,
+      columns_json: asJsonString(columns_json),
+      filters_json: filters_json ? asJsonString(filters_json) : null,
+      group_by_json: group_by_json ? asJsonString(group_by_json) : null,
+      page_id,
+      company_masters_id: tenantDBFind.company_masters_id,
+    };
+    const testReq = {
+      ...req,
+      tenantDB,
+      body: { a_application_login_id: tenantDBFind.a_application_login_id, limit: 20, offset: 0 },
+    };
+
+    return runDefinitionByType(definition, testReq);
+  } catch (e) {
+    console.error("testRunReportDefinition error:", e);
     return resError({ developer_msg: `Failed to Catch ${e}` });
   }
 };

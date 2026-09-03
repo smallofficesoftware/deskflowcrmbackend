@@ -14,6 +14,7 @@ import {
   runBatchReportDefinitions,
   runReportDefinition,
   saveReportTeamRights,
+  testRunReportDefinition,
   updateReportDefinition,
 } from "../../services/report_builder/reportDefinitionServices.js";
 import { exportReportExcel, exportReportPdf } from "../../services/report_builder/reportPdfExport.js";
@@ -65,6 +66,10 @@ export const getGeneralFilterConfigController = async (req, res) => {
 
 export const listReportRunsController = async (req, res) => {
   await callServiceMethod(req, res, listReportRuns(req), "listReportRuns");
+};
+
+export const testRunReportDefinitionController = async (req, res) => {
+  await callServiceMethod(req, res, testRunReportDefinition(req), "testRunReportDefinition");
 };
 
 export const saveReportTeamRightsController = async (req, res) => {
