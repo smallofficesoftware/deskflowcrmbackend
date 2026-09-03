@@ -53,6 +53,11 @@ export const reportDefinitionModel = (sequelize) => {
       filters_to_show: {
         type: TEXT,
       },
+      // Tenant-defined organization (Step 10) — distinct from
+      // system_report_definitions' admin-fixed `category`. NULL = ungrouped.
+      report_group_id: {
+        type: INTEGER,
+      },
       s_timestemp: {
         type: STRING,
       },

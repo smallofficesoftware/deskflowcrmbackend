@@ -1,7 +1,9 @@
 import {
   copyFromSystemReportDefinitionController,
   createReportDefinitionController,
+  createReportGroupController,
   deleteReportDefinitionController,
+  deleteReportGroupController,
   exportReportExcelController,
   exportReportPdfController,
   getGeneralFilterConfigController,
@@ -10,6 +12,7 @@ import {
   getPluginRegistryController,
   getReportTeamRightsController,
   listReportDefinitionsController,
+  listReportGroupsController,
   listReportRunsController,
   listRunnableReportDefinitionsController,
   listSystemReportDefinitionsController,
@@ -18,6 +21,7 @@ import {
   saveReportTeamRightsController,
   testRunReportDefinitionController,
   updateReportDefinitionController,
+  updateReportGroupController,
 } from "../../controllers/report_builder/reportDefinitionController.js";
 import { authenticateToken } from "../../middlewares/auth.js";
 import { requireReportPin, requireServiceSecret } from "../../middlewares/reportPinAuth.js";
@@ -103,4 +107,15 @@ export default (app) => {
   // itself) and is gated only by requireServiceSecret, which fails closed
   // whenever REPORT_BUILDER_TEST_SECRET isn't configured.
   app.post("/report-definitions/test-run", requireServiceSecret, testRunReportDefinitionController);
+
+  // Report groups (Step 10) — reading the list is flag-only/no-PIN (group
+  // names are organizational labels, same non-sensitive tier `category`/
+  // `description` already sit at on list-runnable — the "Custom Reports"
+  // tile section needs these to render bucket headers for every viewer,
+  // not just the owner). Create/update/delete stay build-tier owner+PIN,
+  // same as everything else that configures how reports are organized.
+  app.post("/report-groups/list", authenticateToken, tenantMiddleware, requireReportBuilderFlag, listReportGroupsController);
+  app.post("/report-groups/create", authenticateToken, tenantMiddleware, requireReportBuilderFlag, requireReportPin, createReportGroupController);
+  app.post("/report-groups/:id/update", authenticateToken, tenantMiddleware, requireReportBuilderFlag, requireReportPin, updateReportGroupController);
+  app.post("/report-groups/:id/delete", authenticateToken, tenantMiddleware, requireReportBuilderFlag, requireReportPin, deleteReportGroupController);
 };

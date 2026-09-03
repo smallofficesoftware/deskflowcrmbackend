@@ -5,6 +5,7 @@ import { isCompanyOwner } from "../../middlewares/reportPinAuth.js";
 import tenantMasterModel from "../../models/configuration/tenantMasterModel.js";
 import { reportDefinitionModel } from "../../models/report_builder/reportDefinitionModel.js";
 import { reportDefinitionTeamRightModel } from "../../models/report_builder/reportDefinitionTeamRightModel.js";
+import { reportGroupModel } from "../../models/report_builder/reportGroupModel.js";
 import { reportRunModel } from "../../models/report_builder/reportRunModel.js";
 import systemReportDefinitionModel from "../../models/report_builder/systemReportDefinitionModel.js";
 import { PAGE_ID } from "../../utils/AppEnumeration.js";
@@ -200,9 +201,118 @@ export const testRunReportDefinition = async (req) => {
   }
 };
 
+// Step 10 — Report groups. Tenant-defined organization for their own
+// report_definitions (e.g. "CRM", "HRMS") — distinct from Step 1's
+// admin-fixed system-gallery `category`. Flat, single-level, same
+// build-tier owner+PIN gate as everything else that configures reports.
+export const listReportGroups = async (req) => {
+  try {
+    const { a_application_login_id } = req.body || {};
+    if (!a_application_login_id) {
+      return resError({ developer_msg: "a_application_login_id is required" });
+    }
+    const findCompanyId = await getCompanyByLoginId(a_application_login_id);
+    if (!findCompanyId) {
+      return resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" });
+    }
+    const ReportGroup = reportGroupModel(req.tenantDB);
+    const rows = await ReportGroup.findAll({
+      where: { company_masters_id: findCompanyId.company_masters_id, isDelete: 0 },
+      order: [["display_order", "ASC"], ["id", "ASC"]],
+    });
+    return resSuccess({ data: { item: rows } });
+  } catch (e) {
+    console.error("listReportGroups error:", e);
+    return resError({ developer_msg: `Failed to Catch ${e}` });
+  }
+};
+
+export const createReportGroup = async (req) => {
+  try {
+    const { a_application_login_id, group_name, display_order } = req.body || {};
+    if (!a_application_login_id || !group_name || !group_name.trim()) {
+      return resError({ developer_msg: "a_application_login_id and group_name are required" });
+    }
+    const findCompanyId = await getCompanyByLoginId(a_application_login_id);
+    if (!findCompanyId) {
+      return resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" });
+    }
+    const ReportGroup = reportGroupModel(req.tenantDB);
+    const created = await ReportGroup.create({
+      company_masters_id: findCompanyId.company_masters_id,
+      group_name: group_name.trim(),
+      display_order: display_order || 0,
+      created_date_time: now(),
+    });
+    return resSuccess({ data: { item: created }, ack_msg: "Report group created successfully" });
+  } catch (e) {
+    console.error("createReportGroup error:", e);
+    return resError({ developer_msg: `Failed to Catch ${e}` });
+  }
+};
+
+export const updateReportGroup = async (req) => {
+  try {
+    const { id } = req.params || {};
+    const { a_application_login_id, group_name, display_order } = req.body || {};
+    if (!id || !a_application_login_id) {
+      return resError({ developer_msg: "id (param) and a_application_login_id are required" });
+    }
+    const findCompanyId = await getCompanyByLoginId(a_application_login_id);
+    if (!findCompanyId) {
+      return resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" });
+    }
+    const ReportGroup = reportGroupModel(req.tenantDB);
+    const group = await ReportGroup.findOne({
+      where: { id, company_masters_id: findCompanyId.company_masters_id, isDelete: 0 },
+    });
+    if (!group) {
+      return resError({ code: 404, ack_msg: "Report group not found", developer_msg: "No matching report group for this company" });
+    }
+    const patch = {};
+    if (group_name !== undefined && group_name.trim()) patch.group_name = group_name.trim();
+    if (display_order !== undefined) patch.display_order = display_order;
+    await group.update(patch);
+    return resSuccess({ data: { item: group }, ack_msg: "Report group updated successfully" });
+  } catch (e) {
+    console.error("updateReportGroup error:", e);
+    return resError({ developer_msg: `Failed to Catch ${e}` });
+  }
+};
+
+// Deleting a group doesn't cascade-delete or block on its reports — they
+// simply fall back to "Ungrouped" (report_group_id is a soft reference,
+// no FK constraint to violate), same as a report whose group was never
+// set in the first place.
+export const deleteReportGroup = async (req) => {
+  try {
+    const { id } = req.params || {};
+    const { a_application_login_id } = req.body || {};
+    if (!id || !a_application_login_id) {
+      return resError({ developer_msg: "id (param) and a_application_login_id are required" });
+    }
+    const findCompanyId = await getCompanyByLoginId(a_application_login_id);
+    if (!findCompanyId) {
+      return resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" });
+    }
+    const ReportGroup = reportGroupModel(req.tenantDB);
+    const group = await ReportGroup.findOne({
+      where: { id, company_masters_id: findCompanyId.company_masters_id, isDelete: 0 },
+    });
+    if (!group) {
+      return resError({ code: 404, ack_msg: "Report group not found", developer_msg: "No matching report group for this company" });
+    }
+    await group.update({ isDelete: 1 });
+    return resSuccess({ ack_msg: "Report group deleted successfully" });
+  } catch (e) {
+    console.error("deleteReportGroup error:", e);
+    return resError({ developer_msg: `Failed to Catch ${e}` });
+  }
+};
+
 export const createReportDefinition = async (req) => {
   try {
-    const { a_application_login_id, name, type = "query", model_key, plugin_key, columns_json, filters_json, group_by_json, source_system_report_definition_id, filters_to_show } = req.body || {};
+    const { a_application_login_id, name, type = "query", model_key, plugin_key, columns_json, filters_json, group_by_json, source_system_report_definition_id, filters_to_show, report_group_id } = req.body || {};
     if (!a_application_login_id || !name || !columns_json) {
       return resError({ developer_msg: "a_application_login_id, name and columns_json are required" });
     }
@@ -280,6 +390,7 @@ export const createReportDefinition = async (req) => {
       group_by_json: group_by_json ? asJsonString(group_by_json) : null,
       source_system_report_definition_id: source_system_report_definition_id || null,
       filters_to_show: filters_to_show ? asJsonString(filters_to_show) : null,
+      report_group_id: report_group_id || null,
       created_date_time: now(),
     });
 
@@ -307,7 +418,7 @@ export const createReportDefinition = async (req) => {
 export const updateReportDefinition = async (req) => {
   try {
     const { id } = req.params || {};
-    const { a_application_login_id, name, columns_json, filters_json, group_by_json, filters_to_show } = req.body || {};
+    const { a_application_login_id, name, columns_json, filters_json, group_by_json, filters_to_show, report_group_id } = req.body || {};
     if (!id || !a_application_login_id) {
       return resError({ developer_msg: "id (param) and a_application_login_id are required" });
     }
@@ -333,6 +444,7 @@ export const updateReportDefinition = async (req) => {
     if (filters_json !== undefined) patch.filters_json = filters_json ? asJsonString(filters_json) : null;
     if (group_by_json !== undefined) patch.group_by_json = group_by_json ? asJsonString(group_by_json) : null;
     if (filters_to_show !== undefined) patch.filters_to_show = filters_to_show ? asJsonString(filters_to_show) : null;
+    if (report_group_id !== undefined) patch.report_group_id = report_group_id || null;
 
     await definition.update(patch);
 
@@ -446,7 +558,7 @@ export const listRunnableReportDefinitions = async (req) => {
     // stripped back out — the raw column list itself stays build-internal
     // (owner+PIN listReportDefinitions only), same boundary the comment
     // above already draws for columns_json/filters_json.
-    const attributes = ["id", "name", "type", "category", "description", "page_id", "model_key", "plugin_key", "filters_to_show", "group_by_json", "created_date_time"];
+    const attributes = ["id", "name", "type", "category", "description", "page_id", "model_key", "plugin_key", "filters_to_show", "group_by_json", "report_group_id", "created_date_time"];
     // Step 9's Compare Period is only offered for aggregated results
     // (composite is always per-team-member aggregates; a query-type report
     // is aggregated iff it has a non-empty group_by_json) — comparing a

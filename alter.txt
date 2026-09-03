@@ -3127,3 +3127,18 @@ CREATE TABLE `report_definition_team_rights` (
 
 02-09-2026 Dhaval
 ALTER TABLE `report_definitions` ADD `filters_to_show` TEXT NULL DEFAULT NULL AFTER `source_system_report_definition_id`;
+
+03-09-2026 Dhaval
+CREATE TABLE `report_groups` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `company_masters_id` INT(11) NOT NULL,
+  `group_name` VARCHAR(255) NOT NULL,
+  `display_order` INT(11) NOT NULL DEFAULT 0,
+  `created_date_time` DATETIME NOT NULL,
+  `isDelete` TINYINT(4) NOT NULL DEFAULT 0,
+  `isActive` TINYINT(4) NOT NULL DEFAULT 1,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+03-09-2026 Dhaval
+ALTER TABLE `report_definitions` ADD `report_group_id` INT(11) NULL DEFAULT NULL AFTER `filters_to_show`;
