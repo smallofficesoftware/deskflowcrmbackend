@@ -2,7 +2,7 @@ import { col, fn, Op, where as sequelizeWhere } from "sequelize";
 import { resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { getCompanyByLoginId } from "../commonServices.js";
 import { buildChainWhere, getReportDataScope } from "./dataScopeService.js";
-import { getRegisteredModel, resolveDynamicColumns } from "./modelRegistry.js";
+import { getRegisteredModel, resolveDynamicColumns, resolveRelationColumns, resolveRelationRelations } from "./modelRegistry.js";
 
 const HARD_ROW_LIMIT = 5000; // absolute ceiling regardless of what's requested
 const DEFAULT_ROW_LIMIT = 500;
@@ -226,6 +226,15 @@ export const runQueryReport = async (definition, req) => {
     // target — same "throws like any unwhitelisted column" behavior). ----
     const baseColumns = [];
     const relationColumns = [];
+    // Two-hop relation columns — "relKey.subRelKey.subColKey" (e.g.
+    // "contact.label.lable_name"). Only reachable through a modelKey-backed,
+    // plain-scalar level-1 relation (see resolveRelationRelations) — chaining
+    // off a csv/reverse relation isn't supported, same v1 restriction the
+    // single-hop relation-filter code already applies. Resolved below as one
+    // MORE batched fetch on top of the level-1 relation's own, keyed off the
+    // level-1 target row's own foreignKey — no Sequelize `include`, same
+    // "one batched query + JS Map merge" convention as everywhere else here.
+    const nestedRelationColumns = [];
     // Computed columns — {compute:{op,left,right}, alias} instead of
     // {column,...} — pulled out here so the base/relation loop below never
     // has to special-case them. left/right are validated against what's
@@ -258,12 +267,28 @@ export const runQueryReport = async (definition, req) => {
         continue;
       }
       if (c.column.includes(".")) {
-        const [relKey, relColKey] = c.column.split(".");
+        const parts = c.column.split(".");
+        const [relKey, ...rest] = parts;
         const relDef = registryEntry.relations && registryEntry.relations[relKey];
         if (!relDef) throw new Error(`Relation "${relKey}" is not whitelisted for this report source`);
-        if (!relDef.columns[relColKey]) throw new Error(`Relation column "${c.column}" is not whitelisted`);
         if (c.aggregate) throw new Error(`Relation column "${c.column}" does not support aggregates`);
-        relationColumns.push({ relKey, relColKey });
+        if (rest.length === 1) {
+          const targetColumns = resolveRelationColumns(relDef);
+          if (!targetColumns[rest[0]]) throw new Error(`Relation column "${c.column}" is not whitelisted`);
+          relationColumns.push({ relKey, relColKey: rest[0] });
+        } else if (rest.length === 2) {
+          const [subRelKey, subColKey] = rest;
+          if (relDef.matchMode) throw new Error(`Relation "${relKey}" does not support nested (two-hop) columns — only a plain scalar relation can be chained`);
+          const subRelations = resolveRelationRelations(relDef);
+          const subRelDef = subRelations && subRelations[subRelKey];
+          if (!subRelDef) throw new Error(`Relation "${relKey}.${subRelKey}" is not whitelisted for this report source`);
+          if (subRelDef.matchMode === "reverse") throw new Error(`Relation "${relKey}.${subRelKey}" does not support nested display (reverse relations aren't chainable)`);
+          const subTargetColumns = resolveRelationColumns(subRelDef);
+          if (!subTargetColumns[subColKey]) throw new Error(`Relation column "${c.column}" is not whitelisted`);
+          nestedRelationColumns.push({ relKey, relDef, subRelKey, subRelDef, subColKey });
+        } else {
+          throw new Error(`Relation column "${c.column}" is nested too deeply (max two hops)`);
+        }
       } else {
         baseColumns.push(c);
       }
@@ -391,7 +416,7 @@ export const runQueryReport = async (definition, req) => {
     // for validating a relationRequired filter's relKey/matchMode, this is
     // only eager-fetch discovery for the ones that turn out valid.
     const validRelationRequiredKeys = [...relationRequiredKeys].filter((k) => registryEntry.relations && registryEntry.relations[k]);
-    const usedRelationKeys = [...new Set([...relationColumns.map((c) => c.relKey), ...validRelationRequiredKeys])];
+    const usedRelationKeys = [...new Set([...relationColumns.map((c) => c.relKey), ...nestedRelationColumns.map((c) => c.relKey), ...validRelationRequiredKeys])];
     const injectedFkColumns = [];
     for (const relKey of usedRelationKeys) {
       const foreignKey = registryEntry.relations[relKey].foreignKey;
@@ -416,6 +441,7 @@ export const runQueryReport = async (definition, req) => {
       ...explicitlySelectedBaseColumns,
       ...computedAliases,
       ...relationColumns.map((c) => `${c.relKey}.${c.relColKey}`),
+      ...nestedRelationColumns.map((c) => `${c.relKey}.${c.subRelKey}.${c.subColKey}`),
     ]);
     const requireAvailable = (fieldName, aliasBeingDefined) => {
       if (!availableFields.has(fieldName)) {
@@ -851,7 +877,13 @@ export const runQueryReport = async (definition, req) => {
     if (rows.length > 0) {
       for (const relKey of usedRelationKeys) {
         const relDef = registryEntry.relations[relKey];
+        const relTargetColumns = resolveRelationColumns(relDef);
         const relColKeys = relationColumns.filter((c) => c.relKey === relKey).map((c) => c.relColKey);
+        // Nested (two-hop) entries chained off THIS relKey — only ever
+        // present when relDef is a plain scalar relation (enforced at parse
+        // time above), so these never combine with isCsv/isReverse below.
+        const nestedEntries = nestedRelationColumns.filter((c) => c.relKey === relKey);
+        const nestedFkKeys = [...new Set(nestedEntries.map((c) => c.subRelDef.foreignKey))];
         const isCsv = relDef.matchMode === "csv";
         // "reverse" — one-to-many, e.g. contacts.children (a self-relation:
         // this row's own id -> OTHER rows' referance_contact pointing back
@@ -876,10 +908,12 @@ export const runQueryReport = async (definition, req) => {
           // "reverse" needs every matching child row (to join/count all of
           // them per parent), not one row per targetKey value — fetched
           // ungrouped, grouped into arrays in JS below instead.
-          const nonCountRelColKeys = isReverse ? relColKeys.filter((k) => !relDef.columns[k].countOf) : relColKeys;
+          const nonCountRelColKeys = isReverse ? relColKeys.filter((k) => !relTargetColumns[k].countOf) : relColKeys;
           const relatedRows = await RelatedModel.findAll({
             where: { [relDef.targetKey]: { [Op.in]: distinctFkValues }, isDelete: 0 },
-            attributes: [relDef.targetKey, ...nonCountRelColKeys],
+            // nestedFkKeys are fetched even though never displayed directly —
+            // they're the join key for the second-hop fetch below.
+            attributes: [relDef.targetKey, ...nonCountRelColKeys, ...nestedFkKeys],
             raw: true,
           });
           if (isReverse) {
@@ -903,11 +937,40 @@ export const runQueryReport = async (definition, req) => {
           rows = rows.filter((r) => relMap.has(r[relDef.foreignKey]));
         }
 
+        // ---- Second hop — one more batched fetch per distinct subRelKey,
+        // keyed off the level-1 related rows already sitting in relMap
+        // (never off the base rows directly). relDef here is guaranteed
+        // scalar (non-csv, non-reverse), enforced at parse time, so relMap
+        // values are plain objects, not arrays. ----
+        const nestedGroups = new Map(); // subRelKey -> {subRelDef, subColKeys}
+        nestedEntries.forEach(({ subRelKey, subRelDef, subColKey }) => {
+          if (!nestedGroups.has(subRelKey)) nestedGroups.set(subRelKey, { subRelDef, subColKeys: [] });
+          nestedGroups.get(subRelKey).subColKeys.push(subColKey);
+        });
+        const subRelMaps = new Map(); // subRelKey -> Map(targetKey -> row)
+        for (const [subRelKey, { subRelDef, subColKeys }] of nestedGroups) {
+          const isSubCsv = subRelDef.matchMode === "csv";
+          const distinctSubFkValues = isSubCsv
+            ? [...new Set([...relMap.values()].flatMap((rr) => splitCsv(rr[subRelDef.foreignKey])))]
+            : [...new Set([...relMap.values()].map((rr) => rr[subRelDef.foreignKey]).filter((v) => v !== null && v !== undefined))];
+          const subRelMap = new Map();
+          if (distinctSubFkValues.length > 0) {
+            const SubRelatedModel = subRelDef.getModel(req.tenantDB);
+            const subRelatedRows = await SubRelatedModel.findAll({
+              where: { [subRelDef.targetKey]: { [Op.in]: distinctSubFkValues }, isDelete: 0 },
+              attributes: [subRelDef.targetKey, ...subColKeys],
+              raw: true,
+            });
+            subRelatedRows.forEach((rr) => subRelMap.set(rr[subRelDef.targetKey], rr));
+          }
+          subRelMaps.set(subRelKey, subRelMap);
+        }
+
         rows.forEach((r) => {
           if (isReverse) {
             const children = relMap.get(r[relDef.foreignKey]) || [];
             relColKeys.forEach((relColKey) => {
-              r[`${relKey}.${relColKey}`] = relDef.columns[relColKey].countOf
+              r[`${relKey}.${relColKey}`] = relTargetColumns[relColKey].countOf
                 ? children.length
                 : children
                     .map((c) => c[relColKey])
@@ -926,6 +989,24 @@ export const runQueryReport = async (definition, req) => {
             const relatedRow = relMap.get(r[relDef.foreignKey]);
             relColKeys.forEach((relColKey) => {
               r[`${relKey}.${relColKey}`] = relatedRow ? relatedRow[relColKey] ?? null : null;
+            });
+            nestedEntries.forEach(({ subRelKey, subRelDef, subColKey }) => {
+              const outKey = `${relKey}.${subRelKey}.${subColKey}`;
+              if (!relatedRow) {
+                r[outKey] = null;
+                return;
+              }
+              const subRelMap = subRelMaps.get(subRelKey);
+              if (subRelDef.matchMode === "csv") {
+                const subIds = splitCsv(relatedRow[subRelDef.foreignKey]);
+                r[outKey] = subIds
+                  .map((id) => subRelMap.get(id)?.[subColKey])
+                  .filter((v) => v !== undefined && v !== null)
+                  .join(", ");
+              } else {
+                const subRow = subRelMap.get(relatedRow[subRelDef.foreignKey]);
+                r[outKey] = subRow ? subRow[subColKey] ?? null : null;
+              }
             });
           }
         });

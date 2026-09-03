@@ -278,13 +278,11 @@ export const MODEL_REGISTRY = {
         foreignKey: "to_customer_id",
         getModel: (tenantDB) => contactModel(tenantDB),
         targetKey: "id",
+        // No hand-listed columns — borrows contacts' own whitelist wholesale
+        // via modelKey (see resolveRelationColumns in modelRegistry.js), so
+        // adding a field to contacts.columns makes it available here too,
+        // no edit needed in two places.
         modelKey: "contacts",
-        columns: {
-          person_name: { label: "Contact Name", type: "string" },
-          company_name: { label: "Company Name", type: "string" },
-          mobile_number: { label: "Mobile", type: "string" },
-          gst_number: { label: "GSTIN", type: "string" },
-        },
       },
       currency: {
         label: "Currency",
@@ -481,13 +479,6 @@ export const MODEL_REGISTRY = {
         getModel: (tenantDB) => contactModel(tenantDB),
         targetKey: "id",
         modelKey: "contacts",
-        columns: {
-          person_name: { label: "Contact Name", type: "string" },
-          company_name: { label: "Company Name", type: "string" },
-          mobile_number: { label: "Mobile", type: "string" },
-          gst_number: { label: "GSTIN", type: "string" },
-          email_id: { label: "Email", type: "string" },
-        },
       },
       createdBy: {
         label: "Created By",
@@ -565,13 +556,6 @@ export const MODEL_REGISTRY = {
         getModel: (tenantDB) => contactModel(tenantDB),
         targetKey: "id",
         modelKey: "contacts",
-        columns: {
-          person_name: { label: "Contact Name", type: "string" },
-          company_name: { label: "Company Name", type: "string" },
-          mobile_number: { label: "Mobile", type: "string" },
-          gst_number: { label: "GSTIN", type: "string" },
-          email_id: { label: "Email", type: "string" },
-        },
       },
       // Both category_id and product_id are now CSV-of-ids (migrations
       // 20260824200000/210000 widened product_id/qty/category_id to VARCHAR
@@ -652,13 +636,6 @@ export const MODEL_REGISTRY = {
         getModel: (tenantDB) => contactModel(tenantDB),
         targetKey: "id",
         modelKey: "contacts",
-        columns: {
-          person_name: { label: "Contact Name", type: "string" },
-          company_name: { label: "Company Name", type: "string" },
-          mobile_number: { label: "Mobile", type: "string" },
-          gst_number: { label: "GSTIN", type: "string" },
-          email_id: { label: "Email", type: "string" },
-        },
       },
       paymentType: {
         label: "Payment Type",
@@ -737,13 +714,6 @@ export const MODEL_REGISTRY = {
         getModel: (tenantDB) => contactModel(tenantDB),
         targetKey: "id",
         modelKey: "contacts",
-        columns: {
-          person_name: { label: "Contact Name", type: "string" },
-          company_name: { label: "Company Name", type: "string" },
-          mobile_number: { label: "Mobile", type: "string" },
-          gst_number: { label: "GSTIN", type: "string" },
-          email_id: { label: "Email", type: "string" },
-        },
       },
     },
   },
@@ -881,13 +851,6 @@ export const MODEL_REGISTRY = {
         getModel: (tenantDB) => contactModel(tenantDB),
         targetKey: "id",
         modelKey: "contacts",
-        columns: {
-          person_name: { label: "Contact Name", type: "string" },
-          company_name: { label: "Company Name", type: "string" },
-          mobile_number: { label: "Mobile", type: "string" },
-          gst_number: { label: "GSTIN", type: "string" },
-          email_id: { label: "Email", type: "string" },
-        },
       },
     },
     // visit_type_id -> visit_type_masters skipped: that table has no real
@@ -918,13 +881,6 @@ export const MODEL_REGISTRY = {
         getModel: (tenantDB) => contactModel(tenantDB),
         targetKey: "id",
         modelKey: "contacts",
-        columns: {
-          person_name: { label: "Contact Name", type: "string" },
-          company_name: { label: "Company Name", type: "string" },
-          mobile_number: { label: "Mobile", type: "string" },
-          gst_number: { label: "GSTIN", type: "string" },
-          email_id: { label: "Email", type: "string" },
-        },
       },
     },
   },
@@ -963,13 +919,6 @@ export const MODEL_REGISTRY = {
         getModel: (tenantDB) => contactModel(tenantDB),
         targetKey: "id",
         modelKey: "contacts",
-        columns: {
-          person_name: { label: "Contact Name", type: "string" },
-          company_name: { label: "Company Name", type: "string" },
-          mobile_number: { label: "Mobile", type: "string" },
-          gst_number: { label: "GSTIN", type: "string" },
-          email_id: { label: "Email", type: "string" },
-        },
       },
       createdBy: {
         label: "Created By",
@@ -1267,6 +1216,24 @@ export const MODEL_REGISTRY = {
 
 export const getRegisteredModel = (modelKey) => MODEL_REGISTRY[modelKey];
 
+// A relation's displayable columns — either its own hand-curated `columns`
+// map, or (when it declares `modelKey` instead) borrowed straight from that
+// already-registered table's own `columns`. This is what lets e.g. every
+// `contact` relation across task_managements/inquiries/visits/... just say
+// `modelKey: "contacts"` once instead of re-listing person_name/company_name/
+// mobile_number/... in every table that has a contact FK — one source of
+// truth, no per-relation field list to keep in sync by hand.
+export const resolveRelationColumns = (relDef) => relDef.columns || (relDef.modelKey && MODEL_REGISTRY[relDef.modelKey]?.columns) || {};
+
+// A relation's OWN relations, one hop further out — only available when the
+// relation is modelKey-backed (a hand-curated `columns`-only relation has no
+// registry entry to borrow a `relations` map from). This is what makes
+// task -> contact -> label chaining "just work" once `contact` points at
+// `modelKey: "contacts"`: contacts' own already-registered `label` relation
+// becomes reachable as "contact.label.lable_name" for free, no new field
+// list anywhere — queryEngine.js resolves it as one more batched fetch.
+export const resolveRelationRelations = (relDef) => (relDef.modelKey && MODEL_REGISTRY[relDef.modelKey]?.relations) || null;
+
 // Lightweight, non-PIN-safe slice of a table's registry entry — the
 // generalFilters slot map + each target column's `type` (needed to pick
 // findInSet vs in on the frontend adapter, see generalFilterAdapter.ts),
@@ -1333,14 +1300,35 @@ export const listModelRegistry = async (tenantDB, company_masters_id) =>
           })),
         ],
         relations: entry.relations
-          ? Object.entries(entry.relations).map(([relKey, relDef]) => ({
-              key: relKey,
-              label: relDef.label,
-              columns: Object.entries(relDef.columns).map(([columnKey, columnDef]) => ({
-                key: `${relKey}.${columnKey}`,
-                ...columnDef,
-              })),
-            }))
+          ? Object.entries(entry.relations).map(([relKey, relDef]) => {
+              const relColumns = resolveRelationColumns(relDef);
+              const subRelations = !relDef.matchMode ? resolveRelationRelations(relDef) : null;
+              return {
+                key: relKey,
+                label: relDef.label,
+                columns: Object.entries(relColumns).map(([columnKey, columnDef]) => ({
+                  key: `${relKey}.${columnKey}`,
+                  ...columnDef,
+                })),
+                // Second hop — only reachable when this relation borrows a
+                // full registry entry (modelKey) AND is itself a plain scalar
+                // relation (chaining off a csv/reverse relation isn't
+                // supported, same restriction queryEngine.js enforces). Lets
+                // the frontend render e.g. "Contact > Labels > Label Names"
+                // as its own pickable leaf without either table listing it
+                // by hand.
+                relations: subRelations
+                  ? Object.entries(subRelations).map(([subRelKey, subRelDef]) => ({
+                      key: `${relKey}.${subRelKey}`,
+                      label: subRelDef.label,
+                      columns: Object.entries(resolveRelationColumns(subRelDef)).map(([columnKey, columnDef]) => ({
+                        key: `${relKey}.${subRelKey}.${columnKey}`,
+                        ...columnDef,
+                      })),
+                    }))
+                  : [],
+              };
+            })
           : [],
         // Step 2 of the plan — which CheckBoxFilterModal.tsx slot numbers
         // apply to this table and which whitelisted column (or `true` for
