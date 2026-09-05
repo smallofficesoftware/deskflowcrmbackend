@@ -3172,3 +3172,43 @@ ALTER TABLE `report_definitions` ADD `description` TEXT NULL DEFAULT NULL AFTER 
 
 03-09-2026 Dhaval
 ALTER TABLE `report_definitions` ADD `icon` VARCHAR(255) NULL DEFAULT NULL AFTER `description`;
+
+05-09-2026 Dhaval
+CREATE TABLE `dashboards` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `company_masters_id` INT(11) NOT NULL,
+  `a_application_login_id` INT(11) NULL DEFAULT NULL,
+  `name` VARCHAR(255) NOT NULL,
+  `description` TEXT NULL DEFAULT NULL,
+  `icon` VARCHAR(255) NULL DEFAULT NULL,
+  `is_default` TINYINT(4) NOT NULL DEFAULT 0,
+  `display_order` INT(11) NOT NULL DEFAULT 0,
+  `created_date_time` DATETIME NOT NULL,
+  `modified_date` DATETIME NULL DEFAULT NULL,
+  `isDelete` TINYINT(4) NOT NULL DEFAULT 0,
+  `isActive` TINYINT(4) NOT NULL DEFAULT 1,
+  PRIMARY KEY (`id`),
+  INDEX `idx_dashboards_company` (`company_masters_id`, `isDelete`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+05-09-2026 Dhaval
+CREATE TABLE `dashboard_widgets` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `dashboard_id` INT(11) NOT NULL,
+  `report_definition_id` INT(11) NOT NULL,
+  `widget_type` VARCHAR(255) NOT NULL,
+  `title` VARCHAR(255) NULL DEFAULT NULL,
+  `chart_config_json` TEXT NULL DEFAULT NULL,
+  `position_x` INT(11) NOT NULL DEFAULT 0,
+  `position_y` INT(11) NOT NULL DEFAULT 0,
+  `width` INT(11) NOT NULL DEFAULT 4,
+  `height` INT(11) NOT NULL DEFAULT 3,
+  `display_order` INT(11) NOT NULL DEFAULT 0,
+  `created_date_time` DATETIME NOT NULL,
+  `modified_date` DATETIME NULL DEFAULT NULL,
+  `isDelete` TINYINT(4) NOT NULL DEFAULT 0,
+  `isActive` TINYINT(4) NOT NULL DEFAULT 1,
+  PRIMARY KEY (`id`),
+  INDEX `idx_dashboard_widgets_dashboard` (`dashboard_id`, `isDelete`),
+  INDEX `idx_dashboard_widgets_report_definition` (`report_definition_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
