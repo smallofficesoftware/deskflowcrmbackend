@@ -3,6 +3,7 @@ import { Op } from "sequelize";
 import { getTenantDB } from "../../config/dbManager.js";
 import { isCompanyOwner } from "../../middlewares/reportPinAuth.js";
 import tenantMasterModel from "../../models/configuration/tenantMasterModel.js";
+import { dashboardWidgetModel } from "../../models/report_builder/dashboardWidgetModel.js";
 import { reportDefinitionModel } from "../../models/report_builder/reportDefinitionModel.js";
 import { reportDefinitionTeamRightModel } from "../../models/report_builder/reportDefinitionTeamRightModel.js";
 import { reportGroupModel } from "../../models/report_builder/reportGroupModel.js";
@@ -708,9 +709,24 @@ export const deleteReportDefinition = async (req) => {
       return resError({ code: 404, ack_msg: "Report not found", developer_msg: "No matching report definition for this company" });
     }
 
-    // No "blocked if referenced" check — dashboard_widgets/report_schedules
-    // (the tables that would reference a definition) don't exist until
-    // Phase 4/6, so there's nothing to check against yet.
+    // dashboard_widgets now exists (Dashboard feature, Phase 1/2) — a widget
+    // reuses this row's engine directly (report_definition_id), so deleting
+    // it out from under a live dashboard would silently break that widget.
+    // report_schedules still has no guard — a scheduled send just fails at
+    // dispatch time if its definition is gone, same as before.
+    const DashboardWidget = dashboardWidgetModel(req.tenantDB);
+    const referencingWidget = await DashboardWidget.findOne({
+      where: { report_definition_id: definition.id, isDelete: 0 },
+      attributes: ["id", "dashboard_id"],
+    });
+    if (referencingWidget) {
+      return resError({
+        code: 409,
+        ack_msg: "This report is used by a dashboard widget — remove it from the dashboard first",
+        developer_msg: `Referenced by dashboard_widgets.id=${referencingWidget.id} (dashboard_id=${referencingWidget.dashboard_id})`,
+      });
+    }
+
     await definition.update({ isDelete: 1, modified_date: now() });
 
     await logAuditEvent(req, {

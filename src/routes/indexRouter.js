@@ -55,6 +55,7 @@ import { default as getprintSetting, default as printSetting } from './company_s
 import documentPrintTemplateRouter from './company_setup/documentPrintTemplateRouter.js';
 import featureFlagRouter from './company_setup/featureFlagRouter.js';
 import reportPinRouter from './company_setup/reportPinRouter.js';
+import dashboardRouter from './report_builder/dashboardRouter.js';
 import reportDefinitionRouter from './report_builder/reportDefinitionRouter.js';
 import reviewRouter from './company_setup/reviewRouter.js';
 import currencyRouter from "./configuration/currencyRouter.js";
@@ -165,6 +166,7 @@ export default () => {
   featureFlagRouter(app);
   reportPinRouter(app);
   reportDefinitionRouter(app);
+  dashboardRouter(app);
   reviewRouter(app);
   TaskManagement(app);
   TaskMessageHistory(app);
