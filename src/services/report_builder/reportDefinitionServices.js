@@ -758,7 +758,10 @@ export const listReportDefinitions = async (req) => {
 
     const ReportDefinition = reportDefinitionModel(req.tenantDB);
     const rows = await ReportDefinition.findAll({
-      where: { company_masters_id: findCompanyId.company_masters_id, isDelete: 0 },
+      // is_dashboard_only rows (dashboard Add-Widget's "quick counter"
+      // shortcut) are auto-created plumbing, not something a user
+      // browsed/built here — excluded from the main list.
+      where: { company_masters_id: findCompanyId.company_masters_id, isDelete: 0, is_dashboard_only: { [Op.ne]: 1 } },
       order: [["id", "DESC"]],
     });
 
@@ -881,7 +884,9 @@ export const listRunnableReportDefinitions = async (req) => {
     const owner = await isCompanyOwner(a_application_login_id, company_masters_id);
     if (owner) {
       const rows = await ReportDefinition.findAll({
-        where: { company_masters_id, isDelete: 0 },
+        // is_dashboard_only rows aren't meant to be discoverable/runnable
+        // standalone — same exclusion listReportDefinitions applies.
+        where: { company_masters_id, isDelete: 0, is_dashboard_only: { [Op.ne]: 1 } },
         attributes,
         order: [["id", "DESC"]],
       });
@@ -900,7 +905,7 @@ export const listRunnableReportDefinitions = async (req) => {
     }
 
     const rows = await ReportDefinition.findAll({
-      where: { id: { [Op.in]: grantedIds }, company_masters_id, isDelete: 0 },
+      where: { id: { [Op.in]: grantedIds }, company_masters_id, isDelete: 0, is_dashboard_only: { [Op.ne]: 1 } },
       attributes,
       order: [["id", "DESC"]],
     });

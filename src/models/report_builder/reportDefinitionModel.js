@@ -71,6 +71,14 @@ export const reportDefinitionModel = (sequelize) => {
       s_timestemp: {
         type: STRING,
       },
+      // Set by the dashboard Add-Widget "quick counter" shortcut — an
+      // auto-created, minimal (single aggregate column) definition, not
+      // meant to be browsed/run standalone from the main Report Builder
+      // list. See migration 20260905170000-add-is-dashboard-only-to-report-definitions.js.
+      is_dashboard_only: {
+        type: TINYINT,
+        defaultValue: "0",
+      },
       isDelete: {
         type: TINYINT,
         defaultValue: "0",

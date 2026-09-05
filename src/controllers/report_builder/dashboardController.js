@@ -10,6 +10,7 @@ import {
   updateDashboard,
 } from "../../services/report_builder/dashboardServices.js";
 import {
+  addQuickCounterWidget,
   addWidget,
   deleteWidget,
   updateWidget,
@@ -55,6 +56,10 @@ export const runDashboardController = async (req, res) => {
 
 export const addWidgetController = async (req, res) => {
   await callServiceMethod(req, res, addWidget(req), "addWidget");
+};
+
+export const addQuickCounterWidgetController = async (req, res) => {
+  await callServiceMethod(req, res, addQuickCounterWidget(req), "addQuickCounterWidget");
 };
 
 export const updateWidgetController = async (req, res) => {

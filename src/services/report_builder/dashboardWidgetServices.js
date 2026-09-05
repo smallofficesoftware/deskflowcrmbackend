@@ -5,15 +5,29 @@ import moment from "moment";
 import { dashboardModel } from "../../models/report_builder/dashboardModel.js";
 import { dashboardWidgetModel } from "../../models/report_builder/dashboardWidgetModel.js";
 import { reportDefinitionModel } from "../../models/report_builder/reportDefinitionModel.js";
+import { PAGE_ID } from "../../utils/AppEnumeration.js";
 import { resError, resSuccess } from "../../utils/sharedFunctions.js";
+import { logAuditEvent } from "../company_setup/auditLogServices.js";
 import { getCompanyByLoginId } from "../commonServices.js";
+import { getRegisteredModel } from "./modelRegistry.js";
 
 const now = () => moment(new Date()).format("YYYY-MM-DD HH:mm:ss");
 const asJsonString = (value) => (typeof value === "string" ? value : JSON.stringify(value));
+const humanize = (key) =>
+  String(key)
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
 
 // Bounds the worst case per dashboard view — runDashboard() runs one report
 // per widget, sequentially (see dashboardServices.js).
 const MAX_WIDGETS_PER_DASHBOARD = 20;
+
+// Same whitelist queryEngine.js's own ALLOWED_AGGREGATES enforces — kept in
+// sync by hand (that one lives in queryEngine.js proper since it also maps
+// to the real SQL function name; this one only needs to validate the op is
+// legal before saving it into columns_json, queryEngine.js re-validates
+// everything again at run time regardless).
+const ALLOWED_AGGREGATES = new Set(["sum", "avg", "min", "max", "count"]);
 
 async function loadOwnedDashboard(req, dashboardId) {
   const { a_application_login_id } = req.body || {};
@@ -104,6 +118,90 @@ export const addWidget = async (req) => {
     return resSuccess({ data: { item: created }, ack_msg: "Widget added successfully" });
   } catch (e) {
     console.error("addWidget error:", e);
+    return resError({ developer_msg: `Failed to Catch ${e}` });
+  }
+};
+
+// Add-Widget modal's "quick counter" shortcut — model_key + one column +
+// aggregate op, no trip through the full Report Builder wizard. Behind the
+// scenes this still creates a REAL report_definitions row (same
+// columns_json shape createReportDefinition's own query-type branch
+// produces, same queryEngine.js re-validates at run time) — is_dashboard_only
+// marks it as auto-created plumbing so listReportDefinitions/
+// listRunnableReportDefinitions filter it out of the main Report Builder
+// list (see migration 20260905170000-add-is-dashboard-only-to-report-definitions.js).
+export const addQuickCounterWidget = async (req) => {
+  try {
+    const { id: dashboardId } = req.params || {};
+    const { a_application_login_id, model_key, column, aggregate, label, title } = req.body || {};
+    if (!model_key || !column || !aggregate) {
+      return resError({ developer_msg: "model_key, column and aggregate are required" });
+    }
+    if (!ALLOWED_AGGREGATES.has(aggregate)) {
+      return resError({ ack_msg: "Unknown aggregate", developer_msg: `aggregate "${aggregate}" is not allowed` });
+    }
+
+    const registryEntry = getRegisteredModel(model_key);
+    if (!registryEntry) {
+      return resError({ ack_msg: "Unknown report source", developer_msg: `model_key "${model_key}" is not whitelisted` });
+    }
+    const columnDef = registryEntry.columns?.[column];
+    if (!columnDef) {
+      return resError({ ack_msg: "Unknown column", developer_msg: `column "${column}" is not whitelisted on model_key "${model_key}"` });
+    }
+    if (columnDef.aggregatable && !columnDef.aggregatable.includes(aggregate)) {
+      return resError({ ack_msg: "Aggregate not supported", developer_msg: `column "${column}" does not support aggregate "${aggregate}"` });
+    }
+
+    const { dashboard, company_masters_id, error } = await loadOwnedDashboard(req, dashboardId);
+    if (error) return error;
+
+    const Widget = dashboardWidgetModel(req.tenantDB);
+    const existingCount = await Widget.count({ where: { dashboard_id: dashboard.id, isDelete: 0 } });
+    if (existingCount >= MAX_WIDGETS_PER_DASHBOARD) {
+      return resError({ developer_msg: `A dashboard can have at most ${MAX_WIDGETS_PER_DASHBOARD} widgets` });
+    }
+
+    const alias = `${aggregate}_${column}`;
+    const displayLabel = label || `${humanize(aggregate)} ${humanize(column)}`;
+    const ReportDefinition = reportDefinitionModel(req.tenantDB);
+    const createdDefinition = await ReportDefinition.create({
+      company_masters_id,
+      a_application_login_id,
+      name: title || displayLabel,
+      type: "query",
+      page_id: PAGE_ID.REPORT_BUILDER,
+      model_key,
+      columns_json: asJsonString([{ column, aggregate, alias, label: displayLabel }]),
+      is_dashboard_only: 1,
+      created_date_time: now(),
+    });
+
+    const created = await Widget.create({
+      dashboard_id: dashboard.id,
+      report_definition_id: createdDefinition.id,
+      widget_type: "stat_tile",
+      title: title || displayLabel,
+      chart_config_json: asJsonString({ valueColumn: alias, label: displayLabel }),
+      position_x: 0,
+      position_y: 0,
+      width: 3,
+      height: 2,
+      display_order: existingCount,
+      created_date_time: now(),
+    });
+
+    await logAuditEvent(req, {
+      module_key: "dashboard_builder",
+      action: "create_quick_counter",
+      entity_type: "dashboard_widget",
+      entity_id: created.id,
+      details: { dashboard_id: dashboard.id, report_definition_id: createdDefinition.id, model_key, column, aggregate },
+    });
+
+    return resSuccess({ data: { item: created }, ack_msg: "Counter widget added successfully" });
+  } catch (e) {
+    console.error("addQuickCounterWidget error:", e);
     return resError({ developer_msg: `Failed to Catch ${e}` });
   }
 };

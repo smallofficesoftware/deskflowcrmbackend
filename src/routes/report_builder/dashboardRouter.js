@@ -1,4 +1,5 @@
 import {
+  addQuickCounterWidgetController,
   addWidgetController,
   createDashboardController,
   deleteDashboardController,
@@ -57,6 +58,9 @@ export default (app) => {
 
   // Widget CRUD — same build tier as the dashboard routes above.
   app.post("/dashboards/:id/widgets/create", authenticateToken, tenantMiddleware, requireDashboardBuilderFlag, requireReportPin, addWidgetController);
+  // "Quick counter" shortcut — model_key + column + aggregate, no Report
+  // Builder wizard trip. Same build tier (still creates a real report row).
+  app.post("/dashboards/:id/widgets/quick-counter", authenticateToken, tenantMiddleware, requireDashboardBuilderFlag, requireReportPin, addQuickCounterWidgetController);
   app.post("/dashboards/widgets/:id/update", authenticateToken, tenantMiddleware, requireDashboardBuilderFlag, requireReportPin, updateWidgetController);
   app.post("/dashboards/widgets/:id/delete", authenticateToken, tenantMiddleware, requireDashboardBuilderFlag, requireReportPin, deleteWidgetController);
   // Batch position/size (grid-layout drag session) — same tier, still a
