@@ -1525,6 +1525,13 @@ export const listModelRegistry = async (tenantDB, company_masters_id) =>
               return {
                 key: relKey,
                 label: relDef.label,
+                // Exposed so the frontend can offer "show as label via this
+                // relation" (Step 2's lookup-label auto-resolve) on a base
+                // lookup column whose key matches a relation's own
+                // foreignKey — never inferred/matched server-side, only
+                // whitelisted metadata surfaced for the author to pick from.
+                foreignKey: relDef.foreignKey,
+                matchMode: relDef.matchMode || null,
                 columns: Object.entries(relColumns).map(([columnKey, columnDef]) => ({
                   key: `${relKey}.${columnKey}`,
                   ...columnDef,

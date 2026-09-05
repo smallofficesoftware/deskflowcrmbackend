@@ -392,6 +392,33 @@ export const runQueryReport = async (definition, req) => {
         attributes.push(c.column);
       }
     }
+    // ---- Lookup-label auto-resolve (Step 2's "show as label" format
+    // option) — a base lookup column whose columns_json entry carries
+    // format.labelRelation ("relKey.subColKey") gets its DISPLAY VALUE
+    // replaced by that relation's own column, under the SAME key (never a
+    // new dotted key — this is presentation of the same field, not an
+    // additional one). Restricted to a plain scalar relation (no
+    // matchMode) whose foreignKey matches this exact base column, same
+    // shape the frontend's own picker (StepColumns.tsx/ColumnFormatMini.tsx)
+    // already restricts itself to — re-validated here since format is
+    // author-authored data, never trusted blindly. Invalid/stale
+    // labelRelation values are silently ignored (falls back to the raw
+    // value) rather than thrown — a renamed/removed relation shouldn't
+    // break the whole report over a presentation preference. ----
+    const labelRelationSpecs = [];
+    for (const c of baseColumns) {
+      const labelRelation = c.format?.labelRelation;
+      if (!labelRelation || typeof labelRelation !== "string" || !labelRelation.includes(".")) continue;
+      const dotIndex = labelRelation.indexOf(".");
+      const relKey = labelRelation.slice(0, dotIndex);
+      const subColKey = labelRelation.slice(dotIndex + 1);
+      const relDef = registryEntry.relations && registryEntry.relations[relKey];
+      if (!relDef || relDef.matchMode || relDef.foreignKey !== c.column) continue;
+      const targetColumns = resolveRelationColumns(relDef);
+      if (!targetColumns[subColKey]) continue;
+      labelRelationSpecs.push({ baseColumn: c.column, relKey, subColKey });
+    }
+
     if (csvGroupColumn) {
       rawFetchColumns.add(csvGroupColumn);
       sqlGroupColumns.forEach((g) => rawFetchColumns.add(g));
@@ -416,7 +443,7 @@ export const runQueryReport = async (definition, req) => {
     // for validating a relationRequired filter's relKey/matchMode, this is
     // only eager-fetch discovery for the ones that turn out valid.
     const validRelationRequiredKeys = [...relationRequiredKeys].filter((k) => registryEntry.relations && registryEntry.relations[k]);
-    const usedRelationKeys = [...new Set([...relationColumns.map((c) => c.relKey), ...nestedRelationColumns.map((c) => c.relKey), ...validRelationRequiredKeys])];
+    const usedRelationKeys = [...new Set([...relationColumns.map((c) => c.relKey), ...nestedRelationColumns.map((c) => c.relKey), ...validRelationRequiredKeys, ...labelRelationSpecs.map((s) => s.relKey)])];
     const injectedFkColumns = [];
     for (const relKey of usedRelationKeys) {
       const foreignKey = registryEntry.relations[relKey].foreignKey;
@@ -878,7 +905,14 @@ export const runQueryReport = async (definition, req) => {
       for (const relKey of usedRelationKeys) {
         const relDef = registryEntry.relations[relKey];
         const relTargetColumns = resolveRelationColumns(relDef);
+        const labelRelationSpecsForKey = labelRelationSpecs.filter((s) => s.relKey === relKey);
+        // Display-only picks — the merge loop below writes exactly these as
+        // dotted "relKey.colKey" keys, nothing more. labelRelationSpecsForKey's
+        // own subColKey is fetched too (below) but deliberately kept OUT of
+        // this set — it's never meant to appear as its own dotted key, only
+        // to overwrite its base column's raw value (see the merge loop).
         const relColKeys = relationColumns.filter((c) => c.relKey === relKey).map((c) => c.relColKey);
+        const fetchColKeys = [...new Set([...relColKeys, ...labelRelationSpecsForKey.map((s) => s.subColKey)])];
         // Nested (two-hop) entries chained off THIS relKey — only ever
         // present when relDef is a plain scalar relation (enforced at parse
         // time above), so these never combine with isCsv/isReverse below.
@@ -908,7 +942,7 @@ export const runQueryReport = async (definition, req) => {
           // "reverse" needs every matching child row (to join/count all of
           // them per parent), not one row per targetKey value — fetched
           // ungrouped, grouped into arrays in JS below instead.
-          const nonCountRelColKeys = isReverse ? relColKeys.filter((k) => !relTargetColumns[k].countOf) : relColKeys;
+          const nonCountRelColKeys = isReverse ? fetchColKeys.filter((k) => !relTargetColumns[k].countOf) : fetchColKeys;
           const relatedRows = await RelatedModel.findAll({
             where: { [relDef.targetKey]: { [Op.in]: distinctFkValues }, isDelete: 0 },
             // nestedFkKeys are fetched even though never displayed directly —
@@ -989,6 +1023,15 @@ export const runQueryReport = async (definition, req) => {
             const relatedRow = relMap.get(r[relDef.foreignKey]);
             relColKeys.forEach((relColKey) => {
               r[`${relKey}.${relColKey}`] = relatedRow ? relatedRow[relColKey] ?? null : null;
+            });
+            // Lookup-label auto-resolve — overwrite the base column's own
+            // raw value in place (never a new key) with the relation's
+            // resolved label. Falls back to the untouched raw value when
+            // the related row is missing (e.g. a soft-deleted target).
+            labelRelationSpecsForKey.forEach(({ baseColumn, subColKey }) => {
+              if (relatedRow && relatedRow[subColKey] !== undefined && relatedRow[subColKey] !== null) {
+                r[baseColumn] = relatedRow[subColKey];
+              }
             });
             nestedEntries.forEach(({ subRelKey, subRelDef, subColKey }) => {
               const outKey = `${relKey}.${subRelKey}.${subColKey}`;
