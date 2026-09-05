@@ -43,7 +43,7 @@ export default (app) => {
   app.post("/document-templates/export", authenticateToken, tenantMiddleware, exportDocumentTemplateController);
   app.post("/document-templates/import", authenticateToken, tenantMiddleware, requireReportPin, importDocumentTemplateController);
   app.post("/document-templates/versions/list", authenticateToken, tenantMiddleware, listTemplateVersionsController);
-  app.post("/document-templates/versions/restore", authenticateToken, tenantMiddleware, restoreTemplateVersionController);
+  app.post("/document-templates/versions/restore", authenticateToken, tenantMiddleware, requireReportPin, restoreTemplateVersionController);
   app.post("/document-templates/system-gallery/list", authenticateToken, tenantMiddleware, listSystemTemplatesController);
   app.post("/document-templates/system-gallery/copy", authenticateToken, tenantMiddleware, requireReportPin, copyFromSystemTemplateController);
   app.post("/document-templates/data-dictionary", authenticateToken, tenantMiddleware, dataDictionaryController);
