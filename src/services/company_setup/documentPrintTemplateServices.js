@@ -2,13 +2,16 @@ import fs from "fs";
 import moment from "moment";
 import path from "path";
 import { Op } from "sequelize";
+import { getTenantDB } from "../../config/dbManager.js";
 import { cartItemModel } from "../../models/activities/cartItemsModel.js";
 import { cartModel } from "../../models/activities/cartsModel.js";
 import companyModel from "../../models/company_setup/companyModel.js";
 import { documentPrintTemplateModel } from "../../models/company_setup/documentPrintTemplateModel.js";
 import { documentPrintTemplateVersionModel } from "../../models/company_setup/documentPrintTemplateVersionModel.js";
 import systemDocumentTemplateModel from "../../models/company_setup/systemDocumentTemplateModel.js";
+import tenantMasterModel from "../../models/configuration/tenantMasterModel.js";
 import { productModel } from "../../models/product_settings/productModel.js";
+import { WEBSITE_LEAD_HANDLE_DB_NAME } from "../../utils/appConstants.js";
 import { numberToWordsCurrency } from "../../utils/numberToWordsCurrency.js";
 import { resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { generateQuotationPdf } from "../pdfmeEngine/generateDocument.js";
@@ -755,44 +758,18 @@ export async function resolveCompanyForPdf(company_masters_id) {
   };
 }
 
-// Generate Preview (§6) — renders the currently-open template's DRAFT (not
-// published), against either a real cart the designer picked or sample data
-// as the empty-state fallback. Never touches /order-pdf's real generation
-// path, never writes a cart's stored pdfPath — this is preview-only, no
-// persistence side effects, matching §6's "preview and real print are
-// allowed to diverge on purpose while editing."
-export const previewDocumentTemplate = async (req) => {
+// Shared by previewDocumentTemplate (a tenant's own "Generate Preview",
+// against a real saved draft row) and testRunDocumentTemplate (adminpanel's
+// system-gallery editor test-run, against an unsaved draft) — everything
+// from resolving the company's own branding through rendering the actual
+// PDF is identical between the two, only where draftTemplate/company_masters_id
+// come from differs.
+const renderTemplateAsPdf = async ({ req, company_masters_id, draftTemplate, cart_id }) => {
   try {
-    const { id, company_masters_id, cart_id } = req.body || {};
-    if (!id || !company_masters_id) {
-      return resError({ developer_msg: "id and company_masters_id are required" });
-    }
-
-    const Template = documentPrintTemplateModel(req.tenantDB);
-    const templateRow = await Template.findOne({ where: { id, company_masters_id, isDelete: 0 } });
-    if (!templateRow) {
-      return resError({ developer_msg: "Template not found" });
-    }
-    const draftTemplate = JSON.parse(templateRow.draft_template_json);
-
-    const companyRow = await companyModel.findOne({ where: { id: company_masters_id, isDelete: 0 } });
-    if (!companyRow) {
+    const company = await resolveCompanyForPdf(company_masters_id);
+    if (!company) {
       return resError({ developer_msg: "Company not found" });
     }
-
-    const company = {
-      id: companyRow.id,
-      name: companyRow.company_name,
-      address: companyRow.address,
-      gstin: companyRow.gst_number,
-      mobile: companyRow.printed_number,
-      email: companyRow.company_email,
-      headerImage: encodeCompanyImage(companyRow.header_img),
-      logoImage: encodeCompanyImage(companyRow.company_logo),
-      footerImage: encodeCompanyImage(companyRow.footer_img),
-      signImage: encodeCompanyImage(companyRow.company_sign),
-      watermark_in_print: companyRow.watermark_in_print,
-    };
 
     let buyer;
     let order;
@@ -883,6 +860,74 @@ export const previewDocumentTemplate = async (req) => {
     return resSuccess({ data: { item: { pdfBase64: buffer.toString("base64") } } });
   } catch (e) {
     console.log(e);
+    return resError({ developer_msg: `Failed to Catch ${e}` });
+  }
+};
+
+// Generate Preview (§6) — renders the currently-open template's DRAFT (not
+// published), against either a real cart the designer picked or sample data
+// as the empty-state fallback. Never touches /order-pdf's real generation
+// path, never writes a cart's stored pdfPath — this is preview-only, no
+// persistence side effects, matching §6's "preview and real print are
+// allowed to diverge on purpose while editing."
+export const previewDocumentTemplate = async (req) => {
+  try {
+    const { id, company_masters_id, cart_id } = req.body || {};
+    if (!id || !company_masters_id) {
+      return resError({ developer_msg: "id and company_masters_id are required" });
+    }
+
+    const Template = documentPrintTemplateModel(req.tenantDB);
+    const templateRow = await Template.findOne({ where: { id, company_masters_id, isDelete: 0 } });
+    if (!templateRow) {
+      return resError({ developer_msg: "Template not found" });
+    }
+    const draftTemplate = JSON.parse(templateRow.draft_template_json);
+
+    return renderTemplateAsPdf({ req, company_masters_id, draftTemplate, cart_id });
+  } catch (e) {
+    console.log(e);
+    return resError({ developer_msg: `Failed to Catch ${e}` });
+  }
+};
+
+// Admin authoring test-run (Document Designer gap audit, item 2) — mirrors
+// reportDefinitionServices.js's testRunReportDefinition exactly: renders a
+// NOT-YET-SAVED draft (from adminpanel's system_document_templates editor)
+// against WEBSITE_LEAD_HANDLE_DB_NAME, a dedicated test tenant, never a
+// real customer's. Reached only via requireServiceSecret (no CRM user
+// session on this request — the caller is adminpanel's own backend,
+// already authenticated on its side), so this resolves its own tenantDB
+// rather than trusting req.tenantDB. Always renders against sample data
+// (cart_id: null) — a gallery draft has no real order to preview against,
+// unlike a tenant's own "Generate Preview."
+export const testRunDocumentTemplate = async (req) => {
+  try {
+    const { template_json } = req.body || {};
+    if (!template_json) {
+      return resError({ developer_msg: "template_json is required" });
+    }
+    if (!WEBSITE_LEAD_HANDLE_DB_NAME) {
+      return resError({ developer_msg: "WEBSITE_LEAD_HANDLE_DB_NAME is not configured — test-run is unavailable until it is" });
+    }
+    const tenantDBFind = await tenantMasterModel.findOne({
+      where: { isDelete: 0, db_name: WEBSITE_LEAD_HANDLE_DB_NAME },
+      attributes: ["a_application_login_id", "company_masters_id"],
+    });
+    if (!tenantDBFind) {
+      return resError({ developer_msg: "Test tenant not found for WEBSITE_LEAD_HANDLE_DB_NAME" });
+    }
+    const tenantDB = (await getTenantDB(tenantDBFind.a_application_login_id, tenantDBFind.company_masters_id)).sequelize;
+    const draftTemplate = typeof template_json === "string" ? JSON.parse(template_json) : template_json;
+
+    return renderTemplateAsPdf({
+      req: { ...req, tenantDB },
+      company_masters_id: tenantDBFind.company_masters_id,
+      draftTemplate,
+      cart_id: null,
+    });
+  } catch (e) {
+    console.error("testRunDocumentTemplate error:", e);
     return resError({ developer_msg: `Failed to Catch ${e}` });
   }
 };
