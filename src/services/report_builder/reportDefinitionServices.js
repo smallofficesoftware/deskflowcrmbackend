@@ -505,6 +505,18 @@ export const deleteReportGroup = async (req) => {
       return resError({ code: 404, ack_msg: "Report group not found", developer_msg: "No matching report group for this company" });
     }
     await group.update({ isDelete: 1 });
+
+    // Clear the dangling reference on this group's own reports — they
+    // aren't deleted, but left pointing at report_group_id would keep a
+    // stale id around forever (invisible everywhere since the group no
+    // longer lists, but never actually cleared). Ungrouped is the correct
+    // resting state for a report whose group just disappeared.
+    const ReportDefinition = reportDefinitionModel(req.tenantDB);
+    await ReportDefinition.update(
+      { report_group_id: null },
+      { where: { report_group_id: id, company_masters_id: findCompanyId.company_masters_id } },
+    );
+
     return resSuccess({ ack_msg: "Report group deleted successfully" });
   } catch (e) {
     console.error("deleteReportGroup error:", e);
