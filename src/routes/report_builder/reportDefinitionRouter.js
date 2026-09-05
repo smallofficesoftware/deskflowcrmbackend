@@ -23,6 +23,7 @@ import {
   listRunnableReportDefinitionsController,
   listSystemReportDefinitionsController,
   previewReportDefinitionController,
+  previewReportPdfController,
   reportScheduleDispatchCroneTabController,
   runBatchReportDefinitionsController,
   runReportDefinitionController,
@@ -115,6 +116,9 @@ export default (app) => {
   // same per-report scope enforcement query/composite runs already get.
   app.post("/report-definitions/:id/export/excel", authenticateToken, tenantMiddleware, requireReportBuilderFlag, exportReportExcelController);
   app.post("/report-definitions/:id/export/pdf", authenticateToken, tenantMiddleware, requireReportBuilderFlag, exportReportPdfController);
+  // Report Designer's "Generate Preview" — draft template, live report data,
+  // base64 back (no file written) — same tier as the export routes above.
+  app.post("/report-definitions/:id/preview-pdf", authenticateToken, tenantMiddleware, requireReportBuilderFlag, previewReportPdfController);
   // Export-as-JSON (backup/portability of the definition's own build shape,
   // not a data export) — flag-only, same tier as the two above; reading
   // your own report's shape needs no PIN, only WRITING one (import) does.

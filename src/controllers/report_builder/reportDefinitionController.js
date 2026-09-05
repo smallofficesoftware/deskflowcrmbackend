@@ -25,7 +25,7 @@ import {
   updateReportDefinition,
   updateReportGroup,
 } from "../../services/report_builder/reportDefinitionServices.js";
-import { exportReportExcel, exportReportPdf } from "../../services/report_builder/reportPdfExport.js";
+import { exportReportExcel, exportReportPdf, previewReportPdf } from "../../services/report_builder/reportPdfExport.js";
 import {
   createReportSchedule,
   deleteReportSchedule,
@@ -125,6 +125,10 @@ export const exportReportExcelController = async (req, res) => {
 
 export const exportReportPdfController = async (req, res) => {
   await callServiceMethod(req, res, exportReportPdf(req, res), "exportReportPdf");
+};
+
+export const previewReportPdfController = async (req, res) => {
+  await callServiceMethod(req, res, previewReportPdf(req, res), "previewReportPdf");
 };
 
 export const listReportGroupsController = async (req, res) => {

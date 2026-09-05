@@ -266,6 +266,46 @@ export const exportReportExcel = async (req, res) => {
   }
 };
 
+// Shared by exportReportPdf (published template, writes a file) and
+// previewReportPdf (draft template, no file/no disk write) — same
+// rawInputs shape + company-header injection either way, only WHICH
+// template_json string gets parsed differs.
+async function resolveReportInputsAndTemplate(req, definition, company_masters_id, rows, templateJsonString) {
+  const columns = resolveDisplayColumns(definition, rows);
+  const tableRows = rows.length
+    ? rows.map((row) => columns.map((c) => (row[c.key] === undefined || row[c.key] === null ? "" : String(row[c.key]))))
+    : [columns.map(() => "")];
+
+  const rawInputs = {
+    reportTitle: definition.name,
+    reportTable: JSON.stringify(tableRows),
+    appliedFilters: buildAppliedFiltersSummary(definition, req),
+  };
+
+  let template = JSON.parse(templateJsonString);
+  const company = await resolveCompanyForPdf(company_masters_id);
+  if (company) {
+    // Same keys dataDictionary.js's REPORT_DICTIONARY lists under "Company" —
+    // withCompanyHeader() only fills the STATIC header-zone fields
+    // (buildHeaderFields' own companyName/companyAddress/... dataSource
+    // keys); a field the user drags onto the report body and binds to one
+    // of these needs the plain rawInputs->resolveDataSources path instead,
+    // same as CART_DOC_DICTIONARY's own "Company" group already gets via
+    // buildInputsForCart (orderInputMapper.js).
+    rawInputs.companyName = company.name || "";
+    rawInputs.companyAddress = company.address || "";
+    rawInputs.companyGSTIN = company.gstin || "";
+    rawInputs.companyMobile = company.mobile || "";
+    rawInputs.companyEmail = company.email || "";
+    template = withCompanyHeader(template, company);
+  }
+
+  let resolvedInputs = resolveDataSources(template, rawInputs);
+  resolvedInputs = fillMissingInputsFromContent(template, resolvedInputs);
+  const visibleTemplate = applyConditionalVisibility(template, resolvedInputs);
+  return { resolvedInputs, visibleTemplate };
+}
+
 export const exportReportPdf = async (req, res) => {
   try {
     const { definition, company_masters_id, error } = await loadOwnedDefinition(req);
@@ -287,24 +327,13 @@ export const exportReportPdf = async (req, res) => {
       return resError({ developer_msg: "PDF template not found" });
     }
 
-    const columns = resolveDisplayColumns(definition, rows);
-    const tableRows = rows.length
-      ? rows.map((row) => columns.map((c) => (row[c.key] === undefined || row[c.key] === null ? "" : String(row[c.key]))))
-      : [columns.map(() => "")];
-
-    const rawInputs = {
-      reportTitle: definition.name,
-      reportTable: JSON.stringify(tableRows),
-      appliedFilters: buildAppliedFiltersSummary(definition, req),
-    };
-
-    let template = JSON.parse(templateRow.published_template_json);
-    const company = await resolveCompanyForPdf(company_masters_id);
-    if (company) template = withCompanyHeader(template, company);
-
-    let resolvedInputs = resolveDataSources(template, rawInputs);
-    resolvedInputs = fillMissingInputsFromContent(template, resolvedInputs);
-    const visibleTemplate = applyConditionalVisibility(template, resolvedInputs);
+    const { resolvedInputs, visibleTemplate } = await resolveReportInputsAndTemplate(
+      req,
+      definition,
+      company_masters_id,
+      rows,
+      templateRow.published_template_json,
+    );
 
     const pdfBytes = await generate({ template: visibleTemplate, inputs: [resolvedInputs], plugins: pluginMap, options: { font: fontMap } });
     const buffer = Buffer.from(pdfBytes);
@@ -317,6 +346,49 @@ export const exportReportPdf = async (req, res) => {
     return resSuccess({ data: { fileUrl, fileName, disposition: disposition === "inline" ? "inline" : "attachment" } });
   } catch (e) {
     console.error("exportReportPdf error:", e);
+    return resError({ developer_msg: `Failed to Catch ${e}` });
+  }
+};
+
+// Report Designer's own "Generate Preview" — mirrors
+// documentPrintTemplateServices.js's previewDocumentTemplate (draft, not
+// published; no file/disk write, base64 straight back) but against LIVE
+// report data instead of a cart/sample — a report has no fixed schema to
+// fake sample rows for, unlike the cart doc types' getSampleDataForPreview.
+export const previewReportPdf = async (req, res) => {
+  try {
+    const { definition, company_masters_id, error } = await loadOwnedDefinition(req);
+    if (error) return error;
+
+    const { template_id } = req.body || {};
+    if (!template_id) {
+      return resError({ developer_msg: "template_id is required" });
+    }
+
+    const runResult = await runDefinitionByType(definition, req, res);
+    if (runResult?.ack !== 1) return runResult;
+    const rows = runResult?.data?.rows || [];
+
+    const Template = documentPrintTemplateModel(req.tenantDB);
+    const templateRow = await Template.findOne({ where: { id: template_id, company_masters_id, isDelete: 0 } });
+    if (!templateRow) {
+      return resError({ developer_msg: "Template not found" });
+    }
+
+    const { resolvedInputs, visibleTemplate } = await resolveReportInputsAndTemplate(
+      req,
+      definition,
+      company_masters_id,
+      rows,
+      templateRow.draft_template_json,
+    );
+
+    const pdfBytes = await generate({ template: visibleTemplate, inputs: [resolvedInputs], plugins: pluginMap, options: { font: fontMap } });
+    const buffer = Buffer.from(pdfBytes);
+
+    return resSuccess({ data: { item: { pdfBase64: buffer.toString("base64") } } });
+  } catch (e) {
+    console.error("previewReportPdf error:", e);
     return resError({ developer_msg: `Failed to Catch ${e}` });
   }
 };
