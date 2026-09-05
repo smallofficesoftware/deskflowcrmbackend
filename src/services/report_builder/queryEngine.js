@@ -1035,6 +1035,36 @@ export const runQueryReport = async (definition, req) => {
       });
     }
 
+    // ---- Reassemble each row's keys in columns_json's own order. Every
+    // merge step above appends its own kind of column after the rest (base
+    // attributes first, then relation columns, then nested-relation
+    // columns, then derived columns) regardless of how the author
+    // interleaved them — so a picked order like [name, contact.label,
+    // amount] would otherwise always render as [name, amount,
+    // contact.label]. This is what makes the wizard's Step 4 column-reorder
+    // control (frontend, StepOrganize.tsx) actually take effect instead of
+    // only reordering within one kind of column. ----
+    const outputKeyForColumn = (c) => {
+      if (c.compute || c.case) return c.alias;
+      if (c.column.includes(".")) return c.column;
+      if (c.runningTotal) return c.alias || `running_${c.column}`;
+      if (c.aggregate) return c.alias || `${c.aggregate}_${c.column}`;
+      return c.column;
+    };
+    const orderedKeys = columns.map(outputKeyForColumn);
+    rows = rows.map((r) => {
+      const ordered = {};
+      orderedKeys.forEach((k) => {
+        if (k in r) ordered[k] = r[k];
+      });
+      // Anything not covered above (shouldn't normally happen) rides at
+      // the end rather than silently disappearing.
+      Object.keys(r).forEach((k) => {
+        if (!(k in ordered)) ordered[k] = r[k];
+      });
+      return ordered;
+    });
+
     return resSuccess({
       data: { rows, row_count: rows.length, duration_ms: Date.now() - startedAt },
       ack_msg: rows.length > 0 ? "Report data retrieved successfully" : "No data found",
