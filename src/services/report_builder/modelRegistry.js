@@ -1537,14 +1537,23 @@ export const listModelRegistry = async (tenantDB, company_masters_id) =>
                 // as its own pickable leaf without either table listing it
                 // by hand.
                 relations: subRelations
-                  ? Object.entries(subRelations).map(([subRelKey, subRelDef]) => ({
-                      key: `${relKey}.${subRelKey}`,
-                      label: subRelDef.label,
-                      columns: Object.entries(resolveRelationColumns(subRelDef)).map(([columnKey, columnDef]) => ({
-                        key: `${relKey}.${subRelKey}.${columnKey}`,
-                        ...columnDef,
-                      })),
-                    }))
+                  ? Object.entries(subRelations)
+                      // A "reverse" sub-relation (e.g. contacts.children — a
+                      // one-to-many self-relation) can't be chained at 2 hops
+                      // (queryEngine.js's own restriction, same reasoning:
+                      // the merge would need to aggregate a LIST of children's
+                      // own fields, not built). Excluded here too, so the
+                      // picker never offers something the engine will reject
+                      // the moment a column under it is actually run.
+                      .filter(([, subRelDef]) => subRelDef.matchMode !== "reverse")
+                      .map(([subRelKey, subRelDef]) => ({
+                        key: `${relKey}.${subRelKey}`,
+                        label: subRelDef.label,
+                        columns: Object.entries(resolveRelationColumns(subRelDef)).map(([columnKey, columnDef]) => ({
+                          key: `${relKey}.${subRelKey}.${columnKey}`,
+                          ...columnDef,
+                        })),
+                      }))
                   : [],
               };
             })
