@@ -732,6 +732,29 @@ const encodeProductImage = (relativePath) => {
   }
 };
 
+// Shared company-header resolution — same shape previewDocumentTemplate
+// builds inline below, exported so any OTHER pdfme-engine caller (e.g.
+// Report Builder's exportReportPdf) can pass real company branding into
+// withCompanyHeader() too instead of only Document Designer's cart docs.
+export async function resolveCompanyForPdf(company_masters_id) {
+  const companyRow = await companyModel.findOne({ where: { id: company_masters_id, isDelete: 0 } });
+  if (!companyRow) return null;
+
+  return {
+    id: companyRow.id,
+    name: companyRow.company_name,
+    address: companyRow.address,
+    gstin: companyRow.gst_number,
+    mobile: companyRow.printed_number,
+    email: companyRow.company_email,
+    headerImage: encodeCompanyImage(companyRow.header_img),
+    logoImage: encodeCompanyImage(companyRow.company_logo),
+    footerImage: encodeCompanyImage(companyRow.footer_img),
+    signImage: encodeCompanyImage(companyRow.company_sign),
+    watermark_in_print: companyRow.watermark_in_print,
+  };
+}
+
 // Generate Preview (§6) — renders the currently-open template's DRAFT (not
 // published), against either a real cart the designer picked or sample data
 // as the empty-state fallback. Never touches /order-pdf's real generation

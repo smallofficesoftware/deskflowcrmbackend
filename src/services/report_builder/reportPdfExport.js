@@ -8,25 +8,39 @@ import fs from "fs";
 import path from "path";
 import { generate } from "@pdfme/generator";
 import * as plugins from "@pdfme/schemas";
+import { customRectangle } from "../pdfmeEngine/customRectanglePlugin.js";
 import { documentPrintTemplateModel } from "../../models/company_setup/documentPrintTemplateModel.js";
 import { reportDefinitionModel } from "../../models/report_builder/reportDefinitionModel.js";
 import { EXPORTS_LINK_EXTENDED } from "../../utils/appConstants.js";
 import { exportData } from "../../utils/exporter.js";
 import { resError, resSuccess } from "../../utils/sharedFunctions.js";
-import { createDocumentTemplate } from "../company_setup/documentPrintTemplateServices.js";
+import { createDocumentTemplate, resolveCompanyForPdf } from "../company_setup/documentPrintTemplateServices.js";
 import { getCompanyByLoginId } from "../commonServices.js";
-import { tableField, textField } from "../pdfmeEngine/buildTemplate.js";
+import { buildDocTemplate, tableField, textField } from "../pdfmeEngine/buildTemplate.js";
 import { loadFonts } from "../pdfmeEngine/fonts.js";
 import {
   applyConditionalVisibility,
   fillMissingInputsFromContent,
   resolveDataSources,
 } from "../pdfmeEngine/orderInputMapper.js";
+import { withCompanyHeader } from "../pdfmeEngine/templates.js";
 import { getRegisteredModel } from "./modelRegistry.js";
 import { runDefinitionByType } from "./reportDefinitionServices.js";
 
 const fontMap = loadFonts();
-const pluginMap = { text: plugins.text, table: plugins.table, image: plugins.image };
+// Matches the report Designer's own plugin set (ReportPdfTemplateDesigner.tsx)
+// so a rectangle/ellipse/line/list field dragged onto the canvas there
+// actually renders here instead of generate() throwing on an unregistered type.
+const pluginMap = {
+  text: plugins.text,
+  table: plugins.table,
+  image: plugins.image,
+  rectangle: customRectangle,
+  ellipse: plugins.ellipse,
+  line: plugins.line,
+  list: plugins.list,
+};
+const A4_HEIGHT = 297;
 
 const reportDocType = (definitionId) => `report_${definitionId}`;
 
@@ -62,18 +76,31 @@ function resolveDisplayColumns(definition, rows = []) {
 // (buildTemplate.js's tableField helper doesn't default it the way
 // textField/imageField do) so a field renamed in the Designer still resolves
 // via resolveDataSources() below instead of silently going blank.
+//
+// basePdf (company header variant/logo/footer image + page-number field) is
+// NOT reinvented here — it's lifted straight off buildDocTemplate(), the same
+// builder Document Designer's cart docs use, so a report PDF gets the exact
+// same company-branding zone (and exportReportPdf's withCompanyHeader() call
+// below fills it with the real company, same as generateQuotationPdf does).
+// Only the BODY differs: buyer/items/HSN-totals/signature don't apply to a
+// generic rows+columns report, so the body stays just title+table.
 function buildDefaultReportTemplate(title, columns) {
   const colCount = Math.max(columns.length, 1);
   const widthPct = Array(colCount).fill(Number((100 / colCount).toFixed(2)));
 
+  const { basePdf } = buildDocTemplate(title, { headerVariant: "details", footerImage: false });
+  const [topPadding, , bottomPadding] = basePdf.padding;
+  const titleY = topPadding;
+  const tableY = titleY + 12;
+
   return {
-    basePdf: { width: 210, height: 297, padding: [15, 10, 15, 10] },
+    basePdf,
     schemas: [
       [
         textField({
           name: "reportTitle",
           dataSource: "reportTitle",
-          position: { x: 10, y: 10 },
+          position: { x: 10, y: titleY },
           width: 190,
           height: 8,
           fontSize: 13,
@@ -84,9 +111,9 @@ function buildDefaultReportTemplate(title, columns) {
         tableField({
           name: "reportTable",
           dataSource: "reportTable",
-          position: { x: 10, y: 22 },
+          position: { x: 10, y: tableY },
           width: 190,
-          height: 255,
+          height: Number((A4_HEIGHT - tableY - bottomPadding).toFixed(2)),
           showHead: true,
           head: columns.map((c) => c.label),
           headWidthPercentages: widthPct,
@@ -271,7 +298,10 @@ export const exportReportPdf = async (req, res) => {
       appliedFilters: buildAppliedFiltersSummary(definition, req),
     };
 
-    const template = JSON.parse(templateRow.published_template_json);
+    let template = JSON.parse(templateRow.published_template_json);
+    const company = await resolveCompanyForPdf(company_masters_id);
+    if (company) template = withCompanyHeader(template, company);
+
     let resolvedInputs = resolveDataSources(template, rawInputs);
     resolvedInputs = fillMissingInputsFromContent(template, resolvedInputs);
     const visibleTemplate = applyConditionalVisibility(template, resolvedInputs);
