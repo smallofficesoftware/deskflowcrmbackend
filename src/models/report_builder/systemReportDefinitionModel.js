@@ -41,6 +41,9 @@ const systemReportDefinitionModel = sequelize.define("system_report_definitions"
   priority: {
     type: ENUM("critical", "high", "normal"),
   },
+  icon: {
+    type: STRING,
+  },
   display_order: {
     type: INTEGER,
     defaultValue: 0,

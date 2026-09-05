@@ -65,7 +65,7 @@ export const listSystemReportDefinitions = async (req) => {
 
     const rows = await systemReportDefinitionModel.findAll({
       where,
-      attributes: ["id", "name", "type", "category", "description", "priority", "display_order"],
+      attributes: ["id", "name", "type", "category", "description", "priority", "icon", "display_order"],
       order: [["display_order", "ASC"], ["id", "ASC"]],
     });
 
@@ -103,6 +103,7 @@ export const copyFromSystemReportDefinition = async (req) => {
     req.body.group_by_json = systemDefinition.group_by_json;
     req.body.filters_to_show = systemDefinition.filters_to_show;
     req.body.description = systemDefinition.description;
+    req.body.icon = systemDefinition.icon;
     req.body.source_system_report_definition_id = systemDefinition.id;
     req.body.__skipCreateAuditLog = true;
 
