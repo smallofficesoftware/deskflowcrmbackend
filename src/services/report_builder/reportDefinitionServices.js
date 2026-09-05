@@ -823,6 +823,21 @@ export const listRunnableReportDefinitions = async (req) => {
       // array (no per-column flags exist there), so this is always empty
       // for that type.
       let hidden_grid_columns = [];
+      // column_formats: bare display-key -> {date?, decimals?, thousands?,
+      // currencySymbol?} for whichever picks the author set a format on —
+      // same "just the bare keys ReportRunnerView.tsx needs, no other
+      // columns_json internals ride along" boundary as hidden_grid_columns
+      // above. resolveDisplayKey mirrors queryEngine.js's own
+      // outputKeyForColumn exactly, so a key here always matches the same
+      // key runQueryReport's own row-reassembly pass produces.
+      let column_formats = {};
+      const resolveDisplayKey = (c) => {
+        if (c.compute || c.case) return c.alias;
+        if (c.column && c.column.includes(".")) return c.column;
+        if (c.runningTotal) return c.alias || `running_${c.column}`;
+        if (c.aggregate) return c.alias || `${c.aggregate}_${c.column}`;
+        return c.column;
+      };
       if (plain.type === "query") {
         try {
           const cols = JSON.parse(plain.columns_json || "[]");
@@ -830,14 +845,20 @@ export const listRunnableReportDefinitions = async (req) => {
             hidden_grid_columns = cols
               .filter((c) => c && typeof c === "object" && c.showInGrid === false)
               .map((c) => (c.aggregate ? c.alias || `${c.aggregate}_${c.column}` : c.column));
+            cols.forEach((c) => {
+              if (c && typeof c === "object" && c.format && Object.keys(c.format).length > 0) {
+                column_formats[resolveDisplayKey(c)] = c.format;
+              }
+            });
           }
         } catch {
           hidden_grid_columns = [];
+          column_formats = {};
         }
       }
       delete plain.columns_json;
 
-      return { ...plain, is_aggregated, group_by_columns, hidden_grid_columns };
+      return { ...plain, is_aggregated, group_by_columns, hidden_grid_columns, column_formats };
     };
 
     const owner = await isCompanyOwner(a_application_login_id, company_masters_id);
