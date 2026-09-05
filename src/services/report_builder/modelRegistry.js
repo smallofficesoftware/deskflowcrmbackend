@@ -49,7 +49,12 @@ import { sourceTypesModel } from "../../models/masters/sourceTypeMode.js";
 import { stagestatusModel } from "../../models/masters/stagestatusModel.js";
 import { taskCategoryModel } from "../../models/masters/taskCategoryModel.js";
 import { customFieldFormModel } from "../../models/other_settings/customFieldFormModel.js";
+import { JobCardsModel } from "../../models/production/JobCardsModel.js";
+import { productionTransactionModel } from "../../models/production/productionTransactionModel.js";
+import { productionTransactionsItemsModel } from "../../models/production/productionTransactionsItemsModel.js";
 import { categoryModel } from "../../models/product_settings/categoryModel.js";
+import { bomVsProcessVsConsAndRejctsModel } from "../../models/product_settings/bomProcessVsConsAndRejctsModel.js";
+import { bomVsProcessListsModel } from "../../models/product_settings/bomVsProcessListsModel.js";
 import { productModel } from "../../models/product_settings/productModel.js";
 
 // COUNT needs a real column to wrap (fn("COUNT", col("id"))) — every table
@@ -1209,6 +1214,220 @@ export const MODEL_REGISTRY = {
         columns: {
           product_name: PRODUCT_COLUMNS.product_name,
         },
+      },
+    },
+  },
+
+  // ---- Production / BOM (previously "no registered data source at all"
+  // per the plan's Step 1 audit) — 5 real tables covering the bulk of the
+  // PDF's 9 Production/BOM report titles: job_cards (Job Card Performance),
+  // production_transactions (Production Summary/Efficiency/Rejection),
+  // production_transaction_items (Material Consumption), bom_vs_process_lists
+  // (BOM Cost Analysis), bom_process_vs_cons_rejcts (the BOM "recipe" —
+  // standard qty per material, the other side of a real Material Variance
+  // report; the variance CALCULATION itself — actual vs standard — isn't
+  // built here, just the two tables it would need). ----
+  job_cards: {
+    label: "Job Cards",
+    getModel: (tenantDB) => JobCardsModel(tenantDB),
+    columns: {
+      job_card_type: { label: "Job Card Type", type: "lookup", filterable: true, sortable: false, groupable: true },
+      production_qty: { label: "Production Qty", type: "number", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      status_id: { label: "Status", type: "lookup", filterable: true, sortable: false, groupable: true },
+      contact_id: { label: "Contact", type: "lookup", filterable: true, sortable: false, groupable: true },
+      created_date_time: { label: "Created Date", type: "date", filterable: true, sortable: true, groupable: false },
+      // CSV-of-ids (same convention task_managements.label_id / contacts.lable use).
+      label_ids: { label: "Labels (has label)", type: "csv", filterable: true, sortable: false, groupable: false },
+      team_assign_ids: { label: "Assigned To (has member)", type: "csv", filterable: true, sortable: false, groupable: false },
+      ...COUNT_COLUMN,
+    },
+    generalFilters: {
+      1: "created_date_time",
+      2: "label_ids",
+      4: "status_id",
+      9: "team_assign_ids",
+      18: "contact_id",
+    },
+    relations: {
+      product: {
+        label: "Product",
+        foreignKey: "item_id",
+        getModel: (tenantDB) => productModel(tenantDB),
+        targetKey: "id",
+        columns: { product_name: PRODUCT_COLUMNS.product_name },
+      },
+      contact: {
+        label: "Contact",
+        foreignKey: "contact_id",
+        getModel: (tenantDB) => contactModel(tenantDB),
+        targetKey: "id",
+        modelKey: "contacts",
+      },
+      status: {
+        label: "Status",
+        foreignKey: "status_id",
+        getModel: (tenantDB) => stagestatusModel(tenantDB),
+        targetKey: "id",
+        columns: {
+          name: { label: "Status Name", type: "string" },
+          color: { label: "Status Colour", type: "string" },
+        },
+      },
+      labels: {
+        label: "Labels",
+        matchMode: "csv",
+        foreignKey: "label_ids",
+        getModel: (tenantDB) => labelModel(tenantDB),
+        targetKey: "id",
+        columns: {
+          lable_name: { label: "Label Names", type: "string" },
+          color: { label: "Label Colours", type: "string" },
+        },
+      },
+      assignedTeamMembers: {
+        label: "Assigned To",
+        matchMode: "csv",
+        foreignKey: "team_assign_ids",
+        getModel: () => loginModel,
+        targetKey: "id",
+        columns: { username: { label: "Assigned Names", type: "string" } },
+      },
+    },
+  },
+
+  production_transactions: {
+    label: "Production Runs",
+    getModel: (tenantDB) => productionTransactionModel(tenantDB),
+    columns: {
+      date: { label: "Production Date", type: "date", filterable: true, sortable: true, groupable: false },
+      production_qty: { label: "Production Qty", type: "number", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      consumption_qty: { label: "Consumption Qty", type: "number", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      rejection_qty: { label: "Rejection Qty", type: "number", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      production_item_id: { label: "Product", type: "lookup", filterable: true, sortable: false, groupable: true },
+      bom_id: { label: "BOM", type: "lookup", filterable: true, sortable: false, groupable: true },
+      team_member: { label: "Team Member", type: "lookup", filterable: true, sortable: false, groupable: true },
+      remark: { label: "Remark", type: "string", filterable: true, sortable: false, groupable: false },
+      ...COUNT_COLUMN,
+    },
+    generalFilters: {
+      1: "date",
+      5: "team_member",
+      9: "team_member",
+      7: "production_item_id",
+    },
+    relations: {
+      product: {
+        label: "Product",
+        foreignKey: "production_item_id",
+        getModel: (tenantDB) => productModel(tenantDB),
+        targetKey: "id",
+        columns: { product_name: PRODUCT_COLUMNS.product_name },
+      },
+      employee: {
+        label: "Team Member",
+        foreignKey: "team_member",
+        getModel: () => loginModel,
+        targetKey: "id",
+        columns: { username: { label: "Team Member", type: "string" } },
+      },
+    },
+  },
+
+  // Per-material line items of a production run — entry_type distinguishes
+  // consumption (2) from rejection (1), confirmed in the model's own
+  // comment. Same "header + items" split carts/cart_items already use.
+  production_transaction_items: {
+    label: "Production Material Usage",
+    getModel: (tenantDB) => productionTransactionsItemsModel(tenantDB),
+    columns: {
+      entry_type: { label: "Entry Type", type: "lookup", filterable: true, sortable: false, groupable: true },
+      qty: { label: "Quantity", type: "number", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      item_id: { label: "Material", type: "lookup", filterable: true, sortable: false, groupable: true },
+      warehouse: { label: "Warehouse", type: "lookup", filterable: true, sortable: false, groupable: true },
+      process_id: { label: "Process", type: "lookup", filterable: true, sortable: false, groupable: true },
+      bom_id: { label: "BOM", type: "lookup", filterable: true, sortable: false, groupable: true },
+      production_id: { label: "Production Run", type: "lookup", filterable: true, sortable: false, groupable: true },
+      created_date_time: { label: "Date", type: "date", filterable: true, sortable: true, groupable: false },
+      ...COUNT_COLUMN,
+    },
+    generalFilters: {
+      1: "created_date_time",
+      7: "item_id",
+      16: "warehouse",
+    },
+    relations: {
+      product: {
+        label: "Material",
+        foreignKey: "item_id",
+        getModel: (tenantDB) => productModel(tenantDB),
+        targetKey: "id",
+        columns: { product_name: PRODUCT_COLUMNS.product_name },
+      },
+    },
+  },
+
+  // BOM's per-process cost assignment (workstation, process cost, manpower
+  // cost) — real columns behind "BOM Cost Analysis". No BOM-name column
+  // exists on this table itself (bom_id is a bare id, no master-BOM table
+  // found with a name column) — reportable by id/product for now.
+  bom_process_costs: {
+    label: "BOM Process Costs",
+    getModel: (tenantDB) => bomVsProcessListsModel(tenantDB),
+    columns: {
+      bom_id: { label: "BOM", type: "lookup", filterable: true, sortable: false, groupable: true },
+      product_id: { label: "Product", type: "lookup", filterable: true, sortable: false, groupable: true },
+      process_id: { label: "Process", type: "lookup", filterable: true, sortable: false, groupable: true },
+      workstation_id: { label: "Workstation", type: "lookup", filterable: true, sortable: false, groupable: true },
+      required_time: { label: "Required Time", type: "string", filterable: false, sortable: false, groupable: false },
+      process_cost: { label: "Process Cost", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      manpower_cost: { label: "Manpower Cost", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      ...COUNT_COLUMN,
+    },
+    relations: {
+      product: {
+        label: "Product",
+        foreignKey: "product_id",
+        getModel: (tenantDB) => productModel(tenantDB),
+        targetKey: "id",
+        columns: { product_name: PRODUCT_COLUMNS.product_name },
+      },
+    },
+  },
+
+  // BOM's "recipe" — standard material qty per finished product/process,
+  // type distinguishing a consumption norm from a rejection allowance (same
+  // 1/2 convention production_transaction_items.entry_type documents). The
+  // other half of a real Material Variance report (actual side is
+  // production_transaction_items above) — the variance calc itself isn't
+  // built, just both tables it needs.
+  bom_material_norms: {
+    label: "BOM Material Norms",
+    getModel: (tenantDB) => bomVsProcessVsConsAndRejctsModel(tenantDB),
+    columns: {
+      bom_id: { label: "BOM", type: "lookup", filterable: true, sortable: false, groupable: true },
+      master_product_id: { label: "Finished Product", type: "lookup", filterable: true, sortable: false, groupable: true },
+      process_id: { label: "Process", type: "lookup", filterable: true, sortable: false, groupable: true },
+      type: { label: "Norm Type", type: "lookup", filterable: true, sortable: false, groupable: true },
+      item_id: { label: "Material", type: "lookup", filterable: true, sortable: false, groupable: true },
+      qty: { label: "Standard Qty", type: "number", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      is_reusable: { label: "Reusable", type: "lookup", filterable: true, sortable: false, groupable: true },
+      remark: { label: "Remark", type: "string", filterable: true, sortable: false, groupable: false },
+      ...COUNT_COLUMN,
+    },
+    relations: {
+      material: {
+        label: "Material",
+        foreignKey: "item_id",
+        getModel: (tenantDB) => productModel(tenantDB),
+        targetKey: "id",
+        columns: { product_name: PRODUCT_COLUMNS.product_name },
+      },
+      finishedProduct: {
+        label: "Finished Product",
+        foreignKey: "master_product_id",
+        getModel: (tenantDB) => productModel(tenantDB),
+        targetKey: "id",
+        columns: { product_name: PRODUCT_COLUMNS.product_name },
       },
     },
   },
