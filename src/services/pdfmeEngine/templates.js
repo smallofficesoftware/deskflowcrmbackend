@@ -131,7 +131,11 @@ export function withCompanyHeader(template, company) {
   const addressLine = `Address: ${company.address}\n${contactLine}`;
   const combinedBlock = `${company.name}\n${addressLine}`;
 
-  cloned.basePdf.staticSchema = cloned.basePdf.staticSchema.map((field) => {
+  // A Report Builder bootstrap template (buildDefaultReportTemplate) has no
+  // header/footer overlay fields baked into basePdf at all — nothing to
+  // substitute company info into, so this is correctly a no-op for those,
+  // not a crash (cart-type templates always have a real staticSchema).
+  cloned.basePdf.staticSchema = (cloned.basePdf.staticSchema || []).map((field) => {
     // dataSource, not name — a renamed duplicate of e.g. companyName should
     // still receive the real company name. Falls back to `field.name` for
     // templates saved before dataSource existed.
