@@ -11,6 +11,7 @@ import { resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { getCached, setCached } from "../../utils/simpleCache.js";
 import { logAuditEvent } from "../company_setup/auditLogServices.js";
 import { getCompanyByLoginId } from "../commonServices.js";
+import { getRegisteredModel } from "./modelRegistry.js";
 import { runDefinitionByType } from "./reportDefinitionServices.js";
 
 const now = () => moment(new Date()).format("YYYY-MM-DD HH:mm:ss");
@@ -31,6 +32,36 @@ const DASHBOARD_WIDGET_CACHE_TTL_MS = 45000;
 // HARD_ROW_LIMIT)`) — no queryEngine.js change needed, just override it
 // here before calling runDefinitionByType.
 const DASHBOARD_WIDGET_ROW_LIMIT = 500;
+
+// Dashboard-level "Date Range"/"Team Member" filter — the exact same
+// slot 1 / slot 5·9 convention modelRegistry.js's own generalFilters
+// already uses for CheckBoxFilterModal/generalFilterAdapter.ts on
+// individual report run screens (frontend's translateGeneralFilters),
+// just resolved here server-side per widget (a widget's report can be a
+// different model_key than its dashboard neighbor, each with its own
+// generalFilters mapping) instead of needing the full model registry
+// shipped to the dashboard canvas. Query-type only — composite/plugin
+// definitions have no model_key-based generalFilters concept.
+function buildDashboardScopeFilters(definition, dateRange, teamMemberIds) {
+  if (definition.type !== "query" || !definition.model_key) return [];
+  const registryEntry = getRegisteredModel(definition.model_key);
+  if (!registryEntry) return [];
+
+  const filters = [];
+  const dateColumn = registryEntry.generalFilters?.[1];
+  if (typeof dateColumn === "string") {
+    if (dateRange?.start) filters.push({ column: dateColumn, op: "gte", value: dateRange.start });
+    if (dateRange?.end) filters.push({ column: dateColumn, op: "lte", value: dateRange.end });
+  }
+
+  const teamColumn = registryEntry.generalFilters?.[5] || registryEntry.generalFilters?.[9];
+  if (typeof teamColumn === "string" && Array.isArray(teamMemberIds) && teamMemberIds.length > 0) {
+    const columnType = registryEntry.columns?.[teamColumn]?.type;
+    filters.push({ column: teamColumn, op: columnType === "csv" ? "findInSet" : "in", value: teamMemberIds });
+  }
+
+  return filters;
+}
 
 async function loadOwnedDashboard(req) {
   const { id } = req.params || {};
@@ -341,6 +372,13 @@ export const runDashboard = async (req, res) => {
     const { dashboard, company_masters_id, error } = await loadOwnedDashboard(req);
     if (error) return error;
 
+    // { start?: "YYYY-MM-DD", end?: "YYYY-MM-DD" } and a plain login-id
+    // array — same shapes CheckBoxFilterModal's date pickers/team
+    // multiselect already submit, just applied dashboard-wide instead of
+    // to one report.
+    const { dateRange, teamMemberIds } = req.body || {};
+    const scopeKey = JSON.stringify({ dateRange: dateRange || null, teamMemberIds: teamMemberIds || [] });
+
     const Widget = dashboardWidgetModel(req.tenantDB);
     const widgets = await Widget.findAll({
       where: { dashboard_id: dashboard.id, isDelete: 0, isActive: 1 },
@@ -376,10 +414,13 @@ export const runDashboard = async (req, res) => {
         continue;
       }
 
-      const cacheKey = `dashboard_widget:${company_masters_id}:${definition.id}`;
+      // Scope (date range/team) rides in the cache key — a different
+      // selection must never serve another selection's cached rows.
+      const cacheKey = `dashboard_widget:${company_masters_id}:${definition.id}:${scopeKey}`;
       let result = getCached(cacheKey);
       if (!result) {
-        const runReq = { ...req, body: { ...req.body, limit: DASHBOARD_WIDGET_ROW_LIMIT, offset: 0, filters: undefined } };
+        const scopeFilters = buildDashboardScopeFilters(definition, dateRange, teamMemberIds);
+        const runReq = { ...req, body: { ...req.body, limit: DASHBOARD_WIDGET_ROW_LIMIT, offset: 0, filters: scopeFilters } };
         result = await runDefinitionByType(definition, runReq, res);
         if (result?.ack === 1) setCached(cacheKey, result, DASHBOARD_WIDGET_CACHE_TTL_MS);
       }
