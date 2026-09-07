@@ -1,10 +1,28 @@
 import fs from "fs";
 import path from "path";
+import companyModel from "../../../models/company_setup/companyModel.js";
+import currencyModel from "../../../models/configuration/currencyModel.js";
 import { EXPORTS_LINK_EXTENDED } from "../../../utils/appConstants.js";
 import { exportData } from "../../../utils/exporter.js";
 import { resError, resSuccess } from "../../../utils/sharedFunctions.js";
 import { getCompanyByLoginId } from "../../commonServices.js";
 import { reportExportRegistry } from "./reportExportRegistry.js";
+
+// One lookup per export, not per cell — resolves the company's own
+// currency_id (companyModel, master DB) to its symbol (currencyModel,
+// master DB, same relation modelRegistry.js's carts.currency already
+// uses). Falls back to "" (no symbol prefix) rather than failing the
+// whole export if the company has no currency set.
+const resolveCurrencySymbol = async (company_masters_id) => {
+  try {
+    const company = await companyModel.findOne({ where: { id: company_masters_id, isDelete: 0 }, attributes: ["currency_id"] });
+    if (!company?.currency_id) return "";
+    const currency = await currencyModel.findOne({ where: { id: company.currency_id, isDelete: 0 }, attributes: ["symbol"] });
+    return currency?.symbol || "";
+  } catch {
+    return "";
+  }
+};
 
 const PAGE_LIMIT = 1000;
 
@@ -125,6 +143,15 @@ export const exportReportExcel = async (req) => {
 
     const keys = columns.map((c) => c.key);
     const headers = Object.fromEntries(columns.map((c) => [c.key, c.label]));
+    // "date"/"number"/"currency" columns get a real typed cell + numFmt in
+    // exporter.js; a column with no `format` (every existing caller, and
+    // any string/lookup column here) keeps today's exact stringified
+    // behavior. Only resolve the company's currency symbol when at least
+    // one column actually needs it - one extra query, not on every export.
+    const columnFormats = Object.fromEntries(columns.filter((c) => c.format).map((c) => [c.key, c.format]));
+    const currencySymbol = Object.values(columnFormats).includes("currency")
+      ? await resolveCurrencySymbol(findCompanyId.company_masters_id)
+      : "";
 
     const uploadDir = ensureUploadDir(
       `media-folder/exports/reports/${findCompanyId.company_masters_id}`,
@@ -136,6 +163,8 @@ export const exportReportExcel = async (req) => {
       headers,
       autoDownload: false,
       outputDir: uploadDir,
+      columnFormats: Object.keys(columnFormats).length > 0 ? columnFormats : undefined,
+      currencySymbol,
     });
     if (!savedFile) {
       return resError({ developer_msg: "Failed to generate Excel export" });

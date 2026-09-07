@@ -19,6 +19,7 @@ import {
   reorderDocumentTemplates,
   restoreTemplateVersion,
   setDefaultDocumentTemplate,
+  testRunDocumentTemplate,
   updateDocumentTemplate,
 } from "../../services/company_setup/documentPrintTemplateServices.js";
 import callServiceMethod from "../baseController.js";
@@ -93,6 +94,10 @@ export const listSystemTemplatesController = async (req, res) => {
 
 export const copyFromSystemTemplateController = async (req, res) => {
   await callServiceMethod(req, res, copyFromSystemTemplate(req), "copyFromSystemTemplate");
+};
+
+export const testRunDocumentTemplateController = async (req, res) => {
+  await callServiceMethod(req, res, testRunDocumentTemplate(req), "testRunDocumentTemplate");
 };
 
 export const previewDocumentTemplateController = async (req, res) => {

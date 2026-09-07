@@ -272,7 +272,30 @@ const CART_CUSTOM_FIELD_FORM_TYPE_BY_DOC_TYPE = {
 };
 const PRODUCT_CUSTOM_FIELD_FORM_TYPE = 4;
 
+// Report Builder's doc_type is dynamic — "report_" + report_definition_id
+// (reportPdfExport.js's reportDocType()), one per report, not a fixed
+// registrable id like the cart-shaped types above. Same bindable set for
+// every report (reportPdfExport.js's rawInputs: reportTitle/reportTable/
+// appliedFilters, plus the company fields it also now feeds in alongside
+// withCompanyHeader's static-field injection) — no per-report customization
+// needed since a report's OWN columns render inside the single reportTable
+// field, not as individually bindable keys.
+const REPORT_DICTIONARY = [
+  { key: "reportTitle", label: "Report Title", group: "Report" },
+  { key: "reportTable", label: "Report Table", group: "Report" },
+  { key: "appliedFilters", label: "Applied Filters", group: "Report" },
+  { key: "companyName", label: "Company Name", group: "Company" },
+  { key: "companyAddress", label: "Company Address", group: "Company" },
+  { key: "companyGSTIN", label: "Company GSTIN", group: "Company" },
+  { key: "companyMobile", label: "Company Mobile", group: "Company" },
+  { key: "companyEmail", label: "Company Email", group: "Company" },
+];
+
 export async function buildDataDictionary(req, doc_type) {
+  if (doc_type.startsWith("report_")) {
+    return REPORT_DICTIONARY;
+  }
+
   const base = DICTIONARY_BY_DOC_TYPE[doc_type];
   if (!base) {
     throw new Error(`No data dictionary registered for doc_type: ${doc_type}`);

@@ -1,8 +1,8 @@
 import { col, fn, Op, where as sequelizeWhere } from "sequelize";
-import { getUserRights } from "../../helpers/rightsHelper.js";
 import { resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { getCompanyByLoginId } from "../commonServices.js";
-import { getRegisteredModel, resolveDynamicColumns } from "./modelRegistry.js";
+import { buildChainWhere, getReportDataScope } from "./dataScopeService.js";
+import { getRegisteredModel, resolveDynamicColumns, resolveRelationColumns, resolveRelationRelations } from "./modelRegistry.js";
 
 const HARD_ROW_LIMIT = 5000; // absolute ceiling regardless of what's requested
 const DEFAULT_ROW_LIMIT = 500;
@@ -158,11 +158,11 @@ export const runQueryReport = async (definition, req) => {
     if (!definition.page_id) {
       throw new Error(`report_definitions row ${definition.id} has no page_id`);
     }
-    const { showAllData, showPersonalData } = await getUserRights({
-      company_masters_id: resolvedCompanyId,
+    const { scope } = await getReportDataScope({
+      report_definition_id: definition.id,
       a_application_login_id,
-      page_id: definition.page_id,
-      tenentId: req.tenantDB,
+      company_masters_id: resolvedCompanyId,
+      tenantDB: req.tenantDB,
     });
 
     // Per-company dynamic custom-field columns, merged into a LOCAL copy —
@@ -171,8 +171,19 @@ export const runQueryReport = async (definition, req) => {
     const dynamicColumns = await resolveDynamicColumns(req.tenantDB, resolvedCompanyId, registryEntry.customFieldFormType);
     const effectiveColumns = { ...registryEntry.columns, ...dynamicColumns };
 
-    const columns = JSON.parse(definition.columns_json || "[]");
-    const groupBy = JSON.parse(definition.group_by_json || "[]");
+    // Drill Down (Step 9) — req.body.suppressGroupBy:true reuses this
+    // exact SAME "no group_by" code path every ungrouped query-type report
+    // already exercises correctly, for one request, without touching the
+    // GROUP BY machinery's internals at all: groupBy simply comes back
+    // empty (so sqlGroupColumns/csvGroupColumn naturally stay empty/null
+    // downstream, no separate branch needed), and each column's own
+    // `aggregate` is stripped so SUM/AVG/etc. don't collapse the result
+    // back down to one row per FN() with no GROUP BY to pair it with —
+    // the whole point is the underlying raw rows a grouped/aggregated row
+    // was built from, not another aggregate.
+    const suppressGroupBy = req.body?.suppressGroupBy === true;
+    const columns = JSON.parse(definition.columns_json || "[]").map((c) => (suppressGroupBy ? { ...c, aggregate: undefined } : c));
+    const groupBy = suppressGroupBy ? [] : JSON.parse(definition.group_by_json || "[]");
     // Per-run filter override — the saved definition's own filters_json,
     // PLUS whatever the caller passes at run time (req.body.filters, same
     // {column,op,value}/{column,having,op,value}/{column,childFilters}
@@ -187,7 +198,11 @@ export const runQueryReport = async (definition, req) => {
     // type definitions never had (runDefinitionByType already merges
     // req.body over a plugin's own saved filters_json the same way).
     const runtimeFilters = Array.isArray(req.body?.filters) ? req.body.filters : [];
-    const filters = [...JSON.parse(definition.filters_json || "[]"), ...runtimeFilters];
+    // A having-filter targets a computedAlias (an aggregate) that no
+    // longer exists once suppressGroupBy has stripped every column's
+    // aggregate above — dropped here rather than left to throw, since a
+    // drill-down request legitimately has nothing to filter it against.
+    const filters = [...JSON.parse(definition.filters_json || "[]"), ...runtimeFilters].filter((f) => !(suppressGroupBy && f.having));
 
     // Relation-required filters — "drop this row if its relation lookup
     // found nothing" (e.g. categorySalesPurchaseServices.js's NOT EXISTS
@@ -211,6 +226,15 @@ export const runQueryReport = async (definition, req) => {
     // target — same "throws like any unwhitelisted column" behavior). ----
     const baseColumns = [];
     const relationColumns = [];
+    // Two-hop relation columns — "relKey.subRelKey.subColKey" (e.g.
+    // "contact.label.lable_name"). Only reachable through a modelKey-backed,
+    // plain-scalar level-1 relation (see resolveRelationRelations) — chaining
+    // off a csv/reverse relation isn't supported, same v1 restriction the
+    // single-hop relation-filter code already applies. Resolved below as one
+    // MORE batched fetch on top of the level-1 relation's own, keyed off the
+    // level-1 target row's own foreignKey — no Sequelize `include`, same
+    // "one batched query + JS Map merge" convention as everywhere else here.
+    const nestedRelationColumns = [];
     // Computed columns — {compute:{op,left,right}, alias} instead of
     // {column,...} — pulled out here so the base/relation loop below never
     // has to special-case them. left/right are validated against what's
@@ -243,12 +267,28 @@ export const runQueryReport = async (definition, req) => {
         continue;
       }
       if (c.column.includes(".")) {
-        const [relKey, relColKey] = c.column.split(".");
+        const parts = c.column.split(".");
+        const [relKey, ...rest] = parts;
         const relDef = registryEntry.relations && registryEntry.relations[relKey];
         if (!relDef) throw new Error(`Relation "${relKey}" is not whitelisted for this report source`);
-        if (!relDef.columns[relColKey]) throw new Error(`Relation column "${c.column}" is not whitelisted`);
         if (c.aggregate) throw new Error(`Relation column "${c.column}" does not support aggregates`);
-        relationColumns.push({ relKey, relColKey });
+        if (rest.length === 1) {
+          const targetColumns = resolveRelationColumns(relDef);
+          if (!targetColumns[rest[0]]) throw new Error(`Relation column "${c.column}" is not whitelisted`);
+          relationColumns.push({ relKey, relColKey: rest[0] });
+        } else if (rest.length === 2) {
+          const [subRelKey, subColKey] = rest;
+          if (relDef.matchMode) throw new Error(`Relation "${relKey}" does not support nested (two-hop) columns — only a plain scalar relation can be chained`);
+          const subRelations = resolveRelationRelations(relDef);
+          const subRelDef = subRelations && subRelations[subRelKey];
+          if (!subRelDef) throw new Error(`Relation "${relKey}.${subRelKey}" is not whitelisted for this report source`);
+          if (subRelDef.matchMode === "reverse") throw new Error(`Relation "${relKey}.${subRelKey}" does not support nested display (reverse relations aren't chainable)`);
+          const subTargetColumns = resolveRelationColumns(subRelDef);
+          if (!subTargetColumns[subColKey]) throw new Error(`Relation column "${c.column}" is not whitelisted`);
+          nestedRelationColumns.push({ relKey, relDef, subRelKey, subRelDef, subColKey });
+        } else {
+          throw new Error(`Relation column "${c.column}" is nested too deeply (max two hops)`);
+        }
       } else {
         baseColumns.push(c);
       }
@@ -352,6 +392,33 @@ export const runQueryReport = async (definition, req) => {
         attributes.push(c.column);
       }
     }
+    // ---- Lookup-label auto-resolve (Step 2's "show as label" format
+    // option) — a base lookup column whose columns_json entry carries
+    // format.labelRelation ("relKey.subColKey") gets its DISPLAY VALUE
+    // replaced by that relation's own column, under the SAME key (never a
+    // new dotted key — this is presentation of the same field, not an
+    // additional one). Restricted to a plain scalar relation (no
+    // matchMode) whose foreignKey matches this exact base column, same
+    // shape the frontend's own picker (StepColumns.tsx/ColumnFormatMini.tsx)
+    // already restricts itself to — re-validated here since format is
+    // author-authored data, never trusted blindly. Invalid/stale
+    // labelRelation values are silently ignored (falls back to the raw
+    // value) rather than thrown — a renamed/removed relation shouldn't
+    // break the whole report over a presentation preference. ----
+    const labelRelationSpecs = [];
+    for (const c of baseColumns) {
+      const labelRelation = c.format?.labelRelation;
+      if (!labelRelation || typeof labelRelation !== "string" || !labelRelation.includes(".")) continue;
+      const dotIndex = labelRelation.indexOf(".");
+      const relKey = labelRelation.slice(0, dotIndex);
+      const subColKey = labelRelation.slice(dotIndex + 1);
+      const relDef = registryEntry.relations && registryEntry.relations[relKey];
+      if (!relDef || relDef.matchMode || relDef.foreignKey !== c.column) continue;
+      const targetColumns = resolveRelationColumns(relDef);
+      if (!targetColumns[subColKey]) continue;
+      labelRelationSpecs.push({ baseColumn: c.column, relKey, subColKey });
+    }
+
     if (csvGroupColumn) {
       rawFetchColumns.add(csvGroupColumn);
       sqlGroupColumns.forEach((g) => rawFetchColumns.add(g));
@@ -376,7 +443,7 @@ export const runQueryReport = async (definition, req) => {
     // for validating a relationRequired filter's relKey/matchMode, this is
     // only eager-fetch discovery for the ones that turn out valid.
     const validRelationRequiredKeys = [...relationRequiredKeys].filter((k) => registryEntry.relations && registryEntry.relations[k]);
-    const usedRelationKeys = [...new Set([...relationColumns.map((c) => c.relKey), ...validRelationRequiredKeys])];
+    const usedRelationKeys = [...new Set([...relationColumns.map((c) => c.relKey), ...nestedRelationColumns.map((c) => c.relKey), ...validRelationRequiredKeys, ...labelRelationSpecs.map((s) => s.relKey)])];
     const injectedFkColumns = [];
     for (const relKey of usedRelationKeys) {
       const foreignKey = registryEntry.relations[relKey].foreignKey;
@@ -401,6 +468,7 @@ export const runQueryReport = async (definition, req) => {
       ...explicitlySelectedBaseColumns,
       ...computedAliases,
       ...relationColumns.map((c) => `${c.relKey}.${c.relColKey}`),
+      ...nestedRelationColumns.map((c) => `${c.relKey}.${c.subRelKey}.${c.subColKey}`),
     ]);
     const requireAvailable = (fieldName, aliasBeingDefined) => {
       if (!availableFields.has(fieldName)) {
@@ -614,12 +682,41 @@ export const runQueryReport = async (definition, req) => {
 
     // ---- rights-based scope — fail closed, never fall back to unscoped ----
     let rightsWhere = {};
-    if (showAllData) {
+    if (scope === "all") {
       rightsWhere = { company_masters_id: resolvedCompanyId };
-    } else if (showPersonalData) {
+    } else if (scope === "own") {
       rightsWhere = { company_masters_id: resolvedCompanyId, a_application_login_id };
+    } else if (scope === "chain") {
+      rightsWhere = await buildChainWhere({
+        model_key: definition.model_key,
+        tenantDB: req.tenantDB,
+        company_masters_id: resolvedCompanyId,
+        a_application_login_id,
+      });
     } else {
-      return resError({ ack_msg: "No access to this report", developer_msg: "User has neither showAllData nor showPersonalData rights" });
+      return resError({ ack_msg: "No access to this report", developer_msg: "No report_definition_team_rights grant for this login on this report" });
+    }
+
+    // ---- free-text search — deliberately narrower than the legacy
+    // globalSearch convention (inquiryReportServices.js etc.), which
+    // introspects a model's raw Sequelize attributes and LIKEs every
+    // STRING/TEXT/CHAR/VARCHAR column, whitelisted or not. This engine
+    // never references a column that isn't already in effectiveColumns —
+    // search is no exception, scoped to this report's own already-
+    // whitelisted `type: "string"` columns only. Relation columns and
+    // aggregate aliases are excluded (not real base-table columns to LIKE
+    // against). ----
+    const searchTerm = typeof req.body?.search === "string" ? req.body.search.trim() : "";
+    const searchClauses = [];
+    if (searchTerm) {
+      const searchableColumns = Object.entries(effectiveColumns)
+        .filter(([, def]) => def.type === "string")
+        .map(([key]) => key);
+      if (searchableColumns.length > 0) {
+        searchClauses.push({
+          [Op.or]: searchableColumns.map((key) => ({ [key]: { [Op.like]: `%${searchTerm}%` } })),
+        });
+      }
     }
 
     // ---- tenant/company scope injected LAST so a filter can never override it ----
@@ -632,12 +729,45 @@ export const runQueryReport = async (definition, req) => {
     // blankAwareWhereClauses (Op.or fragments) can't merge into a plain
     // object the way {col: {op: val}} fragments can — combined via Op.and
     // instead. Flat shape (unchanged from before) when there are none.
-    const extraWhereClauses = [...csvWhereClauses, ...blankAwareWhereClauses];
+    const extraWhereClauses = [...csvWhereClauses, ...blankAwareWhereClauses, ...searchClauses];
     const where = extraWhereClauses.length > 0 ? { [Op.and]: [baseWhere, ...extraWhereClauses] } : baseWhere;
 
     const requestedLimit = Number(req.body.limit) || DEFAULT_ROW_LIMIT;
     const limit = Math.min(Math.max(requestedLimit, 1), HARD_ROW_LIMIT);
     const offset = Number(req.body.offset) || 0;
+
+    // ---- sort — validated the same way every other reference in this
+    // engine is: a plain base column must be tagged sortable:true in
+    // effectiveColumns (relation columns are select/display-only, never
+    // sortable, same rule they already have everywhere else here), or it
+    // must be one of THIS request's own computed aliases (an aggregate,
+    // running-total, or compute/case column) — never an arbitrary string.
+    // Also fixes a correctness bug, not just a UI nicety: without SOME
+    // deterministic ORDER BY, offset-based paging has no guaranteed row
+    // order between two calls to the same "unsorted" query — a scrolling
+    // grid could silently see the same row twice or skip one. Defaulting
+    // to `id ASC` when nothing is requested is what actually closes that,
+    // independent of whether the caller ever sends `sort` at all. ----
+    let sortSpec = null;
+    const rawSort = req.body.sort;
+    if (rawSort && typeof rawSort === "object" && typeof rawSort.column === "string") {
+      // When GROUP BY is active, a plain base column is only a valid ORDER
+      // BY target if it's also one of the grouped columns — MySQL's
+      // ONLY_FULL_GROUP_BY would otherwise reject an ungrouped, non-
+      // aggregated column in ORDER BY the same way it already would in
+      // SELECT. No such restriction when there's no grouping at all.
+      const isSortableBase =
+        effectiveColumns[rawSort.column]?.sortable === true &&
+        (sqlGroupColumns.length === 0 || sqlGroupColumns.includes(rawSort.column));
+      const isComputedAlias = computedAliases.has(rawSort.column);
+      if (isSortableBase || isComputedAlias) {
+        sortSpec = { column: rawSort.column, direction: String(rawSort.direction).toUpperCase() === "DESC" ? "DESC" : "ASC" };
+      }
+      // An invalid/unrecognized sort column is silently ignored (falls
+      // through to the default order below) rather than erroring the whole
+      // request — same "don't fail an otherwise-valid run over one bad
+      // optional param" leniency runtimeFilters already has.
+    }
 
     const Model = registryEntry.getModel(req.tenantDB);
 
@@ -660,6 +790,13 @@ export const runQueryReport = async (definition, req) => {
         Model.findAll({
           attributes: [...rawFetchColumns],
           where,
+          // Default order only here — the CSV-group branch re-buckets rows
+          // in JS after this fetch (splitting the CSV column, aggregating
+          // per id), so a user-chosen `sort` on a display column wouldn't
+          // map onto the final grouped rows anyway. Still needs a
+          // deterministic order for the same offset-pagination-correctness
+          // reason every branch does, hence the plain id default.
+          order: [["id", "ASC"]],
           limit,
           offset,
           raw: true,
@@ -708,7 +845,21 @@ export const runQueryReport = async (definition, req) => {
           attributes: attributes.length ? attributes : undefined,
           where,
           group: sqlGroupColumns.length ? sqlGroupColumns : undefined,
-          order: runningTotalSpec ? [[runningTotalSpec.orderBy, "ASC"], ["id", "ASC"]] : undefined,
+          // runningTotalSpec's own order wins outright (the cumulative sum
+          // below depends on rows arriving in that exact order) — otherwise
+          // the caller's validated sort, or a deterministic default so
+          // offset pagination is stable even when nobody asked for a sort.
+          // The default can't just be `id` when GROUP BY is active — `id`
+          // isn't one of the grouped columns, and MySQL's ONLY_FULL_GROUP_BY
+          // would reject ordering by it the same way it would in SELECT —
+          // so the default there is the first grouped column instead.
+          order: runningTotalSpec
+            ? [[runningTotalSpec.orderBy, "ASC"], ["id", "ASC"]]
+            : sortSpec
+              ? [[sortSpec.column, sortSpec.direction]]
+              : sqlGroupColumns.length > 0
+                ? [[sqlGroupColumns[0], "ASC"]]
+                : [["id", "ASC"]],
           limit,
           offset,
           raw: true,
@@ -753,7 +904,20 @@ export const runQueryReport = async (definition, req) => {
     if (rows.length > 0) {
       for (const relKey of usedRelationKeys) {
         const relDef = registryEntry.relations[relKey];
+        const relTargetColumns = resolveRelationColumns(relDef);
+        const labelRelationSpecsForKey = labelRelationSpecs.filter((s) => s.relKey === relKey);
+        // Display-only picks — the merge loop below writes exactly these as
+        // dotted "relKey.colKey" keys, nothing more. labelRelationSpecsForKey's
+        // own subColKey is fetched too (below) but deliberately kept OUT of
+        // this set — it's never meant to appear as its own dotted key, only
+        // to overwrite its base column's raw value (see the merge loop).
         const relColKeys = relationColumns.filter((c) => c.relKey === relKey).map((c) => c.relColKey);
+        const fetchColKeys = [...new Set([...relColKeys, ...labelRelationSpecsForKey.map((s) => s.subColKey)])];
+        // Nested (two-hop) entries chained off THIS relKey — only ever
+        // present when relDef is a plain scalar relation (enforced at parse
+        // time above), so these never combine with isCsv/isReverse below.
+        const nestedEntries = nestedRelationColumns.filter((c) => c.relKey === relKey);
+        const nestedFkKeys = [...new Set(nestedEntries.map((c) => c.subRelDef.foreignKey))];
         const isCsv = relDef.matchMode === "csv";
         // "reverse" — one-to-many, e.g. contacts.children (a self-relation:
         // this row's own id -> OTHER rows' referance_contact pointing back
@@ -778,10 +942,12 @@ export const runQueryReport = async (definition, req) => {
           // "reverse" needs every matching child row (to join/count all of
           // them per parent), not one row per targetKey value — fetched
           // ungrouped, grouped into arrays in JS below instead.
-          const nonCountRelColKeys = isReverse ? relColKeys.filter((k) => !relDef.columns[k].countOf) : relColKeys;
+          const nonCountRelColKeys = isReverse ? fetchColKeys.filter((k) => !relTargetColumns[k].countOf) : fetchColKeys;
           const relatedRows = await RelatedModel.findAll({
             where: { [relDef.targetKey]: { [Op.in]: distinctFkValues }, isDelete: 0 },
-            attributes: [relDef.targetKey, ...nonCountRelColKeys],
+            // nestedFkKeys are fetched even though never displayed directly —
+            // they're the join key for the second-hop fetch below.
+            attributes: [relDef.targetKey, ...nonCountRelColKeys, ...nestedFkKeys],
             raw: true,
           });
           if (isReverse) {
@@ -805,11 +971,40 @@ export const runQueryReport = async (definition, req) => {
           rows = rows.filter((r) => relMap.has(r[relDef.foreignKey]));
         }
 
+        // ---- Second hop — one more batched fetch per distinct subRelKey,
+        // keyed off the level-1 related rows already sitting in relMap
+        // (never off the base rows directly). relDef here is guaranteed
+        // scalar (non-csv, non-reverse), enforced at parse time, so relMap
+        // values are plain objects, not arrays. ----
+        const nestedGroups = new Map(); // subRelKey -> {subRelDef, subColKeys}
+        nestedEntries.forEach(({ subRelKey, subRelDef, subColKey }) => {
+          if (!nestedGroups.has(subRelKey)) nestedGroups.set(subRelKey, { subRelDef, subColKeys: [] });
+          nestedGroups.get(subRelKey).subColKeys.push(subColKey);
+        });
+        const subRelMaps = new Map(); // subRelKey -> Map(targetKey -> row)
+        for (const [subRelKey, { subRelDef, subColKeys }] of nestedGroups) {
+          const isSubCsv = subRelDef.matchMode === "csv";
+          const distinctSubFkValues = isSubCsv
+            ? [...new Set([...relMap.values()].flatMap((rr) => splitCsv(rr[subRelDef.foreignKey])))]
+            : [...new Set([...relMap.values()].map((rr) => rr[subRelDef.foreignKey]).filter((v) => v !== null && v !== undefined))];
+          const subRelMap = new Map();
+          if (distinctSubFkValues.length > 0) {
+            const SubRelatedModel = subRelDef.getModel(req.tenantDB);
+            const subRelatedRows = await SubRelatedModel.findAll({
+              where: { [subRelDef.targetKey]: { [Op.in]: distinctSubFkValues }, isDelete: 0 },
+              attributes: [subRelDef.targetKey, ...subColKeys],
+              raw: true,
+            });
+            subRelatedRows.forEach((rr) => subRelMap.set(rr[subRelDef.targetKey], rr));
+          }
+          subRelMaps.set(subRelKey, subRelMap);
+        }
+
         rows.forEach((r) => {
           if (isReverse) {
             const children = relMap.get(r[relDef.foreignKey]) || [];
             relColKeys.forEach((relColKey) => {
-              r[`${relKey}.${relColKey}`] = relDef.columns[relColKey].countOf
+              r[`${relKey}.${relColKey}`] = relTargetColumns[relColKey].countOf
                 ? children.length
                 : children
                     .map((c) => c[relColKey])
@@ -828,6 +1023,33 @@ export const runQueryReport = async (definition, req) => {
             const relatedRow = relMap.get(r[relDef.foreignKey]);
             relColKeys.forEach((relColKey) => {
               r[`${relKey}.${relColKey}`] = relatedRow ? relatedRow[relColKey] ?? null : null;
+            });
+            // Lookup-label auto-resolve — overwrite the base column's own
+            // raw value in place (never a new key) with the relation's
+            // resolved label. Falls back to the untouched raw value when
+            // the related row is missing (e.g. a soft-deleted target).
+            labelRelationSpecsForKey.forEach(({ baseColumn, subColKey }) => {
+              if (relatedRow && relatedRow[subColKey] !== undefined && relatedRow[subColKey] !== null) {
+                r[baseColumn] = relatedRow[subColKey];
+              }
+            });
+            nestedEntries.forEach(({ subRelKey, subRelDef, subColKey }) => {
+              const outKey = `${relKey}.${subRelKey}.${subColKey}`;
+              if (!relatedRow) {
+                r[outKey] = null;
+                return;
+              }
+              const subRelMap = subRelMaps.get(subRelKey);
+              if (subRelDef.matchMode === "csv") {
+                const subIds = splitCsv(relatedRow[subRelDef.foreignKey]);
+                r[outKey] = subIds
+                  .map((id) => subRelMap.get(id)?.[subColKey])
+                  .filter((v) => v !== undefined && v !== null)
+                  .join(", ");
+              } else {
+                const subRow = subRelMap.get(relatedRow[subRelDef.foreignKey]);
+                r[outKey] = subRow ? subRow[subColKey] ?? null : null;
+              }
             });
           }
         });
@@ -855,6 +1077,36 @@ export const runQueryReport = async (definition, req) => {
         });
       });
     }
+
+    // ---- Reassemble each row's keys in columns_json's own order. Every
+    // merge step above appends its own kind of column after the rest (base
+    // attributes first, then relation columns, then nested-relation
+    // columns, then derived columns) regardless of how the author
+    // interleaved them — so a picked order like [name, contact.label,
+    // amount] would otherwise always render as [name, amount,
+    // contact.label]. This is what makes the wizard's Step 4 column-reorder
+    // control (frontend, StepOrganize.tsx) actually take effect instead of
+    // only reordering within one kind of column. ----
+    const outputKeyForColumn = (c) => {
+      if (c.compute || c.case) return c.alias;
+      if (c.column.includes(".")) return c.column;
+      if (c.runningTotal) return c.alias || `running_${c.column}`;
+      if (c.aggregate) return c.alias || `${c.aggregate}_${c.column}`;
+      return c.column;
+    };
+    const orderedKeys = columns.map(outputKeyForColumn);
+    rows = rows.map((r) => {
+      const ordered = {};
+      orderedKeys.forEach((k) => {
+        if (k in r) ordered[k] = r[k];
+      });
+      // Anything not covered above (shouldn't normally happen) rides at
+      // the end rather than silently disappearing.
+      Object.keys(r).forEach((k) => {
+        if (!(k in ordered)) ordered[k] = r[k];
+      });
+      return ordered;
+    });
 
     return resSuccess({
       data: { rows, row_count: rows.length, duration_ms: Date.now() - startedAt },

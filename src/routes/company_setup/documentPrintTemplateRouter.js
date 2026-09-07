@@ -18,10 +18,11 @@ import {
   reorderDocumentTemplatesController,
   restoreTemplateVersionController,
   setDefaultDocumentTemplateController,
+  testRunDocumentTemplateController,
   updateDocumentTemplateController,
 } from "../../controllers/company_setup/documentPrintTemplateController.js";
 import { authenticateToken } from "../../middlewares/auth.js";
-import { requireReportPin } from "../../middlewares/reportPinAuth.js";
+import { requireReportPin, requireServiceSecret } from "../../middlewares/reportPinAuth.js";
 import { tenantMiddleware } from "../../middlewares/tenantMiddleware.js";
 
 export default (app) => {
@@ -43,9 +44,13 @@ export default (app) => {
   app.post("/document-templates/export", authenticateToken, tenantMiddleware, exportDocumentTemplateController);
   app.post("/document-templates/import", authenticateToken, tenantMiddleware, requireReportPin, importDocumentTemplateController);
   app.post("/document-templates/versions/list", authenticateToken, tenantMiddleware, listTemplateVersionsController);
-  app.post("/document-templates/versions/restore", authenticateToken, tenantMiddleware, restoreTemplateVersionController);
+  app.post("/document-templates/versions/restore", authenticateToken, tenantMiddleware, requireReportPin, restoreTemplateVersionController);
   app.post("/document-templates/system-gallery/list", authenticateToken, tenantMiddleware, listSystemTemplatesController);
   app.post("/document-templates/system-gallery/copy", authenticateToken, tenantMiddleware, requireReportPin, copyFromSystemTemplateController);
   app.post("/document-templates/data-dictionary", authenticateToken, tenantMiddleware, dataDictionaryController);
   app.post("/document-templates/preview", authenticateToken, tenantMiddleware, previewDocumentTemplateController);
+  // Admin authoring test-run (adminpanel's system-gallery editor) — no CRM
+  // user session on this request, service-to-service only, same
+  // requireServiceSecret gate as Report Builder's own /report-definitions/test-run.
+  app.post("/document-templates/test-run", requireServiceSecret, testRunDocumentTemplateController);
 };

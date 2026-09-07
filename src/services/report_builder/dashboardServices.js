@@ -1,0 +1,627 @@
+// Dashboard Feature — Phase 2. A dashboard arranges widgets, each backed by
+// an EXISTING report_definitions row (dashboard_widgets.report_definition_id)
+// reusing its query/composite/plugin engine as-is — no new SQL engine here,
+// see dashboardWidgetServices.js for widget CRUD and runDashboard() below
+// for the run path.
+import moment from "moment";
+import { dashboardModel } from "../../models/report_builder/dashboardModel.js";
+import { dashboardWidgetModel } from "../../models/report_builder/dashboardWidgetModel.js";
+import { reportDefinitionModel } from "../../models/report_builder/reportDefinitionModel.js";
+import systemDashboardDefinitionModel from "../../models/report_builder/systemDashboardDefinitionModel.js";
+import systemDashboardWidgetModel from "../../models/report_builder/systemDashboardWidgetModel.js";
+import { resError, resSuccess } from "../../utils/sharedFunctions.js";
+import { getCached, setCached } from "../../utils/simpleCache.js";
+import { logAuditEvent } from "../company_setup/auditLogServices.js";
+import { getCompanyByLoginId } from "../commonServices.js";
+import { resolveDashboardRights } from "./dashboardRights.js";
+import { getRegisteredModel } from "./modelRegistry.js";
+import { runDefinitionByType } from "./reportDefinitionServices.js";
+
+const now = () => moment(new Date()).format("YYYY-MM-DD HH:mm:ss");
+
+// Result cache is keyed off the DEFINITION a widget reuses, not the widget
+// itself — multiple widgets/dashboards pointing at the same
+// report_definition_id share one cached run. 45s: short enough that a
+// report edited elsewhere shows up on the next dashboard view soon, long
+// enough that opening the same dashboard repeatedly (or several people
+// opening it around the same time) doesn't re-run every widget's query
+// every single time.
+const DASHBOARD_WIDGET_CACHE_TTL_MS = 45000;
+// A dashboard widget almost always wants an aggregate/summary, not raw
+// rows — queryEngine.js's own HARD_ROW_LIMIT (5000)/15s timeout are sized
+// for "one report a human explicitly ran", not "N widgets on every
+// dashboard view". req.body.limit already flows straight into that clamp
+// (queryEngine.js's own `Math.min(Math.max(requestedLimit, 1),
+// HARD_ROW_LIMIT)`) — no queryEngine.js change needed, just override it
+// here before calling runDefinitionByType.
+const DASHBOARD_WIDGET_ROW_LIMIT = 500;
+
+// Dashboard-level "Date Range"/"Team Member" filter — the exact same
+// slot 1 / slot 5·9 convention modelRegistry.js's own generalFilters
+// already uses for CheckBoxFilterModal/generalFilterAdapter.ts on
+// individual report run screens (frontend's translateGeneralFilters),
+// just resolved here server-side per widget (a widget's report can be a
+// different model_key than its dashboard neighbor, each with its own
+// generalFilters mapping) instead of needing the full model registry
+// shipped to the dashboard canvas. Query-type only — composite/plugin
+// definitions have no model_key-based generalFilters concept.
+function buildDashboardScopeFilters(definition, dateRange, teamMemberIds) {
+  if (definition.type !== "query" || !definition.model_key) return [];
+  const registryEntry = getRegisteredModel(definition.model_key);
+  if (!registryEntry) return [];
+
+  const filters = [];
+  const dateColumn = registryEntry.generalFilters?.[1];
+  if (typeof dateColumn === "string") {
+    if (dateRange?.start) filters.push({ column: dateColumn, op: "gte", value: dateRange.start });
+    if (dateRange?.end) filters.push({ column: dateColumn, op: "lte", value: dateRange.end });
+  }
+
+  const teamColumn = registryEntry.generalFilters?.[5] || registryEntry.generalFilters?.[9];
+  if (typeof teamColumn === "string" && Array.isArray(teamMemberIds) && teamMemberIds.length > 0) {
+    const columnType = registryEntry.columns?.[teamColumn]?.type;
+    filters.push({ column: teamColumn, op: columnType === "csv" ? "findInSet" : "in", value: teamMemberIds });
+  }
+
+  return filters;
+}
+
+// requirePermission: "view" (default, every caller needs this) | "edit" | "delete".
+// Personal (non-all-data) scope is enforced as a 404, not a 403 — a
+// dashboard outside this login's own personal scope should read as "doesn't
+// exist", not "exists but you can't see it" (same non-leaking precedent
+// every IDOR-guarded findOne in this codebase already follows for cross-
+// company access; this is the same idea, one tier finer-grained).
+async function loadOwnedDashboard(req, requirePermission) {
+  const { id } = req.params || {};
+  const { a_application_login_id } = req.body || {};
+  if (!id || !a_application_login_id) {
+    return { error: resError({ developer_msg: "id (param) and a_application_login_id are required" }) };
+  }
+  const findCompanyId = await getCompanyByLoginId(a_application_login_id);
+  if (!findCompanyId) {
+    return { error: resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" }) };
+  }
+  const company_masters_id = findCompanyId.company_masters_id;
+
+  const rights = await resolveDashboardRights({ company_masters_id, a_application_login_id, tenantDB: req.tenantDB });
+  if (!rights.canView) {
+    return { error: resError({ code: 403, ack_msg: "You don't have access to Dashboard Builder", developer_msg: "No Dashboard Builder view rights for this login" }) };
+  }
+  if (requirePermission === "edit" && !rights.canEdit) {
+    return { error: resError({ code: 403, ack_msg: "You don't have permission to edit this dashboard", developer_msg: "No Dashboard Builder edit rights for this login" }) };
+  }
+  if (requirePermission === "delete" && !rights.canDelete) {
+    return { error: resError({ code: 403, ack_msg: "You don't have permission to delete this dashboard", developer_msg: "No Dashboard Builder delete rights for this login" }) };
+  }
+
+  const Dashboard = dashboardModel(req.tenantDB);
+  const dashboard = await Dashboard.findOne({ where: { id, company_masters_id, isDelete: 0 } });
+  if (!dashboard) {
+    return { error: resError({ code: 404, ack_msg: "Dashboard not found", developer_msg: "No matching dashboard for this company" }) };
+  }
+  if (!rights.showAllData && dashboard.a_application_login_id !== Number(a_application_login_id)) {
+    return { error: resError({ code: 404, ack_msg: "Dashboard not found", developer_msg: "Not visible under this login's personal data scope" }) };
+  }
+
+  return { dashboard, company_masters_id, rights };
+}
+
+export const createDashboard = async (req) => {
+  try {
+    const { a_application_login_id, name, description, icon } = req.body || {};
+    if (!a_application_login_id || !name) {
+      return resError({ developer_msg: "a_application_login_id and name are required" });
+    }
+    const findCompanyId = await getCompanyByLoginId(a_application_login_id);
+    if (!findCompanyId) {
+      return resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" });
+    }
+    req.body.company_masters_id = findCompanyId.company_masters_id; // for logAuditEvent below
+
+    const rights = await resolveDashboardRights({ company_masters_id: findCompanyId.company_masters_id, a_application_login_id, tenantDB: req.tenantDB });
+    if (!rights.canAdd) {
+      return resError({ code: 403, ack_msg: "You don't have permission to create dashboards", developer_msg: "No Dashboard Builder add rights for this login" });
+    }
+
+    const Dashboard = dashboardModel(req.tenantDB);
+    // First dashboard for this company becomes the default automatically —
+    // same "first row created wins" convention createDocumentTemplate uses.
+    const existingCount = await Dashboard.count({ where: { company_masters_id: findCompanyId.company_masters_id, isDelete: 0 } });
+
+    const created = await Dashboard.create({
+      company_masters_id: findCompanyId.company_masters_id,
+      a_application_login_id,
+      name,
+      description: description || null,
+      icon: icon || null,
+      is_default: existingCount === 0 ? 1 : 0,
+      display_order: existingCount,
+      created_date_time: now(),
+    });
+
+    await logAuditEvent(req, {
+      module_key: "dashboard_builder",
+      action: "create",
+      entity_type: "dashboard",
+      entity_id: created.id,
+      details: { name },
+    });
+
+    return resSuccess({ data: { item: created }, ack_msg: "Dashboard created successfully" });
+  } catch (e) {
+    console.error("createDashboard error:", e);
+    return resError({ developer_msg: `Failed to Catch ${e}` });
+  }
+};
+
+export const updateDashboard = async (req) => {
+  try {
+    const { dashboard, error } = await loadOwnedDashboard(req, "edit");
+    if (error) return error;
+    const { name, description, icon } = req.body || {};
+
+    const patch = { modified_date: now() };
+    if (name !== undefined) patch.name = name;
+    if (description !== undefined) patch.description = description || null;
+    if (icon !== undefined) patch.icon = icon || null;
+
+    await dashboard.update(patch);
+
+    await logAuditEvent(req, {
+      module_key: "dashboard_builder",
+      action: "update",
+      entity_type: "dashboard",
+      entity_id: dashboard.id,
+      details: { name: dashboard.name },
+    });
+
+    return resSuccess({ data: { item: dashboard }, ack_msg: "Dashboard updated successfully" });
+  } catch (e) {
+    console.error("updateDashboard error:", e);
+    return resError({ developer_msg: `Failed to Catch ${e}` });
+  }
+};
+
+export const deleteDashboard = async (req) => {
+  try {
+    const { dashboard, company_masters_id, error } = await loadOwnedDashboard(req, "delete");
+    if (error) return error;
+
+    const Dashboard = dashboardModel(req.tenantDB);
+    const remaining = await Dashboard.count({ where: { company_masters_id, isDelete: 0 } });
+    if (remaining <= 1) {
+      return resError({ developer_msg: "Cannot delete the last remaining dashboard" });
+    }
+
+    // App-enforced cascade (no DB-level FK on dashboard_widgets.dashboard_id,
+    // same convention as every other report_builder table) — soft-delete
+    // this dashboard's own widgets too, or they'd sit orphaned but not
+    // visibly deleted.
+    const Widget = dashboardWidgetModel(req.tenantDB);
+    await Widget.update(
+      { isDelete: 1, modified_date: now() },
+      { where: { dashboard_id: dashboard.id, isDelete: 0 } },
+    );
+
+    await dashboard.update({ isDelete: 1, modified_date: now() });
+
+    if (dashboard.is_default) {
+      const nextDefault = await Dashboard.findOne({ where: { company_masters_id, isDelete: 0 }, order: [["display_order", "ASC"], ["id", "ASC"]] });
+      if (nextDefault) await nextDefault.update({ is_default: 1 });
+    }
+
+    await logAuditEvent(req, {
+      module_key: "dashboard_builder",
+      action: "delete",
+      entity_type: "dashboard",
+      entity_id: dashboard.id,
+      details: { name: dashboard.name },
+    });
+
+    return resSuccess({ ack_msg: "Dashboard deleted successfully" });
+  } catch (e) {
+    console.error("deleteDashboard error:", e);
+    return resError({ developer_msg: `Failed to Catch ${e}` });
+  }
+};
+
+export const listDashboards = async (req) => {
+  try {
+    const { a_application_login_id } = req.body || {};
+    if (!a_application_login_id) {
+      return resError({ developer_msg: "a_application_login_id is required" });
+    }
+    const findCompanyId = await getCompanyByLoginId(a_application_login_id);
+    if (!findCompanyId) {
+      return resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" });
+    }
+    const company_masters_id = findCompanyId.company_masters_id;
+
+    const rights = await resolveDashboardRights({ company_masters_id, a_application_login_id, tenantDB: req.tenantDB });
+    if (!rights.canView) {
+      return resSuccess({ data: { item: [] } });
+    }
+
+    const where = { company_masters_id, isDelete: 0 };
+    // Personal scope — only dashboards THIS login created, same
+    // own/all split Task Management's own getUserRights usage has.
+    if (!rights.showAllData) where.a_application_login_id = a_application_login_id;
+
+    const Dashboard = dashboardModel(req.tenantDB);
+    const rows = await Dashboard.findAll({
+      where,
+      order: [["display_order", "ASC"], ["id", "ASC"]],
+    });
+
+    return resSuccess({ data: { item: rows } });
+  } catch (e) {
+    console.error("listDashboards error:", e);
+    return resError({ developer_msg: `Failed to Catch ${e}` });
+  }
+};
+
+export const getDashboard = async (req) => {
+  try {
+    const { dashboard, error } = await loadOwnedDashboard(req);
+    if (error) return error;
+
+    const Widget = dashboardWidgetModel(req.tenantDB);
+    const widgets = await Widget.findAll({
+      where: { dashboard_id: dashboard.id, isDelete: 0 },
+      order: [["display_order", "ASC"], ["id", "ASC"]],
+    });
+
+    // Batched second query, not a join — same convention modelRegistry.js's
+    // relation resolution already uses (resolve ids, merge in JS).
+    const definitionIds = [...new Set(widgets.map((w) => w.report_definition_id))];
+    const ReportDefinition = reportDefinitionModel(req.tenantDB);
+    const definitions = definitionIds.length
+      ? await ReportDefinition.findAll({
+          where: { id: definitionIds },
+          attributes: ["id", "name", "type", "isDelete"],
+        })
+      : [];
+    const definitionById = new Map(definitions.map((d) => [d.id, d]));
+
+    const widgetsWithSource = widgets.map((w) => {
+      const source = definitionById.get(w.report_definition_id);
+      return {
+        ...w.toJSON(),
+        report_definition_name: source?.isDelete === 0 ? source.name : null,
+        report_definition_type: source?.isDelete === 0 ? source.type : null,
+        source_missing: !source || source.isDelete !== 0,
+      };
+    });
+
+    return resSuccess({ data: { item: { ...dashboard.toJSON(), widgets: widgetsWithSource } } });
+  } catch (e) {
+    console.error("getDashboard error:", e);
+    return resError({ developer_msg: `Failed to Catch ${e}` });
+  }
+};
+
+export const reorderDashboards = async (req) => {
+  try {
+    const { a_application_login_id, orderedIds } = req.body || {};
+    if (!a_application_login_id || !Array.isArray(orderedIds)) {
+      return resError({ developer_msg: "a_application_login_id and orderedIds are required" });
+    }
+    const findCompanyId = await getCompanyByLoginId(a_application_login_id);
+    if (!findCompanyId) {
+      return resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" });
+    }
+    const company_masters_id = findCompanyId.company_masters_id;
+
+    const rights = await resolveDashboardRights({ company_masters_id, a_application_login_id, tenantDB: req.tenantDB });
+    if (!rights.canEdit) {
+      return resError({ code: 403, ack_msg: "You don't have permission to reorder dashboards", developer_msg: "No Dashboard Builder edit rights for this login" });
+    }
+
+    const Dashboard = dashboardModel(req.tenantDB);
+    const where = { company_masters_id, isDelete: 0 };
+    // Personal scope — an id outside this login's own dashboards just
+    // matches zero rows below, same as it not existing for them at all.
+    if (!rights.showAllData) where.a_application_login_id = a_application_login_id;
+
+    await Promise.all(
+      orderedIds.map((id, index) =>
+        Dashboard.update(
+          { display_order: index },
+          { where: { ...where, id } },
+        ),
+      ),
+    );
+
+    return resSuccess({ ack_msg: "Reordered successfully" });
+  } catch (e) {
+    console.error("reorderDashboards error:", e);
+    return resError({ developer_msg: `Failed to Catch ${e}` });
+  }
+};
+
+export const setDefaultDashboard = async (req) => {
+  try {
+    const { dashboard, company_masters_id, error } = await loadOwnedDashboard(req, "edit");
+    if (error) return error;
+
+    const Dashboard = dashboardModel(req.tenantDB);
+    await Dashboard.update({ is_default: 0 }, { where: { company_masters_id, isDelete: 0 } });
+    await dashboard.update({ is_default: 1 });
+
+    return resSuccess({ ack_msg: "Default dashboard updated" });
+  } catch (e) {
+    console.error("setDefaultDashboard error:", e);
+    return resError({ developer_msg: `Failed to Catch ${e}` });
+  }
+};
+
+export const duplicateDashboard = async (req) => {
+  try {
+    const { dashboard, company_masters_id, rights, error } = await loadOwnedDashboard(req);
+    if (error) return error;
+    if (!rights.canAdd) {
+      return resError({ code: 403, ack_msg: "You don't have permission to create dashboards", developer_msg: "No Dashboard Builder add rights for this login" });
+    }
+    const { a_application_login_id } = req.body || {};
+
+    const Dashboard = dashboardModel(req.tenantDB);
+    const Widget = dashboardWidgetModel(req.tenantDB);
+
+    const existingCount = await Dashboard.count({ where: { company_masters_id, isDelete: 0 } });
+    const created = await Dashboard.create({
+      company_masters_id,
+      a_application_login_id,
+      name: `${dashboard.name} (Copy)`,
+      description: dashboard.description,
+      icon: dashboard.icon,
+      is_default: 0,
+      display_order: existingCount,
+      created_date_time: now(),
+    });
+
+    // Copies pointers to the SAME report_definition_id rows — a duplicate
+    // dashboard doesn't fork the underlying reports too, same as
+    // duplicateDocumentTemplate only copying the template row, not
+    // whatever data it prints.
+    const sourceWidgets = await Widget.findAll({ where: { dashboard_id: dashboard.id, isDelete: 0 } });
+    for (const w of sourceWidgets) {
+      await Widget.create({
+        dashboard_id: created.id,
+        report_definition_id: w.report_definition_id,
+        widget_type: w.widget_type,
+        title: w.title,
+        chart_config_json: w.chart_config_json,
+        position_x: w.position_x,
+        position_y: w.position_y,
+        width: w.width,
+        height: w.height,
+        display_order: w.display_order,
+        created_date_time: now(),
+      });
+    }
+
+    await logAuditEvent(req, {
+      module_key: "dashboard_builder",
+      action: "duplicate",
+      entity_type: "dashboard",
+      entity_id: created.id,
+      details: { source_id: dashboard.id },
+    });
+
+    return resSuccess({ data: { item: created }, ack_msg: "Dashboard duplicated successfully" });
+  } catch (e) {
+    console.error("duplicateDashboard error:", e);
+    return resError({ developer_msg: `Failed to Catch ${e}` });
+  }
+};
+
+// Runs every active widget's underlying report_definition and returns them
+// together. Sequential — NOT Promise.all/bounded-parallel — same guard
+// runBatchReportDefinitions itself uses ("fans concurrent connections into
+// one tenant DB pool... every existing *CroneTabRunner... uses the same
+// sequential-loop guard for the same reason"). The cache below is what
+// actually keeps repeat dashboard views fast, not concurrency.
+export const runDashboard = async (req, res) => {
+  try {
+    const { dashboard, company_masters_id, error } = await loadOwnedDashboard(req);
+    if (error) return error;
+
+    // { start?: "YYYY-MM-DD", end?: "YYYY-MM-DD" } and a plain login-id
+    // array — same shapes CheckBoxFilterModal's date pickers/team
+    // multiselect already submit, just applied dashboard-wide instead of
+    // to one report.
+    const { dateRange, teamMemberIds } = req.body || {};
+    const scopeKey = JSON.stringify({ dateRange: dateRange || null, teamMemberIds: teamMemberIds || [] });
+
+    const Widget = dashboardWidgetModel(req.tenantDB);
+    const widgets = await Widget.findAll({
+      where: { dashboard_id: dashboard.id, isDelete: 0, isActive: 1 },
+      order: [["display_order", "ASC"], ["id", "ASC"]],
+    });
+    if (widgets.length === 0) {
+      return resSuccess({ data: { item: { ...dashboard.toJSON(), widgets: [] } } });
+    }
+
+    const ReportDefinition = reportDefinitionModel(req.tenantDB);
+    const definitionIds = [...new Set(widgets.map((w) => w.report_definition_id))];
+    const definitions = await ReportDefinition.findAll({
+      where: { id: definitionIds, company_masters_id, isDelete: 0 },
+    });
+    const definitionById = new Map(definitions.map((d) => [d.id, d]));
+
+    const results = [];
+    for (const widget of widgets) {
+      const definition = definitionById.get(widget.report_definition_id);
+      const base = {
+        widget_id: widget.id,
+        widget_type: widget.widget_type,
+        title: widget.title,
+        chart_config_json: widget.chart_config_json,
+        position_x: widget.position_x,
+        position_y: widget.position_y,
+        width: widget.width,
+        height: widget.height,
+      };
+
+      if (!definition) {
+        results.push({ ...base, ...resError({ ack_msg: "Source report not found", developer_msg: `report_definition_id ${widget.report_definition_id} is missing or deleted` }) });
+        continue;
+      }
+
+      // Scope (date range/team) rides in the cache key — a different
+      // selection must never serve another selection's cached rows.
+      const cacheKey = `dashboard_widget:${company_masters_id}:${definition.id}:${scopeKey}`;
+      let result = getCached(cacheKey);
+      if (!result) {
+        const scopeFilters = buildDashboardScopeFilters(definition, dateRange, teamMemberIds);
+        const runReq = { ...req, body: { ...req.body, limit: DASHBOARD_WIDGET_ROW_LIMIT, offset: 0, filters: scopeFilters } };
+        result = await runDefinitionByType(definition, runReq, res);
+        if (result?.ack === 1) setCached(cacheKey, result, DASHBOARD_WIDGET_CACHE_TTL_MS);
+      }
+
+      results.push({ ...base, ...result });
+    }
+
+    return resSuccess({ data: { item: { ...dashboard.toJSON(), widgets: results } } });
+  } catch (e) {
+    console.error("runDashboard error:", e);
+    return resError({ developer_msg: `Failed to Catch ${e}` });
+  }
+};
+
+// Gallery browse — reads system_dashboard_definitions off the MASTER
+// connection (same pattern listSystemReportDefinitions/
+// systemReportDefinitionModel.js already uses). No company/tenant scoping
+// needed — the gallery is the same for every company.
+export const listSystemDashboardDefinitions = async (req) => {
+  try {
+    const { category } = req.body || {};
+    const where = { isDelete: 0, isActive: 1 };
+    if (category) where.category = category;
+
+    const rows = await systemDashboardDefinitionModel.findAll({
+      where,
+      attributes: ["id", "name", "category", "description", "priority", "icon", "display_order"],
+      order: [["display_order", "ASC"], ["id", "ASC"]],
+    });
+
+    return resSuccess({ data: { item: rows } });
+  } catch (e) {
+    console.error("listSystemDashboardDefinitions error:", e);
+    return resError({ developer_msg: `Failed to Catch ${e}` });
+  }
+};
+
+// Copies a gallery dashboard into the tenant's own dashboards — unlike
+// copyFromSystemReportDefinition (one row in, one row out), this expands
+// into THREE things per widget: a real report_definitions row (the
+// gallery widget's model_key/label_column/value_column/aggregate turned
+// into a real columns_json + group_by_json, is_dashboard_only:1 — same
+// convention the tenant-facing "quick counter" shortcut already marks its
+// own auto-created rows with), a dashboards row, and N dashboard_widgets
+// rows pointing at those new report_definitions. All-or-nothing via a
+// transaction — a partial copy (e.g. widget 3 of 5 failing) would leave
+// an unusable half-built dashboard otherwise.
+export const copyFromSystemDashboardDefinition = async (req) => {
+  const t = await req.tenantDB.transaction();
+  try {
+    const { system_dashboard_definition_id, a_application_login_id } = req.body || {};
+    if (!system_dashboard_definition_id || !a_application_login_id) {
+      await t.rollback();
+      return resError({ developer_msg: "system_dashboard_definition_id and a_application_login_id are required" });
+    }
+
+    const findCompanyId = await getCompanyByLoginId(a_application_login_id);
+    if (!findCompanyId) {
+      await t.rollback();
+      return resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" });
+    }
+    const company_masters_id = findCompanyId.company_masters_id;
+    req.body.company_masters_id = company_masters_id; // for logAuditEvent below
+
+    const rights = await resolveDashboardRights({ company_masters_id, a_application_login_id, tenantDB: req.tenantDB });
+    if (!rights.canAdd) {
+      await t.rollback();
+      return resError({ code: 403, ack_msg: "You don't have permission to create dashboards", developer_msg: "No Dashboard Builder add rights for this login" });
+    }
+
+    const systemDefinition = await systemDashboardDefinitionModel.findOne({
+      where: { id: system_dashboard_definition_id, isDelete: 0, isActive: 1 },
+    });
+    if (!systemDefinition) {
+      await t.rollback();
+      return resError({ developer_msg: "Gallery dashboard not found" });
+    }
+    const systemWidgets = await systemDashboardWidgetModel.findAll({
+      where: { system_dashboard_definition_id, isDelete: 0 },
+      order: [["display_order", "ASC"], ["id", "ASC"]],
+    });
+
+    const Dashboard = dashboardModel(req.tenantDB);
+    const ReportDefinition = reportDefinitionModel(req.tenantDB);
+    const Widget = dashboardWidgetModel(req.tenantDB);
+
+    const existingCount = await Dashboard.count({ where: { company_masters_id, isDelete: 0 }, transaction: t });
+    const createdDashboard = await Dashboard.create({
+      company_masters_id,
+      a_application_login_id,
+      name: systemDefinition.name,
+      description: systemDefinition.description,
+      icon: systemDefinition.icon,
+      is_default: existingCount === 0 ? 1 : 0,
+      display_order: existingCount,
+      created_date_time: now(),
+    }, { transaction: t });
+
+    for (const w of systemWidgets) {
+      const alias = w.aggregate ? `${w.aggregate}_${w.value_column}` : w.value_column;
+      const displayLabel = w.title || alias;
+      const columns = w.label_column
+        ? [{ column: w.label_column }, { column: w.value_column, aggregate: w.aggregate, alias, label: displayLabel }]
+        : [{ column: w.value_column, aggregate: w.aggregate, alias, label: displayLabel }];
+
+      const createdDefinition = await ReportDefinition.create({
+        company_masters_id,
+        a_application_login_id,
+        name: w.title || systemDefinition.name,
+        type: "query",
+        model_key: w.model_key,
+        columns_json: JSON.stringify(columns),
+        group_by_json: w.label_column ? JSON.stringify([w.label_column]) : null,
+        is_dashboard_only: 1,
+        created_date_time: now(),
+      }, { transaction: t });
+
+      await Widget.create({
+        dashboard_id: createdDashboard.id,
+        report_definition_id: createdDefinition.id,
+        widget_type: w.widget_type,
+        title: w.title,
+        chart_config_json: JSON.stringify({ labelColumn: w.label_column || undefined, valueColumn: alias, label: displayLabel }),
+        position_x: w.position_x,
+        position_y: w.position_y,
+        width: w.width,
+        height: w.height,
+        display_order: w.display_order,
+        created_date_time: now(),
+      }, { transaction: t });
+    }
+
+    await t.commit();
+
+    await logAuditEvent(req, {
+      module_key: "dashboard_builder",
+      action: "copy_from_gallery",
+      entity_type: "dashboard",
+      entity_id: createdDashboard.id,
+      details: { system_dashboard_definition_id },
+    });
+
+    return resSuccess({ data: { item: createdDashboard }, ack_msg: "Dashboard copied successfully" });
+  } catch (e) {
+    await t.rollback();
+    console.error("copyFromSystemDashboardDefinition error:", e);
+    return resError({ developer_msg: `Failed to Catch ${e}` });
+  }
+};

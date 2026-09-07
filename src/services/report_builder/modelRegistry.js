@@ -49,7 +49,12 @@ import { sourceTypesModel } from "../../models/masters/sourceTypeMode.js";
 import { stagestatusModel } from "../../models/masters/stagestatusModel.js";
 import { taskCategoryModel } from "../../models/masters/taskCategoryModel.js";
 import { customFieldFormModel } from "../../models/other_settings/customFieldFormModel.js";
+import { JobCardsModel } from "../../models/production/JobCardsModel.js";
+import { productionTransactionModel } from "../../models/production/productionTransactionModel.js";
+import { productionTransactionsItemsModel } from "../../models/production/productionTransactionsItemsModel.js";
 import { categoryModel } from "../../models/product_settings/categoryModel.js";
+import { bomVsProcessVsConsAndRejctsModel } from "../../models/product_settings/bomProcessVsConsAndRejctsModel.js";
+import { bomVsProcessListsModel } from "../../models/product_settings/bomVsProcessListsModel.js";
 import { productModel } from "../../models/product_settings/productModel.js";
 
 // COUNT needs a real column to wrap (fn("COUNT", col("id"))) — every table
@@ -65,6 +70,14 @@ const PRODUCT_COLUMNS = {
   purchase_rate: { label: "Purchase Rate", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
   purchase_net_rate: { label: "Purchase Net Rate", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
   created_date_time: { label: "Created Date", type: "date", filterable: true, sortable: true, groupable: false },
+  // Real DB columns, previously unwhitelisted (found via a registry-vs-DB
+  // diff) — GST/SKU-oriented product reports were impossible without these.
+  product_code: { label: "Product Code", type: "string", filterable: true, sortable: true, groupable: false },
+  hsn_code: { label: "HSN Code", type: "string", filterable: true, sortable: false, groupable: true },
+  gst_id: { label: "GST", type: "lookup", filterable: true, sortable: false, groupable: true },
+  net_rate: { label: "Net Rate", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+  unit_id: { label: "Unit", type: "lookup", filterable: true, sortable: false, groupable: true },
+  product_barcode_number: { label: "Barcode", type: "string", filterable: true, sortable: false, groupable: false },
 };
 
 export const MODEL_REGISTRY = {
@@ -72,6 +85,12 @@ export const MODEL_REGISTRY = {
     label: "Products",
     getModel: (tenantDB) => productModel(tenantDB),
     columns: PRODUCT_COLUMNS,
+    // No slot 8 (Active/Deactivate) — no isActive-type column currently
+    // registered in PRODUCT_COLUMNS, left unconfirmed rather than guessed.
+    generalFilters: {
+      1: "created_date_time",
+      7: "category_id",
+    },
   },
 
   contacts: {
@@ -109,7 +128,29 @@ export const MODEL_REGISTRY = {
       // is_archive filter.
       is_archive: { label: "Archived", type: "lookup", filterable: true, sortable: false, groupable: true },
       a_application_login_id: { label: "Created By (Team Member)", type: "lookup", filterable: true, sortable: false, groupable: true },
+      // Real DB columns, previously unwhitelisted (found via a registry-vs-DB
+      // diff) — commonly-wanted contact-export fields.
+      email_id: { label: "Email", type: "string", filterable: true, sortable: false, groupable: false },
+      gst_number: { label: "GST Number", type: "string", filterable: true, sortable: false, groupable: false },
+      address: { label: "Address", type: "string", filterable: true, sortable: false, groupable: false },
+      pincode: { label: "Pincode", type: "string", filterable: true, sortable: false, groupable: true },
       ...COUNT_COLUMN,
+    },
+    // Step 2 of the plan — which CheckBoxFilterModal.tsx slots apply to
+    // this table, and which whitelisted column (above) each resolves to.
+    // Slot legend: 1 Date Range, 2 Label, 3 Source Type, 4 Stage/Status,
+    // 5/9 Team Member, 6 Demography, 18 Search Contact, 20 Unassign.
+    // Operator per slot isn't fixed here — the run-time adapter reads
+    // that target column's own `type` above (csv -> findInSet, lookup -> in).
+    generalFilters: {
+      1: "created_date_time",
+      2: "lable",
+      3: "source_type_id",
+      4: "contact_status",
+      5: "a_application_login_id",
+      9: "a_application_login_id",
+      6: true, // demography — country/state/city/area, all 4 already whitelisted above
+      20: "a_application_login_id", // unassign — IS NULL, handled specially by the adapter
     },
     relations: {
       sourceType: {
@@ -212,7 +253,29 @@ export const MODEL_REGISTRY = {
       to_customer_id: { label: "Customer", type: "lookup", filterable: true, sortable: false, groupable: true },
       grand_total: { label: "Grand Total", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
       created_date_time: { label: "Created Date", type: "date", filterable: true, sortable: true, groupable: false },
+      // Real DB columns, previously unwhitelisted (found via a registry-vs-DB
+      // diff) — several "Later" items in the plan (Discount Analysis, GST
+      // Summary, Payment Due Forecast) turn out to just need these, not a
+      // real limitation.
+      due_date: { label: "Due Date", type: "date", filterable: true, sortable: true, groupable: false },
+      discount_pct: { label: "Discount %", type: "number", filterable: true, sortable: false, groupable: false, aggregatable: ["avg", "min", "max"] },
+      taxable_amt: { label: "Taxable Amount", type: "currency", filterable: true, sortable: false, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      gst_amt: { label: "GST Amount", type: "currency", filterable: true, sortable: false, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      payment_type: { label: "Payment Type", type: "lookup", filterable: true, sortable: false, groupable: true },
+      to_customer_email: { label: "Customer Email", type: "string", filterable: true, sortable: false, groupable: false },
+      to_customer_phone: { label: "Customer Phone", type: "string", filterable: true, sortable: false, groupable: false },
+      to_customer_gst_number: { label: "Customer GST Number", type: "string", filterable: true, sortable: false, groupable: false },
       ...COUNT_COLUMN,
+    },
+    // Trimmed from the earlier draft in the plan — no salesperson/series
+    // column is actually registered on carts, so slots 5/9/15 don't apply
+    // here despite seeming plausible. GST/payment_type ARE now registered
+    // (above) but not wired into generalFilters below — cheap follow-up
+    // if slot 22/25 turn out to be wanted on the run screen.
+    generalFilters: {
+      1: "cart_date",
+      4: "cart_status",
+      18: "to_customer_id",
     },
     relations: {
       customer: {
@@ -220,13 +283,11 @@ export const MODEL_REGISTRY = {
         foreignKey: "to_customer_id",
         getModel: (tenantDB) => contactModel(tenantDB),
         targetKey: "id",
+        // No hand-listed columns — borrows contacts' own whitelist wholesale
+        // via modelKey (see resolveRelationColumns in modelRegistry.js), so
+        // adding a field to contacts.columns makes it available here too,
+        // no edit needed in two places.
         modelKey: "contacts",
-        columns: {
-          person_name: { label: "Contact Name", type: "string" },
-          company_name: { label: "Company Name", type: "string" },
-          mobile_number: { label: "Mobile", type: "string" },
-          gst_number: { label: "GSTIN", type: "string" },
-        },
       },
       currency: {
         label: "Currency",
@@ -267,7 +328,17 @@ export const MODEL_REGISTRY = {
       item_qty: { label: "Quantity", type: "number", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
       item_rate: { label: "Rate", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
       item_total: { label: "Total", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      // Real DB columns, previously unwhitelisted (found via a registry-vs-DB
+      // diff) — item-level GST/discount reports were impossible without these.
+      item_hsn_code: { label: "HSN Code", type: "string", filterable: true, sortable: false, groupable: true },
+      item_gst: { label: "GST %", type: "number", filterable: true, sortable: false, groupable: false, aggregatable: ["avg"] },
+      item_discount_pct: { label: "Discount %", type: "number", filterable: true, sortable: false, groupable: false, aggregatable: ["avg", "min", "max"] },
       ...COUNT_COLUMN,
+    },
+    // No date column of its own (inherits the parent cart's) — no slot 1.
+    generalFilters: {
+      7: "item_category_id", // "Category / Product" — item_product_id covered by slot 19 below, both point at real whitelisted columns
+      19: "item_product_id",
     },
     relations: {
       product: {
@@ -321,10 +392,37 @@ export const MODEL_REGISTRY = {
       task_fromdate: { label: "From Date", type: "date", filterable: true, sortable: true, groupable: false },
       task_enddate: { label: "Due Date", type: "date", filterable: true, sortable: true, groupable: false },
       created_date_time: { label: "Created Date", type: "date", filterable: true, sortable: true, groupable: false },
+      // Real DB columns, previously unwhitelisted (found via a registry-vs-DB
+      // diff) — no notes field or actual-completion-date was reportable before.
+      task_remark: { label: "Remark", type: "string", filterable: true, sortable: false, groupable: false },
+      completed_date: { label: "Completed Date", type: "date", filterable: true, sortable: true, groupable: false },
       // Real TINYINT flag (confirmed in taskManagementModel.js) —
       // teamAllTaskReportServices.js's is_support_ticket_flag filter.
       is_support_ticket: { label: "Is Support Ticket", type: "lookup", filterable: true, sortable: false, groupable: true },
+      // Real scalar INTEGER FK (confirmed in taskManagementModel.js),
+      // already used as the `contact` relation's own foreignKey below —
+      // added as its own whitelisted column for the same reason
+      // inquiries.contact_master_id was: a relation foreignKey isn't
+      // automatically filterable on its own, found while wiring Step 2's
+      // general filters (slot 18).
+      contact_masters_id: { label: "Contact", type: "lookup", filterable: true, sortable: false, groupable: true },
       ...COUNT_COLUMN,
+    },
+    // 12 (Show Only Template Task) doesn't apply — no "template" concept
+    // exists anywhere in this table's registered columns, would need a new
+    // column added to the registry first, not just a slot mapping. 1 picks
+    // task_fromdate over task_enddate/created_date_time — the other two
+    // are equally plausible candidates for "Date Range", not a hard rule.
+    generalFilters: {
+      1: "task_fromdate",
+      2: "label_id",
+      4: "status", // "external_status" covered separately by slot 21 below
+      5: "assigned_team_member",
+      9: "assigned_team_member",
+      10: "assigned_team_member", // unassign — IS NULL/empty, handled specially by the adapter
+      11: "task_type",
+      18: "contact_masters_id",
+      21: "external_status",
     },
     relations: {
       label: {
@@ -377,16 +475,15 @@ export const MODEL_REGISTRY = {
           task_color: { label: "Category Colour", type: "string" },
         },
       },
+      // Widened to match carts.customer's field set (the richest existing
+      // precedent) — was person_name/company_name only, thinner than
+      // what's actually useful on a task report.
       contact: {
         label: "Contact",
         foreignKey: "contact_masters_id",
         getModel: (tenantDB) => contactModel(tenantDB),
         targetKey: "id",
         modelKey: "contacts",
-        columns: {
-          person_name: { label: "Contact Name", type: "string" },
-          company_name: { label: "Company Name", type: "string" },
-        },
       },
       createdBy: {
         label: "Created By",
@@ -423,7 +520,30 @@ export const MODEL_REGISTRY = {
       // / task_managements.label_id, this one is scalar, not CSV).
       label_id: { label: "Label", type: "lookup", filterable: true, sortable: false, groupable: true },
       inquiry_date_time: { label: "Inquiry Date", type: "date", filterable: true, sortable: true, groupable: false },
+      // Real scalar INTEGER FK (confirmed in inquiryModel.js), already used
+      // as the `contact` relation's own foreignKey below — but relation
+      // foreignKeys aren't automatically filterable columns in their own
+      // right (queryEngine.js's filter builder only ever validates against
+      // this whitelist, never a relation definition), so it needs its own
+      // entry here too, found while wiring Step 2's general filters (slot
+      // 18, Search Contact) — the plan's original registry-gap list missed
+      // this one, only flagged attendance/visits/call_histories/reminder_messages.
+      contact_master_id: { label: "Contact", type: "lookup", filterable: true, sortable: false, groupable: true },
+      // Real DB columns, previously unwhitelisted (found via a registry-vs-DB
+      // diff). inquiry_assigned_team_member confirms the plan's own "Later:
+      // Salesperson Inquiry Performance (no salesperson dimension)" was a
+      // registry gap, not a real limitation — column exists, just never
+      // registered. Same CSV-of-login-ids shape as task_managements.assigned_team_member.
+      inquiry_assigned_team_member: { label: "Assigned To (has member)", type: "csv", filterable: true, sortable: false, groupable: false },
+      product_remarks: { label: "Product Remarks", type: "string", filterable: true, sortable: false, groupable: false },
       ...COUNT_COLUMN,
+    },
+    generalFilters: {
+      1: "inquiry_date_time",
+      2: "label_id", // scalar, not csv — adapter uses op:"in", not findInSet
+      3: "source_type_id",
+      4: "contact_status",
+      18: "contact_master_id",
     },
     relations: {
       label: {
@@ -441,10 +561,6 @@ export const MODEL_REGISTRY = {
         getModel: (tenantDB) => contactModel(tenantDB),
         targetKey: "id",
         modelKey: "contacts",
-        columns: {
-          person_name: { label: "Contact Name", type: "string" },
-          company_name: { label: "Company Name", type: "string" },
-        },
       },
       // Both category_id and product_id are now CSV-of-ids (migrations
       // 20260824200000/210000 widened product_id/qty/category_id to VARCHAR
@@ -503,7 +619,24 @@ export const MODEL_REGISTRY = {
       mode: { label: "Payment Mode", type: "lookup", filterable: true, sortable: false, groupable: true },
       payment_date_time: { label: "Payment Date", type: "date", filterable: true, sortable: true, groupable: false },
       remark: { label: "Remark", type: "string", filterable: true, sortable: false, groupable: false },
+      // Real scalar INTEGER FK, already used as the `contact` relation's own
+      // foreignKey below — added as its own whitelisted column, same
+      // "relation foreignKey isn't automatically filterable" reasoning as
+      // inquiries.contact_master_id, found while wiring Step 2.
+      contact_masters_id: { label: "Contact", type: "lookup", filterable: true, sortable: false, groupable: true },
+      // Same gap — already used as the `createdBy` relation's own
+      // foreignKey, found while seeding the system gallery's "Collection
+      // Performance Report" (per-team-member collection totals).
+      a_application_login_id: { label: "Created By (Team Member)", type: "lookup", filterable: true, sortable: false, groupable: true },
       ...COUNT_COLUMN,
+    },
+    // type: 1 = credit, 2 = debit (confirmed in accountReportServices.js:149-153).
+    generalFilters: {
+      1: "payment_date_time",
+      13: "type", // Credit — adapter filters type=1
+      14: "type", // Debit — adapter filters type=2
+      18: "contact_masters_id",
+      25: "mode",
     },
     relations: {
       contact: {
@@ -512,11 +645,6 @@ export const MODEL_REGISTRY = {
         getModel: (tenantDB) => contactModel(tenantDB),
         targetKey: "id",
         modelKey: "contacts",
-        columns: {
-          person_name: { label: "Contact Name", type: "string" },
-          company_name: { label: "Company Name", type: "string" },
-          mobile_number: { label: "Mobile", type: "string" },
-        },
       },
       paymentType: {
         label: "Payment Type",
@@ -575,7 +703,18 @@ export const MODEL_REGISTRY = {
       amount: { label: "Amount", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
       amount_signed: { label: "Signed Amount", type: "currency", filterable: false, sortable: false, groupable: false, aggregatable: ["sum"] },
       payment_date_time: { label: "Payment Date", type: "date", filterable: true, sortable: true, groupable: false },
+      // Real DB columns, previously unwhitelisted (found via a registry-vs-DB
+      // diff) — present on account_transactions already, were missing here.
+      mode: { label: "Payment Mode", type: "lookup", filterable: true, sortable: false, groupable: true },
+      remark: { label: "Remark", type: "string", filterable: true, sortable: false, groupable: false },
       ...COUNT_COLUMN,
+    },
+    generalFilters: {
+      1: "payment_date_time",
+      13: "type",
+      14: "type",
+      18: "contact_masters_id",
+      25: "mode",
     },
     relations: {
       contact: {
@@ -584,11 +723,6 @@ export const MODEL_REGISTRY = {
         getModel: (tenantDB) => contactModel(tenantDB),
         targetKey: "id",
         modelKey: "contacts",
-        columns: {
-          person_name: { label: "Contact Name", type: "string" },
-          company_name: { label: "Company Name", type: "string" },
-          mobile_number: { label: "Mobile", type: "string" },
-        },
       },
     },
   },
@@ -608,6 +742,14 @@ export const MODEL_REGISTRY = {
       payment_date_time: { label: "Payment Date", type: "date", filterable: true, sortable: true, groupable: false },
       remark: { label: "Remark", type: "string", filterable: true, sortable: false, groupable: false },
       ...COUNT_COLUMN,
+    },
+    generalFilters: {
+      1: "payment_date_time",
+      5: "team_id",
+      9: "team_id",
+      13: "type",
+      14: "type",
+      25: "mode",
     },
     relations: {
       employee: {
@@ -663,7 +805,19 @@ export const MODEL_REGISTRY = {
       amount: { label: "Amount", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
       amount_signed: { label: "Signed Amount", type: "currency", filterable: false, sortable: false, groupable: false, aggregatable: ["sum"] },
       payment_date_time: { label: "Payment Date", type: "date", filterable: true, sortable: true, groupable: false },
+      // Real DB columns, previously unwhitelisted (found via a registry-vs-DB
+      // diff) — present on account_transactions already, were missing here.
+      mode: { label: "Payment Mode", type: "lookup", filterable: true, sortable: false, groupable: true },
+      remark: { label: "Remark", type: "string", filterable: true, sortable: false, groupable: false },
       ...COUNT_COLUMN,
+    },
+    generalFilters: {
+      1: "payment_date_time",
+      5: "team_id",
+      9: "team_id",
+      13: "type",
+      14: "type",
+      25: "mode",
     },
     relations: {
       employee: {
@@ -690,6 +844,14 @@ export const MODEL_REGISTRY = {
       start_date: { label: "Start Date", type: "date", filterable: true, sortable: true, groupable: false },
       end_date: { label: "End Date", type: "date", filterable: true, sortable: true, groupable: false },
       created_date_time: { label: "Created Date", type: "date", filterable: true, sortable: true, groupable: false },
+      // Real scalar INTEGER FK, already used as the `contact` relation's
+      // own foreignKey below — added as its own whitelisted column, the
+      // registry gap Step 2 originally flagged (found while wiring slot 18).
+      contact_id: { label: "Contact", type: "lookup", filterable: true, sortable: false, groupable: true },
+    },
+    generalFilters: {
+      1: "created_date_time",
+      18: "contact_id",
     },
     relations: {
       contact: {
@@ -698,10 +860,6 @@ export const MODEL_REGISTRY = {
         getModel: (tenantDB) => contactModel(tenantDB),
         targetKey: "id",
         modelKey: "contacts",
-        columns: {
-          person_name: { label: "Contact Name", type: "string" },
-          company_name: { label: "Company Name", type: "string" },
-        },
       },
     },
     // visit_type_id -> visit_type_masters skipped: that table has no real
@@ -717,7 +875,13 @@ export const MODEL_REGISTRY = {
       call_type: { label: "Call Type", type: "lookup", filterable: true, sortable: false, groupable: true },
       call_date_time: { label: "Call Date", type: "date", filterable: true, sortable: true, groupable: false },
       duration: { label: "Duration (sec)", type: "number", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      // Same registry-gap fix as visits.contact_id above.
+      contact_id: { label: "Contact", type: "lookup", filterable: true, sortable: false, groupable: true },
       ...COUNT_COLUMN,
+    },
+    generalFilters: {
+      1: "call_date_time",
+      18: "contact_id",
     },
     relations: {
       contact: {
@@ -726,11 +890,6 @@ export const MODEL_REGISTRY = {
         getModel: (tenantDB) => contactModel(tenantDB),
         targetKey: "id",
         modelKey: "contacts",
-        columns: {
-          person_name: { label: "Contact Name", type: "string" },
-          company_name: { label: "Company Name", type: "string" },
-          mobile_number: { label: "Mobile", type: "string" },
-        },
       },
     },
   },
@@ -748,7 +907,19 @@ export const MODEL_REGISTRY = {
       // not a CSV/polymorphic field.
       completed_date_time: { label: "Completed Date", type: "date", filterable: true, sortable: true, groupable: false },
       remark: { label: "Remark", type: "string", filterable: true, sortable: false, groupable: false },
+      // Same registry-gap fix as visits/call_histories' contact_id above.
+      contact_masters_id: { label: "Contact", type: "lookup", filterable: true, sortable: false, groupable: true },
+      // Real scalar INTEGER FK, already used as the `createdBy` relation's
+      // own foreignKey below — added as its own whitelisted column for
+      // slots 5/9 (Team Member), same reasoning as everywhere else here.
+      a_application_login_id: { label: "Created By (Team Member)", type: "lookup", filterable: true, sortable: false, groupable: true },
       ...COUNT_COLUMN,
+    },
+    generalFilters: {
+      1: "reminder_data_time",
+      5: "a_application_login_id",
+      9: "a_application_login_id",
+      18: "contact_masters_id",
     },
     relations: {
       contact: {
@@ -757,10 +928,6 @@ export const MODEL_REGISTRY = {
         getModel: (tenantDB) => contactModel(tenantDB),
         targetKey: "id",
         modelKey: "contacts",
-        columns: {
-          person_name: { label: "Contact Name", type: "string" },
-          company_name: { label: "Company Name", type: "string" },
-        },
       },
       createdBy: {
         label: "Created By",
@@ -796,7 +963,22 @@ export const MODEL_REGISTRY = {
       expense_date: { label: "Expense Date", type: "date", filterable: true, sortable: true, groupable: false },
       expense_status: { label: "Status", type: "lookup", filterable: true, sortable: false, groupable: true },
       remark: { label: "Remark", type: "string", filterable: true, sortable: false, groupable: false },
+      // Real scalar INTEGER FK, already used as the `employee` relation's
+      // own foreignKey below — added as its own whitelisted column for
+      // slots 5/9 (Team Member).
+      a_application_login_id: { label: "Employee", type: "lookup", filterable: true, sortable: false, groupable: true },
+      // Same gap — already used as the `expenseType` relation's own
+      // foreignKey, found while seeding the system gallery's "Expense
+      // Category Analysis" (per-category expense totals).
+      expense_type_id: { label: "Expense Type", type: "lookup", filterable: true, sortable: false, groupable: true },
       ...COUNT_COLUMN,
+    },
+    generalFilters: {
+      1: "expense_date",
+      5: "a_application_login_id",
+      9: "a_application_login_id",
+      27: "expense_type_id",
+      28: "expense_status",
     },
     relations: {
       expenseType: {
@@ -839,7 +1021,40 @@ export const MODEL_REGISTRY = {
       total_earning: { label: "Total Earning", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
       total_deduction: { label: "Total Deduction", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
       net_bank_pay: { label: "Net Pay", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      // Real scalar INTEGER FK, already used as the `employee` relation's
+      // own foreignKey below — added as its own whitelisted column for
+      // slots 5/9 (Team Member).
+      employee_id: { label: "Employee", type: "lookup", filterable: true, sortable: false, groupable: true },
+      // Real DB columns, previously unwhitelisted (found via a registry-vs-DB
+      // diff) — only summary totals (gross_salary/total_earning/total_deduction/
+      // net_bank_pay above) were reportable before; no detailed payroll
+      // breakdown was possible at all.
+      basic_da: { label: "Basic + DA", type: "currency", filterable: true, sortable: false, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      hra: { label: "HRA", type: "currency", filterable: true, sortable: false, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      conveyance_allowance: { label: "Conveyance Allowance", type: "currency", filterable: true, sortable: false, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      medical_allowance: { label: "Medical Allowance", type: "currency", filterable: true, sortable: false, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      special_allowance: { label: "Special Allowance", type: "currency", filterable: true, sortable: false, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      per_day_salary: { label: "Per Day Salary", type: "currency", filterable: true, sortable: false, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      bonus_amount: { label: "Bonus", type: "currency", filterable: true, sortable: false, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      earn_sub_total: { label: "Earnings Sub-total", type: "currency", filterable: true, sortable: false, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      regular_ot_hours: { label: "Regular OT Hours", type: "number", filterable: true, sortable: false, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      extra_ot_hours: { label: "Extra OT Hours", type: "number", filterable: true, sortable: false, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      regular_ot_payable_amt: { label: "Regular OT Payable", type: "currency", filterable: true, sortable: false, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      extra_ot_payable_amt: { label: "Extra OT Payable", type: "currency", filterable: true, sortable: false, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      ded_emp_pf: { label: "Employee PF", type: "currency", filterable: true, sortable: false, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      ded_pradhan_mantri_pf: { label: "Pradhan Mantri PF", type: "currency", filterable: true, sortable: false, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      ded_esi_employee: { label: "ESI (Employee)", type: "currency", filterable: true, sortable: false, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      ded_esi_company: { label: "ESI (Company)", type: "currency", filterable: true, sortable: false, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      ded_pt: { label: "Professional Tax", type: "currency", filterable: true, sortable: false, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      ded_insurance: { label: "Insurance Deduction", type: "currency", filterable: true, sortable: false, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
       ...COUNT_COLUMN,
+    },
+    // No slot 1 (Date Range) — year/month are separate integers, not a
+    // date-range column, doesn't fit that slot's shape at all (settled in
+    // the plan: already covered by the static filter rows, no gap).
+    generalFilters: {
+      5: "employee_id",
+      9: "employee_id",
     },
     relations: {
       employee: {
@@ -892,7 +1107,17 @@ export const MODEL_REGISTRY = {
         runningTotal: { partitionBy: "item_product_id", orderBy: "cart_date" },
       },
       stock_type: { label: "Stock Type", type: "lookup", filterable: true, sortable: false, groupable: true },
+      // Real column, previously unwhitelisted (found via registry-vs-DB
+      // diff) — no per-warehouse breakdown was possible before.
+      item_warehouse_id: { label: "Warehouse", type: "lookup", filterable: true, sortable: false, groupable: true },
       ...COUNT_COLUMN,
+    },
+    // Category not directly on this table — product-only for slot 7.
+    generalFilters: {
+      1: "cart_date",
+      7: "item_product_id",
+      16: "item_warehouse_id",
+      17: "stock_type",
     },
     relations: {
       product: {
@@ -919,7 +1144,20 @@ export const MODEL_REGISTRY = {
       // row is a punch event, not a daily present/absent summary.
       attendance_status: { label: "Punch Type", type: "lookup", filterable: true, sortable: false, groupable: true },
       check_in_out_date_time: { label: "Punch Date/Time", type: "date", filterable: true, sortable: true, groupable: false },
+      // Real scalar INTEGER FK, already used as the `employee` relation's
+      // own foreignKey below — added as its own whitelisted column for
+      // slots 5/9 (Team Member) — the 4th of the registry gaps the plan
+      // doc originally flagged.
+      a_application_login_id: { label: "Employee", type: "lookup", filterable: true, sortable: false, groupable: true },
+      // Real column, previously unwhitelisted (found via registry-vs-DB
+      // diff) — total hours worked per punch pair.
+      total_working_hour: { label: "Total Working Hours", type: "number", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
       ...COUNT_COLUMN,
+    },
+    generalFilters: {
+      1: "check_in_out_date_time",
+      5: "a_application_login_id",
+      9: "a_application_login_id",
     },
     relations: {
       employee: {
@@ -952,7 +1190,19 @@ export const MODEL_REGISTRY = {
       target_value: { label: "Target Value", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
       incentive_type: { label: "Incentive Type", type: "lookup", filterable: true, sortable: false, groupable: true },
       incentive_value: { label: "Incentive Value", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      // Real column, previously unwhitelisted (found via registry-vs-DB
+      // diff) — lets a target/incentive row be scoped to one product.
+      product_id: { label: "Product", type: "lookup", filterable: true, sortable: false, groupable: true },
       ...COUNT_COLUMN,
+    },
+    // Two date columns (target_fromdate/target_todate) — target_fromdate
+    // picked for slot 1, same "equally plausible, pick one" call as
+    // task_managements' own Date Range ambiguity.
+    generalFilters: {
+      1: "target_fromdate",
+      5: "assigned_team_member",
+      9: "assigned_team_member",
+      7: "product_id",
     },
     relations: {
       employee: {
@@ -964,11 +1214,282 @@ export const MODEL_REGISTRY = {
           username: { label: "Team Member", type: "string" },
         },
       },
+      product: {
+        label: "Product",
+        foreignKey: "product_id",
+        getModel: (tenantDB) => productModel(tenantDB),
+        targetKey: "id",
+        columns: {
+          product_name: PRODUCT_COLUMNS.product_name,
+        },
+      },
+    },
+  },
+
+  // ---- Production / BOM (previously "no registered data source at all"
+  // per the plan's Step 1 audit) — 5 real tables covering the bulk of the
+  // PDF's 9 Production/BOM report titles: job_cards (Job Card Performance),
+  // production_transactions (Production Summary/Efficiency/Rejection),
+  // production_transaction_items (Material Consumption), bom_vs_process_lists
+  // (BOM Cost Analysis), bom_process_vs_cons_rejcts (the BOM "recipe" —
+  // standard qty per material, the other side of a real Material Variance
+  // report; the variance CALCULATION itself — actual vs standard — isn't
+  // built here, just the two tables it would need). ----
+  job_cards: {
+    label: "Job Cards",
+    getModel: (tenantDB) => JobCardsModel(tenantDB),
+    columns: {
+      job_card_type: { label: "Job Card Type", type: "lookup", filterable: true, sortable: false, groupable: true },
+      production_qty: { label: "Production Qty", type: "number", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      status_id: { label: "Status", type: "lookup", filterable: true, sortable: false, groupable: true },
+      contact_id: { label: "Contact", type: "lookup", filterable: true, sortable: false, groupable: true },
+      created_date_time: { label: "Created Date", type: "date", filterable: true, sortable: true, groupable: false },
+      // CSV-of-ids (same convention task_managements.label_id / contacts.lable use).
+      label_ids: { label: "Labels (has label)", type: "csv", filterable: true, sortable: false, groupable: false },
+      team_assign_ids: { label: "Assigned To (has member)", type: "csv", filterable: true, sortable: false, groupable: false },
+      ...COUNT_COLUMN,
+    },
+    generalFilters: {
+      1: "created_date_time",
+      2: "label_ids",
+      4: "status_id",
+      9: "team_assign_ids",
+      18: "contact_id",
+    },
+    relations: {
+      product: {
+        label: "Product",
+        foreignKey: "item_id",
+        getModel: (tenantDB) => productModel(tenantDB),
+        targetKey: "id",
+        columns: { product_name: PRODUCT_COLUMNS.product_name },
+      },
+      contact: {
+        label: "Contact",
+        foreignKey: "contact_id",
+        getModel: (tenantDB) => contactModel(tenantDB),
+        targetKey: "id",
+        modelKey: "contacts",
+      },
+      status: {
+        label: "Status",
+        foreignKey: "status_id",
+        getModel: (tenantDB) => stagestatusModel(tenantDB),
+        targetKey: "id",
+        columns: {
+          name: { label: "Status Name", type: "string" },
+          color: { label: "Status Colour", type: "string" },
+        },
+      },
+      labels: {
+        label: "Labels",
+        matchMode: "csv",
+        foreignKey: "label_ids",
+        getModel: (tenantDB) => labelModel(tenantDB),
+        targetKey: "id",
+        columns: {
+          lable_name: { label: "Label Names", type: "string" },
+          color: { label: "Label Colours", type: "string" },
+        },
+      },
+      assignedTeamMembers: {
+        label: "Assigned To",
+        matchMode: "csv",
+        foreignKey: "team_assign_ids",
+        getModel: () => loginModel,
+        targetKey: "id",
+        columns: { username: { label: "Assigned Names", type: "string" } },
+      },
+    },
+  },
+
+  production_transactions: {
+    label: "Production Runs",
+    getModel: (tenantDB) => productionTransactionModel(tenantDB),
+    columns: {
+      date: { label: "Production Date", type: "date", filterable: true, sortable: true, groupable: false },
+      production_qty: { label: "Production Qty", type: "number", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      consumption_qty: { label: "Consumption Qty", type: "number", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      rejection_qty: { label: "Rejection Qty", type: "number", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      production_item_id: { label: "Product", type: "lookup", filterable: true, sortable: false, groupable: true },
+      bom_id: { label: "BOM", type: "lookup", filterable: true, sortable: false, groupable: true },
+      team_member: { label: "Team Member", type: "lookup", filterable: true, sortable: false, groupable: true },
+      remark: { label: "Remark", type: "string", filterable: true, sortable: false, groupable: false },
+      ...COUNT_COLUMN,
+    },
+    generalFilters: {
+      1: "date",
+      5: "team_member",
+      9: "team_member",
+      7: "production_item_id",
+    },
+    relations: {
+      product: {
+        label: "Product",
+        foreignKey: "production_item_id",
+        getModel: (tenantDB) => productModel(tenantDB),
+        targetKey: "id",
+        columns: { product_name: PRODUCT_COLUMNS.product_name },
+      },
+      employee: {
+        label: "Team Member",
+        foreignKey: "team_member",
+        getModel: () => loginModel,
+        targetKey: "id",
+        columns: { username: { label: "Team Member", type: "string" } },
+      },
+    },
+  },
+
+  // Per-material line items of a production run — entry_type distinguishes
+  // consumption (2) from rejection (1), confirmed in the model's own
+  // comment. Same "header + items" split carts/cart_items already use.
+  production_transaction_items: {
+    label: "Production Material Usage",
+    getModel: (tenantDB) => productionTransactionsItemsModel(tenantDB),
+    columns: {
+      entry_type: { label: "Entry Type", type: "lookup", filterable: true, sortable: false, groupable: true },
+      qty: { label: "Quantity", type: "number", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      item_id: { label: "Material", type: "lookup", filterable: true, sortable: false, groupable: true },
+      warehouse: { label: "Warehouse", type: "lookup", filterable: true, sortable: false, groupable: true },
+      process_id: { label: "Process", type: "lookup", filterable: true, sortable: false, groupable: true },
+      bom_id: { label: "BOM", type: "lookup", filterable: true, sortable: false, groupable: true },
+      production_id: { label: "Production Run", type: "lookup", filterable: true, sortable: false, groupable: true },
+      created_date_time: { label: "Date", type: "date", filterable: true, sortable: true, groupable: false },
+      ...COUNT_COLUMN,
+    },
+    generalFilters: {
+      1: "created_date_time",
+      7: "item_id",
+      16: "warehouse",
+    },
+    relations: {
+      product: {
+        label: "Material",
+        foreignKey: "item_id",
+        getModel: (tenantDB) => productModel(tenantDB),
+        targetKey: "id",
+        columns: { product_name: PRODUCT_COLUMNS.product_name },
+      },
+    },
+  },
+
+  // BOM's per-process cost assignment (workstation, process cost, manpower
+  // cost) — real columns behind "BOM Cost Analysis". No BOM-name column
+  // exists on this table itself (bom_id is a bare id, no master-BOM table
+  // found with a name column) — reportable by id/product for now.
+  bom_process_costs: {
+    label: "BOM Process Costs",
+    getModel: (tenantDB) => bomVsProcessListsModel(tenantDB),
+    columns: {
+      bom_id: { label: "BOM", type: "lookup", filterable: true, sortable: false, groupable: true },
+      product_id: { label: "Product", type: "lookup", filterable: true, sortable: false, groupable: true },
+      process_id: { label: "Process", type: "lookup", filterable: true, sortable: false, groupable: true },
+      workstation_id: { label: "Workstation", type: "lookup", filterable: true, sortable: false, groupable: true },
+      required_time: { label: "Required Time", type: "string", filterable: false, sortable: false, groupable: false },
+      process_cost: { label: "Process Cost", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      manpower_cost: { label: "Manpower Cost", type: "currency", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      ...COUNT_COLUMN,
+    },
+    relations: {
+      product: {
+        label: "Product",
+        foreignKey: "product_id",
+        getModel: (tenantDB) => productModel(tenantDB),
+        targetKey: "id",
+        columns: { product_name: PRODUCT_COLUMNS.product_name },
+      },
+    },
+  },
+
+  // BOM's "recipe" — standard material qty per finished product/process,
+  // type distinguishing a consumption norm from a rejection allowance (same
+  // 1/2 convention production_transaction_items.entry_type documents). The
+  // other half of a real Material Variance report (actual side is
+  // production_transaction_items above) — the variance calc itself isn't
+  // built, just both tables it needs.
+  bom_material_norms: {
+    label: "BOM Material Norms",
+    getModel: (tenantDB) => bomVsProcessVsConsAndRejctsModel(tenantDB),
+    columns: {
+      bom_id: { label: "BOM", type: "lookup", filterable: true, sortable: false, groupable: true },
+      master_product_id: { label: "Finished Product", type: "lookup", filterable: true, sortable: false, groupable: true },
+      process_id: { label: "Process", type: "lookup", filterable: true, sortable: false, groupable: true },
+      type: { label: "Norm Type", type: "lookup", filterable: true, sortable: false, groupable: true },
+      item_id: { label: "Material", type: "lookup", filterable: true, sortable: false, groupable: true },
+      qty: { label: "Standard Qty", type: "number", filterable: true, sortable: true, groupable: false, aggregatable: ["sum", "avg", "min", "max"] },
+      is_reusable: { label: "Reusable", type: "lookup", filterable: true, sortable: false, groupable: true },
+      remark: { label: "Remark", type: "string", filterable: true, sortable: false, groupable: false },
+      ...COUNT_COLUMN,
+    },
+    relations: {
+      material: {
+        label: "Material",
+        foreignKey: "item_id",
+        getModel: (tenantDB) => productModel(tenantDB),
+        targetKey: "id",
+        columns: { product_name: PRODUCT_COLUMNS.product_name },
+      },
+      finishedProduct: {
+        label: "Finished Product",
+        foreignKey: "master_product_id",
+        getModel: (tenantDB) => productModel(tenantDB),
+        targetKey: "id",
+        columns: { product_name: PRODUCT_COLUMNS.product_name },
+      },
     },
   },
 };
 
 export const getRegisteredModel = (modelKey) => MODEL_REGISTRY[modelKey];
+
+// A relation's displayable columns — either its own hand-curated `columns`
+// map, or (when it declares `modelKey` instead) borrowed straight from that
+// already-registered table's own `columns`. This is what lets e.g. every
+// `contact` relation across task_managements/inquiries/visits/... just say
+// `modelKey: "contacts"` once instead of re-listing person_name/company_name/
+// mobile_number/... in every table that has a contact FK — one source of
+// truth, no per-relation field list to keep in sync by hand.
+export const resolveRelationColumns = (relDef) => relDef.columns || (relDef.modelKey && MODEL_REGISTRY[relDef.modelKey]?.columns) || {};
+
+// A relation's OWN relations, one hop further out — only available when the
+// relation is modelKey-backed (a hand-curated `columns`-only relation has no
+// registry entry to borrow a `relations` map from). This is what makes
+// task -> contact -> label chaining "just work" once `contact` points at
+// `modelKey: "contacts"`: contacts' own already-registered `label` relation
+// becomes reachable as "contact.label.lable_name" for free, no new field
+// list anywhere — queryEngine.js resolves it as one more batched fetch.
+export const resolveRelationRelations = (relDef) => (relDef.modelKey && MODEL_REGISTRY[relDef.modelKey]?.relations) || null;
+
+// Lightweight, non-PIN-safe slice of a table's registry entry — the
+// generalFilters slot map + each target column's `type` (needed to pick
+// findInSet vs in on the frontend adapter, see generalFilterAdapter.ts),
+// plus every column's own filterable/type/label (needed for the run
+// screen's row-level per-column filters, so it can only offer a filter
+// on a column queryEngine.js will actually accept — it throws hard on a
+// non-filterable one, e.g. any aggregate alias or relation-dotted key).
+// Deliberately still excludes relations, groupable/aggregatable flags,
+// and dynamic custom-field columns (those need company context this
+// endpoint doesn't take) — those stay behind getModelRegistry's PIN
+// gate since they're build-surface, not needed to just run a report.
+export const getGeneralFilterMeta = (modelKey) => {
+  const entry = MODEL_REGISTRY[modelKey];
+  if (!entry) return null;
+  const generalFilters = entry.generalFilters || {};
+  const columnTypes = {};
+  for (const target of Object.values(generalFilters)) {
+    if (typeof target === "string" && entry.columns[target]) {
+      columnTypes[target] = entry.columns[target].type;
+    }
+  }
+  const filterableColumns = {};
+  for (const [key, def] of Object.entries(entry.columns)) {
+    if (def.filterable) {
+      filterableColumns[key] = { type: def.type, label: def.label };
+    }
+  }
+  return { generalFilters, columnTypes, filterableColumns };
+};
 
 // Serializable view for the frontend's table/column picker — strips
 // getModel (a function, not meaningful to a client) and reshapes into
@@ -1006,15 +1527,58 @@ export const listModelRegistry = async (tenantDB, company_masters_id) =>
           })),
         ],
         relations: entry.relations
-          ? Object.entries(entry.relations).map(([relKey, relDef]) => ({
-              key: relKey,
-              label: relDef.label,
-              columns: Object.entries(relDef.columns).map(([columnKey, columnDef]) => ({
-                key: `${relKey}.${columnKey}`,
-                ...columnDef,
-              })),
-            }))
+          ? Object.entries(entry.relations).map(([relKey, relDef]) => {
+              const relColumns = resolveRelationColumns(relDef);
+              const subRelations = !relDef.matchMode ? resolveRelationRelations(relDef) : null;
+              return {
+                key: relKey,
+                label: relDef.label,
+                // Exposed so the frontend can offer "show as label via this
+                // relation" (Step 2's lookup-label auto-resolve) on a base
+                // lookup column whose key matches a relation's own
+                // foreignKey — never inferred/matched server-side, only
+                // whitelisted metadata surfaced for the author to pick from.
+                foreignKey: relDef.foreignKey,
+                matchMode: relDef.matchMode || null,
+                columns: Object.entries(relColumns).map(([columnKey, columnDef]) => ({
+                  key: `${relKey}.${columnKey}`,
+                  ...columnDef,
+                })),
+                // Second hop — only reachable when this relation borrows a
+                // full registry entry (modelKey) AND is itself a plain scalar
+                // relation (chaining off a csv/reverse relation isn't
+                // supported, same restriction queryEngine.js enforces). Lets
+                // the frontend render e.g. "Contact > Labels > Label Names"
+                // as its own pickable leaf without either table listing it
+                // by hand.
+                relations: subRelations
+                  ? Object.entries(subRelations)
+                      // A "reverse" sub-relation (e.g. contacts.children — a
+                      // one-to-many self-relation) can't be chained at 2 hops
+                      // (queryEngine.js's own restriction, same reasoning:
+                      // the merge would need to aggregate a LIST of children's
+                      // own fields, not built). Excluded here too, so the
+                      // picker never offers something the engine will reject
+                      // the moment a column under it is actually run.
+                      .filter(([, subRelDef]) => subRelDef.matchMode !== "reverse")
+                      .map(([subRelKey, subRelDef]) => ({
+                        key: `${relKey}.${subRelKey}`,
+                        label: subRelDef.label,
+                        columns: Object.entries(resolveRelationColumns(subRelDef)).map(([columnKey, columnDef]) => ({
+                          key: `${relKey}.${subRelKey}.${columnKey}`,
+                          ...columnDef,
+                        })),
+                      }))
+                  : [],
+              };
+            })
           : [],
+        // Step 2 of the plan — which CheckBoxFilterModal.tsx slot numbers
+        // apply to this table and which whitelisted column (or `true` for
+        // slot 6, Demography) each resolves to. {} for a table with none
+        // registered yet, same "always an object, never undefined" shape
+        // dynamicColumns already has.
+        generalFilters: entry.generalFilters || {},
       };
     }),
   );

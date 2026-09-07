@@ -40,8 +40,44 @@ export const reportDefinitionModel = (sequelize) => {
       group_by_json: {
         type: TEXT,
       },
+      // system_report_definitions.id (master DB) this row was copied from
+      // via copyFromSystemReportDefinition, or null for a report the tenant
+      // built from scratch — see migration
+      // 20260902100001-add-source-system-report-definition-id-to-report-definitions.js.
+      source_system_report_definition_id: {
+        type: INTEGER,
+      },
+      // JSON array of general-filter slot numbers (see
+      // generalFilterAdapter.ts) the author picked as this report's
+      // default — NULL means "show every slot this table has."
+      filters_to_show: {
+        type: TEXT,
+      },
+      // Tenant-defined organization (Step 10) — distinct from
+      // system_report_definitions' admin-fixed `category`. NULL = ungrouped.
+      report_group_id: {
+        type: INTEGER,
+      },
+      // Report-picker search matches name + description (Step 5's "Search
+      // scope" decision).
+      description: {
+        type: TEXT,
+      },
+      // Which named icon (frontend's reportIcons.tsx REPORT_ICON_PATHS
+      // key) this report's tile shows — NULL falls back to "report".
+      icon: {
+        type: STRING,
+      },
       s_timestemp: {
         type: STRING,
+      },
+      // Set by the dashboard Add-Widget "quick counter" shortcut — an
+      // auto-created, minimal (single aggregate column) definition, not
+      // meant to be browsed/run standalone from the main Report Builder
+      // list. See migration 20260905170000-add-is-dashboard-only-to-report-definitions.js.
+      is_dashboard_only: {
+        type: TINYINT,
+        defaultValue: "0",
       },
       isDelete: {
         type: TINYINT,

@@ -1,4 +1,4 @@
-import { DATE, INTEGER, NOW, STRING, TEXT, TINYINT } from "sequelize";
+import { DATE, ENUM, INTEGER, NOW, STRING, TEXT, TINYINT } from "sequelize";
 
 export const reportRunModel = (sequelize) => {
   return sequelize.define(
@@ -37,6 +37,10 @@ export const reportRunModel = (sequelize) => {
       },
       error_message: {
         type: STRING(500),
+      },
+      trigger_type: {
+        type: ENUM("manual", "scheduled"),
+        defaultValue: "manual",
       },
     },
     {
