@@ -39,8 +39,12 @@ import { tenantMiddleware } from "../../middlewares/tenantMiddleware.js";
 export default (app) => {
   // No company feature flag, no owner+PIN gate — Report Builder is enabled
   // for every company, every route here is just authenticateToken +
-  // tenantMiddleware. Per-report access (report_definition_team_rights) is
-  // still enforced further down the stack — see the run routes' comment.
+  // tenantMiddleware. Build-tier access (page-rights via
+  // application_login_type_rights, PAGE_ID.REPORT_BUILDER — see
+  // reportBuilderRights.js) is enforced service-side, same as Dashboard
+  // Builder. Per-report RUN access (report_definition_team_rights) is a
+  // separate, still-enforced check further down the stack — see the run
+  // routes' comment.
   app.post("/report-definitions/model-registry", authenticateToken, tenantMiddleware, getModelRegistryController);
   app.post("/report-definitions/plugin-registry", authenticateToken, tenantMiddleware, getPluginRegistryController);
   app.post("/report-definitions/metrics-registry", authenticateToken, tenantMiddleware, getMetricsRegistryController);

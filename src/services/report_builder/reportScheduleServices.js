@@ -1,6 +1,9 @@
 // Step 8a — scheduled delivery of a report_definition. CRUD here is
-// build-tier (owner+PIN, same as everything else that configures a
-// report). Dispatching is the one piece that runs OUTSIDE any user
+// build-tier, gated via resolveReportBuilderRights (same
+// application_login_type_rights mechanism as everything else that
+// configures a report — see reportBuilderRights.js), with personal-data
+// scope enforced against each schedule's own creator column. Dispatching
+// is the one piece that runs OUTSIDE any user
 // request — see reportScheduleDispatchCroneTabRunner at the bottom,
 // which mirrors the EXISTING external-cron pattern this codebase already
 // uses for every other recurring job (cronJobServices.js's
@@ -35,9 +38,86 @@ import { resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { getCompanyByLoginId } from "../commonServices.js";
 import { sendMultipleNotification } from "../company_setup/thirdPartyIntegrationService.js";
 import { exportReportExcel, exportReportPdf } from "./reportPdfExport.js";
+import { resolveReportBuilderRights } from "./reportBuilderRights.js";
 
 const now = () => moment(new Date()).format("YYYY-MM-DD HH:mm:ss");
 const asJsonString = (value) => (typeof value === "string" ? value : JSON.stringify(value));
+
+// requirePermission: "view" (default) | "edit". Scoped to the PARENT
+// report_definition (id param = report_definition_id) — list/create act
+// on a report's schedules collection, so rights are checked against the
+// report itself, personal scope included (same rule
+// reportDefinitionServices.js's own loadOwnedReportDefinition applies).
+async function loadOwnedReportForSchedule(req, requirePermission) {
+  const { id } = req.params || {};
+  const { a_application_login_id } = req.body || {};
+  if (!id || !a_application_login_id) {
+    return { error: resError({ developer_msg: "id (param, report_definition_id) and a_application_login_id are required" }) };
+  }
+  const findCompanyId = await getCompanyByLoginId(a_application_login_id);
+  if (!findCompanyId) {
+    return { error: resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" }) };
+  }
+  const company_masters_id = findCompanyId.company_masters_id;
+
+  const rights = await resolveReportBuilderRights({ company_masters_id, a_application_login_id, tenantDB: req.tenantDB });
+  if (!rights.canView) {
+    return { error: resError({ code: 403, ack_msg: "You don't have access to Report Builder", developer_msg: "No Report Builder view rights for this login" }) };
+  }
+  if (requirePermission === "edit" && !rights.canEdit) {
+    return { error: resError({ code: 403, ack_msg: "You don't have permission to manage this report's schedules", developer_msg: "No Report Builder edit rights for this login" }) };
+  }
+
+  const ReportDefinition = reportDefinitionModel(req.tenantDB);
+  const definition = await ReportDefinition.findOne({ where: { id, company_masters_id, isDelete: 0 } });
+  if (!definition) {
+    return { error: resError({ code: 404, ack_msg: "Report not found", developer_msg: "No matching report definition for this company" }) };
+  }
+  if (!rights.showAllData && definition.a_application_login_id !== Number(a_application_login_id)) {
+    return { error: resError({ code: 404, ack_msg: "Report not found", developer_msg: "Not visible under this login's personal data scope" }) };
+  }
+
+  return { definition, company_masters_id, rights };
+}
+
+// requirePermission: "view" (default) | "edit" | "delete". Scoped to the
+// SCHEDULE itself (its own a_application_login_id — whoever set it up),
+// used by update/delete which only have the schedule's own id, not the
+// parent report's.
+async function loadOwnedSchedule(req, requirePermission) {
+  const { scheduleId } = req.params || {};
+  const { a_application_login_id } = req.body || {};
+  if (!scheduleId || !a_application_login_id) {
+    return { error: resError({ developer_msg: "scheduleId (param) and a_application_login_id are required" }) };
+  }
+  const findCompanyId = await getCompanyByLoginId(a_application_login_id);
+  if (!findCompanyId) {
+    return { error: resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" }) };
+  }
+  const company_masters_id = findCompanyId.company_masters_id;
+
+  const ReportSchedule = reportScheduleModel(req.tenantDB);
+  const schedule = await ReportSchedule.findOne({ where: { id: scheduleId, company_masters_id, isDelete: 0 } });
+  if (!schedule) {
+    return { error: resError({ code: 404, ack_msg: "Schedule not found", developer_msg: "No matching schedule for this company" }) };
+  }
+
+  const rights = await resolveReportBuilderRights({ company_masters_id, a_application_login_id, tenantDB: req.tenantDB });
+  if (!rights.canView) {
+    return { error: resError({ code: 403, ack_msg: "You don't have access to Report Builder", developer_msg: "No Report Builder view rights for this login" }) };
+  }
+  if (requirePermission === "edit" && !rights.canEdit) {
+    return { error: resError({ code: 403, ack_msg: "You don't have permission to edit this schedule", developer_msg: "No Report Builder edit rights for this login" }) };
+  }
+  if (requirePermission === "delete" && !rights.canDelete) {
+    return { error: resError({ code: 403, ack_msg: "You don't have permission to delete this schedule", developer_msg: "No Report Builder delete rights for this login" }) };
+  }
+  if (!rights.showAllData && schedule.a_application_login_id !== Number(a_application_login_id)) {
+    return { error: resError({ code: 404, ack_msg: "Schedule not found", developer_msg: "Not visible under this login's personal data scope" }) };
+  }
+
+  return { schedule, company_masters_id, rights };
+}
 
 // ---- next_run_at computation — plain local time, no timezone stored,
 // same convention every other plain date/time field in this schema
@@ -61,22 +141,16 @@ const computeNextRunAt = ({ frequency, send_time, day_of_week, day_of_month }, f
   return next;
 };
 
-// ---- CRUD — owner+PIN build-tier, same IDOR-guard pattern every other
-// mutation in reportDefinitionServices.js already uses. ----
+// ---- CRUD — gated via loadOwnedReportForSchedule/loadOwnedSchedule above,
+// same IDOR-guard + page-rights pattern every other mutation in
+// reportDefinitionServices.js already uses. ----
 export const listReportSchedules = async (req) => {
   try {
-    const { id } = req.params || {};
-    const { a_application_login_id } = req.body || {};
-    if (!id || !a_application_login_id) {
-      return resError({ developer_msg: "id (param, report_definition_id) and a_application_login_id are required" });
-    }
-    const findCompanyId = await getCompanyByLoginId(a_application_login_id);
-    if (!findCompanyId) {
-      return resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" });
-    }
+    const { definition, company_masters_id, error } = await loadOwnedReportForSchedule(req);
+    if (error) return error;
     const ReportSchedule = reportScheduleModel(req.tenantDB);
     const rows = await ReportSchedule.findAll({
-      where: { report_definition_id: id, company_masters_id: findCompanyId.company_masters_id, isDelete: 0 },
+      where: { report_definition_id: definition.id, company_masters_id, isDelete: 0 },
       order: [["id", "DESC"]],
     });
     return resSuccess({ data: { item: rows } });
@@ -88,10 +162,9 @@ export const listReportSchedules = async (req) => {
 
 export const createReportSchedule = async (req) => {
   try {
-    const { id } = req.params || {};
     const { a_application_login_id, frequency, send_time, day_of_week, day_of_month, delivery_format, recipients } = req.body || {};
-    if (!id || !a_application_login_id || !frequency || !send_time) {
-      return resError({ developer_msg: "id (param), a_application_login_id, frequency and send_time are required" });
+    if (!frequency || !send_time) {
+      return resError({ developer_msg: "frequency and send_time are required" });
     }
     if (!["daily", "weekly", "monthly"].includes(frequency)) {
       return resError({ developer_msg: `Invalid frequency "${frequency}"` });
@@ -104,22 +177,13 @@ export const createReportSchedule = async (req) => {
     }
     const cappedDayOfMonth = frequency === "monthly" ? Math.min(Math.max(Number(day_of_month), 1), 28) : null;
 
-    const findCompanyId = await getCompanyByLoginId(a_application_login_id);
-    if (!findCompanyId) {
-      return resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" });
-    }
-    const ReportDefinition = reportDefinitionModel(req.tenantDB);
-    const definition = await ReportDefinition.findOne({
-      where: { id, company_masters_id: findCompanyId.company_masters_id, isDelete: 0 },
-    });
-    if (!definition) {
-      return resError({ code: 404, ack_msg: "Report not found", developer_msg: "No matching report definition for this company" });
-    }
+    const { definition, company_masters_id, error } = await loadOwnedReportForSchedule(req, "edit");
+    if (error) return error;
 
     const spec = { frequency, send_time, day_of_week: day_of_week ?? null, day_of_month: cappedDayOfMonth };
     const ReportSchedule = reportScheduleModel(req.tenantDB);
     const created = await ReportSchedule.create({
-      company_masters_id: findCompanyId.company_masters_id,
+      company_masters_id,
       report_definition_id: definition.id,
       a_application_login_id,
       frequency,
@@ -140,22 +204,9 @@ export const createReportSchedule = async (req) => {
 
 export const updateReportSchedule = async (req) => {
   try {
-    const { scheduleId } = req.params || {};
-    const { a_application_login_id, frequency, send_time, day_of_week, day_of_month, delivery_format, recipients, isActive } = req.body || {};
-    if (!scheduleId || !a_application_login_id) {
-      return resError({ developer_msg: "scheduleId (param) and a_application_login_id are required" });
-    }
-    const findCompanyId = await getCompanyByLoginId(a_application_login_id);
-    if (!findCompanyId) {
-      return resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" });
-    }
-    const ReportSchedule = reportScheduleModel(req.tenantDB);
-    const schedule = await ReportSchedule.findOne({
-      where: { id: scheduleId, company_masters_id: findCompanyId.company_masters_id, isDelete: 0 },
-    });
-    if (!schedule) {
-      return resError({ code: 404, ack_msg: "Schedule not found", developer_msg: "No matching schedule for this company" });
-    }
+    const { frequency, send_time, day_of_week, day_of_month, delivery_format, recipients, isActive } = req.body || {};
+    const { schedule, error } = await loadOwnedSchedule(req, "edit");
+    if (error) return error;
 
     const patch = {};
     if (frequency !== undefined) patch.frequency = frequency;
@@ -189,22 +240,8 @@ export const updateReportSchedule = async (req) => {
 
 export const deleteReportSchedule = async (req) => {
   try {
-    const { scheduleId } = req.params || {};
-    const { a_application_login_id } = req.body || {};
-    if (!scheduleId || !a_application_login_id) {
-      return resError({ developer_msg: "scheduleId (param) and a_application_login_id are required" });
-    }
-    const findCompanyId = await getCompanyByLoginId(a_application_login_id);
-    if (!findCompanyId) {
-      return resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" });
-    }
-    const ReportSchedule = reportScheduleModel(req.tenantDB);
-    const schedule = await ReportSchedule.findOne({
-      where: { id: scheduleId, company_masters_id: findCompanyId.company_masters_id, isDelete: 0 },
-    });
-    if (!schedule) {
-      return resError({ code: 404, ack_msg: "Schedule not found", developer_msg: "No matching schedule for this company" });
-    }
+    const { schedule, error } = await loadOwnedSchedule(req, "delete");
+    if (error) return error;
     await schedule.update({ isDelete: 1 });
     return resSuccess({ ack_msg: "Schedule deleted successfully" });
   } catch (e) {

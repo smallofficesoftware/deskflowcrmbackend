@@ -20,10 +20,53 @@ import { getRegisteredMetric, listMetricsRegistry } from "./metricsRegistry.js";
 import { getGeneralFilterMeta, getRegisteredModel, listModelRegistry } from "./modelRegistry.js";
 import { getRegisteredPlugin, listPluginRegistry } from "./pluginRegistry.js";
 import { runQueryReport } from "./queryEngine.js";
+import { resolveReportBuilderRights } from "./reportBuilderRights.js";
 
 const now = () => moment(new Date()).format("YYYY-MM-DD HH:mm:ss");
 
 const asJsonString = (value) => (typeof value === "string" ? value : JSON.stringify(value));
+
+// requirePermission: "view" (default, every caller needs this) | "edit" | "delete".
+// Personal (non-all-data) scope is enforced as a 404, not a 403 — a report
+// outside this login's own personal scope should read as "doesn't exist",
+// not "exists but you can't see it" — same precedent dashboardServices.js's
+// own loadOwnedDashboard already sets. Distinct from
+// report_definition_team_rights (run-only grants, see
+// resolveReportBuilderRights's own comment) — this gates BUILD actions only.
+async function loadOwnedReportDefinition(req, requirePermission) {
+  const { id } = req.params || {};
+  const { a_application_login_id } = req.body || {};
+  if (!id || !a_application_login_id) {
+    return { error: resError({ developer_msg: "id (param) and a_application_login_id are required" }) };
+  }
+  const findCompanyId = await getCompanyByLoginId(a_application_login_id);
+  if (!findCompanyId) {
+    return { error: resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" }) };
+  }
+  const company_masters_id = findCompanyId.company_masters_id;
+
+  const rights = await resolveReportBuilderRights({ company_masters_id, a_application_login_id, tenantDB: req.tenantDB });
+  if (!rights.canView) {
+    return { error: resError({ code: 403, ack_msg: "You don't have access to Report Builder", developer_msg: "No Report Builder view rights for this login" }) };
+  }
+  if (requirePermission === "edit" && !rights.canEdit) {
+    return { error: resError({ code: 403, ack_msg: "You don't have permission to edit this report", developer_msg: "No Report Builder edit rights for this login" }) };
+  }
+  if (requirePermission === "delete" && !rights.canDelete) {
+    return { error: resError({ code: 403, ack_msg: "You don't have permission to delete this report", developer_msg: "No Report Builder delete rights for this login" }) };
+  }
+
+  const ReportDefinition = reportDefinitionModel(req.tenantDB);
+  const definition = await ReportDefinition.findOne({ where: { id, company_masters_id, isDelete: 0 } });
+  if (!definition) {
+    return { error: resError({ code: 404, ack_msg: "Report not found", developer_msg: "No matching report definition for this company" }) };
+  }
+  if (!rights.showAllData && definition.a_application_login_id !== Number(a_application_login_id)) {
+    return { error: resError({ code: 404, ack_msg: "Report not found", developer_msg: "Not visible under this login's personal data scope" }) };
+  }
+
+  return { definition, company_masters_id, rights };
+}
 
 // Mostly a static whitelist, not tenant data — company_masters_id is
 // resolved only so listModelRegistry() can merge in THIS company's real
@@ -134,25 +177,8 @@ export const copyFromSystemReportDefinition = async (req) => {
 // duplicateDocumentTemplate (documentPrintTemplateServices.js:531).
 export const duplicateReportDefinition = async (req) => {
   try {
-    const { id } = req.params || {};
-    const { a_application_login_id } = req.body || {};
-    if (!id || !a_application_login_id) {
-      return resError({ developer_msg: "id (param) and a_application_login_id are required" });
-    }
-
-    const findCompanyId = await getCompanyByLoginId(a_application_login_id);
-    if (!findCompanyId) {
-      return resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" });
-    }
-
-    const ReportDefinition = reportDefinitionModel(req.tenantDB);
-    // IDOR guard — id must belong to the resolved company, never trusted alone.
-    const source = await ReportDefinition.findOne({
-      where: { id, company_masters_id: findCompanyId.company_masters_id, isDelete: 0 },
-    });
-    if (!source) {
-      return resError({ code: 404, ack_msg: "Report not found", developer_msg: "No matching report definition for this company" });
-    }
+    const { definition: source, error } = await loadOwnedReportDefinition(req);
+    if (error) return error;
 
     req.body.name = `${source.name} (Copy)`;
     req.body.type = source.type;
@@ -176,7 +202,7 @@ export const duplicateReportDefinition = async (req) => {
         action: "duplicate",
         entity_type: "report_definition",
         entity_id: result?.data?.item?.id,
-        details: { source_id: id, name: req.body.name },
+        details: { source_id: source.id, name: req.body.name },
       });
     }
 
@@ -406,8 +432,12 @@ export const testRunReportDefinition = async (req) => {
 
 // Step 10 — Report groups. Tenant-defined organization for their own
 // report_definitions (e.g. "CRM", "HRMS") — distinct from Step 1's
-// admin-fixed system-gallery `category`. Flat, single-level, same
-// build-tier owner+PIN gate as everything else that configures reports.
+// admin-fixed system-gallery `category`. Flat, single-level, gated at
+// add/edit/delete tier via resolveReportBuilderRights, same as everything
+// else that configures reports. No personal-data scope here (unlike
+// report definitions) — groups are company-wide organizational labels
+// with no owner column, so listReportGroups stays open to every viewer
+// (see its own comment below).
 export const listReportGroups = async (req) => {
   try {
     const { a_application_login_id } = req.body || {};
@@ -440,9 +470,16 @@ export const createReportGroup = async (req) => {
     if (!findCompanyId) {
       return resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" });
     }
+    const company_masters_id = findCompanyId.company_masters_id;
+
+    const rights = await resolveReportBuilderRights({ company_masters_id, a_application_login_id, tenantDB: req.tenantDB });
+    if (!rights.canAdd) {
+      return resError({ code: 403, ack_msg: "You don't have permission to create report groups", developer_msg: "No Report Builder add rights for this login" });
+    }
+
     const ReportGroup = reportGroupModel(req.tenantDB);
     const created = await ReportGroup.create({
-      company_masters_id: findCompanyId.company_masters_id,
+      company_masters_id,
       group_name: group_name.trim(),
       display_order: display_order || 0,
       created_date_time: now(),
@@ -465,9 +502,16 @@ export const updateReportGroup = async (req) => {
     if (!findCompanyId) {
       return resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" });
     }
+    const company_masters_id = findCompanyId.company_masters_id;
+
+    const rights = await resolveReportBuilderRights({ company_masters_id, a_application_login_id, tenantDB: req.tenantDB });
+    if (!rights.canEdit) {
+      return resError({ code: 403, ack_msg: "You don't have permission to edit report groups", developer_msg: "No Report Builder edit rights for this login" });
+    }
+
     const ReportGroup = reportGroupModel(req.tenantDB);
     const group = await ReportGroup.findOne({
-      where: { id, company_masters_id: findCompanyId.company_masters_id, isDelete: 0 },
+      where: { id, company_masters_id, isDelete: 0 },
     });
     if (!group) {
       return resError({ code: 404, ack_msg: "Report group not found", developer_msg: "No matching report group for this company" });
@@ -498,9 +542,16 @@ export const deleteReportGroup = async (req) => {
     if (!findCompanyId) {
       return resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" });
     }
+    const company_masters_id = findCompanyId.company_masters_id;
+
+    const rights = await resolveReportBuilderRights({ company_masters_id, a_application_login_id, tenantDB: req.tenantDB });
+    if (!rights.canDelete) {
+      return resError({ code: 403, ack_msg: "You don't have permission to delete report groups", developer_msg: "No Report Builder delete rights for this login" });
+    }
+
     const ReportGroup = reportGroupModel(req.tenantDB);
     const group = await ReportGroup.findOne({
-      where: { id, company_masters_id: findCompanyId.company_masters_id, isDelete: 0 },
+      where: { id, company_masters_id, isDelete: 0 },
     });
     if (!group) {
       return resError({ code: 404, ack_msg: "Report group not found", developer_msg: "No matching report group for this company" });
@@ -515,7 +566,7 @@ export const deleteReportGroup = async (req) => {
     const ReportDefinition = reportDefinitionModel(req.tenantDB);
     await ReportDefinition.update(
       { report_group_id: null },
-      { where: { report_group_id: id, company_masters_id: findCompanyId.company_masters_id } },
+      { where: { report_group_id: id, company_masters_id } },
     );
 
     return resSuccess({ ack_msg: "Report group deleted successfully" });
@@ -591,6 +642,14 @@ export const createReportDefinition = async (req) => {
     }
     req.body.company_masters_id = findCompanyId.company_masters_id; // for logAuditEvent below
 
+    // Covers create/duplicate/copyFromSystemReportDefinition/import — all
+    // four delegate here, so gating just this one create path gates all of
+    // them without a separate check in each caller.
+    const rights = await resolveReportBuilderRights({ company_masters_id: findCompanyId.company_masters_id, a_application_login_id, tenantDB: req.tenantDB });
+    if (!rights.canAdd) {
+      return resError({ code: 403, ack_msg: "You don't have permission to create reports", developer_msg: "No Report Builder add rights for this login" });
+    }
+
     const ReportDefinition = reportDefinitionModel(req.tenantDB);
     const created = await ReportDefinition.create({
       company_masters_id: findCompanyId.company_masters_id,
@@ -638,26 +697,10 @@ export const createReportDefinition = async (req) => {
 
 export const updateReportDefinition = async (req) => {
   try {
-    const { id } = req.params || {};
-    const { a_application_login_id, name, columns_json, filters_json, group_by_json, filters_to_show, report_group_id, description, icon } = req.body || {};
-    if (!id || !a_application_login_id) {
-      return resError({ developer_msg: "id (param) and a_application_login_id are required" });
-    }
-
-    const findCompanyId = await getCompanyByLoginId(a_application_login_id);
-    if (!findCompanyId) {
-      return resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" });
-    }
-    req.body.company_masters_id = findCompanyId.company_masters_id; // for logAuditEvent below
-
-    const ReportDefinition = reportDefinitionModel(req.tenantDB);
-    // IDOR guard — id must belong to the resolved company, never trusted alone.
-    const definition = await ReportDefinition.findOne({
-      where: { id, company_masters_id: findCompanyId.company_masters_id, isDelete: 0 },
-    });
-    if (!definition) {
-      return resError({ code: 404, ack_msg: "Report not found", developer_msg: "No matching report definition for this company" });
-    }
+    const { definition, company_masters_id, error } = await loadOwnedReportDefinition(req, "edit");
+    if (error) return error;
+    req.body.company_masters_id = company_masters_id; // for logAuditEvent below
+    const { name, columns_json, filters_json, group_by_json, filters_to_show, report_group_id, description, icon } = req.body || {};
 
     const patch = { modified_date: now() };
     if (name !== undefined) patch.name = name;
@@ -688,25 +731,9 @@ export const updateReportDefinition = async (req) => {
 
 export const deleteReportDefinition = async (req) => {
   try {
-    const { id } = req.params || {};
-    const { a_application_login_id } = req.body || {};
-    if (!id || !a_application_login_id) {
-      return resError({ developer_msg: "id (param) and a_application_login_id are required" });
-    }
-
-    const findCompanyId = await getCompanyByLoginId(a_application_login_id);
-    if (!findCompanyId) {
-      return resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" });
-    }
-    req.body.company_masters_id = findCompanyId.company_masters_id; // for logAuditEvent below
-
-    const ReportDefinition = reportDefinitionModel(req.tenantDB);
-    const definition = await ReportDefinition.findOne({
-      where: { id, company_masters_id: findCompanyId.company_masters_id, isDelete: 0 },
-    });
-    if (!definition) {
-      return resError({ code: 404, ack_msg: "Report not found", developer_msg: "No matching report definition for this company" });
-    }
+    const { definition, company_masters_id, error } = await loadOwnedReportDefinition(req, "delete");
+    if (error) return error;
+    req.body.company_masters_id = company_masters_id; // for logAuditEvent below
 
     // dashboard_widgets now exists (Dashboard feature, Phase 1/2) — a widget
     // reuses this row's engine directly (report_definition_id), so deleting
@@ -754,13 +781,24 @@ export const listReportDefinitions = async (req) => {
     if (!findCompanyId) {
       return resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" });
     }
+    const company_masters_id = findCompanyId.company_masters_id;
+
+    const rights = await resolveReportBuilderRights({ company_masters_id, a_application_login_id, tenantDB: req.tenantDB });
+    if (!rights.canView) {
+      return resSuccess({ data: { item: [] } });
+    }
+
+    // is_dashboard_only rows (dashboard Add-Widget's "quick counter"
+    // shortcut) are auto-created plumbing, not something a user
+    // browsed/built here — excluded from the main list.
+    const where = { company_masters_id, isDelete: 0, is_dashboard_only: { [Op.ne]: 1 } };
+    // Personal scope — only reports THIS login created, same own/all split
+    // Dashboard Builder's own listDashboards already applies.
+    if (!rights.showAllData) where.a_application_login_id = a_application_login_id;
 
     const ReportDefinition = reportDefinitionModel(req.tenantDB);
     const rows = await ReportDefinition.findAll({
-      // is_dashboard_only rows (dashboard Add-Widget's "quick counter"
-      // shortcut) are auto-created plumbing, not something a user
-      // browsed/built here — excluded from the main list.
-      where: { company_masters_id: findCompanyId.company_masters_id, isDelete: 0, is_dashboard_only: { [Op.ne]: 1 } },
+      where,
       order: [["id", "DESC"]],
     });
 
@@ -772,11 +810,13 @@ export const listReportDefinitions = async (req) => {
 };
 
 // Discovery for a non-owner — "Custom Reports" (ReportsTileView's dynamic
-// section) calls this instead of listReportDefinitions, which stays
-// owner+PIN only. Visibility is per-definition_team_rights ONLY (Step 7's
-// simplified design — no page-level a_application_login_type_rights
+// section) calls this instead of listReportDefinitions, which now stays
+// gated by Report Builder page-rights (resolveReportBuilderRights).
+// Visibility here is per-definition_team_rights ONLY (Step 7's simplified
+// design — deliberately no page-level a_application_login_type_rights
 // fallback at all): a login sees exactly the reports it has an explicit,
-// non-deleted grant row for. The owner still sees everything, same bypass
+// non-deleted grant row for, regardless of whether it has any Report
+// Builder build-tier rights. The owner still sees everything, same bypass
 // every other gate in this file has.
 export const listRunnableReportDefinitions = async (req) => {
   try {
@@ -941,29 +981,12 @@ export const getGeneralFilterConfig = async (req) => {
 };
 
 // Manage Access modal's initial load — current grants for one report,
-// build-tier gated the same as the save below (build internals, not for
-// the run-only surface).
+// gated at "edit" tier the same as the save below (build internals, not
+// for the run-only surface).
 export const getReportTeamRights = async (req) => {
   try {
-    const { id } = req.params || {};
-    const { a_application_login_id } = req.body || {};
-    if (!id || !a_application_login_id) {
-      return resError({ developer_msg: "id (param) and a_application_login_id are required" });
-    }
-
-    const findCompanyId = await getCompanyByLoginId(a_application_login_id);
-    if (!findCompanyId) {
-      return resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" });
-    }
-    const company_masters_id = findCompanyId.company_masters_id;
-
-    const ReportDefinition = reportDefinitionModel(req.tenantDB);
-    const definition = await ReportDefinition.findOne({
-      where: { id, company_masters_id, isDelete: 0 },
-    });
-    if (!definition) {
-      return resError({ code: 404, ack_msg: "Report not found", developer_msg: "No matching report definition for this company" });
-    }
+    const { definition, company_masters_id, error } = await loadOwnedReportDefinition(req, "edit");
+    if (error) return error;
 
     const RightsModel = reportDefinitionTeamRightModel(req.tenantDB);
     const rows = await RightsModel.findAll({
@@ -979,29 +1002,15 @@ export const getReportTeamRights = async (req) => {
   }
 };
 
-// Manage Access modal's save (build-tier, owner+PIN gated at the route
-// layer, same as create/update/delete).
+// Manage Access modal's save — build-tier, gated at "edit" tier via
+// loadOwnedReportDefinition (Report Builder page-rights + personal-data
+// scope), same as update/delete.
 export const saveReportTeamRights = async (req) => {
   try {
-    const { id } = req.params || {};
-    const { a_application_login_id, grants, removals } = req.body || {};
-    if (!id || !a_application_login_id) {
-      return resError({ developer_msg: "id (param) and a_application_login_id are required" });
-    }
-
-    const findCompanyId = await getCompanyByLoginId(a_application_login_id);
-    if (!findCompanyId) {
-      return resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" });
-    }
-    const company_masters_id = findCompanyId.company_masters_id;
-
-    const ReportDefinition = reportDefinitionModel(req.tenantDB);
-    const definition = await ReportDefinition.findOne({
-      where: { id, company_masters_id, isDelete: 0 },
-    });
-    if (!definition) {
-      return resError({ code: 404, ack_msg: "Report not found", developer_msg: "No matching report definition for this company" });
-    }
+    const { definition, company_masters_id, error } = await loadOwnedReportDefinition(req, "edit");
+    if (error) return error;
+    const { grants, removals } = req.body || {};
+    req.body.company_masters_id = company_masters_id; // for logAuditEvent below
 
     await setReportTeamRights(
       { report_definition_id: definition.id, company_masters_id, grants: Array.isArray(grants) ? grants : [], removals: Array.isArray(removals) ? removals : [] },
