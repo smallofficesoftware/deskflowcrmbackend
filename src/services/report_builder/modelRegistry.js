@@ -624,6 +624,10 @@ export const MODEL_REGISTRY = {
       // "relation foreignKey isn't automatically filterable" reasoning as
       // inquiries.contact_master_id, found while wiring Step 2.
       contact_masters_id: { label: "Contact", type: "lookup", filterable: true, sortable: false, groupable: true },
+      // Same gap — already used as the `createdBy` relation's own
+      // foreignKey, found while seeding the system gallery's "Collection
+      // Performance Report" (per-team-member collection totals).
+      a_application_login_id: { label: "Created By (Team Member)", type: "lookup", filterable: true, sortable: false, groupable: true },
       ...COUNT_COLUMN,
     },
     // type: 1 = credit, 2 = debit (confirmed in accountReportServices.js:149-153).
@@ -963,6 +967,10 @@ export const MODEL_REGISTRY = {
       // own foreignKey below — added as its own whitelisted column for
       // slots 5/9 (Team Member).
       a_application_login_id: { label: "Employee", type: "lookup", filterable: true, sortable: false, groupable: true },
+      // Same gap — already used as the `expenseType` relation's own
+      // foreignKey, found while seeding the system gallery's "Expense
+      // Category Analysis" (per-category expense totals).
+      expense_type_id: { label: "Expense Type", type: "lookup", filterable: true, sortable: false, groupable: true },
       ...COUNT_COLUMN,
     },
     generalFilters: {
