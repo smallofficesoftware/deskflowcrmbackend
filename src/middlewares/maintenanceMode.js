@@ -1,5 +1,4 @@
 import maintenanceModesModel from "../models/configuration/maintenanceModesModel.js";
-import { MAINTENANCE_BYPASS_IPS } from "../utils/appConstants.js";
 import logger from "../utils/logger.js";
 
 const getClientIp = (req) => {
@@ -17,18 +16,34 @@ const getClientIp = (req) => {
   return ip.trim();
 };
 
+// Handles copy/paste noise from the admin panel textarea and URL-style
+// brackets/zone ids on IPv6 addresses ("[2401:4900::1]", "fe80::1%eth0").
+const normalizeIp = (ip) =>
+  ip
+    .trim()
+    .replace(/^\[/, "")
+    .replace(/\]$/, "")
+    .replace(/%.*$/, "")
+    .toLowerCase();
+
 const maintenanceMode = async (req, res, next) => {
   try {
     const clientIp = getClientIp(req);
-    logger.info(`[Maintenance Mode] Detected IP: "${clientIp}", Allowed IPs: ${JSON.stringify(MAINTENANCE_BYPASS_IPS)}`);
-
-    if (clientIp && MAINTENANCE_BYPASS_IPS.includes(clientIp)) {
-      return next();
-    }
-
     const setting = await maintenanceModesModel.findOne({
       where: { isDelete: 0 },
     });
+
+    const bypassIps = (setting?.dataValues.bypass_ips || "")
+      .split(",")
+      .map(normalizeIp)
+      .filter(Boolean);
+
+    logger.info(`[Maintenance Mode] Detected IP: "${clientIp}", Allowed IPs: ${JSON.stringify(bypassIps)}`);
+
+    if (clientIp && bypassIps.includes(normalizeIp(clientIp))) {
+      return next();
+    }
+
     if (setting && setting.dataValues.is_maintenance === 1) {
       return res.json({
         ack: -1,

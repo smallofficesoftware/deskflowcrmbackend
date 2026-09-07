@@ -53,7 +53,6 @@ import {
   RAISE_SUPPORT_TICKET_FLAG,
   SUPPORT_TICKET_INFO_MESSAGE,
   UPDATE_VERSION_MSG,
-  MAINTENANCE_BYPASS_IPS,
 } from "../../utils/appConstants.js";
 // const whatsAppKey = "aa771918-d589-4ad1-a5b0-fca2f3abdf71";
 // const whatsappAuthKey = "s9Iz7gqyCfknn1RW0XBAklxQbwJAMHPym2JlRlAa1qNusiTjr1";
@@ -1299,13 +1298,24 @@ export const onLoad = async (req, res) => {
       req.socket?.remoteAddress ||
       "";
     if (clientIp.startsWith("::ffff:")) clientIp = clientIp.replace("::ffff:", "");
-    const isIpBypassed = clientIp && MAINTENANCE_BYPASS_IPS.includes(clientIp.trim());
+    const normalizeIp = (ip) =>
+      ip
+        .trim()
+        .replace(/^\[/, "")
+        .replace(/\]$/, "")
+        .replace(/%.*$/, "")
+        .toLowerCase();
+
+    const setting = await maintenanceModesModel.findOne({
+      where: { isDelete: 0 },
+    });
+    const bypassIps = (setting?.dataValues.bypass_ips || "")
+      .split(",")
+      .map(normalizeIp)
+      .filter(Boolean);
+    const isIpBypassed = clientIp && bypassIps.includes(normalizeIp(clientIp));
 
     if (!isIpBypassed) {
-      const setting = await maintenanceModesModel.findOne({
-        where: { isDelete: 0 },
-      });
-
       if (setting && setting.dataValues.is_maintenance === 1) {
         return resError({
           ack: -1,
