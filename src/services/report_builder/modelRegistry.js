@@ -606,6 +606,20 @@ export const MODEL_REGISTRY = {
           name: { label: "Status Name", type: "string" },
         },
       },
+      // Same CSV-of-login-ids shape as task_managements.assignedTeamMembers
+      // — added alongside the inquiry_assigned_team_member column itself so
+      // "Salesperson Inquiry Performance" can show a name, not just a raw
+      // login id.
+      assignedTeamMembers: {
+        label: "Assigned To",
+        matchMode: "csv",
+        foreignKey: "inquiry_assigned_team_member",
+        getModel: () => loginModel,
+        targetKey: "id",
+        columns: {
+          username: { label: "Assigned Names", type: "string" },
+        },
+      },
     },
   },
 
