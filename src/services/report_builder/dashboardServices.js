@@ -7,6 +7,8 @@ import moment from "moment";
 import { dashboardModel } from "../../models/report_builder/dashboardModel.js";
 import { dashboardWidgetModel } from "../../models/report_builder/dashboardWidgetModel.js";
 import { reportDefinitionModel } from "../../models/report_builder/reportDefinitionModel.js";
+import systemDashboardDefinitionModel from "../../models/report_builder/systemDashboardDefinitionModel.js";
+import systemDashboardWidgetModel from "../../models/report_builder/systemDashboardWidgetModel.js";
 import { resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { getCached, setCached } from "../../utils/simpleCache.js";
 import { logAuditEvent } from "../company_setup/auditLogServices.js";
@@ -431,6 +433,136 @@ export const runDashboard = async (req, res) => {
     return resSuccess({ data: { item: { ...dashboard.toJSON(), widgets: results } } });
   } catch (e) {
     console.error("runDashboard error:", e);
+    return resError({ developer_msg: `Failed to Catch ${e}` });
+  }
+};
+
+// Gallery browse — reads system_dashboard_definitions off the MASTER
+// connection (same pattern listSystemReportDefinitions/
+// systemReportDefinitionModel.js already uses). No company/tenant scoping
+// needed — the gallery is the same for every company.
+export const listSystemDashboardDefinitions = async (req) => {
+  try {
+    const { category } = req.body || {};
+    const where = { isDelete: 0, isActive: 1 };
+    if (category) where.category = category;
+
+    const rows = await systemDashboardDefinitionModel.findAll({
+      where,
+      attributes: ["id", "name", "category", "description", "priority", "icon", "display_order"],
+      order: [["display_order", "ASC"], ["id", "ASC"]],
+    });
+
+    return resSuccess({ data: { item: rows } });
+  } catch (e) {
+    console.error("listSystemDashboardDefinitions error:", e);
+    return resError({ developer_msg: `Failed to Catch ${e}` });
+  }
+};
+
+// Copies a gallery dashboard into the tenant's own dashboards — unlike
+// copyFromSystemReportDefinition (one row in, one row out), this expands
+// into THREE things per widget: a real report_definitions row (the
+// gallery widget's model_key/label_column/value_column/aggregate turned
+// into a real columns_json + group_by_json, is_dashboard_only:1 — same
+// convention the tenant-facing "quick counter" shortcut already marks its
+// own auto-created rows with), a dashboards row, and N dashboard_widgets
+// rows pointing at those new report_definitions. All-or-nothing via a
+// transaction — a partial copy (e.g. widget 3 of 5 failing) would leave
+// an unusable half-built dashboard otherwise.
+export const copyFromSystemDashboardDefinition = async (req) => {
+  const t = await req.tenantDB.transaction();
+  try {
+    const { system_dashboard_definition_id, a_application_login_id } = req.body || {};
+    if (!system_dashboard_definition_id || !a_application_login_id) {
+      await t.rollback();
+      return resError({ developer_msg: "system_dashboard_definition_id and a_application_login_id are required" });
+    }
+
+    const findCompanyId = await getCompanyByLoginId(a_application_login_id);
+    if (!findCompanyId) {
+      await t.rollback();
+      return resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" });
+    }
+    const company_masters_id = findCompanyId.company_masters_id;
+    req.body.company_masters_id = company_masters_id; // for logAuditEvent below
+
+    const systemDefinition = await systemDashboardDefinitionModel.findOne({
+      where: { id: system_dashboard_definition_id, isDelete: 0, isActive: 1 },
+    });
+    if (!systemDefinition) {
+      await t.rollback();
+      return resError({ developer_msg: "Gallery dashboard not found" });
+    }
+    const systemWidgets = await systemDashboardWidgetModel.findAll({
+      where: { system_dashboard_definition_id, isDelete: 0 },
+      order: [["display_order", "ASC"], ["id", "ASC"]],
+    });
+
+    const Dashboard = dashboardModel(req.tenantDB);
+    const ReportDefinition = reportDefinitionModel(req.tenantDB);
+    const Widget = dashboardWidgetModel(req.tenantDB);
+
+    const existingCount = await Dashboard.count({ where: { company_masters_id, isDelete: 0 }, transaction: t });
+    const createdDashboard = await Dashboard.create({
+      company_masters_id,
+      a_application_login_id,
+      name: systemDefinition.name,
+      description: systemDefinition.description,
+      icon: systemDefinition.icon,
+      is_default: existingCount === 0 ? 1 : 0,
+      display_order: existingCount,
+      created_date_time: now(),
+    }, { transaction: t });
+
+    for (const w of systemWidgets) {
+      const alias = w.aggregate ? `${w.aggregate}_${w.value_column}` : w.value_column;
+      const displayLabel = w.title || alias;
+      const columns = w.label_column
+        ? [{ column: w.label_column }, { column: w.value_column, aggregate: w.aggregate, alias, label: displayLabel }]
+        : [{ column: w.value_column, aggregate: w.aggregate, alias, label: displayLabel }];
+
+      const createdDefinition = await ReportDefinition.create({
+        company_masters_id,
+        a_application_login_id,
+        name: w.title || systemDefinition.name,
+        type: "query",
+        model_key: w.model_key,
+        columns_json: JSON.stringify(columns),
+        group_by_json: w.label_column ? JSON.stringify([w.label_column]) : null,
+        is_dashboard_only: 1,
+        created_date_time: now(),
+      }, { transaction: t });
+
+      await Widget.create({
+        dashboard_id: createdDashboard.id,
+        report_definition_id: createdDefinition.id,
+        widget_type: w.widget_type,
+        title: w.title,
+        chart_config_json: JSON.stringify({ labelColumn: w.label_column || undefined, valueColumn: alias, label: displayLabel }),
+        position_x: w.position_x,
+        position_y: w.position_y,
+        width: w.width,
+        height: w.height,
+        display_order: w.display_order,
+        created_date_time: now(),
+      }, { transaction: t });
+    }
+
+    await t.commit();
+
+    await logAuditEvent(req, {
+      module_key: "dashboard_builder",
+      action: "copy_from_gallery",
+      entity_type: "dashboard",
+      entity_id: createdDashboard.id,
+      details: { system_dashboard_definition_id },
+    });
+
+    return resSuccess({ data: { item: createdDashboard }, ack_msg: "Dashboard copied successfully" });
+  } catch (e) {
+    await t.rollback();
+    console.error("copyFromSystemDashboardDefinition error:", e);
     return resError({ developer_msg: `Failed to Catch ${e}` });
   }
 };

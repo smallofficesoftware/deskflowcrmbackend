@@ -1,9 +1,11 @@
 import {
+  copyFromSystemDashboardDefinition,
   createDashboard,
   deleteDashboard,
   duplicateDashboard,
   getDashboard,
   listDashboards,
+  listSystemDashboardDefinitions,
   reorderDashboards,
   runDashboard,
   setDefaultDashboard,
@@ -52,6 +54,14 @@ export const duplicateDashboardController = async (req, res) => {
 
 export const runDashboardController = async (req, res) => {
   await callServiceMethod(req, res, runDashboard(req, res), "runDashboard");
+};
+
+export const listSystemDashboardDefinitionsController = async (req, res) => {
+  await callServiceMethod(req, res, listSystemDashboardDefinitions(req), "listSystemDashboardDefinitions");
+};
+
+export const copyFromSystemDashboardDefinitionController = async (req, res) => {
+  await callServiceMethod(req, res, copyFromSystemDashboardDefinition(req), "copyFromSystemDashboardDefinition");
 };
 
 export const addWidgetController = async (req, res) => {

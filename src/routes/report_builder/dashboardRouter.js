@@ -1,12 +1,14 @@
 import {
   addQuickCounterWidgetController,
   addWidgetController,
+  copyFromSystemDashboardDefinitionController,
   createDashboardController,
   deleteDashboardController,
   deleteWidgetController,
   duplicateDashboardController,
   getDashboardController,
   listDashboardsController,
+  listSystemDashboardDefinitionsController,
   reorderDashboardsController,
   runDashboardController,
   setDefaultDashboardController,
@@ -42,4 +44,10 @@ export default (app) => {
   app.post("/dashboards/list", authenticateToken, tenantMiddleware, listDashboardsController);
   app.post("/dashboards/:id", authenticateToken, tenantMiddleware, getDashboardController);
   app.post("/dashboards/:id/run", authenticateToken, tenantMiddleware, runDashboardController);
+
+  // System gallery (Phase 5) — browsing needs no PIN (same tier
+  // Document Designer/Report Builder's own system-gallery/list use);
+  // copying into the tenant's own dashboards is a build action.
+  app.post("/dashboards/system-gallery/list", authenticateToken, tenantMiddleware, listSystemDashboardDefinitionsController);
+  app.post("/dashboards/system-gallery/copy", authenticateToken, tenantMiddleware, copyFromSystemDashboardDefinitionController);
 };
