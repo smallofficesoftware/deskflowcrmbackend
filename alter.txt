@@ -3215,3 +3215,6 @@ CREATE TABLE `dashboard_widgets` (
 
 05-09-2026 Dhaval
 ALTER TABLE `report_definitions` ADD `is_dashboard_only` TINYINT(4) NOT NULL DEFAULT 0 AFTER `s_timestemp`;
+
+07-09-2026 Dhaval
+ALTER TABLE `maintenance_modes` ADD `bypass_ips` TEXT NULL DEFAULT NULL AFTER `is_training_disabled`;
