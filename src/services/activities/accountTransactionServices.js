@@ -227,6 +227,16 @@ export const getAllAccountTransactions = async (req, res) => {
     // --------------------------------------------------------
     const findCompanyId = await getCompanyByLoginId(a_application_login_id);
 
+    const companyCurrencyData = await companyModel.findOne({
+      where: { id: findCompanyId.company_masters_id, isDelete: "0" },
+      attributes: ["id", "currency_id"],
+    });
+    const currency = await currencyModel.findOne({
+      where: { id: companyCurrencyData?.currency_id, isDelete: 0 },
+      attributes: ["id", "symbol"],
+    });
+    const currencySymbol = currency?.symbol || "₹";
+
     // --------------------------------------------------------
     // 3. USER RIGHTS (only when internal API)
     // --------------------------------------------------------
@@ -271,6 +281,9 @@ export const getAllAccountTransactions = async (req, res) => {
         { remark: { [Op.like]: `%${searchTerm}%` } },
       ];
     }
+
+    // base filters only (no date range, no credit/debit type filter) — used for balance calculations
+    const baseWhereClauseForBalance = { ...whereClause };
 
     if (startDate && endDate) {
       whereClause[Op.and] = whereClause[Op.and] || [];
@@ -329,19 +342,58 @@ export const getAllAccountTransactions = async (req, res) => {
     );
 
     // --------------------------------------------------------
-    // 6. BALANCE CALCULATIONS (fixed)
+    // 6. BALANCE CALCULATIONS (SUM pushed to DB, no row loop — safe for large tables)
     // --------------------------------------------------------
-    let totalAmountCredit = 0;
-    let totalAmountDebit = 0;
+    const approvedCondition = { [Op.ne]: 0 };
 
-    accountTransactionResult.forEach((item) => {
-      if (item.approve_by_a_application_login_id !== 0) {
-        if (Number(item.type) === 1) totalAmountCredit += item.amount || 0;
-        if (Number(item.type) === 2) totalAmountDebit += item.amount || 0;
-      }
+    // closingBalance = cumulative balance as of endDate (all-time if no endDate) — startDate not needed here
+    const closingWhereClause = { ...baseWhereClauseForBalance };
+    if (endDate) {
+      closingWhereClause[Op.and] = [
+        Sequelize.where(
+          Sequelize.fn("DATE", Sequelize.col("payment_date_time")),
+          { [Op.lte]: endDate }
+        ),
+      ];
+    }
+    closingWhereClause.approve_by_a_application_login_id = approvedCondition;
+
+    const closingAgg = await aTModel.findOne({
+      where: closingWhereClause,
+      attributes: [
+        [Sequelize.fn("SUM", Sequelize.literal("CASE WHEN type = 1 THEN amount ELSE 0 END")), "totalCredit"],
+        [Sequelize.fn("SUM", Sequelize.literal("CASE WHEN type = 2 THEN amount ELSE 0 END")), "totalDebit"],
+      ],
+      raw: true,
     });
 
-    const closingBalance = totalAmountCredit - totalAmountDebit;
+    const closingBalance = (Number(closingAgg?.totalCredit) || 0) - (Number(closingAgg?.totalDebit) || 0);
+
+    // opening balance = balance of everything before startDate (separate stat, ignores date/type filters)
+    let openingBalance = 0;
+    if (startDate) {
+      const openingWhereClause = { ...baseWhereClauseForBalance };
+      openingWhereClause[Op.and] = [
+        Sequelize.where(
+          Sequelize.fn("DATE", Sequelize.col("payment_date_time")),
+          { [Op.lt]: startDate }
+        ),
+      ];
+      openingWhereClause.approve_by_a_application_login_id = approvedCondition;
+
+      const openingAgg = await aTModel.findOne({
+        where: openingWhereClause,
+        attributes: [
+          [Sequelize.fn("SUM", Sequelize.literal("CASE WHEN type = 1 THEN amount ELSE 0 END")), "totalCredit"],
+          [Sequelize.fn("SUM", Sequelize.literal("CASE WHEN type = 2 THEN amount ELSE 0 END")), "totalDebit"],
+        ],
+        raw: true,
+      });
+
+      const openingCredit = Number(openingAgg?.totalCredit) || 0;
+      const openingDebit = Number(openingAgg?.totalDebit) || 0;
+      openingBalance = openingCredit - openingDebit;
+    }
 
     // --------------------------------------------------------
     // 7. SANITIZE + JOIN USER NAMES
@@ -407,6 +459,8 @@ export const getAllAccountTransactions = async (req, res) => {
     return resSuccess({
       data: {
         item: accountTransactions,
+        currencySymbol,
+        openingBalance,
         closingBalance,
         contactDetails
       },
@@ -422,16 +476,20 @@ export const getAllAccountTransactions = async (req, res) => {
 
 export const getAllAccountTransactionsForOnlineStore = async (req, res) => {
   try {
-    const { contact_id, qr_code, } = req.params;
+    const { contact_id, qr_code } = req.params;
     if (!qr_code) {
       return resBadRequest({
         developer_msg: "qr_code is required",
         ack_msg: "Invalid access"
       });
     }
+
+    // Filters were never read before — dead on arrival regardless of what the caller sent.
+    const { startDate, endDate, creditFilter, debitFilter } = req.body || {};
+
     const companyData = await companyModel.findOne({
       where: { qr_code: qr_code, isDelete: 0 },
-      attributes: ["id", "qr_code", "a_application_login_id"]
+      attributes: ["id", "qr_code", "a_application_login_id", "currency_id"]
     });
     if (!companyData) {
       return resError({
@@ -439,6 +497,12 @@ export const getAllAccountTransactionsForOnlineStore = async (req, res) => {
         developer_msg: `No company found with QR code: ${qr_code}`
       });
     }
+    const currency = await currencyModel.findOne({
+      where: { id: companyData?.currency_id, isDelete: 0 },
+      attributes: ["id", "symbol"],
+    });
+    const currencySymbol = currency?.symbol || "₹";
+
     const tenantId = companyData.a_application_login_id;
     const companyId = companyData.id;
     req.headers["x-tenant-id"] = tenantId;
@@ -451,23 +515,39 @@ export const getAllAccountTransactionsForOnlineStore = async (req, res) => {
       },
       attributes: ["id", "person_name", "company_name", "mobile_number", "email_id", "address", "shipping_address", "gst_number"]
     })
-    let whereClause = {
+
+    // base filters only (no date range, no credit/debit type filter) — used for balance calculations
+    const baseWhereClauseForBalance = {
       company_masters_id: companyId,
       isDelete: "0",
+      a_application_login_id: tenantId,
     };
 
-    // Public API SHOULD ONLY show data for that one login
-    if (qr_code) {
-      whereClause.a_application_login_id = tenantId;
-    }
-    // Internal personal rights
-    else if (showPersonalData && !showAllData) {
-      whereClause.a_application_login_id = tenantId;
+    if (contact_id) {
+      baseWhereClauseForBalance.contact_masters_id = contact_id;
     }
 
-    if (contact_id) {
-      whereClause.contact_masters_id = contact_id;
+    let whereClause = { ...baseWhereClauseForBalance };
+
+    if (startDate && endDate) {
+      whereClause[Op.and] = [
+        Sequelize.where(
+          Sequelize.fn("DATE", Sequelize.col("payment_date_time")),
+          { [Op.gte]: startDate }
+        ),
+        Sequelize.where(
+          Sequelize.fn("DATE", Sequelize.col("payment_date_time")),
+          { [Op.lte]: endDate }
+        ),
+      ];
     }
+
+    if (creditFilter == 1 && debitFilter != 2) {
+      whereClause.type = 1;
+    } else if (debitFilter == 2 && creditFilter != 1) {
+      whereClause.type = 2;
+    }
+
     const sortDir =
       String("DESC").toUpperCase() === "ASC" ? "ASC" : "DESC";
     const queryOptions = {
@@ -475,15 +555,53 @@ export const getAllAccountTransactionsForOnlineStore = async (req, res) => {
       order: [["created_date_time", sortDir]],
     };
     const accountTransactionResult = await tenantDBInfo.models.account_transactions.findAll(queryOptions);
-    let totalAmountCredit = 0;
-    let totalAmountDebit = 0;
-    accountTransactionResult.forEach((item) => {
-      if (item.approve_by_a_application_login_id !== 0) {
-        if (Number(item.type) === 1) totalAmountCredit += item.amount || 0;
-        if (Number(item.type) === 2) totalAmountDebit += item.amount || 0;
-      }
+
+    const approvedCondition = { [Op.ne]: 0 };
+
+    // closingBalance = cumulative balance as of endDate (all-time if no endDate), DB-side SUM
+    const closingWhereClause = { ...baseWhereClauseForBalance };
+    if (endDate) {
+      closingWhereClause[Op.and] = [
+        Sequelize.where(
+          Sequelize.fn("DATE", Sequelize.col("payment_date_time")),
+          { [Op.lte]: endDate }
+        ),
+      ];
+    }
+    closingWhereClause.approve_by_a_application_login_id = approvedCondition;
+
+    const closingAgg = await tenantDBInfo.models.account_transactions.findOne({
+      where: closingWhereClause,
+      attributes: [
+        [Sequelize.fn("SUM", Sequelize.literal("CASE WHEN type = 1 THEN amount ELSE 0 END")), "totalCredit"],
+        [Sequelize.fn("SUM", Sequelize.literal("CASE WHEN type = 2 THEN amount ELSE 0 END")), "totalDebit"],
+      ],
+      raw: true,
     });
-    const closingBalance = totalAmountCredit - totalAmountDebit;
+    const closingBalance = (Number(closingAgg?.totalCredit) || 0) - (Number(closingAgg?.totalDebit) || 0);
+
+    // opening balance = balance of everything before startDate (separate stat, ignores date/type filters)
+    let openingBalance = 0;
+    if (startDate) {
+      const openingWhereClause = { ...baseWhereClauseForBalance };
+      openingWhereClause[Op.and] = [
+        Sequelize.where(
+          Sequelize.fn("DATE", Sequelize.col("payment_date_time")),
+          { [Op.lt]: startDate }
+        ),
+      ];
+      openingWhereClause.approve_by_a_application_login_id = approvedCondition;
+
+      const openingAgg = await tenantDBInfo.models.account_transactions.findOne({
+        where: openingWhereClause,
+        attributes: [
+          [Sequelize.fn("SUM", Sequelize.literal("CASE WHEN type = 1 THEN amount ELSE 0 END")), "totalCredit"],
+          [Sequelize.fn("SUM", Sequelize.literal("CASE WHEN type = 2 THEN amount ELSE 0 END")), "totalDebit"],
+        ],
+        raw: true,
+      });
+      openingBalance = (Number(openingAgg?.totalCredit) || 0) - (Number(openingAgg?.totalDebit) || 0);
+    }
 
     // --------------------------------------------------------
     // 7. SANITIZE + JOIN USER NAMES
@@ -519,6 +637,8 @@ export const getAllAccountTransactionsForOnlineStore = async (req, res) => {
     return resSuccess({
       data: {
         contactDetails,
+        currencySymbol,
+        openingBalance,
         closingBalance,
         item: accountTransactions
       },
@@ -1409,12 +1529,15 @@ export const allAccountTransactionOfContactPDF = async (req, res) => {
       ],
       raw: true,
     });
-    const whereClause = {
+    // base filters only (no date range, no credit/debit type filter) — used for balance calculations
+    const baseWhereClauseForBalance = {
       isDelete: 0,
       company_masters_id: findCompanyId.company_masters_id,
       contact_masters_id: contact_master_id,
-      approve_by_a_application_login_id: { [Op.ne]: 0 }
+      approve_by_a_application_login_id: { [Op.ne]: 0 },
     };
+
+    const whereClause = { ...baseWhereClauseForBalance };
 
     // Sirf tab date condition add karo jab startDate aur endDate valid hain
     if (startDate && endDate) {
@@ -1432,6 +1555,12 @@ export const allAccountTransactionOfContactPDF = async (req, res) => {
     }
     // Agar dates nahi hain → koi date filter nahi lagega → all transactions aayengi
 
+    // date range applied, but never the credit/debit display filter — totals/opening balance must reflect real money, not the view
+    const periodWhereClauseForBalance = { ...baseWhereClauseForBalance };
+    if (whereClause[Op.and]) {
+      periodWhereClauseForBalance[Op.and] = whereClause[Op.and];
+    }
+
     // NEW: Credit / Debit Filter Logic
     if (creaditFilter == 1 && debitFilter != 2) {
       // Only Credit transactions
@@ -1445,7 +1574,29 @@ export const allAccountTransactionOfContactPDF = async (req, res) => {
       order: [["created_date_time", "ASC"]],
       raw: true,
     });
-    let running = 0;
+
+    // opening balance = balance of everything before startDate (ignores date/type filters), DB-side SUM
+    let openingBalance = 0;
+    if (startDate) {
+      const openingWhereClause = { ...baseWhereClauseForBalance };
+      openingWhereClause[Op.and] = [
+        Sequelize.where(
+          Sequelize.fn("DATE", Sequelize.col("payment_date_time")),
+          { [Op.lt]: startDate }
+        ),
+      ];
+      const openingAgg = await AccountTransactionModel.findOne({
+        where: openingWhereClause,
+        attributes: [
+          [Sequelize.fn("SUM", Sequelize.literal("CASE WHEN type = 1 THEN amount ELSE 0 END")), "totalCredit"],
+          [Sequelize.fn("SUM", Sequelize.literal("CASE WHEN type = 2 THEN amount ELSE 0 END")), "totalDebit"],
+        ],
+        raw: true,
+      });
+      openingBalance = (Number(openingAgg?.totalCredit) || 0) - (Number(openingAgg?.totalDebit) || 0);
+    }
+
+    let running = openingBalance;
     const rowsWithBalance = transactions.map((tx) => {
       const amt = Number(tx.amount || 0);
       if (Number(tx.type) === 1) running += amt;
@@ -1461,9 +1612,19 @@ export const allAccountTransactionOfContactPDF = async (req, res) => {
       };
     });
 
-    const totalCredit = transactions.filter(t => t.type === 1).reduce((s, t) => s + Number(t.amount || 0), 0).toLocaleString("en-IN");
-    const totalDebit = transactions.filter(t => t.type === 2).reduce((s, t) => s + Number(t.amount || 0), 0).toLocaleString("en-IN");
-    const lastRowBalance = rowsWithBalance.length > 0 ? rowsWithBalance[rowsWithBalance.length - 1].balance : "0";
+    // totals pushed to DB, over the real filtered-by-date set only — never narrowed by creditFilter/debitFilter
+    const totalsAgg = await AccountTransactionModel.findOne({
+      where: periodWhereClauseForBalance,
+      attributes: [
+        [Sequelize.fn("SUM", Sequelize.literal("CASE WHEN type = 1 THEN amount ELSE 0 END")), "totalCredit"],
+        [Sequelize.fn("SUM", Sequelize.literal("CASE WHEN type = 2 THEN amount ELSE 0 END")), "totalDebit"],
+      ],
+      raw: true,
+    });
+    const totalCredit = (Number(totalsAgg?.totalCredit) || 0).toLocaleString("en-IN");
+    const totalDebit = (Number(totalsAgg?.totalDebit) || 0).toLocaleString("en-IN");
+    const closingBalance = openingBalance + (Number(totalsAgg?.totalCredit) || 0) - (Number(totalsAgg?.totalDebit) || 0);
+    const lastRowBalance = rowsWithBalance.length > 0 ? rowsWithBalance[rowsWithBalance.length - 1].balance : openingBalance.toLocaleString("en-IN");
 
     const fromDate = rowsWithBalance.length > 0 ? rowsWithBalance[0].payment_date : "";
     const toDate = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
@@ -1514,6 +1675,8 @@ export const allAccountTransactionOfContactPDF = async (req, res) => {
         rowsWithBalance,
         totalCredit,
         totalDebit,
+        openingBalance: openingBalance.toLocaleString("en-IN"),
+        closingBalanceAmount: closingBalance.toLocaleString("en-IN"),
         lastRowBalance,
         fromDate,
         toDate,
@@ -1538,6 +1701,8 @@ export const allAccountTransactionOfContactPDF = async (req, res) => {
           rowsWithBalance,
           totalCredit,
           totalDebit,
+          openingBalance: openingBalance.toLocaleString("en-IN"),
+          closingBalanceAmount: closingBalance.toLocaleString("en-IN"),
           lastRowBalance,
           fromDate,
           toDate,
