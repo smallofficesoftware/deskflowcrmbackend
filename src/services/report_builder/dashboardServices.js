@@ -13,6 +13,7 @@ import { resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { getCached, setCached } from "../../utils/simpleCache.js";
 import { logAuditEvent } from "../company_setup/auditLogServices.js";
 import { getCompanyByLoginId } from "../commonServices.js";
+import { resolveDashboardRights } from "./dashboardRights.js";
 import { getRegisteredModel } from "./modelRegistry.js";
 import { runDefinitionByType } from "./reportDefinitionServices.js";
 
@@ -65,7 +66,13 @@ function buildDashboardScopeFilters(definition, dateRange, teamMemberIds) {
   return filters;
 }
 
-async function loadOwnedDashboard(req) {
+// requirePermission: "view" (default, every caller needs this) | "edit" | "delete".
+// Personal (non-all-data) scope is enforced as a 404, not a 403 — a
+// dashboard outside this login's own personal scope should read as "doesn't
+// exist", not "exists but you can't see it" (same non-leaking precedent
+// every IDOR-guarded findOne in this codebase already follows for cross-
+// company access; this is the same idea, one tier finer-grained).
+async function loadOwnedDashboard(req, requirePermission) {
   const { id } = req.params || {};
   const { a_application_login_id } = req.body || {};
   if (!id || !a_application_login_id) {
@@ -76,12 +83,28 @@ async function loadOwnedDashboard(req) {
     return { error: resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" }) };
   }
   const company_masters_id = findCompanyId.company_masters_id;
+
+  const rights = await resolveDashboardRights({ company_masters_id, a_application_login_id, tenantDB: req.tenantDB });
+  if (!rights.canView) {
+    return { error: resError({ code: 403, ack_msg: "You don't have access to Dashboard Builder", developer_msg: "No Dashboard Builder view rights for this login" }) };
+  }
+  if (requirePermission === "edit" && !rights.canEdit) {
+    return { error: resError({ code: 403, ack_msg: "You don't have permission to edit this dashboard", developer_msg: "No Dashboard Builder edit rights for this login" }) };
+  }
+  if (requirePermission === "delete" && !rights.canDelete) {
+    return { error: resError({ code: 403, ack_msg: "You don't have permission to delete this dashboard", developer_msg: "No Dashboard Builder delete rights for this login" }) };
+  }
+
   const Dashboard = dashboardModel(req.tenantDB);
   const dashboard = await Dashboard.findOne({ where: { id, company_masters_id, isDelete: 0 } });
   if (!dashboard) {
     return { error: resError({ code: 404, ack_msg: "Dashboard not found", developer_msg: "No matching dashboard for this company" }) };
   }
-  return { dashboard, company_masters_id };
+  if (!rights.showAllData && dashboard.a_application_login_id !== Number(a_application_login_id)) {
+    return { error: resError({ code: 404, ack_msg: "Dashboard not found", developer_msg: "Not visible under this login's personal data scope" }) };
+  }
+
+  return { dashboard, company_masters_id, rights };
 }
 
 export const createDashboard = async (req) => {
@@ -95,6 +118,11 @@ export const createDashboard = async (req) => {
       return resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" });
     }
     req.body.company_masters_id = findCompanyId.company_masters_id; // for logAuditEvent below
+
+    const rights = await resolveDashboardRights({ company_masters_id: findCompanyId.company_masters_id, a_application_login_id, tenantDB: req.tenantDB });
+    if (!rights.canAdd) {
+      return resError({ code: 403, ack_msg: "You don't have permission to create dashboards", developer_msg: "No Dashboard Builder add rights for this login" });
+    }
 
     const Dashboard = dashboardModel(req.tenantDB);
     // First dashboard for this company becomes the default automatically —
@@ -129,7 +157,7 @@ export const createDashboard = async (req) => {
 
 export const updateDashboard = async (req) => {
   try {
-    const { dashboard, error } = await loadOwnedDashboard(req);
+    const { dashboard, error } = await loadOwnedDashboard(req, "edit");
     if (error) return error;
     const { name, description, icon } = req.body || {};
 
@@ -157,7 +185,7 @@ export const updateDashboard = async (req) => {
 
 export const deleteDashboard = async (req) => {
   try {
-    const { dashboard, company_masters_id, error } = await loadOwnedDashboard(req);
+    const { dashboard, company_masters_id, error } = await loadOwnedDashboard(req, "delete");
     if (error) return error;
 
     const Dashboard = dashboardModel(req.tenantDB);
@@ -208,10 +236,21 @@ export const listDashboards = async (req) => {
     if (!findCompanyId) {
       return resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" });
     }
+    const company_masters_id = findCompanyId.company_masters_id;
+
+    const rights = await resolveDashboardRights({ company_masters_id, a_application_login_id, tenantDB: req.tenantDB });
+    if (!rights.canView) {
+      return resSuccess({ data: { item: [] } });
+    }
+
+    const where = { company_masters_id, isDelete: 0 };
+    // Personal scope — only dashboards THIS login created, same
+    // own/all split Task Management's own getUserRights usage has.
+    if (!rights.showAllData) where.a_application_login_id = a_application_login_id;
 
     const Dashboard = dashboardModel(req.tenantDB);
     const rows = await Dashboard.findAll({
-      where: { company_masters_id: findCompanyId.company_masters_id, isDelete: 0 },
+      where,
       order: [["display_order", "ASC"], ["id", "ASC"]],
     });
 
@@ -272,13 +311,24 @@ export const reorderDashboards = async (req) => {
     if (!findCompanyId) {
       return resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" });
     }
+    const company_masters_id = findCompanyId.company_masters_id;
+
+    const rights = await resolveDashboardRights({ company_masters_id, a_application_login_id, tenantDB: req.tenantDB });
+    if (!rights.canEdit) {
+      return resError({ code: 403, ack_msg: "You don't have permission to reorder dashboards", developer_msg: "No Dashboard Builder edit rights for this login" });
+    }
 
     const Dashboard = dashboardModel(req.tenantDB);
+    const where = { company_masters_id, isDelete: 0 };
+    // Personal scope — an id outside this login's own dashboards just
+    // matches zero rows below, same as it not existing for them at all.
+    if (!rights.showAllData) where.a_application_login_id = a_application_login_id;
+
     await Promise.all(
       orderedIds.map((id, index) =>
         Dashboard.update(
           { display_order: index },
-          { where: { id, company_masters_id: findCompanyId.company_masters_id, isDelete: 0 } },
+          { where: { ...where, id } },
         ),
       ),
     );
@@ -292,7 +342,7 @@ export const reorderDashboards = async (req) => {
 
 export const setDefaultDashboard = async (req) => {
   try {
-    const { dashboard, company_masters_id, error } = await loadOwnedDashboard(req);
+    const { dashboard, company_masters_id, error } = await loadOwnedDashboard(req, "edit");
     if (error) return error;
 
     const Dashboard = dashboardModel(req.tenantDB);
@@ -308,8 +358,11 @@ export const setDefaultDashboard = async (req) => {
 
 export const duplicateDashboard = async (req) => {
   try {
-    const { dashboard, company_masters_id, error } = await loadOwnedDashboard(req);
+    const { dashboard, company_masters_id, rights, error } = await loadOwnedDashboard(req);
     if (error) return error;
+    if (!rights.canAdd) {
+      return resError({ code: 403, ack_msg: "You don't have permission to create dashboards", developer_msg: "No Dashboard Builder add rights for this login" });
+    }
     const { a_application_login_id } = req.body || {};
 
     const Dashboard = dashboardModel(req.tenantDB);
@@ -486,6 +539,12 @@ export const copyFromSystemDashboardDefinition = async (req) => {
     }
     const company_masters_id = findCompanyId.company_masters_id;
     req.body.company_masters_id = company_masters_id; // for logAuditEvent below
+
+    const rights = await resolveDashboardRights({ company_masters_id, a_application_login_id, tenantDB: req.tenantDB });
+    if (!rights.canAdd) {
+      await t.rollback();
+      return resError({ code: 403, ack_msg: "You don't have permission to create dashboards", developer_msg: "No Dashboard Builder add rights for this login" });
+    }
 
     const systemDefinition = await systemDashboardDefinitionModel.findOne({
       where: { id: system_dashboard_definition_id, isDelete: 0, isActive: 1 },

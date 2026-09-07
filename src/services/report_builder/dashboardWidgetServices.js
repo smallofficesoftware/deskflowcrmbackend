@@ -9,6 +9,7 @@ import { PAGE_ID } from "../../utils/AppEnumeration.js";
 import { resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { logAuditEvent } from "../company_setup/auditLogServices.js";
 import { getCompanyByLoginId } from "../commonServices.js";
+import { resolveDashboardRights } from "./dashboardRights.js";
 import { getRegisteredModel } from "./modelRegistry.js";
 
 const now = () => moment(new Date()).format("YYYY-MM-DD HH:mm:ss");
@@ -29,6 +30,11 @@ const MAX_WIDGETS_PER_DASHBOARD = 20;
 // everything again at run time regardless).
 const ALLOWED_AGGREGATES = new Set(["sum", "avg", "min", "max", "count"]);
 
+// Every widget mutation (add/update/delete/reposition) is an "edit" action
+// on the PARENT dashboard — a widget has no rights of its own, only the
+// dashboard it belongs to does (same resolveDashboardRights check
+// dashboardServices.js's own loadOwnedDashboard uses, personal scope
+// enforced as 404 there too — see that function's own comment).
 async function loadOwnedDashboard(req, dashboardId) {
   const { a_application_login_id } = req.body || {};
   if (!dashboardId || !a_application_login_id) {
@@ -39,10 +45,19 @@ async function loadOwnedDashboard(req, dashboardId) {
     return { error: resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" }) };
   }
   const company_masters_id = findCompanyId.company_masters_id;
+
+  const rights = await resolveDashboardRights({ company_masters_id, a_application_login_id, tenantDB: req.tenantDB });
+  if (!rights.canEdit) {
+    return { error: resError({ code: 403, ack_msg: "You don't have permission to edit dashboards", developer_msg: "No Dashboard Builder edit rights for this login" }) };
+  }
+
   const Dashboard = dashboardModel(req.tenantDB);
   const dashboard = await Dashboard.findOne({ where: { id: dashboardId, company_masters_id, isDelete: 0 } });
   if (!dashboard) {
     return { error: resError({ code: 404, ack_msg: "Dashboard not found", developer_msg: "No matching dashboard for this company" }) };
+  }
+  if (!rights.showAllData && dashboard.a_application_login_id !== Number(a_application_login_id)) {
+    return { error: resError({ code: 404, ack_msg: "Dashboard not found", developer_msg: "Not visible under this login's personal data scope" }) };
   }
   return { dashboard, company_masters_id };
 }
@@ -62,6 +77,11 @@ async function loadOwnedWidget(req) {
   }
   const company_masters_id = findCompanyId.company_masters_id;
 
+  const rights = await resolveDashboardRights({ company_masters_id, a_application_login_id, tenantDB: req.tenantDB });
+  if (!rights.canEdit) {
+    return { error: resError({ code: 403, ack_msg: "You don't have permission to edit dashboards", developer_msg: "No Dashboard Builder edit rights for this login" }) };
+  }
+
   const Widget = dashboardWidgetModel(req.tenantDB);
   const widget = await Widget.findOne({ where: { id, isDelete: 0 } });
   if (!widget) {
@@ -71,6 +91,9 @@ async function loadOwnedWidget(req) {
   const dashboard = await Dashboard.findOne({ where: { id: widget.dashboard_id, company_masters_id, isDelete: 0 } });
   if (!dashboard) {
     return { error: resError({ code: 404, ack_msg: "Widget not found", developer_msg: "Widget's dashboard does not belong to this company" }) };
+  }
+  if (!rights.showAllData && dashboard.a_application_login_id !== Number(a_application_login_id)) {
+    return { error: resError({ code: 404, ack_msg: "Widget not found", developer_msg: "Not visible under this login's personal data scope" }) };
   }
   return { widget, dashboard, company_masters_id };
 }

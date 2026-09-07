@@ -104,6 +104,9 @@ export const PAGE_ID = {
   // moved to 159 to avoid the collision.
   DOCUMENT_DESIGNER_RIGHTS: "157",
   REPORT_BUILDER: "159",
+  // Dashboard's own feature gate — independent of REPORT_BUILDER's, see
+  // migration 20260905160000-add-dashboard-builder-application-page.js.
+  DASHBOARD_BUILDER: "160",
   // Add more pages as needed
 };
 // config/googleApi.ts
