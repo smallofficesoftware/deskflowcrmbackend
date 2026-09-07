@@ -9,6 +9,7 @@ import path from "path";
 import { generate } from "@pdfme/generator";
 import * as plugins from "@pdfme/schemas";
 import { customRectangle } from "../pdfmeEngine/customRectanglePlugin.js";
+import { richText } from "../pdfmeEngine/richTextPlugin.js";
 import { documentPrintTemplateModel } from "../../models/company_setup/documentPrintTemplateModel.js";
 import { reportDefinitionModel } from "../../models/report_builder/reportDefinitionModel.js";
 import { EXPORTS_LINK_EXTENDED } from "../../utils/appConstants.js";
@@ -32,7 +33,7 @@ const fontMap = loadFonts();
 // so a rectangle/ellipse/line/list field dragged onto the canvas there
 // actually renders here instead of generate() throwing on an unregistered type.
 const pluginMap = {
-  text: plugins.text,
+  text: richText,
   table: plugins.table,
   image: plugins.image,
   rectangle: customRectangle,

@@ -7,6 +7,7 @@ import { generate } from "@pdfme/generator";
 import { PDFDocument } from "@pdfme/pdf-lib";
 import * as plugins from "@pdfme/schemas";
 import { customRectangle } from "./customRectanglePlugin.js";
+import { richText } from "./richTextPlugin.js";
 import { documentPrintTemplateModel } from "../../models/company_setup/documentPrintTemplateModel.js";
 import { productModel } from "../../models/product_settings/productModel.js";
 import { getTemplate, withCompanyHeader } from "./templates.js";
@@ -33,7 +34,7 @@ import {
 const fontMap = loadFonts();
 
 const pluginMap = {
-  text: plugins.text,
+  text: richText,
   table: plugins.table,
   image: plugins.image,
   line: plugins.line,
