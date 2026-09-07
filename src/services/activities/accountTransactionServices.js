@@ -1013,7 +1013,7 @@ export const updateAccountTransaction = async (req, res) => {
             if (tokens.length > 0) {
               await sendMultipleNotification({
                 deviceTokens: tokens,
-                title: `Transaction #${updatedTransaction.id} Approved`,
+                title: `Transaction #${updatedTransaction.id} Approved by ${approverUsername || "Someone"}`,
                 body: `${approverUsername || "Someone"} approved a ${transactionTypeLabel} 
 of ₹${updatedTransaction.amount.toFixed(2)} via ${paymentTypeMap.get(Number(updatedTransaction.mode)) || "Unknown"
                   }.`,

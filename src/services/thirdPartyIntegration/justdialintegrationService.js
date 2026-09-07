@@ -326,7 +326,7 @@ export const addContactByjustdialPushApi = async (req, res) => {
                 if (tokens.length > 0) {
                     await sendMultipleNotification({
                         deviceTokens: tokens,
-                        title: "New JustDial Lead",
+                        title: "New Justdial Lead Assigned to You",
                         body: `${isNewContact ? "New" : "Follow-up"} lead from JustDial - ${name}`,
                     });
                 }

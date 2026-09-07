@@ -502,7 +502,7 @@ export const addContactFromTradeIndia = async (req) => {
                             } from Trade India.`;
                         await sendMultipleNotification({
                             deviceTokens: uniqueTokens,
-                            title: `New Trade India Inquiries Added`,
+                            title: `New TradeIndia Lead Assigned to You`,
                             body: notificationBody,
                         });
                     } else {
@@ -1060,7 +1060,7 @@ export const addContactFromTradeIndiaBuyLeads = async (req) => {
                             } from Trade India.`;
                         await sendMultipleNotification({
                             deviceTokens: uniqueTokens,
-                            title: `New Trade India Inquiries Added`,
+                            title: `New TradeIndia Lead Assigned to You`,
                             body: notificationBody,
                         });
 

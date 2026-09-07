@@ -176,7 +176,7 @@ export const reminderCronStartStop = async (req, res) => {
                   try {
                     await sendMultipleNotification({
                       deviceTokens: uniqueTokens,
-                      title: `Pending Reminder`,
+                      title: `Reminder #${item.id} Is Due Soon`,
                       body: `Upcoming Reminder #${item.id}`,
                       data: {
                         page_id: PAGE_ID.REMINDER,
@@ -427,7 +427,7 @@ export const runExternalCroneAPI = async (req) => {
             try {
               await sendMultipleNotification({
                 deviceTokens: uniqueTokens,
-                title: `Pending Reminder`,
+                title: `Reminder #${item.id} Is Due Soon`,
                 body: `Upcoming Reminder #${item.id}`,
                 data: {
                   page_id: PAGE_ID.REMINDER,

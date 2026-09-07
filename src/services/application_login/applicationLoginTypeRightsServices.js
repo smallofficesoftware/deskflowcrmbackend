@@ -86,7 +86,7 @@ export const AddTeamRights = async (req, res) => {
               : 'New team rights have been assigned to you.';
           await sendMultipleNotification({
             deviceTokens: uniqueTokens,
-            title: `There are some changes in your rights, Please Check`,
+            title: `Your Access Rights Have Changed`,
             body: "",
           });
         } catch (notificationError) {

@@ -516,7 +516,7 @@ export const createCommon = async (req) => {
         try {
           await sendMultipleNotification({
             deviceTokens: uniqueTokens,
-            title: `${assignedMemberTo.username} has assigned you a new reminder `,
+            title: `${assignedMemberTo.username} Assigned You a New Reminder`,
             // body: ` ${assignedMemberTo.username} has assigned you a new reminder `,
           });
         } catch (notificationError) {
@@ -618,7 +618,7 @@ export const createCommon = async (req) => {
               if (tokens.length > 0) {
                 await sendMultipleNotification({
                   deviceTokens: tokens,
-                  title: `New Target Assigned`,
+                  title: `New Target Assigned to You`,
                   body: `${approverUsername} assigned a target (type: ${parsedData.target_type}) with ${parsedData.target_count} units valued at ₹${parsedData.target_value}.`,
                 });
                 console.log(
@@ -778,7 +778,7 @@ export const createCommon = async (req) => {
                 if (tokens.length > 0) {
                   await sendMultipleNotification({
                     deviceTokens: tokens,
-                    title: `${approverUsername} added new inquiry`,
+                    title: `New Inquiry Added by ${approverUsername}`,
                     body: ``,
                   });
                 } else {
@@ -1100,7 +1100,7 @@ export const createCommon = async (req) => {
                 if (tokens.length > 0) {
                   await sendMultipleNotification({
                     deviceTokens: tokens,
-                    title: `${approverUsername} send a message in ${assigned_team_member.person_name} `,
+                    title: `New Message Received from ${approverUsername} for ${assigned_team_member.person_name}`,
                     body: ``,
                   });
                 } else {
@@ -1700,9 +1700,17 @@ export const updateCommon = async (req) => {
       if (uniqueTokens.length > 0) {
         // Deep has been assigned leads to Arjun.
         try {
+          const assignedContactData = await sequelize.models.contact_masters.findOne({
+            where: { id: whereObj.id },
+            attributes: ["person_name"],
+          });
+          const assigningUser = await loginModel.findOne({
+            where: { id: req.headers["x-tenant-id"], isDelete: 0 },
+            attributes: ["username"],
+          });
           await sendMultipleNotification({
             deviceTokens: uniqueTokens,
-            title: "A New Member has been Assigned to this Contact",
+            title: `${assignedContactData?.person_name || "Contact"} Assigned to You by ${assigningUser?.username || "Someone"}`,
           });
 
         } catch (notificationError) {
@@ -1731,7 +1739,7 @@ export const updateCommon = async (req) => {
             : [whereObj.id];
           const contactData = await sequelize.models.contact_masters.findAll({
             where: { id: assignedIds },
-            attributes: ["a_application_login_id"],
+            attributes: ["a_application_login_id", "person_name"],
           });
 
           if (!contactData.length) {
@@ -1804,9 +1812,21 @@ export const updateCommon = async (req) => {
           ];
 
           if (uniqueTokens.length > 0) {
+            const contactNames = contactData
+              .map((contact) => contact.person_name)
+              .filter(Boolean)
+              .join(", ");
+            const statusData = await sequelize.models.stage_status_masters.findOne({
+              where: { id: parsedData.contact_status, isDelete: 0 },
+              attributes: ["name"],
+            });
+            const changingUser = await loginModel.findOne({
+              where: { id: req.headers["x-tenant-id"], isDelete: 0 },
+              attributes: ["username"],
+            });
             await sendMultipleNotification({
               deviceTokens: uniqueTokens,
-              title: "Contact status updated successfully",
+              title: `${contactNames || "Contact"} Status Changed to ${statusData?.name || parsedData.contact_status} by ${changingUser?.username || "Someone"}`,
             });
 
           } else {
@@ -2052,14 +2072,12 @@ export const updateCommon = async (req) => {
             let notificationTitle;
             if (parsedData.isDelete === "1") {
               notificationTitle = contactName
-                ? `Reminder #${whereObj.id} of ${contactName} has been deleted`
-                : `Reminder #${whereObj.id} has been deleted`;
+                ? `Reminder #${whereObj.id} for ${contactName} Deleted by ${assignedMemberTo?.username || "Someone"}`
+                : `Reminder #${whereObj.id} Deleted by ${assignedMemberTo?.username || "Someone"}`;
             } else {
               notificationTitle = contactName
-                ? `${assignedMemberTo?.username || "Someone"} has completed #${whereObj.id
-                } reminder of ${contactName}`
-                : `${assignedMemberTo?.username || "Someone"} has completed #${whereObj.id
-                } reminder`;
+                ? `Reminder #${whereObj.id} for ${contactName} Completed by ${assignedMemberTo?.username || "Someone"}`
+                : `Reminder #${whereObj.id} Completed by ${assignedMemberTo?.username || "Someone"}`;
             }
 
             await sendMultipleNotification({
@@ -2331,7 +2349,7 @@ export const updateCommon = async (req) => {
               // Send notifications to all assigned members
               await sendMultipleNotification({
                 deviceTokens: uniqueTokens,
-                title: `Task #${whereObj.id}'s status has been changed to ${statusName?.name || parsedData.status} by ${loginName.username}`,
+                title: `Task #${whereObj.id} Status Changed to ${statusName?.name || parsedData.status} by ${loginName.username}`,
                 body: `Task: ${taskData.dataValues.task_title}`,
               });
             } catch (notificationError) {
@@ -2399,7 +2417,7 @@ export const updateCommon = async (req) => {
               // Send notifications to all assigned members
               await sendMultipleNotification({
                 deviceTokens: uniqueTokens,
-                title: `${loginName.username} assigned team member(s) to Task #${whereObj.id}`,
+                title: `${loginName.username} Assigned Team Member(s) to Task #${whereObj.id}`,
                 body: `Task: ${taskData.dataValues.task_title}`,
               });
             } catch (notificationError) {
@@ -2509,7 +2527,7 @@ export const updateCommon = async (req) => {
               // Send notifications to all assigned members
               await sendMultipleNotification({
                 deviceTokens: uniqueTokens,
-                title: `Task #${whereObj.id}'s status has been changed to ${statusName?.name || parsedData.external_status} by ${loginName.username}`,
+                title: `Task #${whereObj.id} Status Changed to ${statusName?.name || parsedData.external_status} by ${loginName.username}`,
                 body: `Task: ${taskData.dataValues.task_title}`,
               });
             } catch (notificationError) {
@@ -2875,9 +2893,16 @@ export const updateMainCommon = async (req) => {
 
         if (uniqueTokens.length > 0) {
           try {
+            const removedLoginId = updatedRows?.[0]?.a_application_login_id;
+            const removedUser = removedLoginId
+              ? await loginModel.findOne({
+                where: { id: removedLoginId },
+                attributes: ["username"],
+              })
+              : null;
             await sendMultipleNotification({
               deviceTokens: uniqueTokens,
-              title: "Team Member Leave",
+              title: `${removedUser?.username || "A team member"} Removed from the Team`,
               body: "A team member has been removed from the company.",
             });
           } catch (notificationError) {

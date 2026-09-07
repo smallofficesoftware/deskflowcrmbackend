@@ -466,7 +466,7 @@ export const addContactByIndiaMart = async (req) => {
                             } from IndiaMart.`;
                         await sendMultipleNotification({
                             deviceTokens: uniqueTokens,
-                            title: `New IndiaMart Inquiries Added`,
+                            title: `New IndiaMART Lead Assigned to You`,
                             body: notificationBody,
                         });
                         console.log(
@@ -999,7 +999,7 @@ export const addContactByIndiaMartPushApi = async (req, res) => {
                             } from IndiaMart.`;
                         await sendMultipleNotification({
                             deviceTokens: uniqueTokens,
-                            title: `New IndiaMart Inquiries Added`,
+                            title: `New IndiaMART Lead Assigned to You`,
                             body: notificationBody,
                         });
                         console.log(
