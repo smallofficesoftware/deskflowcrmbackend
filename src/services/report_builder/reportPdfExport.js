@@ -271,11 +271,28 @@ export const exportReportExcel = async (req, res) => {
 // previewReportPdf (draft template, no file/no disk write) — same
 // rawInputs shape + company-header injection either way, only WHICH
 // template_json string gets parsed differs.
-async function resolveReportInputsAndTemplate(req, definition, company_masters_id, rows, templateJsonString) {
+async function resolveReportInputsAndTemplate(req, definition, company_masters_id, rows, templateJsonString, totals) {
   const columns = resolveDisplayColumns(definition, rows);
   const tableRows = rows.length
     ? rows.map((row) => columns.map((c) => (row[c.key] === undefined || row[c.key] === null ? "" : String(row[c.key]))))
     : [columns.map(() => "")];
+
+  // Grand-totals row — same authoritative totals queryEngine.js computes
+  // over the WHOLE filtered result set (not just whatever page of rows
+  // this export actually fetched — req.body.limit here can be well under
+  // the report's real row count). Appended as one more table row rather
+  // than a separate field, since pdfme's table plugin has no native
+  // "footer row" concept. First column gets a "Total" label; only columns
+  // present in `totals` (Step 2's Total checkbox) get a value.
+  if (totals && Object.keys(totals).length > 0 && rows.length > 0) {
+    tableRows.push(
+      columns.map((c, i) => {
+        const value = totals[c.key];
+        if (value !== undefined && value !== null) return String(value);
+        return i === 0 ? "Total" : "";
+      }),
+    );
+  }
 
   const rawInputs = {
     reportTitle: definition.name,
@@ -334,6 +351,7 @@ export const exportReportPdf = async (req, res) => {
       company_masters_id,
       rows,
       templateRow.published_template_json,
+      runResult?.data?.totals,
     );
 
     const pdfBytes = await generate({ template: visibleTemplate, inputs: [resolvedInputs], plugins: pluginMap, options: { font: fontMap } });
@@ -382,6 +400,7 @@ export const previewReportPdf = async (req, res) => {
       company_masters_id,
       rows,
       templateRow.draft_template_json,
+      runResult?.data?.totals,
     );
 
     const pdfBytes = await generate({ template: visibleTemplate, inputs: [resolvedInputs], plugins: pluginMap, options: { font: fontMap } });
