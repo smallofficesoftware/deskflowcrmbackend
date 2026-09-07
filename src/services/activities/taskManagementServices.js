@@ -1771,7 +1771,7 @@ export const createAllTask = async (req) => {
           // Send notifications to all assigned members
           await sendMultipleNotification({
             deviceTokens: uniqueTokens,
-            title: `${assignerName} has assigned you a new task`,
+            title: `New Task #${finalTaskId} Assigned to You by ${assignerName}`,
             body: `Task: ${task_title}`,
           });
         } catch (notificationError) {
@@ -4419,7 +4419,7 @@ export const createCustomerSupportTicket = async (req, res) => {
             // Send notifications to all assigned members
             await sendMultipleNotification({
               deviceTokens: uniqueTokens,
-              title: `Ticket number ${newTask.id}... From ${getCompanyName.company_name}... Please Check`,
+              title: `Support Ticket #${newTask.id} from ${getCompanyName.company_name} Created as a Task`,
               body: `Ticket: ${task_title}`,
               notification_modual: "customer_support_ticket_create"
             });

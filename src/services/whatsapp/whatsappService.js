@@ -973,8 +973,8 @@ export const waCloudHook = async (req, res) => {
                 if (tokens.length > 0) {
                     await sendMultipleNotification({
                         deviceTokens: tokens,
-                        title: "New Whatsapp Lead",
-                        body: `${isNewContact ? "New lead" : "Follow-up"} from Whatsapp`,
+                        title: "New WhatsApp Lead Assigned to You",
+                        body: `${isNewContact ? "New lead" : "Follow-up"} from WhatsApp`,
                     });
                 }
             }

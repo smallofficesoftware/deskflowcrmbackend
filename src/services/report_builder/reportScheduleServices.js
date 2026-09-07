@@ -357,14 +357,6 @@ const dispatchOneSchedule = async (schedule, req) => {
 
     if (attachments.length > 0) {
       await sendScheduleEmail({ toEmails: emails, subject: `Scheduled report: ${definition.name}`, reportName: definition.name, attachments });
-      if (deviceTokens.length > 0) {
-        await sendMultipleNotification({
-          deviceTokens,
-          title: "Scheduled report ready",
-          body: definition.name,
-          notification_modual: "report_schedule",
-        });
-      }
     }
   } catch (e) {
     runSucceeded = false;

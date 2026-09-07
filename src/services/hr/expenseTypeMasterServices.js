@@ -314,9 +314,13 @@ export const expenseMasterCreate = async (req) => {
 
       if (tokens.length > 0) {
         try {
+          const creatingUser = await loginModel.findOne({
+            where: { id: a_application_login_id, isDelete: 0 },
+            attributes: ["username"],
+          });
           await sendMultipleNotification({
             deviceTokens: tokens,
-            title: "Expensed created",
+            title: `New Expense #${newExpenseData.id} of ${amount} Added by ${creatingUser?.username || "Someone"}`,
             body: remark || "Expensed created",
           });
         } catch (notificationError) {
@@ -540,9 +544,13 @@ export const expenseMasterUpdate = async (req) => {
 
       if (tokens.length > 0) {
         try {
+          const approvingUser = await loginModel.findOne({
+            where: { id: a_application_login_id, isDelete: 0 },
+            attributes: ["username"],
+          });
           await sendMultipleNotification({
             deviceTokens: tokens,
-            title: `Expensed  ${expense_status == 2 ? "Approved" : "Rejected"}`,
+            title: `Expense #${expense_id} ${expense_status == 2 ? "Approved" : "Rejected"} by ${approvingUser?.username || "Someone"}`,
             // body: remark || "A new visit has been created",
           });
         } catch (notificationError) {

@@ -1117,7 +1117,7 @@ export const addContact = async (req, res) => {
       try {
         await sendMultipleNotification({
           deviceTokens: uniqueTokens,
-          title: `${userData?.username || "Person"} added a new contact`,
+          title: `New Contact Added by ${userData?.username || "Person"}`,
         });
 
       } catch (notificationError) {
@@ -1539,7 +1539,7 @@ export const addContactByQR = async (req, res) => {
     if (uniqueTokens.length > 0) {
       await sendMultipleNotification({
         deviceTokens: uniqueTokens,
-        title: `${userData?.username || "Person"} added a new contact`,
+        title: `New Contact Added by ${userData?.username || "Person"}`,
       });
     }
 
@@ -1882,7 +1882,7 @@ export const addContactByOnlineStore = async (req, res) => {
     if (uniqueTokens.length > 0 && haveOTP) {
       await sendMultipleNotification({
         deviceTokens: uniqueTokens,
-        title: `${userData?.username || "Person"} added a new contact`,
+        title: `New Contact Added by ${userData?.username || "Person"}`,
       });
     }
 
@@ -2030,6 +2030,11 @@ export const contactDeleted = async (req) => {
       attributes: ["id", "assinged_to_work_a_application_id", "person_name"],
     });
 
+    const deletingUser = await loginModel.findOne({
+      where: { id: req.headers["x-tenant-id"], isDelete: 0 },
+      attributes: ["username"],
+    });
+
     for (const contact of deletedContacts) {
       const assignedIds =
         contact.assinged_to_work_a_application_id
@@ -2058,7 +2063,7 @@ export const contactDeleted = async (req) => {
             if (tokens.length > 0) {
               await sendMultipleNotification({
                 deviceTokens: tokens,
-                title: `${contact.person_name} is Deleted`,
+                title: `${contact.person_name} Deleted by ${deletingUser?.username || "Someone"}`,
                 body: ``,
               });
             }
@@ -2144,6 +2149,11 @@ export const contactRecover = async (req) => {
       attributes: ["id", "assinged_to_work_a_application_id", "person_name"],
     });
 
+    const recoveringUser = await loginModel.findOne({
+      where: { id: req.headers["x-tenant-id"], isDelete: 0 },
+      attributes: ["username"],
+    });
+
     for (const contact of recoveredContacts) {
       const assignedIds =
         contact.assinged_to_work_a_application_id
@@ -2172,7 +2182,7 @@ export const contactRecover = async (req) => {
             if (tokens.length > 0) {
               await sendMultipleNotification({
                 deviceTokens: tokens,
-                title: `${contact.person_name} is Recovered`,
+                title: `Contact ${contact.person_name} Recovered by ${recoveringUser?.username || "Someone"}`,
                 body: `The contact has been restored successfully.`,
               });
             }
@@ -3361,10 +3371,9 @@ export const CreateContactWithReminder = async (req, res) => {
       try {
         await sendMultipleNotification({
           deviceTokens: uniqueTokens,
-          title: `${userData?.username || "Person"} ${isNewContact
-            ? "added a new contact"
-            : "added a reminder for existing contact"
-            }`,
+          title: isNewContact
+            ? `New Contact Added by ${userData?.username || "Person"}`
+            : `New Reminder Added for Existing Contact by ${userData?.username || "Person"}`,
         });
       } catch (notificationError) {
         console.error("Notification failed:", notificationError.message);

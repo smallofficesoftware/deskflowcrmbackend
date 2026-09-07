@@ -1013,10 +1013,8 @@ export const updateAccountTransaction = async (req, res) => {
             if (tokens.length > 0) {
               await sendMultipleNotification({
                 deviceTokens: tokens,
-                title: `Transaction #${updatedTransaction.id} Approved`,
-                body: `${approverUsername || "Someone"} approved a ${transactionTypeLabel} 
-of ₹${updatedTransaction.amount.toFixed(2)} via ${paymentTypeMap.get(Number(updatedTransaction.mode)) || "Unknown"
-                  }.`,
+                title: `Transaction #${updatedTransaction.id} Approved by ${approverUsername || "Someone"}`,
+                body: `${approverUsername || "Someone"} approved a ${transactionTypeLabel} of ₹${updatedTransaction.amount.toFixed(2)} via ${paymentTypeMap.get(Number(updatedTransaction.mode)) || "Unknown"}.`,
               });
             }
           }
@@ -1187,8 +1185,7 @@ export const createAccountTransaction = async (req, res) => {
         try {
           await sendMultipleNotification({
             deviceTokens: uniqueTokens,
-            title: `New Account Transaction Added by ${assignedMemberTo.username}
-                in ${contactData.person_name}`,
+            title: `New Account Transaction Added by ${assignedMemberTo.username} in ${contactData.person_name}`,
             body: "",
           });
 

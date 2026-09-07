@@ -399,9 +399,13 @@ export const leaveCreate = async (req) => {
 
             if (tokens.length > 0) {
                 try {
+                    const requestingUser = await loginModel.findOne({
+                        where: { id: a_application_login_id, isDelete: 0 },
+                        attributes: ["username"],
+                    });
                     await sendMultipleNotification({
                         deviceTokens: tokens,
-                        title: "Leave created",
+                        title: `New Leave Request from ${requestingUser?.username || "Someone"}`,
                         body: remark || "Leave created",
                     });
                 } catch (notificationError) {
@@ -579,9 +583,13 @@ export const leaveUpdate = async (req) => {
 
             if (tokens.length > 0) {
                 try {
+                    const approvingUser = await loginModel.findOne({
+                        where: { id: a_application_login_id, isDelete: 0 },
+                        attributes: ["username"],
+                    });
                     await sendMultipleNotification({
                         deviceTokens: tokens,
-                        title: `Leave  ${leave_status == 2 ? "Approved" : "Rejected"}`,
+                        title: `Your Leave Request #${leave_id} ${leave_status == 2 ? "Approved" : "Rejected"} by ${approvingUser?.username || "Someone"}`,
                         // body: remark || "A new visit has been created",
                     });
                 } catch (notificationError) {

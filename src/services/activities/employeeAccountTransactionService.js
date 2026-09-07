@@ -207,6 +207,16 @@ export const getAllEmployeeAccountTransactions = async (req, res) => {
         // --------------------------------------------------------
         const findCompanyId = await getCompanyByLoginId(a_application_login_id);
 
+        const companyCurrencyData = await companyModel.findOne({
+            where: { id: findCompanyId.company_masters_id, isDelete: "0" },
+            attributes: ["id", "currency_id"],
+        });
+        const currency = await currencyModel.findOne({
+            where: { id: companyCurrencyData?.currency_id, isDelete: 0 },
+            attributes: ["id", "symbol"],
+        });
+        const currencySymbol = currency?.symbol || "₹";
+
         // --------------------------------------------------------
         // 3. USER RIGHTS (only when internal API)
         // --------------------------------------------------------
@@ -251,6 +261,9 @@ export const getAllEmployeeAccountTransactions = async (req, res) => {
                 { remark: { [Op.like]: `%${searchTerm}%` } },
             ];
         }
+
+        // base filters only (no date range, no credit/debit type filter) — used for balance calculations
+        const baseWhereClauseForBalance = { ...whereClause };
 
         if (startDate && endDate) {
             whereClause[Op.and] = whereClause[Op.and] || [];
@@ -309,19 +322,58 @@ export const getAllEmployeeAccountTransactions = async (req, res) => {
         );
 
         // --------------------------------------------------------
-        // 6. BALANCE CALCULATIONS (fixed)
+        // 6. BALANCE CALCULATIONS (SUM pushed to DB, no row loop — safe for large tables)
         // --------------------------------------------------------
-        let totalAmountCredit = 0;
-        let totalAmountDebit = 0;
+        const approvedCondition = { [Op.ne]: 0 };
 
-        accountTransactionResult.forEach((item) => {
-            if (item.approve_by_a_application_login_id !== 0) {
-                if (Number(item.type) === 1) totalAmountCredit += item.amount || 0;
-                if (Number(item.type) === 2) totalAmountDebit += item.amount || 0;
-            }
+        // closingBalance = cumulative balance as of endDate (all-time if no endDate) — startDate not needed here
+        const closingWhereClause = { ...baseWhereClauseForBalance };
+        if (endDate) {
+            closingWhereClause[Op.and] = [
+                Sequelize.where(
+                    Sequelize.fn("DATE", Sequelize.col("payment_date_time")),
+                    { [Op.lte]: endDate }
+                ),
+            ];
+        }
+        closingWhereClause.approve_by_a_application_login_id = approvedCondition;
+
+        const closingAgg = await aTModel.findOne({
+            where: closingWhereClause,
+            attributes: [
+                [Sequelize.fn("SUM", Sequelize.literal("CASE WHEN type = 1 THEN amount ELSE 0 END")), "totalCredit"],
+                [Sequelize.fn("SUM", Sequelize.literal("CASE WHEN type = 2 THEN amount ELSE 0 END")), "totalDebit"],
+            ],
+            raw: true,
         });
 
-        const closingBalance = totalAmountCredit - totalAmountDebit;
+        const closingBalance = (Number(closingAgg?.totalCredit) || 0) - (Number(closingAgg?.totalDebit) || 0);
+
+        // opening balance = balance of everything before startDate (separate stat, ignores date/type filters)
+        let openingBalance = 0;
+        if (startDate) {
+            const openingWhereClause = { ...baseWhereClauseForBalance };
+            openingWhereClause[Op.and] = [
+                Sequelize.where(
+                    Sequelize.fn("DATE", Sequelize.col("payment_date_time")),
+                    { [Op.lt]: startDate }
+                ),
+            ];
+            openingWhereClause.approve_by_a_application_login_id = approvedCondition;
+
+            const openingAgg = await aTModel.findOne({
+                where: openingWhereClause,
+                attributes: [
+                    [Sequelize.fn("SUM", Sequelize.literal("CASE WHEN type = 1 THEN amount ELSE 0 END")), "totalCredit"],
+                    [Sequelize.fn("SUM", Sequelize.literal("CASE WHEN type = 2 THEN amount ELSE 0 END")), "totalDebit"],
+                ],
+                raw: true,
+            });
+
+            const openingCredit = Number(openingAgg?.totalCredit) || 0;
+            const openingDebit = Number(openingAgg?.totalDebit) || 0;
+            openingBalance = openingCredit - openingDebit;
+        }
 
         // --------------------------------------------------------
         // 7. SANITIZE + JOIN USER NAMES
@@ -387,6 +439,8 @@ export const getAllEmployeeAccountTransactions = async (req, res) => {
         return resSuccess({
             data: {
                 item: accountTransactions,
+                currencySymbol,
+                openingBalance,
                 closingBalance,
                 employeeDetails
             },
@@ -648,7 +702,7 @@ export const updateEmployeeAccountTransaction = async (req, res) => {
                 if (supervisor && supervisor.web_refresh_token) {
                     await sendMultipleNotification({
                         deviceTokens: [supervisor.web_refresh_token].filter(Boolean),
-                        title: `Employee Transaction #${transaction.id} Approved`,
+                        title: `Employee Transaction #${transaction.id} Approved by ${approverUsername}`,
                         body: `${approverUsername} approved ${transactionTypeLabel} of ₹${transaction.amount} via ${paymentTypeName} by ${employeeName}.`,
                     });
                 }
@@ -708,6 +762,7 @@ export const allAccountTransactionOfEmployeePDF = async (req, res) => {
             where: { id: companyData?.currency_id, isDelete: 0 },
             attributes: ["id", "symbol"],
         });
+        const currencySymbol = currency?.symbol || "₹";
 
         const employeeData = await loginModel.findOne({
             where: {
@@ -723,12 +778,15 @@ export const allAccountTransactionOfEmployeePDF = async (req, res) => {
             raw: true,
         });
 
-        const whereClause = {
+        // base filters only (no date range, no credit/debit type filter) — used for balance calculations
+        const baseWhereClauseForBalance = {
             isDelete: 0,
             company_masters_id: findCompanyId.company_masters_id,
             team_id: team_id,
-            approve_by_a_application_login_id: { [Op.ne]: 0 }
+            approve_by_a_application_login_id: { [Op.ne]: 0 },
         };
+
+        const whereClause = { ...baseWhereClauseForBalance };
 
         // Sirf tab date condition add karo jab startDate aur endDate valid hain
         if (startDate && endDate) {
@@ -746,6 +804,12 @@ export const allAccountTransactionOfEmployeePDF = async (req, res) => {
         }
         // Agar dates nahi hain → koi date filter nahi lagega → all transactions aayengi
 
+        // date range applied, but never the credit/debit display filter — totals/opening balance must reflect real money, not the view
+        const periodWhereClauseForBalance = { ...baseWhereClauseForBalance };
+        if (whereClause[Op.and]) {
+            periodWhereClauseForBalance[Op.and] = whereClause[Op.and];
+        }
+
         // NEW: Credit / Debit Filter Logic
         if (creaditFilter == 1 && debitFilter != 2) {
             // Only Credit transactions
@@ -759,7 +823,29 @@ export const allAccountTransactionOfEmployeePDF = async (req, res) => {
             order: [["created_date_time", "ASC"]],
             raw: true,
         });
-        let running = 0;
+
+        // opening balance = balance of everything before startDate (ignores date/type filters), DB-side SUM
+        let openingBalance = 0;
+        if (startDate) {
+            const openingWhereClause = { ...baseWhereClauseForBalance };
+            openingWhereClause[Op.and] = [
+                Sequelize.where(
+                    Sequelize.fn("DATE", Sequelize.col("payment_date_time")),
+                    { [Op.lt]: startDate }
+                ),
+            ];
+            const openingAgg = await AccountTransactionModel.findOne({
+                where: openingWhereClause,
+                attributes: [
+                    [Sequelize.fn("SUM", Sequelize.literal("CASE WHEN type = 1 THEN amount ELSE 0 END")), "totalCredit"],
+                    [Sequelize.fn("SUM", Sequelize.literal("CASE WHEN type = 2 THEN amount ELSE 0 END")), "totalDebit"],
+                ],
+                raw: true,
+            });
+            openingBalance = (Number(openingAgg?.totalCredit) || 0) - (Number(openingAgg?.totalDebit) || 0);
+        }
+
+        let running = openingBalance;
         const rowsWithBalance = transactions.map((tx) => {
             const amt = Number(tx.amount || 0);
             if (Number(tx.type) === 1) running += amt;
@@ -774,9 +860,19 @@ export const allAccountTransactionOfEmployeePDF = async (req, res) => {
             };
         });
 
-        const totalCredit = transactions.filter(t => t.type === 1).reduce((s, t) => s + Number(t.amount || 0), 0).toLocaleString("en-IN");
-        const totalDebit = transactions.filter(t => t.type === 2).reduce((s, t) => s + Number(t.amount || 0), 0).toLocaleString("en-IN");
-        const lastRowBalance = rowsWithBalance.length > 0 ? rowsWithBalance[rowsWithBalance.length - 1].balance : "0";
+        // totals pushed to DB, over the real filtered-by-date set only — never narrowed by creaditFilter/debitFilter
+        const totalsAgg = await AccountTransactionModel.findOne({
+            where: periodWhereClauseForBalance,
+            attributes: [
+                [Sequelize.fn("SUM", Sequelize.literal("CASE WHEN type = 1 THEN amount ELSE 0 END")), "totalCredit"],
+                [Sequelize.fn("SUM", Sequelize.literal("CASE WHEN type = 2 THEN amount ELSE 0 END")), "totalDebit"],
+            ],
+            raw: true,
+        });
+        const totalCredit = (Number(totalsAgg?.totalCredit) || 0).toLocaleString("en-IN");
+        const totalDebit = (Number(totalsAgg?.totalDebit) || 0).toLocaleString("en-IN");
+        const closingBalance = openingBalance + (Number(totalsAgg?.totalCredit) || 0) - (Number(totalsAgg?.totalDebit) || 0);
+        const lastRowBalance = rowsWithBalance.length > 0 ? rowsWithBalance[rowsWithBalance.length - 1].balance : openingBalance.toLocaleString("en-IN");
 
         const fromDate = rowsWithBalance.length > 0 ? rowsWithBalance[0].payment_date : "";
         const toDate = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
@@ -829,6 +925,9 @@ export const allAccountTransactionOfEmployeePDF = async (req, res) => {
                 rowsWithBalance,
                 totalCredit,
                 totalDebit,
+                openingBalance: openingBalance.toLocaleString("en-IN"),
+                closingBalanceAmount: closingBalance.toLocaleString("en-IN"),
+                currencySymbol,
                 lastRowBalance,
                 fromDate,
                 toDate,
@@ -853,6 +952,9 @@ export const allAccountTransactionOfEmployeePDF = async (req, res) => {
                     rowsWithBalance,
                     totalCredit,
                     totalDebit,
+                    openingBalance: openingBalance.toLocaleString("en-IN"),
+                    closingBalanceAmount: closingBalance.toLocaleString("en-IN"),
+                    currencySymbol,
                     lastRowBalance,
                     fromDate,
                     toDate,
@@ -1020,6 +1122,12 @@ export const employeePDFaccountv1 = async (req, res) => {
             accountTransaction.a_application_login_id
         );
 
+        const currency = await currencyModel.findOne({
+            where: { id: companyDetail?.currency_id, isDelete: 0 },
+            attributes: ["id", "symbol"],
+        });
+        const currencySymbol = currency?.symbol || "₹";
+
         let payment_type_name = null;
         if (accountTransaction.mode) {
             const paymentType = await PaymentTypeModel.findOne({
@@ -1075,7 +1183,7 @@ export const employeePDFaccountv1 = async (req, res) => {
                 employeeDetails,
                 payment_type_name,
                 settingDetails,
-                currencySymbol: "₹",
+                currencySymbol,
                 formattedAmount: AccountTransactionformatNumber(accountTransaction.amount),
                 formattedDate: accountTransaction.payment_date_time ? AccountTransactionformatDateAndTime(accountTransaction.payment_date_time) : "-",
                 remarkColor: "#000000",
@@ -1098,7 +1206,7 @@ export const employeePDFaccountv1 = async (req, res) => {
                 title: accountTransaction.type === 1 ? "Credit Account Transaction" : "Debit Account Transaction",
                 employeeDetails: employeeDetails,
                 payment_type_name,
-                currencySymbol: "₹",
+                currencySymbol,
                 formatNumber: AccountTransactionformatNumber,
                 formatDateAndTime: AccountTransactionformatDateAndTime,
                 numberToWordsCurrency: AccountTransactionnumberToWordsCurrency,

@@ -990,7 +990,7 @@ export const orderCreate = async (req, res) => {
 
       await sendMultipleNotification({
         deviceTokens: uniqueTokens,
-        title: `New ${orderType}`,
+        title: `New ${orderType} #${cartId} Created by ${username} for ${assigned_team_member?.person_name || "customer"}`,
         body: notificationBody,
       });
     } else {
