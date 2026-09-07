@@ -1177,8 +1177,7 @@ export const createCommon = async (req) => {
           try {
             await sendMultipleNotification({
               deviceTokens: uniqueTokens,
-              title: `New Account Transaction Added by ${assignedMemberTo.username}
-        in ${contactdata.person_name}`,
+              title: `New Account Transaction Added by ${assignedMemberTo.username} in ${contactdata.person_name}`,
               body: "",
             });
 
