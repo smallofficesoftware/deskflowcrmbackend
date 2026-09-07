@@ -1108,8 +1108,43 @@ export const runQueryReport = async (definition, req) => {
       return ordered;
     });
 
+    // ---- Grand totals — one extra aggregate query for the WHOLE filtered
+    // result set (not the current page), reusing the exact same `where`
+    // this run already built (rights scope, saved + runtime filters,
+    // search — everything except limit/offset/group). Summing only the
+    // rows already fetched into this page would undercount for any report
+    // wider than one page, so this can't be done client-side.
+    //
+    // Scope: base (non-relation, non-compute/case) columns with
+    // showTotal:true only — matches ColumnFlagsMini's own allowTotal gate
+    // (relation columns never get a Total checkbox in the wizard). Always
+    // SUMs the raw column regardless of that column's own per-row
+    // `aggregate` (mirrors a spreadsheet's own Total row: sum down the
+    // column), except aggregate:"count", which totals as COUNT instead —
+    // both give the same correct number for count, but COUNT is the more
+    // obviously-correct SQL for it. Keyed with the exact same
+    // outputKeyForColumn() logic the row-reassembly above uses, so a
+    // totals key always matches the row key the frontend already renders
+    // that column under.
+    const totalColumnSpecs = columns.filter((c) => c.showTotal && c.column && !c.column.includes(".") && !c.compute && !c.case);
+    let totals;
+    if (totalColumnSpecs.length > 0) {
+      const totalKeyFor = (c) => (c.aggregate ? c.alias || `${c.aggregate}_${c.column}` : c.column);
+      const totalsRow = await Model.findOne({
+        where,
+        attributes: totalColumnSpecs.map((c) => [fn(c.aggregate === "count" ? "COUNT" : "SUM", col(c.column)), totalKeyFor(c)]),
+        raw: true,
+      });
+      totals = {};
+      totalColumnSpecs.forEach((c) => {
+        const key = totalKeyFor(c);
+        const value = totalsRow?.[key];
+        totals[key] = value === null || value === undefined ? null : Number(value);
+      });
+    }
+
     return resSuccess({
-      data: { rows, row_count: rows.length, duration_ms: Date.now() - startedAt },
+      data: { rows, row_count: rows.length, duration_ms: Date.now() - startedAt, totals },
       ack_msg: rows.length > 0 ? "Report data retrieved successfully" : "No data found",
     });
   } catch (error) {
