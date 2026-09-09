@@ -86,8 +86,14 @@ const diffSchema = (referenceSchema, tenantSchema) => {
     });
   });
 
+  // Custom Form Maker's per-form dynamic tables (fbs_<form_id> and their
+  // fbs_<form_id>_r<repeaterFieldId> repeater children) are expected,
+  // per-company runtime data infrastructure, not schema drift — every
+  // company that publishes a form accumulates these outside
+  // smalloffice_sample_tenant, by design (plan §8 CLAUDE.md checklist).
+  const FORM_BUILDER_DYNAMIC_TABLE_PATTERN = /^fbs_\d+(_r\d+)?$/;
   const extraTables = Object.keys(tenantSchema).filter(
-    (table) => !refTables.includes(table)
+    (table) => !refTables.includes(table) && !FORM_BUILDER_DYNAMIC_TABLE_PATTERN.test(table)
   );
   extraTables.forEach((table) => {
     differences.push(`  EXTRA TABLE (not in reference): ${table}`);

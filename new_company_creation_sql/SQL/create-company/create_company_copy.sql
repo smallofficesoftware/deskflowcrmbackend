@@ -134,6 +134,9 @@ CREATE TABLE `report_groups` LIKE smalloffice_sample_tenant.report_groups;
 CREATE TABLE `report_schedules` LIKE smalloffice_sample_tenant.report_schedules;
 CREATE TABLE `dashboards` LIKE smalloffice_sample_tenant.dashboards;
 CREATE TABLE `dashboard_widgets` LIKE smalloffice_sample_tenant.dashboard_widgets;
+CREATE TABLE `form_builder_forms` LIKE smalloffice_sample_tenant.form_builder_forms;
+CREATE TABLE `form_builder_submission_files` LIKE smalloffice_sample_tenant.form_builder_submission_files;
+CREATE TABLE `form_builder_form_team_rights` LIKE smalloffice_sample_tenant.form_builder_form_team_rights;
 
 CREATE TABLE `adjustment_types` LIKE smalloffice_sample_tenant.adjustment_types;
 ALTER TABLE `adjustment_types`  DISABLE KEYS;

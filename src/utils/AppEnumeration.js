@@ -107,6 +107,16 @@ export const PAGE_ID = {
   // Dashboard's own feature gate — independent of REPORT_BUILDER's, see
   // migration 20260905160000-add-dashboard-builder-application-page.js.
   DASHBOARD_BUILDER: "160",
+  // Custom Form Maker's own feature gate — independent of REPORT_BUILDER's
+  // and DASHBOARD_BUILDER's, see migration
+  // 20260908130000-add-form-builder-application-page.js.
+  // id 178, not 161: verified live against a_application_pages before
+  // running — 161-177 turned out to already be taken (161 itself by an
+  // existing 'system_document_templates' row, then 162-177 by adminpanel's
+  // own pages sharing this same table) — the "160 is last used" comment
+  // this was based on was stale/wrong. 178 was MAX(id)+1 at the time this
+  // was added.
+  FORM_BUILDER: "178",
   // Add more pages as needed
 };
 // config/googleApi.ts

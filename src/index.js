@@ -249,6 +249,12 @@ app.use("/order_view", express.static(findOrderView));
 const findShippingLabelView = path.join(process.cwd(), "media-folder/ShippingLabel");
 app.use("/shipping_label_view", express.static(findShippingLabelView));
 
+// Custom Form Maker — uploaded submission files (file/signature/image field
+// answers). Bare unauthenticated express.static, same convention as every
+// other upload alias above (see plan §3 "File access, checked not assumed").
+const findFormBuilderAttachments = path.join(process.cwd(), "media-folder/form_builder");
+app.use("/form-builder-att", express.static(findFormBuilderAttachments));
+
 const findContactPrintView = path.join(process.cwd(), "media-folder/ContactPrint");
 app.use("/contact_print_view", express.static(findContactPrintView));
 

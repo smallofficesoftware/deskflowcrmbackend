@@ -73,6 +73,7 @@ export const buildAllTaskWhere = ({
   contact_masters_id,
   labelwiseContactShowAndOrNot,
   labelFilter,
+  demographyContactIds,
 }) => {
 
   const currentDate = moment().format("YYYY-MM-DD HH:mm:ss");
@@ -134,6 +135,22 @@ export const buildAllTaskWhere = ({
       ...whereClauseForDueTask,
       contact_masters_id: contactId,
     };
+  }
+
+  // ─── Demography filter (Country/State/City) — a ticket has no geography
+  // of its own, only the contact it's linked to does, so the caller already
+  // resolved matching contact ids for us. Skip if a single contact is
+  // already pinned above (that's the more specific "view this contact's
+  // tasks" mode).
+  if (!contact_masters_id && demographyContactIds) {
+    const idsFilter = {
+      [Op.in]: demographyContactIds.length > 0 ? demographyContactIds : [-1],
+    };
+
+    whereClause = { ...whereClause, contact_masters_id: idsFilter };
+    whereClauseForAllTask = { ...whereClauseForAllTask, contact_masters_id: idsFilter };
+    whereClauseForMyTask = { ...whereClauseForMyTask, contact_masters_id: idsFilter };
+    whereClauseForDueTask = { ...whereClauseForDueTask, contact_masters_id: idsFilter };
   }
 
   /* ================= STATUS BASE LOGIC ================= */
@@ -609,6 +626,10 @@ export const AllTaskGet = async (req, res) => {
       labelwiseContactShowAndOrNot,
       labelFilter,
       isUnread,
+      country,
+      state,
+      city,
+      area,
     } = req.body;
 
     const limit = Number(ll) || 10;
@@ -638,6 +659,25 @@ export const AllTaskGet = async (req, res) => {
       page_id: PAGE_ID.TASK_MANAGEMENT,
       tenentId: req.tenantDB
     });
+
+    /* ================= DEMOGRAPHY (country/state/city) ================= */
+    // A task/ticket has no geography of its own, only the contact it's
+    // linked to does — resolve matching contact ids first.
+    let demographyContactIds;
+    if (country || state || city || area) {
+      const ContactModelForFilter = contactModel(req.tenantDB);
+      const contactWhere = { isDelete: "0" };
+      if (country) contactWhere.country = country;
+      if (state) contactWhere.state = state;
+      if (city) contactWhere.city = city;
+      if (area) contactWhere.area = area;
+      const matchingContacts = await ContactModelForFilter.findAll({
+        where: contactWhere,
+        attributes: ["id"],
+        raw: true
+      });
+      demographyContactIds = matchingContacts.map(c => c.id);
+    }
 
     /* ================= BUILD WHERE ================= */
 
@@ -673,6 +713,7 @@ export const AllTaskGet = async (req, res) => {
       contact_masters_id,
       labelwiseContactShowAndOrNot,
       labelFilter,
+      demographyContactIds,
     });
 
     /* ================= FINAL WHERE (WITH DUE) ================= */
@@ -740,6 +781,34 @@ export const AllTaskGet = async (req, res) => {
             WHERE contact_masters.id = task_managements.contact_masters_id
               AND contact_masters.isDelete = 0
           )`), "contact_company_name"],
+          [Sequelize.literal(`(
+            SELECT a_countries.country_name
+            FROM contact_masters
+            JOIN a_countries ON a_countries.id = contact_masters.country AND a_countries.isDelete = 0
+            WHERE contact_masters.id = task_managements.contact_masters_id
+              AND contact_masters.isDelete = 0
+          )`), "contact_country"],
+          [Sequelize.literal(`(
+            SELECT a_states.state_name
+            FROM contact_masters
+            JOIN a_states ON a_states.id = contact_masters.state AND a_states.isDelete = 0
+            WHERE contact_masters.id = task_managements.contact_masters_id
+              AND contact_masters.isDelete = 0
+          )`), "contact_state"],
+          [Sequelize.literal(`(
+            SELECT a_cities.city_name
+            FROM contact_masters
+            JOIN a_cities ON a_cities.id = contact_masters.city AND a_cities.isDelete = 0
+            WHERE contact_masters.id = task_managements.contact_masters_id
+              AND contact_masters.isDelete = 0
+          )`), "contact_city"],
+          [Sequelize.literal(`(
+            SELECT a_areas.area_name
+            FROM contact_masters
+            JOIN a_areas ON a_areas.id = contact_masters.area AND a_areas.isDelete = 0
+            WHERE contact_masters.id = task_managements.contact_masters_id
+              AND contact_masters.isDelete = 0
+          )`), "contact_area"],
           [
             Sequelize.literal(
               `(SELECT GROUP_CONCAT(lable_masters.color) FROM lable_masters WHERE lable_masters.isDelete = 0 AND FIND_IN_SET(lable_masters.id, task_managements.label_id))`

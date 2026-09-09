@@ -155,13 +155,13 @@ export function injectWatermarkField(template, company) {
 }
 
 // UPI payment QR — same deep link the old EJS pipeline builds
-// (orderServices.js:4494-4505), only for the same 3 doc types that get it
-// today (cart.type 1/2/3 — Quotation/Sales Order/Sales Invoice), only when
-// the company has enabled printSetting.paymentQR AND configured UPI
-// details. Same "resolved fresh at generate time, never baked into the
-// saved template_json" reasoning as the watermark above — async because
-// QR PNG generation is, unlike everything else in this file.
-const PAYMENT_QR_DOC_TYPES = ["quotation", "salesOrder", "salesInvoice"];
+// (orderServices.js:4494-4505), for the same doc types that get it today
+// (cart.type 1/2/3/12 — Quotation/Sales Order/Sales Invoice/Proforma
+// Invoice), only when the company has enabled printSetting.paymentQR AND
+// configured UPI details. Same "resolved fresh at generate time, never
+// baked into the saved template_json" reasoning as the watermark above —
+// async because QR PNG generation is, unlike everything else in this file.
+const PAYMENT_QR_DOC_TYPES = ["quotation", "salesOrder", "salesInvoice", "proformaInvoice"];
 
 export async function injectPaymentQRField(template, { docType, company, order, payableAmount }) {
   if (!PAYMENT_QR_DOC_TYPES.includes(docType)) return template;
