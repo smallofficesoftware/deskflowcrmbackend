@@ -11,6 +11,26 @@ import { PAGE_ID } from "../../../utils/AppEnumeration.js";
 import logger from "../../../utils/logger.js";
 import { resError, resSuccess } from "../../../utils/sharedFunctions.js";
 import { getCompanyByLoginId } from "../../commonServices.js";
+
+// Great-circle distance between the visit's checked-in GPS location and the
+// contact's registered location, in km. Returns null when either point is
+// missing/invalid rather than a misleading 0.
+const haversineDistanceKm = (lat1, lon1, lat2, lon2) => {
+  const a = parseFloat(lat1);
+  const b = parseFloat(lon1);
+  const c = parseFloat(lat2);
+  const d = parseFloat(lon2);
+  if ([a, b, c, d].some((v) => !Number.isFinite(v))) return null;
+
+  const EARTH_RADIUS_KM = 6371;
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const dLat = toRad(c - a);
+  const dLon = toRad(d - b);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(a)) * Math.cos(toRad(c)) * Math.sin(dLon / 2) ** 2;
+  return Number((EARTH_RADIUS_KM * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h))).toFixed(2));
+};
 // export const getVisitReport = async (req) => {
 //   try {
 //     const { a_application_login_id, selectedDates = [], selectedTeamMembers = [], selectedDemography, ul, ll, selectedContactId } = req.body;
@@ -395,7 +415,7 @@ export const getVisitReport = async (req) => {
           visits.map(async (visit) => {
             const contact = await contactModels.findOne({
               where: { id: visit.contact_id, isDelete: 0, ...whereForContact },
-              attributes: ["person_name", "company_name", "address"],
+              attributes: ["person_name", "company_name", "address", "latitude", "longitude"],
             });
 
             if (!contact) return null;
@@ -403,7 +423,17 @@ export const getVisitReport = async (req) => {
             return {
               ...visit.toJSON(),
               contactNumber: `${contact.company_name}`,
-              address: `${contact.address}`,
+              // visit.address (from the spread above) is the actual visit
+              // location, reverse-geocoded from GPS at check-in time —
+              // contact_address is the contact's separate, fixed registered
+              // address. Keep both distinct; don't let one clobber the other.
+              contact_address: `${contact.address}`,
+              distance_km: haversineDistanceKm(
+                visit.latitude,
+                visit.longitude,
+                contact.latitude,
+                contact.longitude
+              ),
               customForm: CustomFormFeilds,
               visit_image: visit.visit_image
                 ? `${VISIT_IMG_LINK_EXTENDED}/${visit.visit_image}`
