@@ -130,7 +130,10 @@ export function applyConditionalVisibility(template, resolvedInputs) {
 // Fixed company-wide overlay, outside Designer control — matches
 // company_masters.watermark_in_print (1=off, 2=on) exactly as it works
 // today (orderServices.js:4661-4671): centered, translucent, same logo,
-// same position on every generate. Not part of template_json.
+// same position on every generate. Not part of template_json. Applied to
+// EVERY page, not just the first — a multi-page document (itemsTable
+// pagination, extra pages, product pages) previously only watermarked
+// page 0, leaving the rest unmarked.
 export function injectWatermarkField(template, company) {
   if (company?.watermark_in_print != 2 || !company?.logoImage) return template;
 
@@ -138,8 +141,8 @@ export function injectWatermarkField(template, company) {
   const { width, height } = cloned.basePdf;
   const boxSize = Math.min(width, height) * 0.55;
 
-  cloned.schemas[0] = [
-    ...cloned.schemas[0],
+  cloned.schemas = cloned.schemas.map((page) => [
+    ...page,
     {
       name: "__watermark",
       type: "image",
@@ -150,7 +153,7 @@ export function injectWatermarkField(template, company) {
       opacity: 0.15,
       readOnly: true,
     },
-  ];
+  ]);
   return cloned;
 }
 
