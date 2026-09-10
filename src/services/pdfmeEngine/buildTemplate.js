@@ -128,7 +128,7 @@ export function tableField(overrides) {
 // Builds the header-zone static fields (y=5..23mm) for one variant. Field
 // names are variant-specific so withCompanyHeader() (templates.js) can tell
 // which text/image field(s) to resolve real company data into.
-export function buildHeaderFields(variant, headerHeightMM = 18) {
+export function buildHeaderFields(variant, headerHeightMM = 28.5) {
   switch (variant) {
     case "image":
       return [
@@ -218,7 +218,7 @@ export const FOOTER_BOTTOM_MARGIN = 12; // reserves room for pageNumber below th
 // in orderInputMapper.js for why that distinction matters for a multi-page
 // document). 5mm inset keeps the line clear of any print-area clipping at
 // the literal page edge.
-export function buildPageBorderField(enabled, color = "#000000") {
+export function buildPageBorderField(enabled, color = "#000000", widthMM = 0.5) {
   if (!enabled) return [];
   return [
     rectangleField({
@@ -227,11 +227,12 @@ export function buildPageBorderField(enabled, color = "#000000") {
       width: A4.width - 10,
       height: A4.height - 10,
       borderColor: color,
+      borderWidth: { top: widthMM, right: widthMM, bottom: widthMM, left: widthMM },
     }),
   ];
 }
 
-export function buildFooterFields(showFooterImage, footerHeightMM = 15) {
+export function buildFooterFields(showFooterImage, footerHeightMM = 28.5) {
   if (!showFooterImage) return [];
   return [
     imageField({
@@ -460,10 +461,11 @@ export function buildDocTemplate(
     headerVariant = "details",
     footerImage = false,
     columnOptions = {},
-    headerHeightMM = 18,
-    footerHeightMM = 15,
+    headerHeightMM = 28.5,
+    footerHeightMM = 28.5,
     pageBorder = false,
     pageBorderColor = "#000000",
+    pageBorderWidth = 0.5,
   } = {},
 ) {
   // Top padding must clear the header banner's actual height (only the
@@ -497,7 +499,16 @@ export function buildDocTemplate(
       footerHeightMM,
       pageBorder,
       pageBorderColor,
+      pageBorderWidth,
       staticSchema: [
+        // Drawn FIRST, not last — the border's left/right lines span the
+        // full page height, and header/footer banner images span the full
+        // page width, so for any inset they inevitably cross through those
+        // bands. Rendering the border behind them lets the (opaque, when a
+        // real image is set) header/footer image cover the border wherever
+        // they overlap, instead of the border line visibly cutting across
+        // the banner.
+        ...buildPageBorderField(pageBorder, pageBorderColor, pageBorderWidth),
         ...buildHeaderFields(headerVariant, headerHeightMM),
         ...buildFooterFields(footerImage, footerHeightMM),
         textField({
@@ -510,7 +521,6 @@ export function buildDocTemplate(
           content: "Page {currentPage} of {totalPages}",
           readOnly: true,
         }),
-        ...buildPageBorderField(pageBorder, pageBorderColor),
       ],
     },
     schemas: [
