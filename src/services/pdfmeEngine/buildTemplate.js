@@ -470,6 +470,8 @@ export function buildDocTemplate(
     pageBorder = false,
     pageBorderColor = "#000000",
     pageBorderWidth = 0.5,
+    marginLeft = 10,
+    marginRight = 10,
   } = {},
 ) {
   // Top padding must clear the header banner's actual height (only the
@@ -493,7 +495,11 @@ export function buildDocTemplate(
       // top/bottom padding must clear the staticSchema header/footer height —
       // pdfme's dynamic-table continuation-page start Y is literally
       // `basePdf.padding[0]`, with ZERO awareness of staticSchema field positions.
-      padding: [topPadding, 10, bottomPadding, 10],
+      // Left/right default to 10mm but carry through whatever the Margins
+      // toolbar last set (applyHeaderOptions always sends its current
+      // marginLeft/marginRight state) — a caller that omits them (a fresh
+      // template, or a caller that genuinely wants the default) still gets 10.
+      padding: [topPadding, marginRight, bottomPadding, marginLeft],
       // Not real pdfme properties — pdfme ignores unknown keys. Self-
       // describing metadata so a fresh rebuild for a paper-size change can
       // recover the CURRENT header variant/footer-image state.
@@ -504,6 +510,8 @@ export function buildDocTemplate(
       pageBorder,
       pageBorderColor,
       pageBorderWidth,
+      marginLeft,
+      marginRight,
       staticSchema: [
         // Drawn FIRST, not last — the border's left/right lines span the
         // full page height, and header/footer banner images span the full
@@ -512,7 +520,7 @@ export function buildDocTemplate(
         // real image is set) header/footer image cover the border wherever
         // they overlap, instead of the border line visibly cutting across
         // the banner.
-        ...buildPageBorderField(pageBorder, pageBorderColor, pageBorderWidth, [topPadding, 10, bottomPadding, 10]),
+        ...buildPageBorderField(pageBorder, pageBorderColor, pageBorderWidth, [topPadding, marginRight, bottomPadding, marginLeft]),
         ...buildHeaderFields(headerVariant, headerHeightMM),
         ...buildFooterFields(footerImage, footerHeightMM),
         textField({

@@ -71,6 +71,8 @@ export function buildPendingOrderTemplate(
     pageBorder = false,
     pageBorderColor = "#000000",
     pageBorderWidth = 0.5,
+    marginLeft = 10,
+    marginRight = 10,
   } = {},
 ) {
   // Kept in sync with buildTemplate.js's buildDocTemplate — both share
@@ -86,7 +88,7 @@ export function buildPendingOrderTemplate(
     basePdf: {
       width: A4.width,
       height: A4.height,
-      padding: [topPadding, 10, bottomPadding, 10],
+      padding: [topPadding, marginRight, bottomPadding, marginLeft],
       headerVariant,
       footerImage,
       headerHeightMM,
@@ -94,8 +96,10 @@ export function buildPendingOrderTemplate(
       pageBorder,
       pageBorderColor,
       pageBorderWidth,
+      marginLeft,
+      marginRight,
       staticSchema: [
-        ...buildPageBorderField(pageBorder, pageBorderColor, pageBorderWidth, [topPadding, 10, bottomPadding, 10]),
+        ...buildPageBorderField(pageBorder, pageBorderColor, pageBorderWidth, [topPadding, marginRight, bottomPadding, marginLeft]),
         ...buildHeaderFields(headerVariant, headerHeightMM),
         ...buildFooterFields(footerImage, footerHeightMM),
         textField({
