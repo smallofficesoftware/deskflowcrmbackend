@@ -524,14 +524,13 @@ export function buildDocTemplate(
         // over the header/footer banner wherever they overlap (frame stays
         // visibly continuous crossing the banner, instead of disappearing
         // behind it), but pageNumber renders AFTER it (last = on top) so
-        // its text stays readable — its x=180..200 box happens to land
-        // exactly on the border's default right edge (width-marginRight=200
-        // at the 10mm default), which the border would otherwise cross
-        // straight through. top/bottom stay a small fixed inset (not
-        // topPadding/bottomPadding) so the header/footer banners land
-        // INSIDE the frame, not excluded from it — left/right still honor
-        // the actual content margin.
-        ...buildPageBorderField(pageBorder, pageBorderColor, pageBorderWidth, [2, marginRight, 2, marginLeft]),
+        // its text stays readable. Frames the actual content-margin box on
+        // all 4 sides now (topPadding/bottomPadding, not a fixed inset) —
+        // a tall header/footer can end up OUTSIDE the frame once its own
+        // clearance exceeds this, a deliberate tradeoff for having top/
+        // bottom track the Margins toolbar the same way left/right already
+        // does.
+        ...buildPageBorderField(pageBorder, pageBorderColor, pageBorderWidth, [topPadding, marginRight, bottomPadding, marginLeft]),
         textField({
           name: "pageNumber",
           // Right-aligned text in a 20mm box, flush against the actual
