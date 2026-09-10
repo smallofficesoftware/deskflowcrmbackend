@@ -119,9 +119,9 @@ export function buildPendingOrderTemplate(
           pageBorderWidth,
           [
             Math.max(2, topPadding - headerHeightMM),
-            marginRight,
+            marginRight + 1.5,
             footerImage ? Math.max(2, bottomPadding - footerHeightMM) : bottomPadding,
-            marginLeft,
+            marginLeft + 1.5,
           ],
           { x: pageBorderX, y: pageBorderY, width: pageBorderWidthMM, height: pageBorderHeightMM },
         ),

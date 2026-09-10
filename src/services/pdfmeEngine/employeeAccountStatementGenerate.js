@@ -1,11 +1,23 @@
 import { generate } from "@pdfme/generator";
 import * as plugins from "@pdfme/schemas";
+import { customRectangle } from "./customRectanglePlugin.js";
 import { loadFonts } from "./fonts.js";
 import { applyConditionalVisibility, applyTokenSubstitution, fillMissingInputsFromContent, resolveDataSources } from "./orderInputMapper.js";
 import { buildEmployeeAccountStatementTemplate, STATEMENT_COLUMNS } from "./employeeAccountStatementTemplate.js";
 
 const fontMap = loadFonts();
-const pluginMap = { text: plugins.text, table: plugins.table };
+// Full Designer-palette set — see accountStatementGenerate.js's own
+// pluginMap comment for why every type is registered here even though
+// this doc type's built-in layout only uses text+table.
+const pluginMap = {
+  text: plugins.text,
+  table: plugins.table,
+  image: plugins.image,
+  rectangle: customRectangle,
+  ellipse: plugins.ellipse,
+  line: plugins.line,
+  list: plugins.list,
+};
 
 // Same toNumber/fmtNum/formatBalance round-trip as accountStatementGenerate.js
 // (rowsWithBalance already stores balance as a toLocaleString string, not the

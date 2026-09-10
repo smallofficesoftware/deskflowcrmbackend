@@ -1,11 +1,23 @@
 import { generate } from "@pdfme/generator";
 import * as plugins from "@pdfme/schemas";
+import { customRectangle } from "./customRectanglePlugin.js";
 import { loadFonts } from "./fonts.js";
 import { applyTokenSubstitution, fillMissingInputsFromContent, resolveDataSources } from "./orderInputMapper.js";
 import { buildAccountTransactionTemplate } from "./accountTransactionTemplate.js";
 
 const fontMap = loadFonts();
-const pluginMap = { text: plugins.text };
+// Full Designer-palette set — see accountStatementGenerate.js's own
+// pluginMap comment for why every type is registered here even though
+// this doc type's built-in layout only uses text.
+const pluginMap = {
+  text: plugins.text,
+  table: plugins.table,
+  image: plugins.image,
+  rectangle: customRectangle,
+  ellipse: plugins.ellipse,
+  line: plugins.line,
+  list: plugins.list,
+};
 
 // companyDetails/accountTransactions/contactDetails/payment_type_name/settingDetails:
 // same raw shapes accountPDFv1 (accountTransactionServices.js) already builds

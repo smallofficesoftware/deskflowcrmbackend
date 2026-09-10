@@ -548,8 +548,14 @@ export function buildDocTemplate(
         // over the header/footer banner wherever they overlap (frame stays
         // visibly continuous crossing the banner, instead of disappearing
         // behind it), but pageNumber renders AFTER it (last = on top) so
-        // its text stays readable. Left/right frame the actual content
-        // margin (marginLeft/marginRight) but top/bottom are topPadding/
+        // its text stays readable. Left/right frame the content margin but
+        // with an extra 1.5mm inward gap (marginLeft/marginRight + 1.5) —
+        // docTitle/buyer-info/etc. all start at x:10, exactly matching the
+        // default 10mm margin the border's left edge would otherwise sit
+        // flush against; a text field's backgroundColor generally only
+        // paints its glyph/line box, not the full declared field width, so
+        // the border's line showed through at that shared edge (looked like
+        // it was cutting through the field). Top/bottom are topPadding/
         // bottomPadding MINUS header/footerHeightMM — topPadding/
         // bottomPadding alone are the clearance for BODY content (outside
         // the header/footer banner), so subtracting the banner's own height
@@ -565,9 +571,9 @@ export function buildDocTemplate(
           pageBorderWidth,
           [
             Math.max(2, topPadding - headerHeightMM),
-            marginRight,
+            marginRight + 1.5,
             footerImage ? Math.max(2, bottomPadding - footerHeightMM) : bottomPadding,
-            marginLeft,
+            marginLeft + 1.5,
           ],
           { x: pageBorderX, y: pageBorderY, width: pageBorderWidthMM, height: pageBorderHeightMM },
         ),

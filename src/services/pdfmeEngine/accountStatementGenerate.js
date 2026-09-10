@@ -1,11 +1,26 @@
 import { generate } from "@pdfme/generator";
 import * as plugins from "@pdfme/schemas";
+import { customRectangle } from "./customRectanglePlugin.js";
 import { loadFonts } from "./fonts.js";
 import { applyConditionalVisibility, applyTokenSubstitution, fillMissingInputsFromContent, resolveDataSources } from "./orderInputMapper.js";
 import { buildAccountStatementTemplate, STATEMENT_COLUMNS } from "./accountStatementTemplate.js";
 
 const fontMap = loadFonts();
-const pluginMap = { text: plugins.text, table: plugins.table };
+// Full Designer-palette set (DocumentDesignerView.tsx/adminpanel's
+// Editor.tsx: text/table/image/rectangle/ellipse/line/list) - this doc
+// type's own built-in layout only uses text+table, but neither editor
+// restricts which field types can be added to which doc type, so any of
+// the other 5 crashed generate() with "Plugin or renderer for type X not
+// found" the moment one was actually added to a saved template.
+const pluginMap = {
+  text: plugins.text,
+  table: plugins.table,
+  image: plugins.image,
+  rectangle: customRectangle,
+  ellipse: plugins.ellipse,
+  line: plugins.line,
+  list: plugins.list,
+};
 
 // Same toNumber/fmtNum/formatBalanceCell logic as
 // allAccountTransactionOfContactV1.ejs — re-parses the already-formatted

@@ -33,12 +33,19 @@ import {
 // across every generate call — same reasoning as the POC.
 const fontMap = loadFonts();
 
+// ellipse/list: the Designer's own field palette (DocumentDesignerView.tsx)
+// offers these alongside text/table/image/rectangle/line - a field of
+// either type added ad hoc (not part of the built-in default layout) was
+// missing here, crashing generate() with "Plugin or renderer for type
+// ellipse/list not found" the moment one existed in a saved template.
 const pluginMap = {
   text: richText,
   table: plugins.table,
   image: plugins.image,
   line: plugins.line,
   rectangle: customRectangle,
+  ellipse: plugins.ellipse,
+  list: plugins.list,
   date: plugins.date,
   signature: plugins.signature,
 };
