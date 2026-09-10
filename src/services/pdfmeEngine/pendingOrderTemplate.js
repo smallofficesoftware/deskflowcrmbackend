@@ -99,10 +99,6 @@ export function buildPendingOrderTemplate(
       marginLeft,
       marginRight,
       staticSchema: [
-        // top/bottom stay a small fixed inset so header/footer banners land
-        // INSIDE the frame — see buildTemplate.js's buildDocTemplate for
-        // the full reasoning (same call shape).
-        ...buildPageBorderField(pageBorder, pageBorderColor, pageBorderWidth, [2, marginRight, 2, marginLeft]),
         ...buildHeaderFields(headerVariant, headerHeightMM),
         ...buildFooterFields(footerImage, footerHeightMM),
         textField({
@@ -115,6 +111,10 @@ export function buildPendingOrderTemplate(
           content: "Page {currentPage} of {totalPages}",
           readOnly: true,
         }),
+        // Drawn LAST, on top — see buildTemplate.js's buildDocTemplate for
+        // the full reasoning (same call shape). top/bottom stay a small
+        // fixed inset so header/footer banners land INSIDE the frame.
+        ...buildPageBorderField(pageBorder, pageBorderColor, pageBorderWidth, [2, marginRight, 2, marginLeft]),
       ],
     },
     schemas: [

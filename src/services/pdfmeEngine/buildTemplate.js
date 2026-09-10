@@ -518,20 +518,6 @@ export function buildDocTemplate(
       marginLeft,
       marginRight,
       staticSchema: [
-        // Drawn FIRST, not last — the border's left/right lines span the
-        // full page height, and header/footer banner images span the full
-        // page width, so for any inset they inevitably cross through those
-        // bands. Rendering the border behind them lets the (opaque, when a
-        // real image is set) header/footer image cover the border wherever
-        // they overlap, instead of the border line visibly cutting across
-        // the banner.
-        // top/bottom stay a small fixed inset (not topPadding/bottomPadding)
-        // so the header/footer banners land INSIDE the frame, not excluded
-        // from it — left/right still honor the actual content margin since
-        // that doesn't conflict with including them (header/footer are
-        // always full page width regardless of the border's left/right
-        // inset, so there's no equivalent "exclude them" concern on that axis).
-        ...buildPageBorderField(pageBorder, pageBorderColor, pageBorderWidth, [2, marginRight, 2, marginLeft]),
         ...buildHeaderFields(headerVariant, headerHeightMM),
         ...buildFooterFields(footerImage, footerHeightMM),
         textField({
@@ -544,6 +530,14 @@ export function buildDocTemplate(
           content: "Page {currentPage} of {totalPages}",
           readOnly: true,
         }),
+        // Drawn LAST, on top — paints over the header/footer banner
+        // wherever they overlap, so the border frame stays visibly
+        // continuous (crossing the banner) instead of disappearing behind
+        // it. top/bottom stay a small fixed inset (not topPadding/
+        // bottomPadding) so the header/footer banners land INSIDE the
+        // frame, not excluded from it — left/right still honor the actual
+        // content margin.
+        ...buildPageBorderField(pageBorder, pageBorderColor, pageBorderWidth, [2, marginRight, 2, marginLeft]),
       ],
     },
     schemas: [
