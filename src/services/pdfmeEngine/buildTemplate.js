@@ -212,16 +212,21 @@ export function buildHeaderFields(variant, headerHeightMM = 28.5) {
 
 export const FOOTER_BOTTOM_MARGIN = 12; // reserves room for pageNumber below the footer image
 
-// Frames the CONTENT margin box exactly — basePdf.padding's [top, right,
-// bottom, left], the same box the docTitle/buyer-info/items-table content
-// lives inside — not a fixed inset from the page edge. Header/footer
-// banners sit OUTSIDE this frame (above/below it), not inside it, since
-// top padding alone is large (25-35mm+) specifically to clear the header
-// banner's own height. Same repeat-on-every-page mechanism header/footer
-// images use (basePdf.staticSchema, not a cloned.schemas injection — see
+// Takes a [top, right, bottom, left] box (same shape as basePdf.padding)
+// to frame — but callers pass their OWN choice here, not necessarily
+// basePdf.padding itself. buildDocTemplate/buildPendingOrderTemplate pass
+// a small fixed top/bottom inset (not topPadding/bottomPadding) so the
+// header/footer banners land INSIDE the frame instead of being excluded
+// from it — content padding alone is large (25-35mm+) specifically to
+// clear the header banner's own height, which would put the frame's top
+// edge well below the banner. Left/right still use the actual content
+// margin since that doesn't create the same conflict (header/footer are
+// always full page width regardless of the border's left/right inset).
+// Same repeat-on-every-page mechanism header/footer images use
+// (basePdf.staticSchema, not a cloned.schemas injection — see
 // injectWatermarkField/injectPaymentQRField in orderInputMapper.js for why
 // that distinction matters for a multi-page document).
-export function buildPageBorderField(enabled, color = "#000000", widthMM = 0.5, padding = [25, 10, 15, 10]) {
+export function buildPageBorderField(enabled, color = "#000000", widthMM = 0.5, padding = [2, 10, 2, 10]) {
   if (!enabled) return [];
   const [top, right, bottom, left] = padding;
   return [
@@ -520,7 +525,13 @@ export function buildDocTemplate(
         // real image is set) header/footer image cover the border wherever
         // they overlap, instead of the border line visibly cutting across
         // the banner.
-        ...buildPageBorderField(pageBorder, pageBorderColor, pageBorderWidth, [topPadding, marginRight, bottomPadding, marginLeft]),
+        // top/bottom stay a small fixed inset (not topPadding/bottomPadding)
+        // so the header/footer banners land INSIDE the frame, not excluded
+        // from it — left/right still honor the actual content margin since
+        // that doesn't conflict with including them (header/footer are
+        // always full page width regardless of the border's left/right
+        // inset, so there's no equivalent "exclude them" concern on that axis).
+        ...buildPageBorderField(pageBorder, pageBorderColor, pageBorderWidth, [2, marginRight, 2, marginLeft]),
         ...buildHeaderFields(headerVariant, headerHeightMM),
         ...buildFooterFields(footerImage, footerHeightMM),
         textField({

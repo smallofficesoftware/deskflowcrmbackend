@@ -99,7 +99,10 @@ export function buildPendingOrderTemplate(
       marginLeft,
       marginRight,
       staticSchema: [
-        ...buildPageBorderField(pageBorder, pageBorderColor, pageBorderWidth, [topPadding, marginRight, bottomPadding, marginLeft]),
+        // top/bottom stay a small fixed inset so header/footer banners land
+        // INSIDE the frame — see buildTemplate.js's buildDocTemplate for
+        // the full reasoning (same call shape).
+        ...buildPageBorderField(pageBorder, pageBorderColor, pageBorderWidth, [2, marginRight, 2, marginLeft]),
         ...buildHeaderFields(headerVariant, headerHeightMM),
         ...buildFooterFields(footerImage, footerHeightMM),
         textField({
