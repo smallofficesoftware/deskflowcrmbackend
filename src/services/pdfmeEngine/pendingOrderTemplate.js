@@ -69,6 +69,7 @@ export function buildPendingOrderTemplate(
     headerHeightMM = 18,
     footerHeightMM = 15,
     pageBorder = false,
+    pageBorderColor = "#000000",
   } = {},
 ) {
   // Kept in sync with buildTemplate.js's buildDocTemplate — both share
@@ -90,6 +91,7 @@ export function buildPendingOrderTemplate(
       headerHeightMM,
       footerHeightMM,
       pageBorder,
+      pageBorderColor,
       staticSchema: [
         ...buildHeaderFields(headerVariant, headerHeightMM),
         ...buildFooterFields(footerImage, footerHeightMM),
@@ -103,7 +105,7 @@ export function buildPendingOrderTemplate(
           content: "Page {currentPage} of {totalPages}",
           readOnly: true,
         }),
-        ...buildPageBorderField(pageBorder),
+        ...buildPageBorderField(pageBorder, pageBorderColor),
       ],
     },
     schemas: [

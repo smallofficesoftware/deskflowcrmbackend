@@ -218,7 +218,7 @@ export const FOOTER_BOTTOM_MARGIN = 12; // reserves room for pageNumber below th
 // in orderInputMapper.js for why that distinction matters for a multi-page
 // document). 5mm inset keeps the line clear of any print-area clipping at
 // the literal page edge.
-export function buildPageBorderField(enabled) {
+export function buildPageBorderField(enabled, color = "#000000") {
   if (!enabled) return [];
   return [
     rectangleField({
@@ -226,6 +226,7 @@ export function buildPageBorderField(enabled) {
       position: { x: 5, y: 5 },
       width: A4.width - 10,
       height: A4.height - 10,
+      borderColor: color,
     }),
   ];
 }
@@ -462,6 +463,7 @@ export function buildDocTemplate(
     headerHeightMM = 18,
     footerHeightMM = 15,
     pageBorder = false,
+    pageBorderColor = "#000000",
   } = {},
 ) {
   // Top padding must clear the header banner's actual height (only the
@@ -494,6 +496,7 @@ export function buildDocTemplate(
       headerHeightMM,
       footerHeightMM,
       pageBorder,
+      pageBorderColor,
       staticSchema: [
         ...buildHeaderFields(headerVariant, headerHeightMM),
         ...buildFooterFields(footerImage, footerHeightMM),
@@ -507,7 +510,7 @@ export function buildDocTemplate(
           content: "Page {currentPage} of {totalPages}",
           readOnly: true,
         }),
-        ...buildPageBorderField(pageBorder),
+        ...buildPageBorderField(pageBorder, pageBorderColor),
       ],
     },
     schemas: [

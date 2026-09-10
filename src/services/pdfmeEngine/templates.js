@@ -70,6 +70,7 @@ export function applyTemplateOptions(id, loadedTemplate, { header = null, column
     cloned.basePdf.headerHeightMM = fresh.basePdf.headerHeightMM;
     cloned.basePdf.footerHeightMM = fresh.basePdf.footerHeightMM;
     cloned.basePdf.pageBorder = fresh.basePdf.pageBorder;
+    cloned.basePdf.pageBorderColor = fresh.basePdf.pageBorderColor;
     cloned.schemas = cloned.schemas.map((page) => page.map((field) => shiftFieldY(field, deltaY)));
   }
 
@@ -105,6 +106,7 @@ export function applyTemplateOptions(id, loadedTemplate, { header = null, column
       headerHeightMM: cloned.basePdf.headerHeightMM,
       footerHeightMM: cloned.basePdf.footerHeightMM,
       pageBorder: cloned.basePdf.pageBorder,
+      pageBorderColor: cloned.basePdf.pageBorderColor,
     };
     const effectiveColumnOptions = columnOptions || currentItemsTable?.columnOptions;
 
