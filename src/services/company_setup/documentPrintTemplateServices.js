@@ -3,22 +3,47 @@ import moment from "moment";
 import path from "path";
 import { Op } from "sequelize";
 import { getTenantDB } from "../../config/dbManager.js";
+import { accountTransactionsModel } from "../../models/activities/accountTransactionsModel.js";
 import { cartItemModel } from "../../models/activities/cartItemsModel.js";
 import { cartModel } from "../../models/activities/cartsModel.js";
+import { contactModel } from "../../models/activities/contactModel.js";
+import { paymentTypeModel } from "../../models/activities/paymentTypeModel.js";
 import companyModel from "../../models/company_setup/companyModel.js";
 import { documentPrintTemplateModel } from "../../models/company_setup/documentPrintTemplateModel.js";
 import { documentPrintTemplateVersionModel } from "../../models/company_setup/documentPrintTemplateVersionModel.js";
+import { printSettingModel } from "../../models/company_setup/printSettingModel.js";
 import systemDocumentTemplateModel from "../../models/company_setup/systemDocumentTemplateModel.js";
 import tenantMasterModel from "../../models/configuration/tenantMasterModel.js";
+import { cityModel } from "../../models/masters/cityModel.js";
+import { countryModel } from "../../models/masters/countryModel.js";
+import { stateModel } from "../../models/masters/stateModel.js";
 import { productModel } from "../../models/product_settings/productModel.js";
 import { WEBSITE_LEAD_HANDLE_DB_NAME } from "../../utils/appConstants.js";
 import { numberToWordsCurrency } from "../../utils/numberToWordsCurrency.js";
 import { resError, resSuccess } from "../../utils/sharedFunctions.js";
+import { generateAccountTransactionPdf } from "../pdfmeEngine/accountTransactionGenerate.js";
 import { generateQuotationPdf } from "../pdfmeEngine/generateDocument.js";
 import { sniffImageMime } from "../pdfmeEngine/imageOverlay.js";
 import { getSampleDataForPreview } from "../pdfmeEngine/orderInputMapper.js";
 import { applyTemplateOptions } from "../pdfmeEngine/templates.js";
 import { logAuditEvent } from "./auditLogServices.js";
+
+function formatAccountTransactionDateAndTime(dateStr) {
+  const d = new Date(dateStr);
+  if (isNaN(d)) return "";
+  return d.toLocaleString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function formatAccountTransactionNumber(num) {
+  if (num === null || num === undefined) return "";
+  return Number(num).toLocaleString("en-IN", { maximumFractionDigits: 2, minimumFractionDigits: 0 });
+}
 
 const now = () => moment(new Date()).format("YYYY-MM-DD HH:mm:ss");
 
@@ -764,11 +789,98 @@ export async function resolveCompanyForPdf(company_masters_id) {
 // from resolving the company's own branding through rendering the actual
 // PDF is identical between the two, only where draftTemplate/company_masters_id
 // come from differs.
-const renderTemplateAsPdf = async ({ req, company_masters_id, draftTemplate, cart_id }) => {
+const renderTemplateAsPdf = async ({ req, company_masters_id, draftTemplate, cart_id, doc_type }) => {
   try {
     const company = await resolveCompanyForPdf(company_masters_id);
     if (!company) {
       return resError({ developer_msg: "Company not found" });
+    }
+
+    // accountTransaction isn't cart-shaped (no buyer/order/items) — it has
+    // its own data shape (companyDetails/accountTransactions/contactDetails/
+    // payment_type_name/settingDetails, see accountTransactionGenerate.js).
+    // Render it via its own generator instead of falling into the
+    // quotation path below, using any one real transaction + contact
+    // combo from this tenant as stand-in data since there's no picker here
+    // (adminpanel's test-run has no cart/transaction id to pick from).
+    if (doc_type === "accountTransaction") {
+      const AccountTransactionModel = accountTransactionsModel(req.tenantDB);
+      const accountTransaction = await AccountTransactionModel.findOne({
+        where: { isDelete: 0 },
+        order: [["id", "DESC"]],
+      });
+
+      let contactDetails = {};
+      let payment_type_name = null;
+      if (accountTransaction) {
+        const ContactModel = contactModel(req.tenantDB);
+        const contactRaw = await ContactModel.findOne({
+          where: { id: accountTransaction.contact_masters_id, isDelete: 0 },
+          attributes: ["id", "person_name", "company_name", "mobile_number", "address", "pincode", "country", "state", "city"],
+        });
+
+        const [country, state, city] = await Promise.all([
+          contactRaw?.country ? countryModel(req.tenantDB).findOne({ where: { id: contactRaw.country }, attributes: ["country_name"] }) : null,
+          contactRaw?.state ? stateModel(req.tenantDB).findOne({ where: { id: contactRaw.state }, attributes: ["state_name"] }) : null,
+          contactRaw?.city ? cityModel(req.tenantDB).findOne({ where: { id: contactRaw.city }, attributes: ["city_name"] }) : null,
+        ]);
+
+        contactDetails = contactRaw
+          ? {
+              person_name: contactRaw.person_name,
+              company_name: contactRaw.company_name,
+              mobile_number: contactRaw.mobile_number,
+              address: contactRaw.address,
+              pincode: contactRaw.pincode,
+              country_name: country?.country_name || null,
+              state_name: state?.state_name || null,
+              city_name: city?.city_name || null,
+            }
+          : {};
+
+        if (accountTransaction.mode) {
+          const paymentType = await paymentTypeModel(req.tenantDB).findOne({
+            where: { id: accountTransaction.mode },
+            attributes: ["payment_type_name"],
+          });
+          payment_type_name = paymentType?.payment_type_name || null;
+        }
+      }
+
+      const printSettings = await printSettingModel(req.tenantDB).findOne({
+        where: { type: 12, print_version: 1, isDelete: 0 },
+        attributes: ["setting_details"],
+      });
+      const settingDetails = JSON.parse(printSettings?.dataValues?.setting_details || "{}");
+
+      // No real transaction in this tenant at all — fall back to a fully
+      // made-up row rather than fail, so an empty test tenant still renders.
+      const sampleTransaction = accountTransaction?.dataValues ?? {
+        id: 0,
+        type: 1,
+        remark: "Sample remark",
+        amount: 1000,
+        payment_date_time: new Date(),
+      };
+
+      const buffer = await generateAccountTransactionPdf({
+        templateOverride: draftTemplate,
+        companyDetails: {
+          company_name: company.name,
+          address: company.address,
+          company_contact: company.mobile,
+          company_email: company.email,
+          gst_number: company.gstin,
+        },
+        accountTransactions: sampleTransaction,
+        contactDetails,
+        payment_type_name,
+        settingDetails,
+        currencySymbol: "₹",
+        formattedAmount: formatAccountTransactionNumber(sampleTransaction.amount),
+        formattedDate: sampleTransaction.payment_date_time ? formatAccountTransactionDateAndTime(sampleTransaction.payment_date_time) : "-",
+      });
+      return resSuccess({ data: { item: { pdfBase64: buffer.toString("base64") } } });
     }
 
     let buyer;
@@ -884,7 +996,7 @@ export const previewDocumentTemplate = async (req) => {
     }
     const draftTemplate = JSON.parse(templateRow.draft_template_json);
 
-    return renderTemplateAsPdf({ req, company_masters_id, draftTemplate, cart_id });
+    return renderTemplateAsPdf({ req, company_masters_id, draftTemplate, cart_id, doc_type: templateRow.doc_type });
   } catch (e) {
     console.log(e);
     return resError({ developer_msg: `Failed to Catch ${e}` });
@@ -903,7 +1015,7 @@ export const previewDocumentTemplate = async (req) => {
 // unlike a tenant's own "Generate Preview."
 export const testRunDocumentTemplate = async (req) => {
   try {
-    const { template_json } = req.body || {};
+    const { template_json, doc_type } = req.body || {};
     if (!template_json) {
       return resError({ developer_msg: "template_json is required" });
     }
@@ -925,6 +1037,7 @@ export const testRunDocumentTemplate = async (req) => {
       company_masters_id: tenantDBFind.company_masters_id,
       draftTemplate,
       cart_id: null,
+      doc_type,
     });
   } catch (e) {
     console.error("testRunDocumentTemplate error:", e);
