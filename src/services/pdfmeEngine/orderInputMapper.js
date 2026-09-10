@@ -194,9 +194,17 @@ export async function injectPaymentQRField(template, { docType, company, order, 
     return template;
   }
 
+  // basePdf.staticSchema, not cloned.schemas[0] — same reasoning as
+  // injectWatermarkField above: itemsTable's dynamic pagination creates
+  // overflow pages internally, inside generate() itself, after this
+  // function returns, so a schemas[0]-only placement never reaches them.
+  // The QR encodes a fixed total amount regardless of which page it lands
+  // on, so repeating it on every page (rather than trying to target
+  // specifically whichever page ends up last) is both correct and the only
+  // option that's actually reachable here.
   const cloned = structuredClone(template);
-  cloned.schemas[0] = [
-    ...cloned.schemas[0],
+  cloned.basePdf.staticSchema = [
+    ...(cloned.basePdf.staticSchema || []),
     {
       name: "__paymentQR",
       type: "image",
