@@ -17,6 +17,7 @@ import {
   previewDocumentTemplate,
   publishDocumentTemplate,
   reorderDocumentTemplates,
+  resetDocumentTemplateToSystemDefault,
   restoreTemplateVersion,
   setDefaultDocumentTemplate,
   testRunDocumentTemplate,
@@ -46,6 +47,10 @@ export const updateDocumentTemplateController = async (req, res) => {
 
 export const applyOptionsToDraftController = async (req, res) => {
   await callServiceMethod(req, res, applyOptionsToDraft(req), "applyOptionsToDraft");
+};
+
+export const resetDocumentTemplateToSystemDefaultController = async (req, res) => {
+  await callServiceMethod(req, res, resetDocumentTemplateToSystemDefault(req), "resetDocumentTemplateToSystemDefault");
 };
 
 export const publishDocumentTemplateController = async (req, res) => {

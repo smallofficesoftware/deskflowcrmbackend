@@ -209,6 +209,7 @@ export const createDocumentTemplate = async (req) => {
       doc_type,
       template_name,
       template_purpose,
+      system_template_id: req.body?.system_template_id || null,
       draft_template_json: jsonString,
       published_template_json: jsonString,
       has_unpublished_changes: 0,
@@ -279,6 +280,64 @@ export const updateDocumentTemplate = async (req) => {
     });
 
     return resSuccess({ ack_msg: "Template updated successfully" });
+  } catch (e) {
+    console.log(e);
+    return resError({ developer_msg: `Failed to Catch ${e}` });
+  }
+};
+
+// "Reset to Default" (Document Designer gap audit) — only offered for a
+// template that was actually created via "Copy from Gallery"
+// (system_template_id set, see createDocumentTemplate/copyFromSystemTemplate
+// above). Re-fetches that SAME system template's CURRENT template_json
+// (which may have been edited by an admin since this company's copy was
+// made) and overwrites the draft with it, discarding whatever customization
+// this company had made — same draft-only, has_unpublished_changes
+// semantics as every other draft edit here, so Publish is still a separate,
+// deliberate step.
+export const resetDocumentTemplateToSystemDefault = async (req) => {
+  try {
+    const { id, company_masters_id, a_application_login_id } = req.body || {};
+    if (!id || !company_masters_id) {
+      return resError({ developer_msg: "id and company_masters_id are required" });
+    }
+
+    const Template = documentPrintTemplateModel(req.tenantDB);
+    const row = await Template.findOne({ where: { id, company_masters_id, isDelete: 0 } });
+    if (!row) {
+      return resError({ developer_msg: "Template not found" });
+    }
+    if (!row.system_template_id) {
+      return resError({ developer_msg: "This template wasn't created from a system gallery template — nothing to reset to" });
+    }
+
+    const systemTemplate = await systemDocumentTemplateModel.findOne({
+      where: { id: row.system_template_id, isDelete: 0 },
+    });
+    if (!systemTemplate) {
+      return resError({ developer_msg: "The system gallery template this was copied from no longer exists" });
+    }
+
+    await Template.update(
+      {
+        draft_template_json: systemTemplate.template_json,
+        has_unpublished_changes: 1,
+        modify_by: a_application_login_id,
+        modified_date: now(),
+      },
+      { where: { id, company_masters_id, isDelete: 0 } },
+    );
+
+    await logAuditEvent(req, {
+      module_key: "document_designer",
+      action: "reset_to_default",
+      entity_type: "document_print_template",
+      entity_id: id,
+      details: { system_template_id: row.system_template_id },
+    });
+
+    const updated = await Template.findOne({ where: { id, company_masters_id, isDelete: 0 } });
+    return resSuccess({ data: { item: updated }, ack_msg: "Template reset to default" });
   } catch (e) {
     console.log(e);
     return resError({ developer_msg: `Failed to Catch ${e}` });
@@ -743,6 +802,7 @@ export const copyFromSystemTemplate = async (req) => {
 
     req.body.template_name = systemTemplate.template_name;
     req.body.template_json = JSON.parse(systemTemplate.template_json);
+    req.body.system_template_id = system_template_id;
     const result = await createDocumentTemplate(req);
 
     if (result?.ack === 1) {

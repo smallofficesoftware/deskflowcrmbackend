@@ -3279,3 +3279,6 @@ CREATE TABLE `form_builder_form_team_rights` (
   PRIMARY KEY (`id`),
   UNIQUE INDEX `uniq_form_builder_team_rights_form_login` (`form_id`, `a_application_login_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+10-09-2026 Dhaval
+ALTER TABLE `document_print_templates` ADD COLUMN `system_template_id` INT(11) NULL DEFAULT NULL AFTER `template_purpose`;

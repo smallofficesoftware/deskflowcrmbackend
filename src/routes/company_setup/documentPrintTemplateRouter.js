@@ -16,6 +16,7 @@ import {
   previewDocumentTemplateController,
   publishDocumentTemplateController,
   reorderDocumentTemplatesController,
+  resetDocumentTemplateToSystemDefaultController,
   restoreTemplateVersionController,
   setDefaultDocumentTemplateController,
   testRunDocumentTemplateController,
@@ -35,6 +36,7 @@ export default (app) => {
   app.post("/document-templates/create", authenticateToken, tenantMiddleware, requireReportPin, createDocumentTemplateController);
   app.post("/document-templates/update", authenticateToken, tenantMiddleware, requireReportPin, updateDocumentTemplateController);
   app.post("/document-templates/apply-options", authenticateToken, tenantMiddleware, requireReportPin, applyOptionsToDraftController);
+  app.post("/document-templates/reset-to-default", authenticateToken, tenantMiddleware, requireReportPin, resetDocumentTemplateToSystemDefaultController);
   app.post("/document-templates/publish", authenticateToken, tenantMiddleware, requireReportPin, publishDocumentTemplateController);
   app.post("/document-templates/discard-draft", authenticateToken, tenantMiddleware, requireReportPin, discardDraftChangesController);
   app.post("/document-templates/reorder", authenticateToken, tenantMiddleware, requireReportPin, reorderDocumentTemplatesController);
