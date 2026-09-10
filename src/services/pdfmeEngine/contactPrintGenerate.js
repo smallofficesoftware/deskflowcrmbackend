@@ -51,8 +51,11 @@ function buildContactRawInputs({ contact, company }) {
   };
 }
 
-async function generateContactPdf(docType, fallbackBuilder, { contact, company, documentTemplateId, tenantDB }) {
-  const template = await resolveContactTemplate(tenantDB, company?.id, docType, documentTemplateId, fallbackBuilder);
+async function generateContactPdf(docType, fallbackBuilder, { contact, company, documentTemplateId, tenantDB, templateOverride = null }) {
+  // templateOverride (an unsaved draft, e.g. from Document Designer's
+  // "Generate Preview"/test-run) short-circuits the saved-template lookup,
+  // same as every other generator's templateOverride.
+  const template = templateOverride || (await resolveContactTemplate(tenantDB, company?.id, docType, documentTemplateId, fallbackBuilder));
   const rawInputs = buildContactRawInputs({ contact, company });
 
   return renderPdf(template, rawInputs);

@@ -25,6 +25,8 @@ import { WEBSITE_LEAD_HANDLE_DB_NAME } from "../../utils/appConstants.js";
 import { numberToWordsCurrency } from "../../utils/numberToWordsCurrency.js";
 import { resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { generateAccountStatementPdf } from "../pdfmeEngine/accountStatementGenerate.js";
+import { generateContactAddressPdf, generateContactEnvelopePdf } from "../pdfmeEngine/contactPrintGenerate.js";
+import { defaultTemplateForDocType } from "../pdfmeEngine/defaultTemplateForDocType.js";
 import { generateAccountTransactionPdf } from "../pdfmeEngine/accountTransactionGenerate.js";
 import { generateEmployeeAccountStatementPdf } from "../pdfmeEngine/employeeAccountStatementGenerate.js";
 import { generateEmployeeAccountTransactionPdf } from "../pdfmeEngine/employeeAccountTransactionGenerate.js";
@@ -884,7 +886,11 @@ export async function resolveCompanyForPdf(company_masters_id) {
 // from resolving the company's own branding through rendering the actual
 // PDF is identical between the two, only where draftTemplate/company_masters_id
 // come from differs.
-const renderTemplateAsPdf = async ({ req, company_masters_id, draftTemplate, cart_id, doc_type }) => {
+// selection: { contact_id, transaction_id, team_id } — the record(s) a
+// tenant picked in "Generate Preview" for a non-cart doc type. Empty for
+// adminpanel's test-run (no picker there), which keeps the "any one real
+// record, sample as last resort" fallbacks below.
+const renderTemplateAsPdf = async ({ req, company_masters_id, draftTemplate, cart_id, doc_type, selection = {} }) => {
   try {
     const company = await resolveCompanyForPdf(company_masters_id);
     if (!company) {
@@ -901,7 +907,7 @@ const renderTemplateAsPdf = async ({ req, company_masters_id, draftTemplate, car
     if (doc_type === "accountTransaction") {
       const AccountTransactionModel = accountTransactionsModel(req.tenantDB);
       const accountTransaction = await AccountTransactionModel.findOne({
-        where: { isDelete: 0 },
+        where: { isDelete: 0, ...(selection.transaction_id ? { id: selection.transaction_id } : {}) },
         order: [["id", "DESC"]],
       });
 
@@ -991,16 +997,23 @@ const renderTemplateAsPdf = async ({ req, company_masters_id, draftTemplate, car
     // 2-row table if this tenant has none at all.
     if (doc_type === "accountStatement") {
       const AccountTransactionModel = accountTransactionsModel(req.tenantDB);
-      const anyTxn = await AccountTransactionModel.findOne({ where: { isDelete: 0 }, order: [["id", "DESC"]] });
+      const anyTxn = await AccountTransactionModel.findOne({
+        where: { isDelete: 0, ...(selection.contact_id ? { contact_masters_id: selection.contact_id } : {}) },
+        order: [["id", "DESC"]],
+      });
 
       let contactData = {};
       let rowsWithBalance = [];
       let totalCredit = "0";
       let totalDebit = "0";
 
-      if (anyTxn) {
+      // A picked contact with zero transactions still renders a real (empty)
+      // statement — noDataText carries "No transactions found".
+      const statementContactId = selection.contact_id || anyTxn?.contact_masters_id;
+
+      if (anyTxn || statementContactId) {
         const transactions = await AccountTransactionModel.findAll({
-          where: { contact_masters_id: anyTxn.contact_masters_id, isDelete: 0 },
+          where: { contact_masters_id: statementContactId, isDelete: 0 },
           order: [["payment_date_time", "ASC"]],
           limit: 10,
         });
@@ -1025,7 +1038,7 @@ const renderTemplateAsPdf = async ({ req, company_masters_id, draftTemplate, car
         totalDebit = debitSum.toLocaleString("en-IN");
 
         const contactRaw = await contactModel(req.tenantDB).findOne({
-          where: { id: anyTxn.contact_masters_id, isDelete: 0 },
+          where: { id: statementContactId, isDelete: 0 },
           attributes: ["person_name", "company_name", "mobile_number", "email_id", "address", "shipping_address", "gst_number"],
         });
         contactData = contactRaw?.dataValues || {};
@@ -1073,7 +1086,10 @@ const renderTemplateAsPdf = async ({ req, company_masters_id, draftTemplate, car
     // header comment for why it's a separate generator, not a reused one).
     if (doc_type === "employeeAccountTransaction") {
       const EmployeeAccountTransactionModel = employeeAccountTransactionsModel(req.tenantDB);
-      const empTxn = await EmployeeAccountTransactionModel.findOne({ where: { isDelete: 0 }, order: [["id", "DESC"]] });
+      const empTxn = await EmployeeAccountTransactionModel.findOne({
+        where: { isDelete: 0, ...(selection.transaction_id ? { id: selection.transaction_id } : {}) },
+        order: [["id", "DESC"]],
+      });
 
       let employeeDetails = null;
       let payment_type_name = null;
@@ -1124,16 +1140,23 @@ const renderTemplateAsPdf = async ({ req, company_masters_id, draftTemplate, car
     // employeeAccountStatement — Team's own variant of accountStatement.
     if (doc_type === "employeeAccountStatement") {
       const EmployeeAccountTransactionModel = employeeAccountTransactionsModel(req.tenantDB);
-      const anyEmpTxn = await EmployeeAccountTransactionModel.findOne({ where: { isDelete: 0 }, order: [["id", "DESC"]] });
+      const anyEmpTxn = await EmployeeAccountTransactionModel.findOne({
+        where: { isDelete: 0, ...(selection.team_id ? { team_id: selection.team_id } : {}) },
+        order: [["id", "DESC"]],
+      });
 
       let employeeData = {};
       let rowsWithBalance = [];
       let totalCredit = "0";
       let totalDebit = "0";
 
-      if (anyEmpTxn) {
+      // A picked team member with zero transactions still renders a real
+      // (empty) statement — noDataText carries "No transactions found".
+      const statementTeamId = selection.team_id || anyEmpTxn?.team_id;
+
+      if (anyEmpTxn || statementTeamId) {
         const transactions = await EmployeeAccountTransactionModel.findAll({
-          where: { team_id: anyEmpTxn.team_id, isDelete: 0 },
+          where: { team_id: statementTeamId, isDelete: 0 },
           order: [["payment_date_time", "ASC"]],
           limit: 10,
         });
@@ -1157,7 +1180,7 @@ const renderTemplateAsPdf = async ({ req, company_masters_id, draftTemplate, car
         totalCredit = creditSum.toLocaleString("en-IN");
         totalDebit = debitSum.toLocaleString("en-IN");
 
-        const employeeRaw = await loginModel.findOne({ where: { id: anyEmpTxn.team_id, isDelete: 0 } });
+        const employeeRaw = await loginModel.findOne({ where: { id: statementTeamId, isDelete: 0 } });
         employeeData = employeeRaw?.dataValues || {};
       } else {
         rowsWithBalance = [
@@ -1269,6 +1292,60 @@ const renderTemplateAsPdf = async ({ req, company_masters_id, draftTemplate, car
       return resSuccess({ data: { item: { pdfBase64: buffer.toString("base64") } } });
     }
 
+    // contactAddress / contactEnvelope — a mailing label / envelope for one
+    // contact, no cart/order at all (see contactPrintGenerate.js). Uses any
+    // one real contact from this tenant as stand-in data, sample fallback
+    // when the tenant has none.
+    if (doc_type === "contactAddress" || doc_type === "contactEnvelope") {
+      const contactRaw = await contactModel(req.tenantDB).findOne({
+        where: { isDelete: 0, ...(selection.contact_id ? { id: selection.contact_id } : {}) },
+        order: [["id", "DESC"]],
+        attributes: ["person_name", "company_name", "mobile_number", "email_id", "address", "pincode", "country", "state", "city"],
+      });
+
+      let contact;
+      if (contactRaw) {
+        const [country, state, city] = await Promise.all([
+          contactRaw.country ? countryModel(req.tenantDB).findOne({ where: { id: contactRaw.country }, attributes: ["country_name"] }) : null,
+          contactRaw.state ? stateModel(req.tenantDB).findOne({ where: { id: contactRaw.state }, attributes: ["state_name"] }) : null,
+          contactRaw.city ? cityModel(req.tenantDB).findOne({ where: { id: contactRaw.city }, attributes: ["city_name"] }) : null,
+        ]);
+        contact = {
+          person_name: contactRaw.person_name || "",
+          company_name: contactRaw.company_name || "",
+          mobile_number: contactRaw.mobile_number || "",
+          email_id: contactRaw.email_id || "",
+          address: contactRaw.address || "",
+          pincode: contactRaw.pincode || "",
+          country_name: country?.country_name || "",
+          state_name: state?.state_name || "",
+          city_name: city?.city_name || "",
+          area_name: "",
+        };
+      } else {
+        contact = {
+          person_name: "Sample Contact",
+          company_name: "Sample Company",
+          mobile_number: "9876543210",
+          email_id: "sample@example.com",
+          address: "Sample Address",
+          pincode: "000000",
+          country_name: "Sample Country",
+          state_name: "Sample State",
+          city_name: "Sample City",
+          area_name: "",
+        };
+      }
+
+      const generateContactPdf = doc_type === "contactEnvelope" ? generateContactEnvelopePdf : generateContactAddressPdf;
+      const buffer = await generateContactPdf({
+        templateOverride: draftTemplate,
+        contact,
+        company: mapCompanyToLegacyShape(company),
+      });
+      return resSuccess({ data: { item: { pdfBase64: buffer.toString("base64") } } });
+    }
+
     let buyer;
     let order;
     let items;
@@ -1370,7 +1447,7 @@ const renderTemplateAsPdf = async ({ req, company_masters_id, draftTemplate, car
 // allowed to diverge on purpose while editing."
 export const previewDocumentTemplate = async (req) => {
   try {
-    const { id, company_masters_id, cart_id } = req.body || {};
+    const { id, company_masters_id, cart_id, contact_id, transaction_id, team_id } = req.body || {};
     if (!id || !company_masters_id) {
       return resError({ developer_msg: "id and company_masters_id are required" });
     }
@@ -1382,7 +1459,14 @@ export const previewDocumentTemplate = async (req) => {
     }
     const draftTemplate = JSON.parse(templateRow.draft_template_json);
 
-    return renderTemplateAsPdf({ req, company_masters_id, draftTemplate, cart_id, doc_type: templateRow.doc_type });
+    return renderTemplateAsPdf({
+      req,
+      company_masters_id,
+      draftTemplate,
+      cart_id,
+      doc_type: templateRow.doc_type,
+      selection: { contact_id, transaction_id, team_id },
+    });
   } catch (e) {
     console.log(e);
     return resError({ developer_msg: `Failed to Catch ${e}` });
@@ -1427,6 +1511,26 @@ export const testRunDocumentTemplate = async (req) => {
     });
   } catch (e) {
     console.error("testRunDocumentTemplate error:", e);
+    return resError({ developer_msg: `Failed to Catch ${e}` });
+  }
+};
+
+// "Add Field" picker (Document Designer, both adminpanel & tenant side) —
+// returns the code-default pdfme template for a doc_type
+// (buildAccountStatementTemplate & co., or templates.js's getTemplate for
+// cart-shaped types). The editor lists this template's first-page fields in
+// a dropdown; picking one re-inserts that field verbatim (name/columns/
+// styles/position) — the generic palette can only add a blank field.
+export const getDefaultTemplateForDocType = async (req) => {
+  try {
+    const doc_type = req.body?.doc_type || req.query?.doc_type;
+    if (!doc_type) {
+      return resError({ developer_msg: "doc_type is required" });
+    }
+    const template = defaultTemplateForDocType(doc_type);
+    return resSuccess({ data: { item: { template } } });
+  } catch (e) {
+    console.error("getDefaultTemplateForDocType error:", e);
     return resError({ developer_msg: `Failed to Catch ${e}` });
   }
 };

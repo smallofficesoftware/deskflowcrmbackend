@@ -8,6 +8,7 @@ import {
   discardDraftChanges,
   duplicateDocumentTemplate,
   exportDocumentTemplate,
+  getDefaultTemplateForDocType,
   getDocumentTemplate,
   importDocumentTemplate,
   listAllDocumentTemplates,
@@ -103,6 +104,10 @@ export const copyFromSystemTemplateController = async (req, res) => {
 
 export const testRunDocumentTemplateController = async (req, res) => {
   await callServiceMethod(req, res, testRunDocumentTemplate(req), "testRunDocumentTemplate");
+};
+
+export const getDefaultTemplateForDocTypeController = async (req, res) => {
+  await callServiceMethod(req, res, getDefaultTemplateForDocType(req), "getDefaultTemplateForDocType");
 };
 
 export const previewDocumentTemplateController = async (req, res) => {

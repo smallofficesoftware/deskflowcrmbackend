@@ -7,6 +7,7 @@ import {
   discardDraftChangesController,
   duplicateDocumentTemplateController,
   exportDocumentTemplateController,
+  getDefaultTemplateForDocTypeController,
   getDocumentTemplateController,
   importDocumentTemplateController,
   listAllDocumentTemplatesController,
@@ -50,9 +51,17 @@ export default (app) => {
   app.post("/document-templates/system-gallery/list", authenticateToken, tenantMiddleware, listSystemTemplatesController);
   app.post("/document-templates/system-gallery/copy", authenticateToken, tenantMiddleware, requireReportPin, copyFromSystemTemplateController);
   app.post("/document-templates/data-dictionary", authenticateToken, tenantMiddleware, dataDictionaryController);
+  // "Add Field" picker (tenant Designer) — read-only: returns the code-
+  // default template for a doc_type so the editor can list its structured
+  // fields (statementTable, itemsTable, ...) and re-insert a picked one
+  // with its correct name/columns/styles. Writes nothing, so no requireReportPin.
+  app.post("/document-templates/default-fields", authenticateToken, tenantMiddleware, getDefaultTemplateForDocTypeController);
   app.post("/document-templates/preview", authenticateToken, tenantMiddleware, previewDocumentTemplateController);
   // Admin authoring test-run (adminpanel's system-gallery editor) — no CRM
   // user session on this request, service-to-service only, same
   // requireServiceSecret gate as Report Builder's own /report-definitions/test-run.
   app.post("/document-templates/test-run", requireServiceSecret, testRunDocumentTemplateController);
+  // "Add Field" picker (adminpanel's system-gallery editor) — service-to-
+  // service only, same requireServiceSecret gate as test-run.
+  app.post("/document-templates/default-template", requireServiceSecret, getDefaultTemplateForDocTypeController);
 };
