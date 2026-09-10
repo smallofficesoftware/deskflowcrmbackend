@@ -68,17 +68,16 @@ function mapCompanyToLegacyShape(company) {
   };
 }
 
-// No print-setting row at all (a test/preview tenant that's never had this
-// configured) means nothing was ever deliberately turned off — default
-// every section ON so a test-run actually shows something to verify,
-// rather than silently hiding the whole header/contact/employee block the
-// way a real tenant's deliberate "off" choice would via generator's own
-// showHeader/showContact/showEmployee flag-field checks.
+// Same default PrintSettingModal.tsx applies when first loading a saved
+// row (contactDetails/employeeDetails ?? true) — a row missing these keys
+// entirely (never resaved since they were added, or no row at all for a
+// test tenant) isn't a deliberate "off" choice, so default them on rather
+// than let the generator's own !!settingDetails?.x check silently hide the
+// whole header/contact/employee block. Anything actually present in the
+// row (including an explicit false) still wins.
 function settingDetailsOrTestRunDefault(printSettingsRow) {
-  if (!printSettingsRow) {
-    return { headerImage: true, contactDetails: true, employeeDetails: true };
-  }
-  return JSON.parse(printSettingsRow.dataValues?.setting_details || "{}");
+  const parsed = printSettingsRow ? JSON.parse(printSettingsRow.dataValues?.setting_details || "{}") : {};
+  return { headerImage: true, contactDetails: true, employeeDetails: true, ...parsed };
 }
 
 const now = () => moment(new Date()).format("YYYY-MM-DD HH:mm:ss");
@@ -881,6 +880,18 @@ const renderTemplateAsPdf = async ({ req, company_masters_id, draftTemplate, car
           });
           payment_type_name = paymentType?.payment_type_name || null;
         }
+      }
+
+      // No real transaction, or one with no linked contact — fall back to
+      // ANY real contact in this tenant rather than a made-up one (contact
+      // details must always be a real person's, never fabricated).
+      if (Object.keys(contactDetails).length === 0) {
+        const fallbackContact = await contactModel(req.tenantDB).findOne({
+          where: { isDelete: 0 },
+          order: [["id", "DESC"]],
+          attributes: ["person_name", "company_name", "mobile_number", "address", "pincode"],
+        });
+        contactDetails = fallbackContact?.dataValues || {};
       }
 
       const printSettings = await printSettingModel(req.tenantDB).findOne({
