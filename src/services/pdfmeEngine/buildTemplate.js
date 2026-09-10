@@ -216,16 +216,26 @@ export const FOOTER_BOTTOM_MARGIN = 12; // reserves room for pageNumber below th
 // mechanism header/footer images use (basePdf.staticSchema, not a
 // cloned.schemas injection — see injectWatermarkField/injectPaymentQRField
 // in orderInputMapper.js for why that distinction matters for a multi-page
-// document). 5mm inset keeps the line clear of any print-area clipping at
-// the literal page edge.
+// document).
+//
+// 2mm inset, not 5mm — the header image always starts at y=5 and the
+// footer image always ends at y=(A4.height - FOOTER_BOTTOM_MARGIN)=285
+// regardless of configured header/footerHeightMM (those only grow the
+// band inward, never move its outer edge), so a 2mm inset clears both
+// with room to spare. A 5mm inset landed EXACTLY on the header's own
+// y=5 start with zero gap, so the (opaque, full page width) header/
+// footer banner painted on top per the z-order fix above completely hid
+// the border's top/bottom lines for their entire width — not just where
+// they'd actually cross, the whole line. Still enough clearance from the
+// literal page edge to stay clear of print-area clipping.
 export function buildPageBorderField(enabled, color = "#000000", widthMM = 0.5) {
   if (!enabled) return [];
   return [
     rectangleField({
       name: "pageBorder",
-      position: { x: 5, y: 5 },
-      width: A4.width - 10,
-      height: A4.height - 10,
+      position: { x: 2, y: 2 },
+      width: A4.width - 4,
+      height: A4.height - 4,
       borderColor: color,
       borderWidth: { top: widthMM, right: widthMM, bottom: widthMM, left: widthMM },
     }),
