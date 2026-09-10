@@ -71,6 +71,10 @@ export function buildPendingOrderTemplate(
     pageBorder = false,
     pageBorderColor = "#000000",
     pageBorderWidth = 0.5,
+    pageBorderX = null,
+    pageBorderY = null,
+    pageBorderWidthMM = null,
+    pageBorderHeightMM = null,
     marginLeft = 10,
     marginRight = 10,
   } = {},
@@ -96,6 +100,10 @@ export function buildPendingOrderTemplate(
       pageBorder,
       pageBorderColor,
       pageBorderWidth,
+      pageBorderX,
+      pageBorderY,
+      pageBorderWidthMM,
+      pageBorderHeightMM,
       marginLeft,
       marginRight,
       staticSchema: [
@@ -105,12 +113,18 @@ export function buildPendingOrderTemplate(
         // buildTemplate.js's buildDocTemplate for the full reasoning (same
         // call shape). pageNumber renders after it so its text stays
         // readable on top.
-        ...buildPageBorderField(pageBorder, pageBorderColor, pageBorderWidth, [
-          Math.max(2, topPadding - headerHeightMM),
-          marginRight,
-          footerImage ? Math.max(2, bottomPadding - footerHeightMM) : bottomPadding,
-          marginLeft,
-        ]),
+        ...buildPageBorderField(
+          pageBorder,
+          pageBorderColor,
+          pageBorderWidth,
+          [
+            Math.max(2, topPadding - headerHeightMM),
+            marginRight,
+            footerImage ? Math.max(2, bottomPadding - footerHeightMM) : bottomPadding,
+            marginLeft,
+          ],
+          { x: pageBorderX, y: pageBorderY, width: pageBorderWidthMM, height: pageBorderHeightMM },
+        ),
         textField({
           name: "pageNumber",
           // Flush against the actual content margin's right edge — see

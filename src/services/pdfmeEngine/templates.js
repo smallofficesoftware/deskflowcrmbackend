@@ -72,6 +72,10 @@ export function applyTemplateOptions(id, loadedTemplate, { header = null, column
     cloned.basePdf.pageBorder = fresh.basePdf.pageBorder;
     cloned.basePdf.pageBorderColor = fresh.basePdf.pageBorderColor;
     cloned.basePdf.pageBorderWidth = fresh.basePdf.pageBorderWidth;
+    cloned.basePdf.pageBorderX = fresh.basePdf.pageBorderX;
+    cloned.basePdf.pageBorderY = fresh.basePdf.pageBorderY;
+    cloned.basePdf.pageBorderWidthMM = fresh.basePdf.pageBorderWidthMM;
+    cloned.basePdf.pageBorderHeightMM = fresh.basePdf.pageBorderHeightMM;
     cloned.basePdf.marginLeft = fresh.basePdf.marginLeft;
     cloned.basePdf.marginRight = fresh.basePdf.marginRight;
     cloned.schemas = cloned.schemas.map((page) => page.map((field) => shiftFieldY(field, deltaY)));
@@ -111,6 +115,10 @@ export function applyTemplateOptions(id, loadedTemplate, { header = null, column
       pageBorder: cloned.basePdf.pageBorder,
       pageBorderColor: cloned.basePdf.pageBorderColor,
       pageBorderWidth: cloned.basePdf.pageBorderWidth,
+      pageBorderX: cloned.basePdf.pageBorderX,
+      pageBorderY: cloned.basePdf.pageBorderY,
+      pageBorderWidthMM: cloned.basePdf.pageBorderWidthMM,
+      pageBorderHeightMM: cloned.basePdf.pageBorderHeightMM,
       marginLeft: cloned.basePdf.marginLeft,
       marginRight: cloned.basePdf.marginRight,
     };

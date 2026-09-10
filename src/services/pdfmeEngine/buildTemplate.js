@@ -226,15 +226,27 @@ export const FOOTER_BOTTOM_MARGIN = 12; // reserves room for pageNumber below th
 // (basePdf.staticSchema, not a cloned.schemas injection — see
 // injectWatermarkField/injectPaymentQRField in orderInputMapper.js for why
 // that distinction matters for a multi-page document).
-export function buildPageBorderField(enabled, color = "#000000", widthMM = 0.5, padding = [2, 10, 2, 10]) {
+// customBox ({x, y, width, height}, all numbers) skips the padding-based
+// auto-calc entirely and uses those values as-is — a manual override for
+// when the user wants direct control over the frame instead of it tracking
+// margin/header/footer automatically. Only takes effect when ALL 4 are
+// actually numbers; any missing one falls back to the computed box below
+// (a half-set override would otherwise mix an old auto value with a new
+// manual one in a way that doesn't correspond to anything the user set).
+export function buildPageBorderField(enabled, color = "#000000", widthMM = 0.5, padding = [2, 10, 2, 10], customBox = null) {
   if (!enabled) return [];
+  const hasCustomBox =
+    customBox && ["x", "y", "width", "height"].every((k) => typeof customBox[k] === "number");
   const [top, right, bottom, left] = padding;
+  const box = hasCustomBox
+    ? customBox
+    : { x: left, y: top, width: A4.width - left - right, height: A4.height - top - bottom };
   return [
     rectangleField({
       name: "pageBorder",
-      position: { x: left, y: top },
-      width: A4.width - left - right,
-      height: A4.height - top - bottom,
+      position: { x: box.x, y: box.y },
+      width: box.width,
+      height: box.height,
       borderColor: color,
       borderWidth: { top: widthMM, right: widthMM, bottom: widthMM, left: widthMM },
     }),
@@ -475,6 +487,14 @@ export function buildDocTemplate(
     pageBorder = false,
     pageBorderColor = "#000000",
     pageBorderWidth = 0.5,
+    // Manual override for the border's box — see buildPageBorderField's
+    // customBox param. null/undefined (the default) means "keep
+    // auto-computing from margin/header/footer", matching every existing
+    // template that predates this option.
+    pageBorderX = null,
+    pageBorderY = null,
+    pageBorderWidthMM = null,
+    pageBorderHeightMM = null,
     marginLeft = 10,
     marginRight = 10,
   } = {},
@@ -515,6 +535,10 @@ export function buildDocTemplate(
       pageBorder,
       pageBorderColor,
       pageBorderWidth,
+      pageBorderX,
+      pageBorderY,
+      pageBorderWidthMM,
+      pageBorderHeightMM,
       marginLeft,
       marginRight,
       staticSchema: [
@@ -535,12 +559,18 @@ export function buildDocTemplate(
         // bottomPadding is already a small fixed value not tied to any
         // banner. Both floored at 2mm so a banner taller than its padding
         // can't push this negative.
-        ...buildPageBorderField(pageBorder, pageBorderColor, pageBorderWidth, [
-          Math.max(2, topPadding - headerHeightMM),
-          marginRight,
-          footerImage ? Math.max(2, bottomPadding - footerHeightMM) : bottomPadding,
-          marginLeft,
-        ]),
+        ...buildPageBorderField(
+          pageBorder,
+          pageBorderColor,
+          pageBorderWidth,
+          [
+            Math.max(2, topPadding - headerHeightMM),
+            marginRight,
+            footerImage ? Math.max(2, bottomPadding - footerHeightMM) : bottomPadding,
+            marginLeft,
+          ],
+          { x: pageBorderX, y: pageBorderY, width: pageBorderWidthMM, height: pageBorderHeightMM },
+        ),
         textField({
           name: "pageNumber",
           // Right-aligned text in a 20mm box, flush against the actual
