@@ -534,7 +534,12 @@ export function buildDocTemplate(
         ...buildPageBorderField(pageBorder, pageBorderColor, pageBorderWidth, [2, marginRight, 2, marginLeft]),
         textField({
           name: "pageNumber",
-          position: { x: 180, y: 287 },
+          // Right-aligned text in a 20mm box, flush against the actual
+          // content margin's right edge — was hardcoded x:180 (only
+          // correct at the 10mm marginRight default), so a custom right
+          // margin left it stranded at the old position instead of
+          // following the margin.
+          position: { x: A4.width - marginRight - 20, y: 287 },
           width: 20,
           height: 5,
           fontSize: 8,

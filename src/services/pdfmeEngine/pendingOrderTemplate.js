@@ -108,7 +108,9 @@ export function buildPendingOrderTemplate(
         ...buildPageBorderField(pageBorder, pageBorderColor, pageBorderWidth, [2, marginRight, 2, marginLeft]),
         textField({
           name: "pageNumber",
-          position: { x: 180, y: 287 },
+          // Flush against the actual content margin's right edge — see
+          // buildTemplate.js's buildDocTemplate for the full reasoning.
+          position: { x: A4.width - marginRight - 20, y: 287 },
           width: 20,
           height: 5,
           fontSize: 8,
