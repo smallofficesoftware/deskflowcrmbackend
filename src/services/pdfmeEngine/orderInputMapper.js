@@ -130,10 +130,17 @@ export function applyConditionalVisibility(template, resolvedInputs) {
 // Fixed company-wide overlay, outside Designer control — matches
 // company_masters.watermark_in_print (1=off, 2=on) exactly as it works
 // today (orderServices.js:4661-4671): centered, translucent, same logo,
-// same position on every generate. Not part of template_json. Applied to
-// EVERY page, not just the first — a multi-page document (itemsTable
-// pagination, extra pages, product pages) previously only watermarked
-// page 0, leaving the rest unmarked.
+// same position on every generate. Not part of template_json.
+//
+// Lives on basePdf.staticSchema, not cloned.schemas — staticSchema is the
+// fixed overlay @pdfme/generator repeats on EVERY page automatically
+// (same mechanism the company header/footer images use), whereas
+// cloned.schemas only covers pages that exist in the template JSON at
+// this point. itemsTable's own dynamic pagination (rows overflowing onto
+// new pages) creates those pages internally, inside generate() itself,
+// AFTER this function returns — a schemas-array approach (the previous
+// version of this fix) can only ever cover pages that already existed
+// before that happens, leaving every overflow page unwatermarked.
 export function injectWatermarkField(template, company) {
   if (company?.watermark_in_print != 2 || !company?.logoImage) return template;
 
@@ -141,8 +148,8 @@ export function injectWatermarkField(template, company) {
   const { width, height } = cloned.basePdf;
   const boxSize = Math.min(width, height) * 0.55;
 
-  cloned.schemas = cloned.schemas.map((page) => [
-    ...page,
+  cloned.basePdf.staticSchema = [
+    ...(cloned.basePdf.staticSchema || []),
     {
       name: "__watermark",
       type: "image",
@@ -153,7 +160,7 @@ export function injectWatermarkField(template, company) {
       opacity: 0.15,
       readOnly: true,
     },
-  ]);
+  ];
   return cloned;
 }
 
