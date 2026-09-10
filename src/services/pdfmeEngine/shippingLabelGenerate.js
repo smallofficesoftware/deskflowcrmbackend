@@ -38,12 +38,14 @@ export async function generateShippingLabelPdf({
   showProductSection,
   documentTemplateId,
   tenantDB,
+  templateOverride = null,
 }) {
   // Same lookup order generateQuotationPdf uses: an explicitly picked
   // template, else the company's own default for this doc_type, else the
-  // built-in fixed layout.
-  let template = null;
-  if (tenantDB) {
+  // built-in fixed layout. templateOverride (an unsaved draft, e.g. from
+  // Document Designer's test-run) short-circuits all of that.
+  let template = templateOverride || null;
+  if (!template && tenantDB) {
     const Template = documentPrintTemplateModel(tenantDB);
     let templateRow = null;
     if (documentTemplateId) {

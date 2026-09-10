@@ -16,8 +16,8 @@ const pluginMap = { text: plugins.text, table: plugins.table };
 // already fetches for the EJS path (id/company_name/address/company_contact/
 // company_email/gst_number). teamWiseTaskList: same [{team_name, tasks:[...]}]
 // shape that function builds.
-export async function generateTaskDueListPdf({ companyData, teamWiseTaskList }) {
-  const template = buildTaskDueListTemplate();
+export async function generateTaskDueListPdf({ companyData, teamWiseTaskList, templateOverride = null }) {
+  const template = templateOverride || buildTaskDueListTemplate();
 
   // Same conditional-join logic as dueTaskListViewV1.ejs's header block
   // (only show a line/separator when the underlying value is actually set) —

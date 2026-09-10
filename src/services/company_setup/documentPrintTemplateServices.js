@@ -1,13 +1,16 @@
 import fs from "fs";
 import moment from "moment";
 import path from "path";
+import QRCode from "qrcode";
 import { Op } from "sequelize";
 import { getTenantDB } from "../../config/dbManager.js";
 import { accountTransactionsModel } from "../../models/activities/accountTransactionsModel.js";
 import { cartItemModel } from "../../models/activities/cartItemsModel.js";
 import { cartModel } from "../../models/activities/cartsModel.js";
 import { contactModel } from "../../models/activities/contactModel.js";
+import { employeeAccountTransactionsModel } from "../../models/activities/employeeAccountTransactionModel.js";
 import { paymentTypeModel } from "../../models/activities/paymentTypeModel.js";
+import loginModel from "../../models/application_login/loginModel.js";
 import companyModel from "../../models/company_setup/companyModel.js";
 import { documentPrintTemplateModel } from "../../models/company_setup/documentPrintTemplateModel.js";
 import { documentPrintTemplateVersionModel } from "../../models/company_setup/documentPrintTemplateVersionModel.js";
@@ -21,10 +24,15 @@ import { productModel } from "../../models/product_settings/productModel.js";
 import { WEBSITE_LEAD_HANDLE_DB_NAME } from "../../utils/appConstants.js";
 import { numberToWordsCurrency } from "../../utils/numberToWordsCurrency.js";
 import { resError, resSuccess } from "../../utils/sharedFunctions.js";
+import { generateAccountStatementPdf } from "../pdfmeEngine/accountStatementGenerate.js";
 import { generateAccountTransactionPdf } from "../pdfmeEngine/accountTransactionGenerate.js";
+import { generateEmployeeAccountStatementPdf } from "../pdfmeEngine/employeeAccountStatementGenerate.js";
+import { generateEmployeeAccountTransactionPdf } from "../pdfmeEngine/employeeAccountTransactionGenerate.js";
 import { generateQuotationPdf } from "../pdfmeEngine/generateDocument.js";
 import { sniffImageMime } from "../pdfmeEngine/imageOverlay.js";
 import { getSampleDataForPreview } from "../pdfmeEngine/orderInputMapper.js";
+import { generateShippingLabelPdf } from "../pdfmeEngine/shippingLabelGenerate.js";
+import { generateTaskDueListPdf } from "../pdfmeEngine/taskDueListGenerate.js";
 import { applyTemplateOptions } from "../pdfmeEngine/templates.js";
 import { logAuditEvent } from "./auditLogServices.js";
 
@@ -43,6 +51,21 @@ function formatAccountTransactionDateAndTime(dateStr) {
 function formatAccountTransactionNumber(num) {
   if (num === null || num === undefined) return "";
   return Number(num).toLocaleString("en-IN", { maximumFractionDigits: 2, minimumFractionDigits: 0 });
+}
+
+// resolveCompanyForPdf's shape (name/address/mobile/email/gstin) vs the
+// company_name/address/company_contact/company_email/gst_number shape
+// accountTransactionGenerate.js/accountStatementGenerate.js/employee*
+// expect — same raw company row, two different field-naming conventions
+// already baked into each generator.
+function mapCompanyToLegacyShape(company) {
+  return {
+    company_name: company.name,
+    address: company.address,
+    company_contact: company.mobile,
+    company_email: company.email,
+    gst_number: company.gstin,
+  };
 }
 
 const now = () => moment(new Date()).format("YYYY-MM-DD HH:mm:ss");
@@ -865,13 +888,7 @@ const renderTemplateAsPdf = async ({ req, company_masters_id, draftTemplate, car
 
       const buffer = await generateAccountTransactionPdf({
         templateOverride: draftTemplate,
-        companyDetails: {
-          company_name: company.name,
-          address: company.address,
-          company_contact: company.mobile,
-          company_email: company.email,
-          gst_number: company.gstin,
-        },
+        companyDetails: mapCompanyToLegacyShape(company),
         accountTransactions: sampleTransaction,
         contactDetails,
         payment_type_name,
@@ -879,6 +896,291 @@ const renderTemplateAsPdf = async ({ req, company_masters_id, draftTemplate, car
         currencySymbol: "₹",
         formattedAmount: formatAccountTransactionNumber(sampleTransaction.amount),
         formattedDate: sampleTransaction.payment_date_time ? formatAccountTransactionDateAndTime(sampleTransaction.payment_date_time) : "-",
+      });
+      return resSuccess({ data: { item: { pdfBase64: buffer.toString("base64") } } });
+    }
+
+    // accountStatement — a contact's transaction history table, not a
+    // single transaction. Picks any one contact with real transactions in
+    // this tenant and builds a simple running-balance table from up to 10
+    // of their transactions (oldest-first); a fully made-up contact +
+    // 2-row table if this tenant has none at all.
+    if (doc_type === "accountStatement") {
+      const AccountTransactionModel = accountTransactionsModel(req.tenantDB);
+      const anyTxn = await AccountTransactionModel.findOne({ where: { isDelete: 0 }, order: [["id", "DESC"]] });
+
+      let contactData = {};
+      let rowsWithBalance = [];
+      let totalCredit = "0";
+      let totalDebit = "0";
+
+      if (anyTxn) {
+        const transactions = await AccountTransactionModel.findAll({
+          where: { contact_masters_id: anyTxn.contact_masters_id, isDelete: 0 },
+          order: [["payment_date_time", "ASC"]],
+          limit: 10,
+        });
+        let running = 0;
+        let creditSum = 0;
+        let debitSum = 0;
+        rowsWithBalance = transactions.map((tx) => {
+          const amt = Number(tx.amount) || 0;
+          const isCredit = tx.type == 1;
+          running += isCredit ? amt : -amt;
+          if (isCredit) creditSum += amt; else debitSum += amt;
+          return {
+            id: tx.id,
+            payment_date: tx.payment_date_time ? moment(tx.payment_date_time).format("DD-MM-YYYY") : "",
+            remark: tx.remark || "",
+            credit: isCredit ? formatAccountTransactionNumber(amt) : "",
+            debit: !isCredit ? formatAccountTransactionNumber(amt) : "",
+            balance: running.toLocaleString("en-IN"),
+          };
+        });
+        totalCredit = creditSum.toLocaleString("en-IN");
+        totalDebit = debitSum.toLocaleString("en-IN");
+
+        const contactRaw = await contactModel(req.tenantDB).findOne({
+          where: { id: anyTxn.contact_masters_id, isDelete: 0 },
+          attributes: ["person_name", "company_name", "mobile_number", "email_id", "address", "shipping_address", "gst_number"],
+        });
+        contactData = contactRaw?.dataValues || {};
+      } else {
+        rowsWithBalance = [
+          { id: 1, payment_date: moment().format("DD-MM-YYYY"), remark: "Sample credit", credit: "1,000", debit: "", balance: "1,000" },
+          { id: 2, payment_date: moment().format("DD-MM-YYYY"), remark: "Sample debit", credit: "", debit: "400", balance: "600" },
+        ];
+        totalCredit = "1,000";
+        totalDebit = "400";
+        contactData = {
+          person_name: "Sample Contact",
+          company_name: "Sample Company",
+          mobile_number: "9876543210",
+          email_id: "sample@example.com",
+          address: "Sample Address",
+          shipping_address: "Sample Shipping Address",
+          gst_number: "",
+        };
+      }
+
+      const printSettings = await printSettingModel(req.tenantDB).findOne({
+        where: { type: 12, print_version: 1, isDelete: 0 },
+        attributes: ["setting_details"],
+      });
+      const settingDetails = JSON.parse(printSettings?.dataValues?.setting_details || "{}");
+
+      const buffer = await generateAccountStatementPdf({
+        templateOverride: draftTemplate,
+        companyData: mapCompanyToLegacyShape(company),
+        contactData,
+        rowsWithBalance,
+        totalCredit,
+        totalDebit,
+        lastRowBalance: rowsWithBalance.length ? rowsWithBalance[rowsWithBalance.length - 1].balance : "0",
+        fromDate: rowsWithBalance[0]?.payment_date || moment().format("DD-MM-YYYY"),
+        toDate: rowsWithBalance[rowsWithBalance.length - 1]?.payment_date || moment().format("DD-MM-YYYY"),
+        settingDetails,
+      });
+      return resSuccess({ data: { item: { pdfBase64: buffer.toString("base64") } } });
+    }
+
+    // employeeAccountTransaction — Team's own variant of accountTransaction,
+    // same shape otherwise (see employeeAccountTransactionGenerate.js's
+    // header comment for why it's a separate generator, not a reused one).
+    if (doc_type === "employeeAccountTransaction") {
+      const EmployeeAccountTransactionModel = employeeAccountTransactionsModel(req.tenantDB);
+      const empTxn = await EmployeeAccountTransactionModel.findOne({ where: { isDelete: 0 }, order: [["id", "DESC"]] });
+
+      let employeeDetails = null;
+      let payment_type_name = null;
+      if (empTxn) {
+        employeeDetails = await loginModel.findOne({ where: { id: empTxn.team_id, isDelete: 0 } });
+        if (empTxn.mode) {
+          const paymentType = await paymentTypeModel(req.tenantDB).findOne({
+            where: { id: empTxn.mode },
+            attributes: ["payment_type_name"],
+          });
+          payment_type_name = paymentType?.payment_type_name || null;
+        }
+      }
+
+      const printSettings = await printSettingModel(req.tenantDB).findOne({
+        where: { type: 12, print_version: 1, isDelete: 0 },
+        attributes: ["setting_details"],
+      });
+      const settingDetails = JSON.parse(printSettings?.dataValues?.setting_details || "{}");
+
+      const sampleTransaction = empTxn?.dataValues ?? {
+        id: 0,
+        type: 1,
+        remark: "Sample remark",
+        amount: 1000,
+        payment_date_time: new Date(),
+      };
+      const sampleEmployee = employeeDetails?.dataValues ?? {
+        username: "Sample Employee",
+        recovery_mobile: "9876543210",
+        recovery_email: "employee@example.com",
+      };
+
+      const buffer = await generateEmployeeAccountTransactionPdf({
+        templateOverride: draftTemplate,
+        companyDetails: mapCompanyToLegacyShape(company),
+        accountTransactions: sampleTransaction,
+        employeeDetails: sampleEmployee,
+        payment_type_name,
+        settingDetails,
+        currencySymbol: "₹",
+        formattedAmount: formatAccountTransactionNumber(sampleTransaction.amount),
+        formattedDate: sampleTransaction.payment_date_time ? formatAccountTransactionDateAndTime(sampleTransaction.payment_date_time) : "-",
+      });
+      return resSuccess({ data: { item: { pdfBase64: buffer.toString("base64") } } });
+    }
+
+    // employeeAccountStatement — Team's own variant of accountStatement.
+    if (doc_type === "employeeAccountStatement") {
+      const EmployeeAccountTransactionModel = employeeAccountTransactionsModel(req.tenantDB);
+      const anyEmpTxn = await EmployeeAccountTransactionModel.findOne({ where: { isDelete: 0 }, order: [["id", "DESC"]] });
+
+      let employeeData = {};
+      let rowsWithBalance = [];
+      let totalCredit = "0";
+      let totalDebit = "0";
+
+      if (anyEmpTxn) {
+        const transactions = await EmployeeAccountTransactionModel.findAll({
+          where: { team_id: anyEmpTxn.team_id, isDelete: 0 },
+          order: [["payment_date_time", "ASC"]],
+          limit: 10,
+        });
+        let running = 0;
+        let creditSum = 0;
+        let debitSum = 0;
+        rowsWithBalance = transactions.map((tx) => {
+          const amt = Number(tx.amount) || 0;
+          const isCredit = tx.type == 1;
+          running += isCredit ? amt : -amt;
+          if (isCredit) creditSum += amt; else debitSum += amt;
+          return {
+            id: tx.id,
+            payment_date: tx.payment_date_time ? moment(tx.payment_date_time).format("DD-MM-YYYY") : "",
+            remark: tx.remark || "",
+            credit: isCredit ? formatAccountTransactionNumber(amt) : "",
+            debit: !isCredit ? formatAccountTransactionNumber(amt) : "",
+            balance: running.toLocaleString("en-IN"),
+          };
+        });
+        totalCredit = creditSum.toLocaleString("en-IN");
+        totalDebit = debitSum.toLocaleString("en-IN");
+
+        const employeeRaw = await loginModel.findOne({ where: { id: anyEmpTxn.team_id, isDelete: 0 } });
+        employeeData = employeeRaw?.dataValues || {};
+      } else {
+        rowsWithBalance = [
+          { id: 1, payment_date: moment().format("DD-MM-YYYY"), remark: "Sample credit", credit: "1,000", debit: "", balance: "1,000" },
+          { id: 2, payment_date: moment().format("DD-MM-YYYY"), remark: "Sample debit", credit: "", debit: "400", balance: "600" },
+        ];
+        totalCredit = "1,000";
+        totalDebit = "400";
+        employeeData = { username: "Sample Employee", recovery_mobile: "9876543210", recovery_email: "employee@example.com" };
+      }
+
+      const printSettings = await printSettingModel(req.tenantDB).findOne({
+        where: { type: 12, print_version: 1, isDelete: 0 },
+        attributes: ["setting_details"],
+      });
+      const settingDetails = JSON.parse(printSettings?.dataValues?.setting_details || "{}");
+
+      const buffer = await generateEmployeeAccountStatementPdf({
+        templateOverride: draftTemplate,
+        companyData: mapCompanyToLegacyShape(company),
+        employeeData,
+        rowsWithBalance,
+        totalCredit,
+        totalDebit,
+        lastRowBalance: rowsWithBalance.length ? rowsWithBalance[rowsWithBalance.length - 1].balance : "0",
+        fromDate: rowsWithBalance[0]?.payment_date || moment().format("DD-MM-YYYY"),
+        toDate: rowsWithBalance[rowsWithBalance.length - 1]?.payment_date || moment().format("DD-MM-YYYY"),
+        settingDetails,
+      });
+      return resSuccess({ data: { item: { pdfBase64: buffer.toString("base64") } } });
+    }
+
+    // taskDueList — a team-grouped task table, not cart/contact-shaped at
+    // all. Real team/status/assignment joins are significant extra work for
+    // a test-run preview, so this always uses a small fabricated sample —
+    // enough to see the draft's layout render with real-looking content.
+    if (doc_type === "taskDueList") {
+      const buffer = await generateTaskDueListPdf({
+        templateOverride: draftTemplate,
+        companyData: mapCompanyToLegacyShape(company),
+        teamWiseTaskList: [
+          {
+            team_name: "Sample Team",
+            tasks: [
+              { id: 1, task_title: "Sample Task 1", task_remark: "Sample remark", status_name: "Pending", assinged_to_names: "Sample User", task_fromdate: moment().format("DD-MM-YYYY"), task_enddate: moment().add(2, "days").format("DD-MM-YYYY"), due_days: 2 },
+              { id: 2, task_title: "Sample Task 2", task_remark: "", status_name: "In Progress", assinged_to_names: "Sample User 2", task_fromdate: moment().format("DD-MM-YYYY"), task_enddate: moment().add(5, "days").format("DD-MM-YYYY"), due_days: 5 },
+            ],
+          },
+        ],
+      });
+      return resSuccess({ data: { item: { pdfBase64: buffer.toString("base64") } } });
+    }
+
+    // shippingLabel — cart-derived but not via the buyer/order/items shape
+    // below (generateQuotationPdf's itemized invoice layout). Picks any one
+    // real cart + its items from this tenant as stand-in data; a fabricated
+    // cart if this tenant has none at all.
+    if (doc_type === "shippingLabel") {
+      const cartRow = await cartModel(req.tenantDB).findOne({ where: { isDelete: 0 }, order: [["id", "DESC"]] });
+
+      let labelCart;
+      let labelItems;
+      if (cartRow) {
+        labelCart = cartRow.dataValues;
+        const [state, city] = await Promise.all([
+          labelCart.state_id ? stateModel(req.tenantDB).findOne({ where: { id: labelCart.state_id }, attributes: ["state_name"] }) : null,
+          labelCart.city_id ? cityModel(req.tenantDB).findOne({ where: { id: labelCart.city_id }, attributes: ["city_name"] }) : null,
+        ]);
+        labelCart.state_name = state?.state_name || "";
+        labelCart.city_name = city?.city_name || "";
+        labelItems = await cartItemModel(req.tenantDB).findAll({ where: { cart_id: cartRow.id, isDelete: 0 }, raw: true });
+      } else {
+        labelCart = {
+          to_customer_name: "Sample Customer",
+          shipping_address: "Sample Shipping Address",
+          state_name: "Sample State",
+          city_name: "Sample City",
+          PinCode: "000000",
+          to_customer_phone: "9876543210",
+          sr_by_number: "SAMPLE/001",
+          grand_total: 1000,
+        };
+        labelItems = [{ item_product_name: "Sample Item", item_qty: 1, item_total: 1000 }];
+      }
+
+      let qrDataUri = "";
+      if (labelCart.sr_by_number) {
+        qrDataUri = await QRCode.toDataURL(labelCart.sr_by_number.toString(), {
+          margin: 1,
+          color: { dark: "#000000", light: "#FFFFFF" },
+        });
+      }
+
+      const printSettings = await printSettingModel(req.tenantDB).findOne({
+        where: { type: 14, print_version: 1, isDelete: 0 },
+        attributes: ["setting_details"],
+      });
+      const printSetting = JSON.parse(printSettings?.dataValues?.setting_details || "{}");
+
+      const buffer = await generateShippingLabelPdf({
+        templateOverride: draftTemplate,
+        cart: labelCart,
+        company: mapCompanyToLegacyShape(company),
+        items: labelItems,
+        qrDataUri,
+        dynamicTerms: "",
+        showProductSection: !!printSetting?.ProductSection,
       });
       return resSuccess({ data: { item: { pdfBase64: buffer.toString("base64") } } });
     }
