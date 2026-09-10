@@ -69,6 +69,7 @@ export function applyTemplateOptions(id, loadedTemplate, { header = null, column
     cloned.basePdf.footerImage = fresh.basePdf.footerImage;
     cloned.basePdf.headerHeightMM = fresh.basePdf.headerHeightMM;
     cloned.basePdf.footerHeightMM = fresh.basePdf.footerHeightMM;
+    cloned.basePdf.pageBorder = fresh.basePdf.pageBorder;
     cloned.schemas = cloned.schemas.map((page) => page.map((field) => shiftFieldY(field, deltaY)));
   }
 
@@ -103,6 +104,7 @@ export function applyTemplateOptions(id, loadedTemplate, { header = null, column
       footerImage: cloned.basePdf.footerImage,
       headerHeightMM: cloned.basePdf.headerHeightMM,
       footerHeightMM: cloned.basePdf.footerHeightMM,
+      pageBorder: cloned.basePdf.pageBorder,
     };
     const effectiveColumnOptions = columnOptions || currentItemsTable?.columnOptions;
 

@@ -90,6 +90,29 @@ export function imageField(overrides) {
   return { ...plugins.image.propPanel.defaultSchema, dataSource: overrides.name, ...overrides };
 }
 
+// NOT @pdfme/schemas' stock `rectangle` plugin — generateDocument.js (and
+// this repo's own DocumentDesignerView.tsx propPanel) registers
+// customRectanglePlugin.js under the SAME "rectangle" type key, which adds
+// independent per-side borderWidth. Building against its defaultSchema here
+// (rather than plugins.rectangle's own) would miss that per-side shape.
+function rectangleField(overrides) {
+  return {
+    name: "",
+    type: "rectangle",
+    position: { x: 0, y: 0 },
+    width: A4.width,
+    height: A4.height,
+    rotate: 0,
+    opacity: 1,
+    borderWidth: { top: 0.5, right: 0.5, bottom: 0.5, left: 0.5 },
+    borderColor: "#000000",
+    color: "",
+    readOnly: true,
+    radius: 0,
+    ...overrides,
+  };
+}
+
 export function tableField(overrides) {
   const base = plugins.table.propPanel.defaultSchema;
   return {
@@ -188,6 +211,24 @@ export function buildHeaderFields(variant, headerHeightMM = 18) {
 }
 
 export const FOOTER_BOTTOM_MARGIN = 12; // reserves room for pageNumber below the footer image
+
+// A thin frame just inside the page edge, same repeat-on-every-page
+// mechanism header/footer images use (basePdf.staticSchema, not a
+// cloned.schemas injection — see injectWatermarkField/injectPaymentQRField
+// in orderInputMapper.js for why that distinction matters for a multi-page
+// document). 5mm inset keeps the line clear of any print-area clipping at
+// the literal page edge.
+export function buildPageBorderField(enabled) {
+  if (!enabled) return [];
+  return [
+    rectangleField({
+      name: "pageBorder",
+      position: { x: 5, y: 5 },
+      width: A4.width - 10,
+      height: A4.height - 10,
+    }),
+  ];
+}
 
 export function buildFooterFields(showFooterImage, footerHeightMM = 15) {
   if (!showFooterImage) return [];
@@ -414,7 +455,14 @@ function buildHsnAndTotalsFields() {
 
 export function buildDocTemplate(
   docTitle,
-  { headerVariant = "details", footerImage = false, columnOptions = {}, headerHeightMM = 18, footerHeightMM = 15 } = {},
+  {
+    headerVariant = "details",
+    footerImage = false,
+    columnOptions = {},
+    headerHeightMM = 18,
+    footerHeightMM = 15,
+    pageBorder = false,
+  } = {},
 ) {
   // Top padding must clear the header banner's actual height (only the
   // "image" variant's height is configurable). Bottom padding must clear the
@@ -445,6 +493,7 @@ export function buildDocTemplate(
       footerImage,
       headerHeightMM,
       footerHeightMM,
+      pageBorder,
       staticSchema: [
         ...buildHeaderFields(headerVariant, headerHeightMM),
         ...buildFooterFields(footerImage, footerHeightMM),
@@ -458,6 +507,7 @@ export function buildDocTemplate(
           content: "Page {currentPage} of {totalPages}",
           readOnly: true,
         }),
+        ...buildPageBorderField(pageBorder),
       ],
     },
     schemas: [

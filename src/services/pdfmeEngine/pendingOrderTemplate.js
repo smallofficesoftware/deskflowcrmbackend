@@ -9,6 +9,7 @@
 import {
   buildFooterFields,
   buildHeaderFields,
+  buildPageBorderField,
   FOOTER_BOTTOM_MARGIN,
   imageField,
   shiftFieldY,
@@ -62,7 +63,13 @@ function buildPendingItemsTableField() {
 
 export function buildPendingOrderTemplate(
   docTitle,
-  { headerVariant = "details", footerImage = false, headerHeightMM = 18, footerHeightMM = 15 } = {},
+  {
+    headerVariant = "details",
+    footerImage = false,
+    headerHeightMM = 18,
+    footerHeightMM = 15,
+    pageBorder = false,
+  } = {},
 ) {
   // Kept in sync with buildTemplate.js's buildDocTemplate — both share
   // buildHeaderFields, whose non-image variants now reserve 34mm (was 25)
@@ -82,6 +89,7 @@ export function buildPendingOrderTemplate(
       footerImage,
       headerHeightMM,
       footerHeightMM,
+      pageBorder,
       staticSchema: [
         ...buildHeaderFields(headerVariant, headerHeightMM),
         ...buildFooterFields(footerImage, footerHeightMM),
@@ -95,6 +103,7 @@ export function buildPendingOrderTemplate(
           content: "Page {currentPage} of {totalPages}",
           readOnly: true,
         }),
+        ...buildPageBorderField(pageBorder),
       ],
     },
     schemas: [
