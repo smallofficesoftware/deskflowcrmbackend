@@ -4,20 +4,17 @@
 // Both doc types share the same raw-input composition (contact + company data)
 // and template-resolution lookup, only the fallback template builder differs.
 import { generate } from "@pdfme/generator";
-import * as plugins from "@pdfme/schemas";
 import { documentPrintTemplateModel } from "../../models/company_setup/documentPrintTemplateModel.js";
 import { buildContactAddressTemplate } from "./contactAddressTemplate.js";
 import { buildContactEnvelopeTemplate } from "./contactEnvelopeTemplate.js";
-import { loadFonts } from "./fonts.js";
+import { fontMap } from "./fonts.js";
 import {
   applyConditionalVisibility,
   applyTokenSubstitution,
   fillMissingInputsFromContent,
   resolveDataSources,
 } from "./orderInputMapper.js";
-
-const fontMap = loadFonts();
-const pluginMap = { text: plugins.text, table: plugins.table, image: plugins.image };
+import { pluginMap } from "./pluginMap.js";
 
 // Same lookup order generateShippingLabelPdf/generateQuotationPdf use: an
 // explicitly picked template, else the company's own default for this

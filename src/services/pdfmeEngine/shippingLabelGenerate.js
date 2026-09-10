@@ -4,31 +4,16 @@
 // cart-invoice-only machinery (HSN, watermark, payment QR, extra pages,
 // per-company Designer template lookup) that doesn't apply to a label.
 import { generate } from "@pdfme/generator";
-import * as plugins from "@pdfme/schemas";
-import { customRectangle } from "./customRectanglePlugin.js";
 import { documentPrintTemplateModel } from "../../models/company_setup/documentPrintTemplateModel.js";
-import { loadFonts } from "./fonts.js";
+import { fontMap } from "./fonts.js";
 import {
   applyConditionalVisibility,
   applyTokenSubstitution,
   fillMissingInputsFromContent,
   resolveDataSources,
 } from "./orderInputMapper.js";
+import { pluginMap } from "./pluginMap.js";
 import { buildShippingLabelTemplate } from "./shippingLabelTemplate.js";
-
-const fontMap = loadFonts();
-// Full Designer-palette set — see accountStatementGenerate.js's own
-// pluginMap comment for why every type is registered here even though
-// this doc type's built-in layout only uses text+table+image.
-const pluginMap = {
-  text: plugins.text,
-  table: plugins.table,
-  image: plugins.image,
-  rectangle: customRectangle,
-  ellipse: plugins.ellipse,
-  line: plugins.line,
-  list: plugins.list,
-};
 
 // Same "₹" + en-IN grouping the old EJS uses (Number(x).toLocaleString('en-IN')).
 function formatInr(value) {

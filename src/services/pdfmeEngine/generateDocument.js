@@ -6,12 +6,11 @@ import axios from "axios";
 import { generate } from "@pdfme/generator";
 import { PDFDocument } from "@pdfme/pdf-lib";
 import * as plugins from "@pdfme/schemas";
-import { customRectangle } from "./customRectanglePlugin.js";
 import { richText } from "./richTextPlugin.js";
 import { documentPrintTemplateModel } from "../../models/company_setup/documentPrintTemplateModel.js";
 import { productModel } from "../../models/product_settings/productModel.js";
 import { getTemplate, withCompanyHeader } from "./templates.js";
-import { loadFonts } from "./fonts.js";
+import { fontMap } from "./fonts.js";
 import { overlayItemImages, sniffImageMime } from "./imageOverlay.js";
 import {
   applyConditionalVisibility,
@@ -28,27 +27,13 @@ import {
   num,
   resolveDataSources,
 } from "./orderInputMapper.js";
+import { pluginMap as basePluginMap } from "./pluginMap.js";
 
-// Loaded once at process start (font files don't change at runtime), reused
-// across every generate call — same reasoning as the POC.
-const fontMap = loadFonts();
-
-// ellipse/list: the Designer's own field palette (DocumentDesignerView.tsx)
-// offers these alongside text/table/image/rectangle/line - a field of
-// either type added ad hoc (not part of the built-in default layout) was
-// missing here, crashing generate() with "Plugin or renderer for type
-// ellipse/list not found" the moment one existed in a saved template.
-const pluginMap = {
-  text: richText,
-  table: plugins.table,
-  image: plugins.image,
-  line: plugins.line,
-  rectangle: customRectangle,
-  ellipse: plugins.ellipse,
-  list: plugins.list,
-  date: plugins.date,
-  signature: plugins.signature,
-};
+// richText (bold/italic inline markdown) instead of the shared map's plain
+// text; date/signature are cart-doc-only extras, not in either editor's
+// field palette, so they stay local to this file rather than in the shared
+// map.
+const pluginMap = { ...basePluginMap, text: richText, date: plugins.date, signature: plugins.signature };
 
 // Builds one tiny single-field template sized to match the main document's
 // basePdf, for a pageText/pageURL extra page — same technique the POC's
