@@ -108,7 +108,7 @@ export function buildPendingOrderTemplate(
         ...buildPageBorderField(pageBorder, pageBorderColor, pageBorderWidth, [
           Math.max(2, topPadding - headerHeightMM),
           marginRight,
-          bottomPadding,
+          footerImage ? Math.max(2, bottomPadding - footerHeightMM) : bottomPadding,
           marginLeft,
         ]),
         textField({

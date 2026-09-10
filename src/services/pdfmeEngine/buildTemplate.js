@@ -524,18 +524,21 @@ export function buildDocTemplate(
         // over the header/footer banner wherever they overlap (frame stays
         // visibly continuous crossing the banner, instead of disappearing
         // behind it), but pageNumber renders AFTER it (last = on top) so
-        // its text stays readable. Left/right/bottom frame the actual
-        // content-margin box (marginLeft/marginRight/bottomPadding) but top
-        // is topPadding MINUS headerHeightMM — topPadding alone is the
-        // clearance for BODY content (below the header banner), so
-        // subtracting the header's own height pulls the frame's top edge
-        // back up to roughly where the header banner itself starts, putting
-        // the header inside the frame instead of excluding it. Floored at
-        // 2mm so a header taller than topPadding can't push this negative.
+        // its text stays readable. Left/right frame the actual content
+        // margin (marginLeft/marginRight) but top/bottom are topPadding/
+        // bottomPadding MINUS header/footerHeightMM — topPadding/
+        // bottomPadding alone are the clearance for BODY content (outside
+        // the header/footer banner), so subtracting the banner's own height
+        // pulls the frame's edge back to roughly where the banner itself
+        // starts, putting it inside the frame instead of excluding it.
+        // Footer's subtraction only applies when it's actually on — off,
+        // bottomPadding is already a small fixed value not tied to any
+        // banner. Both floored at 2mm so a banner taller than its padding
+        // can't push this negative.
         ...buildPageBorderField(pageBorder, pageBorderColor, pageBorderWidth, [
           Math.max(2, topPadding - headerHeightMM),
           marginRight,
-          bottomPadding,
+          footerImage ? Math.max(2, bottomPadding - footerHeightMM) : bottomPadding,
           marginLeft,
         ]),
         textField({
