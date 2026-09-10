@@ -79,7 +79,7 @@ export function buildPendingOrderTemplate(
   // buildHeaderFields, whose non-image variants now reserve 34mm (was 25)
   // for the added companyGSTIN/companyMobile/companyEmail lines.
   const topPadding = headerVariant === "image" ? Math.max(25, 5 + headerHeightMM + 2) : 34;
-  const bottomPadding = footerImage ? Math.max(30, FOOTER_BOTTOM_MARGIN + footerHeightMM + 3) : 15;
+  const bottomPadding = footerImage ? Math.max(30, FOOTER_BOTTOM_MARGIN + footerHeightMM + 3) : 10;
 
   const contentTopOffset = topPadding - 25;
   const applyContentOffset = (field) => shiftFieldY(field, contentTopOffset);
@@ -101,6 +101,11 @@ export function buildPendingOrderTemplate(
       staticSchema: [
         ...buildHeaderFields(headerVariant, headerHeightMM),
         ...buildFooterFields(footerImage, footerHeightMM),
+        // Border before pageNumber but after header/footer — see
+        // buildTemplate.js's buildDocTemplate for the full reasoning (same
+        // call shape). pageNumber renders after it so its text stays
+        // readable on top.
+        ...buildPageBorderField(pageBorder, pageBorderColor, pageBorderWidth, [2, marginRight, 2, marginLeft]),
         textField({
           name: "pageNumber",
           position: { x: 180, y: 287 },
@@ -111,10 +116,6 @@ export function buildPendingOrderTemplate(
           content: "Page {currentPage} of {totalPages}",
           readOnly: true,
         }),
-        // Drawn LAST, on top — see buildTemplate.js's buildDocTemplate for
-        // the full reasoning (same call shape). top/bottom stay a small
-        // fixed inset so header/footer banners land INSIDE the frame.
-        ...buildPageBorderField(pageBorder, pageBorderColor, pageBorderWidth, [2, marginRight, 2, marginLeft]),
       ],
     },
     schemas: [

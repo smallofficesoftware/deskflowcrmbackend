@@ -488,7 +488,7 @@ export function buildDocTemplate(
   // contentTopOffset below shifts every OTHER field down by that same
   // delta automatically, so nothing further needed any position edits.
   const topPadding = headerVariant === "image" ? Math.max(25, 5 + headerHeightMM + 2) : 34;
-  const bottomPadding = footerImage ? Math.max(30, FOOTER_BOTTOM_MARGIN + footerHeightMM + 3) : 15;
+  const bottomPadding = footerImage ? Math.max(30, FOOTER_BOTTOM_MARGIN + footerHeightMM + 3) : 10;
 
   const contentTopOffset = topPadding - 25;
   const applyContentOffset = (field) => shiftFieldY(field, contentTopOffset);
@@ -520,6 +520,18 @@ export function buildDocTemplate(
       staticSchema: [
         ...buildHeaderFields(headerVariant, headerHeightMM),
         ...buildFooterFields(footerImage, footerHeightMM),
+        // Border drawn before pageNumber but after header/footer — paints
+        // over the header/footer banner wherever they overlap (frame stays
+        // visibly continuous crossing the banner, instead of disappearing
+        // behind it), but pageNumber renders AFTER it (last = on top) so
+        // its text stays readable — its x=180..200 box happens to land
+        // exactly on the border's default right edge (width-marginRight=200
+        // at the 10mm default), which the border would otherwise cross
+        // straight through. top/bottom stay a small fixed inset (not
+        // topPadding/bottomPadding) so the header/footer banners land
+        // INSIDE the frame, not excluded from it — left/right still honor
+        // the actual content margin.
+        ...buildPageBorderField(pageBorder, pageBorderColor, pageBorderWidth, [2, marginRight, 2, marginLeft]),
         textField({
           name: "pageNumber",
           position: { x: 180, y: 287 },
@@ -530,14 +542,6 @@ export function buildDocTemplate(
           content: "Page {currentPage} of {totalPages}",
           readOnly: true,
         }),
-        // Drawn LAST, on top — paints over the header/footer banner
-        // wherever they overlap, so the border frame stays visibly
-        // continuous (crossing the banner) instead of disappearing behind
-        // it. top/bottom stay a small fixed inset (not topPadding/
-        // bottomPadding) so the header/footer banners land INSIDE the
-        // frame, not excluded from it — left/right still honor the actual
-        // content margin.
-        ...buildPageBorderField(pageBorder, pageBorderColor, pageBorderWidth, [2, marginRight, 2, marginLeft]),
       ],
     },
     schemas: [
