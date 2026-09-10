@@ -524,13 +524,20 @@ export function buildDocTemplate(
         // over the header/footer banner wherever they overlap (frame stays
         // visibly continuous crossing the banner, instead of disappearing
         // behind it), but pageNumber renders AFTER it (last = on top) so
-        // its text stays readable. Frames the actual content-margin box on
-        // all 4 sides now (topPadding/bottomPadding, not a fixed inset) —
-        // a tall header/footer can end up OUTSIDE the frame once its own
-        // clearance exceeds this, a deliberate tradeoff for having top/
-        // bottom track the Margins toolbar the same way left/right already
-        // does.
-        ...buildPageBorderField(pageBorder, pageBorderColor, pageBorderWidth, [topPadding, marginRight, bottomPadding, marginLeft]),
+        // its text stays readable. Left/right/bottom frame the actual
+        // content-margin box (marginLeft/marginRight/bottomPadding) but top
+        // is topPadding MINUS headerHeightMM — topPadding alone is the
+        // clearance for BODY content (below the header banner), so
+        // subtracting the header's own height pulls the frame's top edge
+        // back up to roughly where the header banner itself starts, putting
+        // the header inside the frame instead of excluding it. Floored at
+        // 2mm so a header taller than topPadding can't push this negative.
+        ...buildPageBorderField(pageBorder, pageBorderColor, pageBorderWidth, [
+          Math.max(2, topPadding - headerHeightMM),
+          marginRight,
+          bottomPadding,
+          marginLeft,
+        ]),
         textField({
           name: "pageNumber",
           // Right-aligned text in a 20mm box, flush against the actual

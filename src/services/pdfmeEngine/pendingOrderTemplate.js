@@ -105,7 +105,12 @@ export function buildPendingOrderTemplate(
         // buildTemplate.js's buildDocTemplate for the full reasoning (same
         // call shape). pageNumber renders after it so its text stays
         // readable on top.
-        ...buildPageBorderField(pageBorder, pageBorderColor, pageBorderWidth, [topPadding, marginRight, bottomPadding, marginLeft]),
+        ...buildPageBorderField(pageBorder, pageBorderColor, pageBorderWidth, [
+          Math.max(2, topPadding - headerHeightMM),
+          marginRight,
+          bottomPadding,
+          marginLeft,
+        ]),
         textField({
           name: "pageNumber",
           // Flush against the actual content margin's right edge — see
