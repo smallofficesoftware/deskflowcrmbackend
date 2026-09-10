@@ -68,6 +68,19 @@ function mapCompanyToLegacyShape(company) {
   };
 }
 
+// No print-setting row at all (a test/preview tenant that's never had this
+// configured) means nothing was ever deliberately turned off — default
+// every section ON so a test-run actually shows something to verify,
+// rather than silently hiding the whole header/contact/employee block the
+// way a real tenant's deliberate "off" choice would via generator's own
+// showHeader/showContact/showEmployee flag-field checks.
+function settingDetailsOrTestRunDefault(printSettingsRow) {
+  if (!printSettingsRow) {
+    return { headerImage: true, contactDetails: true, employeeDetails: true };
+  }
+  return JSON.parse(printSettingsRow.dataValues?.setting_details || "{}");
+}
+
 const now = () => moment(new Date()).format("YYYY-MM-DD HH:mm:ss");
 
 const nextDisplayOrder = async (Template, company_masters_id, doc_type) => {
@@ -874,7 +887,7 @@ const renderTemplateAsPdf = async ({ req, company_masters_id, draftTemplate, car
         where: { type: 12, print_version: 1, isDelete: 0 },
         attributes: ["setting_details"],
       });
-      const settingDetails = JSON.parse(printSettings?.dataValues?.setting_details || "{}");
+      const settingDetails = settingDetailsOrTestRunDefault(printSettings);
 
       // No real transaction in this tenant at all — fall back to a fully
       // made-up row rather than fail, so an empty test tenant still renders.
@@ -967,7 +980,7 @@ const renderTemplateAsPdf = async ({ req, company_masters_id, draftTemplate, car
         where: { type: 12, print_version: 1, isDelete: 0 },
         attributes: ["setting_details"],
       });
-      const settingDetails = JSON.parse(printSettings?.dataValues?.setting_details || "{}");
+      const settingDetails = settingDetailsOrTestRunDefault(printSettings);
 
       const buffer = await generateAccountStatementPdf({
         templateOverride: draftTemplate,
@@ -1008,7 +1021,7 @@ const renderTemplateAsPdf = async ({ req, company_masters_id, draftTemplate, car
         where: { type: 12, print_version: 1, isDelete: 0 },
         attributes: ["setting_details"],
       });
-      const settingDetails = JSON.parse(printSettings?.dataValues?.setting_details || "{}");
+      const settingDetails = settingDetailsOrTestRunDefault(printSettings);
 
       const sampleTransaction = empTxn?.dataValues ?? {
         id: 0,
@@ -1089,7 +1102,7 @@ const renderTemplateAsPdf = async ({ req, company_masters_id, draftTemplate, car
         where: { type: 12, print_version: 1, isDelete: 0 },
         attributes: ["setting_details"],
       });
-      const settingDetails = JSON.parse(printSettings?.dataValues?.setting_details || "{}");
+      const settingDetails = settingDetailsOrTestRunDefault(printSettings);
 
       const buffer = await generateEmployeeAccountStatementPdf({
         templateOverride: draftTemplate,
