@@ -212,30 +212,24 @@ export function buildHeaderFields(variant, headerHeightMM = 28.5) {
 
 export const FOOTER_BOTTOM_MARGIN = 12; // reserves room for pageNumber below the footer image
 
-// A thin frame just inside the page edge, same repeat-on-every-page
-// mechanism header/footer images use (basePdf.staticSchema, not a
-// cloned.schemas injection — see injectWatermarkField/injectPaymentQRField
-// in orderInputMapper.js for why that distinction matters for a multi-page
-// document).
-//
-// 2mm inset, not 5mm — the header image always starts at y=5 and the
-// footer image always ends at y=(A4.height - FOOTER_BOTTOM_MARGIN)=285
-// regardless of configured header/footerHeightMM (those only grow the
-// band inward, never move its outer edge), so a 2mm inset clears both
-// with room to spare. A 5mm inset landed EXACTLY on the header's own
-// y=5 start with zero gap, so the (opaque, full page width) header/
-// footer banner painted on top per the z-order fix above completely hid
-// the border's top/bottom lines for their entire width — not just where
-// they'd actually cross, the whole line. Still enough clearance from the
-// literal page edge to stay clear of print-area clipping.
-export function buildPageBorderField(enabled, color = "#000000", widthMM = 0.5) {
+// Frames the CONTENT margin box exactly — basePdf.padding's [top, right,
+// bottom, left], the same box the docTitle/buyer-info/items-table content
+// lives inside — not a fixed inset from the page edge. Header/footer
+// banners sit OUTSIDE this frame (above/below it), not inside it, since
+// top padding alone is large (25-35mm+) specifically to clear the header
+// banner's own height. Same repeat-on-every-page mechanism header/footer
+// images use (basePdf.staticSchema, not a cloned.schemas injection — see
+// injectWatermarkField/injectPaymentQRField in orderInputMapper.js for why
+// that distinction matters for a multi-page document).
+export function buildPageBorderField(enabled, color = "#000000", widthMM = 0.5, padding = [25, 10, 15, 10]) {
   if (!enabled) return [];
+  const [top, right, bottom, left] = padding;
   return [
     rectangleField({
       name: "pageBorder",
-      position: { x: 2, y: 2 },
-      width: A4.width - 4,
-      height: A4.height - 4,
+      position: { x: left, y: top },
+      width: A4.width - left - right,
+      height: A4.height - top - bottom,
       borderColor: color,
       borderWidth: { top: widthMM, right: widthMM, bottom: widthMM, left: widthMM },
     }),
@@ -518,7 +512,7 @@ export function buildDocTemplate(
         // real image is set) header/footer image cover the border wherever
         // they overlap, instead of the border line visibly cutting across
         // the banner.
-        ...buildPageBorderField(pageBorder, pageBorderColor, pageBorderWidth),
+        ...buildPageBorderField(pageBorder, pageBorderColor, pageBorderWidth, [topPadding, 10, bottomPadding, 10]),
         ...buildHeaderFields(headerVariant, headerHeightMM),
         ...buildFooterFields(footerImage, footerHeightMM),
         textField({

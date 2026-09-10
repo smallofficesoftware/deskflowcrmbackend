@@ -95,7 +95,7 @@ export function buildPendingOrderTemplate(
       pageBorderColor,
       pageBorderWidth,
       staticSchema: [
-        ...buildPageBorderField(pageBorder, pageBorderColor, pageBorderWidth),
+        ...buildPageBorderField(pageBorder, pageBorderColor, pageBorderWidth, [topPadding, 10, bottomPadding, 10]),
         ...buildHeaderFields(headerVariant, headerHeightMM),
         ...buildFooterFields(footerImage, footerHeightMM),
         textField({
