@@ -1,7 +1,4 @@
-import { generate } from "@pdfme/generator";
-import { fontMap } from "./fonts.js";
-import { applyTokenSubstitution, fillMissingInputsFromContent, resolveDataSources } from "./orderInputMapper.js";
-import { pluginMap } from "./pluginMap.js";
+import { renderPdf } from "./renderPdf.js";
 import { buildAccountTransactionTemplate } from "./accountTransactionTemplate.js";
 
 // companyDetails/accountTransactions/contactDetails/payment_type_name/settingDetails:
@@ -124,10 +121,5 @@ export async function generateAccountTransactionPdf({
     rawInputs[valueField] = pair?.value || "";
   });
 
-  let resolvedInputs = resolveDataSources(template, rawInputs);
-  resolvedInputs = fillMissingInputsFromContent(template, resolvedInputs);
-  resolvedInputs = applyTokenSubstitution(template, resolvedInputs);
-
-  const pdfBytes = await generate({ template, inputs: [resolvedInputs], plugins: pluginMap, options: { font: fontMap } });
-  return Buffer.from(pdfBytes);
+  return renderPdf(template, rawInputs, { applyVisibility: false });
 }

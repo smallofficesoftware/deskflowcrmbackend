@@ -5,8 +5,6 @@
 import axios from "axios";
 import { generate } from "@pdfme/generator";
 import { PDFDocument } from "@pdfme/pdf-lib";
-import * as plugins from "@pdfme/schemas";
-import { richText } from "./richTextPlugin.js";
 import { documentPrintTemplateModel } from "../../models/company_setup/documentPrintTemplateModel.js";
 import { productModel } from "../../models/product_settings/productModel.js";
 import { getTemplate, withCompanyHeader } from "./templates.js";
@@ -27,13 +25,7 @@ import {
   num,
   resolveDataSources,
 } from "./orderInputMapper.js";
-import { pluginMap as basePluginMap } from "./pluginMap.js";
-
-// richText (bold/italic inline markdown) instead of the shared map's plain
-// text; date/signature are cart-doc-only extras, not in either editor's
-// field palette, so they stay local to this file rather than in the shared
-// map.
-const pluginMap = { ...basePluginMap, text: richText, date: plugins.date, signature: plugins.signature };
+import { pluginMap } from "./pluginMap.js";
 
 // Builds one tiny single-field template sized to match the main document's
 // basePdf, for a pageText/pageURL extra page — same technique the POC's

@@ -3,18 +3,10 @@
 // -> applyTokenSubstitution -> applyConditionalVisibility -> generate()).
 // Both doc types share the same raw-input composition (contact + company data)
 // and template-resolution lookup, only the fallback template builder differs.
-import { generate } from "@pdfme/generator";
 import { documentPrintTemplateModel } from "../../models/company_setup/documentPrintTemplateModel.js";
 import { buildContactAddressTemplate } from "./contactAddressTemplate.js";
 import { buildContactEnvelopeTemplate } from "./contactEnvelopeTemplate.js";
-import { fontMap } from "./fonts.js";
-import {
-  applyConditionalVisibility,
-  applyTokenSubstitution,
-  fillMissingInputsFromContent,
-  resolveDataSources,
-} from "./orderInputMapper.js";
-import { pluginMap } from "./pluginMap.js";
+import { renderPdf } from "./renderPdf.js";
 
 // Same lookup order generateShippingLabelPdf/generateQuotationPdf use: an
 // explicitly picked template, else the company's own default for this
@@ -63,13 +55,7 @@ async function generateContactPdf(docType, fallbackBuilder, { contact, company, 
   const template = await resolveContactTemplate(tenantDB, company?.id, docType, documentTemplateId, fallbackBuilder);
   const rawInputs = buildContactRawInputs({ contact, company });
 
-  let resolvedInputs = resolveDataSources(template, rawInputs);
-  resolvedInputs = fillMissingInputsFromContent(template, resolvedInputs);
-  resolvedInputs = applyTokenSubstitution(template, resolvedInputs);
-  const visibleTemplate = applyConditionalVisibility(template, resolvedInputs);
-
-  const pdfBytes = await generate({ template: visibleTemplate, inputs: [resolvedInputs], plugins: pluginMap, options: { font: fontMap } });
-  return Buffer.from(pdfBytes);
+  return renderPdf(template, rawInputs);
 }
 
 export async function generateContactAddressPdf(args) {

@@ -1,12 +1,4 @@
-import { generate } from "@pdfme/generator";
-import { fontMap } from "./fonts.js";
-import {
-  applyConditionalVisibility,
-  applyTokenSubstitution,
-  fillMissingInputsFromContent,
-  resolveDataSources,
-} from "./orderInputMapper.js";
-import { pluginMap } from "./pluginMap.js";
+import { renderPdf } from "./renderPdf.js";
 import { buildTaskDueListTemplate, TASK_TABLE_COLUMNS } from "./taskDueListTemplate.js";
 
 // companyData: same shape generateDueTaskPdfandSendMail (taskManagementServices.js)
@@ -72,11 +64,5 @@ export async function generateTaskDueListPdf({ companyData, teamWiseTaskList, te
     noDataText: "No due task found",
   };
 
-  let resolvedInputs = resolveDataSources(template, rawInputs);
-  resolvedInputs = fillMissingInputsFromContent(template, resolvedInputs);
-  resolvedInputs = applyTokenSubstitution(template, resolvedInputs);
-  const visibleTemplate = applyConditionalVisibility(template, resolvedInputs);
-
-  const pdfBytes = await generate({ template: visibleTemplate, inputs: [resolvedInputs], plugins: pluginMap, options: { font: fontMap } });
-  return Buffer.from(pdfBytes);
+  return renderPdf(template, rawInputs);
 }

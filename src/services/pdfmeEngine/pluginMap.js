@@ -1,27 +1,30 @@
 // Single source of truth for @pdfme/generator's `plugins` option — every
 // type either Designer's field palette (DocumentDesignerView.tsx,
 // frontend-document-designer) or adminpanel's system-gallery editor
-// (Editor.tsx) actually offers MUST be registered here. Neither editor
-// restricts which field types can be added to which doc type, so a
-// generate() call missing even one entry crashes with "Plugin or renderer
-// for type X not found" the moment a template actually uses it — this bit
-// 7 different generator files independently (accountStatement/
-// accountTransaction/taskDueList/shippingLabel/employeeAccountStatement/
-// employeeAccountTransaction/generateDocument.js's main cart-doc path) the
-// same way, one at a time, before being consolidated here.
+// (Editor.tsx) actually offers MUST be registered here, and every generator
+// in this directory imports this EXACT map, unmodified — no per-file
+// overrides. A generate() call missing even one entry crashes with "Plugin
+// or renderer for type X not found" the moment a template actually uses
+// it; per-file overrides are exactly how that kept happening one file at a
+// time before this existed.
 //
-// generateDocument.js overrides `text` with its own richTextPlugin.js and
-// adds date/signature (cart-doc-only extras, not in either editor's
-// palette) — everything else imports this as-is.
+// text uses richTextPlugin.js (bold/italic inline markdown), not the
+// plain @pdfme/schemas text plugin — same reasoning as
+// rectangle/date/signature below, just registered once instead of
+// generateDocument.js/formSubmissionGenerate.js each doing their own
+// `{ ...pluginMap, text: richText }` override.
 import * as plugins from "@pdfme/schemas";
 import { customRectangle } from "./customRectanglePlugin.js";
+import { richText } from "./richTextPlugin.js";
 
 export const pluginMap = {
-  text: plugins.text,
+  text: richText,
   table: plugins.table,
   image: plugins.image,
   rectangle: customRectangle,
   ellipse: plugins.ellipse,
   line: plugins.line,
   list: plugins.list,
+  date: plugins.date,
+  signature: plugins.signature,
 };

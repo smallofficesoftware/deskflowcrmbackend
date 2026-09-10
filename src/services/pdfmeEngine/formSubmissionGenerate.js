@@ -6,22 +6,17 @@
 import fs from "fs";
 import path from "path";
 import { generate } from "@pdfme/generator";
-import { richText } from "./richTextPlugin.js";
 import { documentPrintTemplateModel } from "../../models/company_setup/documentPrintTemplateModel.js";
 import { EXPORTS_LINK_EXTENDED } from "../../utils/appConstants.js";
 import { createDocumentTemplate, resolveCompanyForPdf } from "../company_setup/documentPrintTemplateServices.js";
 import { fontMap } from "./fonts.js";
 import { applyConditionalVisibility, fillMissingInputsFromContent, resolveDataSources } from "./orderInputMapper.js";
-import { pluginMap as basePluginMap } from "./pluginMap.js";
+import { pluginMap } from "./pluginMap.js";
 import { withCompanyHeader } from "./templates.js";
 import { buildDefaultSubmissionTemplate } from "./formSubmissionTemplate.js";
 import { mainTableName, repeaterTableName } from "../form_builder/formBuilderDdlBuilder.js";
 import { resolveMasterLabels, resolveRelatedRecordLabels } from "../form_builder/formBuilderMasterRegistry.js";
 import { QueryTypes } from "sequelize";
-
-// richText (bold/italic inline markdown) instead of the shared map's plain
-// text, same as generateDocument.js's own override.
-const pluginMap = { ...basePluginMap, text: richText };
 
 export const formSubmissionDocType = (formId) => `form_${formId}`;
 

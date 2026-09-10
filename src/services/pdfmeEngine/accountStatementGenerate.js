@@ -1,7 +1,4 @@
-import { generate } from "@pdfme/generator";
-import { fontMap } from "./fonts.js";
-import { applyConditionalVisibility, applyTokenSubstitution, fillMissingInputsFromContent, resolveDataSources } from "./orderInputMapper.js";
-import { pluginMap } from "./pluginMap.js";
+import { renderPdf } from "./renderPdf.js";
 import { buildAccountStatementTemplate, STATEMENT_COLUMNS } from "./accountStatementTemplate.js";
 
 // Same toNumber/fmtNum/formatBalanceCell logic as
@@ -125,11 +122,5 @@ export async function generateAccountStatementPdf({
     noDataText: "No transactions found",
   };
 
-  let resolvedInputs = resolveDataSources(template, rawInputs);
-  resolvedInputs = fillMissingInputsFromContent(template, resolvedInputs);
-  resolvedInputs = applyTokenSubstitution(template, resolvedInputs);
-  const visibleTemplate = applyConditionalVisibility(template, resolvedInputs);
-
-  const pdfBytes = await generate({ template: visibleTemplate, inputs: [resolvedInputs], plugins: pluginMap, options: { font: fontMap } });
-  return Buffer.from(pdfBytes);
+  return renderPdf(template, rawInputs);
 }
