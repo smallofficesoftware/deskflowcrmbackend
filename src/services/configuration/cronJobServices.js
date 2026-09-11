@@ -1115,8 +1115,6 @@ export const createEmployeePayrollFromLogin = async (req, res) => {
             "daily_working_hours",
             "daily_break_hours",
             "min_present_hours",
-            "compulsary_attendance",
-            "compulsary_attendance_image",
             "week_off_days",
             "salary_type",
             "salary_amount_type_wise",
@@ -1139,10 +1137,6 @@ export const createEmployeePayrollFromLogin = async (req, res) => {
             loginData.daily_break_hours,
           min_present_hours:
             loginData.min_present_hours,
-          compulsary_attendance:
-            loginData.compulsary_attendance,
-          compulsary_attendance_image:
-            loginData.compulsary_attendance_image,
           week_off_days:
             loginData.week_off_days,
           salary_type:

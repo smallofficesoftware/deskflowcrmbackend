@@ -71,7 +71,11 @@ export const attendanceCheck = async (req) => {
         a_application_login_id: req.body.a_application_login_id,
         isDelete: 0,
       },
-      attributes: ["compulsary_attendance", "compulsary_attendance_image", "daily_out_time"],
+      // compulsary_attendance/compulsary_attendance_image moved to
+      // a_application_logins (loginModel.js) — this particular `employee`
+      // object never read them anyway (confirmed: nothing in this function
+      // references employee.compulsary_attendance*).
+      attributes: ["daily_out_time"],
       raw: true,
     });
 

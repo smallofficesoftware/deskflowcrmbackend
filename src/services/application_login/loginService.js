@@ -1336,6 +1336,9 @@ export const onLoad = async (req, res) => {
         "login_pin",
         "id",
         "isActive",
+        "compulsary_attendance",
+        "compulsary_attendance_image",
+        "compulsary_gps_app_use",
       ],
     });
 
@@ -1417,7 +1420,11 @@ export const onLoad = async (req, res) => {
         a_application_login_id: req.body.a_application_login_id,
         isDelete: 0,
       },
-      attributes: ["compulsary_attendance", "compulsary_attendance_image", "daily_out_time"],
+      // compulsary_attendance/compulsary_attendance_image/compulsary_gps_app_use
+      // moved to a_application_logins (findLogin, above) — see migrations
+      // 20260911140000-drop-compulsory-attendance-flags-from-employee-payrolls.js
+      // and 20260911140000-add-gps-compulsory-to-application-logins.js.
+      attributes: ["daily_out_time"],
       raw: true,
     });
 
@@ -1438,8 +1445,9 @@ export const onLoad = async (req, res) => {
       limit: 1,
     });
 
-    const compulsary_attendance = employee ? employee.compulsary_attendance == 1 : false;
-    const compulsary_attendance_image = employee ? employee.compulsary_attendance_image == 1 : false;
+    const compulsary_attendance = findLogin.compulsary_attendance == 1;
+    const compulsary_attendance_image = findLogin.compulsary_attendance_image == 1;
+    const compulsary_gps_app_use = findLogin.compulsary_gps_app_use == 1;
     const hasCheckedInToday =
       todayAttendance ? todayAttendance.attendance_status === 1 : false;
 
@@ -1624,6 +1632,7 @@ export const onLoad = async (req, res) => {
       SUPPORT_TICKET_INFO_MESSAGE: SUPPORT_TICKET_INFO_MESSAGE,
       compulsary_attendance,
       compulsary_attendance_image,
+      compulsary_gps_app_use,
       hasCheckedInToday,
       resultRights,
       PinNumber,

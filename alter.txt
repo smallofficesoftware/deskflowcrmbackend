@@ -3296,3 +3296,18 @@ INNER JOIN whatsapp_template_configs t2
   AND (t1.updated_at < t2.updated_at OR (t1.updated_at = t2.updated_at AND t1.id < t2.id));
 ALTER TABLE `whatsapp_template_configs` DROP INDEX `unique_module_template_user`;
 ALTER TABLE `whatsapp_template_configs` ADD UNIQUE INDEX `unique_module_template` (`module`, `template_id`);
+
+11-09-2026 Dhaval
+-- compulsary_attendance/compulsary_attendance_image were duplicated across
+-- two tables (a_application_logins, master DB, and employee_payrolls,
+-- tenant DB) with no sync between them — the Team edit screen only ever
+-- wrote the a_application_logins copy, while onLoad read the
+-- employee_payrolls copy, so an edit in the Team screen never actually
+-- changed what onLoad reported. Consolidating onto a_application_logins
+-- (the one real UI writes to) and adding "GPS Compulsory for App Use"
+-- there too, instead of introducing a third duplicate.
+-- TENANT DB:
+ALTER TABLE `employee_payrolls` DROP COLUMN `compulsary_attendance`;
+ALTER TABLE `employee_payrolls` DROP COLUMN `compulsary_attendance_image`;
+-- MASTER DB:
+ALTER TABLE `a_application_logins` ADD COLUMN `compulsary_gps_app_use` TINYINT(4) NOT NULL DEFAULT 0 COMMENT '1=>yes,0=>no' AFTER `compulsary_attendance_image`;

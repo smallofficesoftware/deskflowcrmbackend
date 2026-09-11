@@ -46,15 +46,13 @@ export const employeePayrollModel = (sequelize) => {
             type: STRING,
         },
 
-        compulsary_attendance: {
-            type: TINYINT,
-            defaultValue: 0,
-        },
-
-        compulsary_attendance_image: {
-            type: TINYINT,
-            defaultValue: 0,
-        },
+        // compulsary_attendance / compulsary_attendance_image / (GPS)
+        // compulsary_gps_app_use moved to a_application_logins
+        // (loginModel.js) — that's the only table the Team edit screen
+        // (EditTeamController.dart's commonUpdate call) ever wrote them to;
+        // this table's copies were a second, unsynced source onLoad
+        // happened to read instead. See migration
+        // 20260911140000-drop-compulsory-attendance-flags-from-employee-payrolls.js.
 
         week_off_days: {
             type: STRING,
