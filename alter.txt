@@ -3311,3 +3311,36 @@ ALTER TABLE `employee_payrolls` DROP COLUMN `compulsary_attendance`;
 ALTER TABLE `employee_payrolls` DROP COLUMN `compulsary_attendance_image`;
 -- MASTER DB:
 ALTER TABLE `a_application_logins` ADD COLUMN `compulsary_gps_app_use` TINYINT(4) NOT NULL DEFAULT 0 COMMENT '1=>yes,0=>no' AFTER `compulsary_attendance_image`;
+
+11-09-2026 Dhaval
+***** CREATE TABLE `third_party_logs` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `integration` VARCHAR(40) NOT NULL,
+  `direction` ENUM('INBOUND','OUTBOUND') NOT NULL,
+  `module_name` VARCHAR(100) NOT NULL DEFAULT '',
+  `url` VARCHAR(500) NOT NULL DEFAULT '',
+  `method` VARCHAR(10) NOT NULL DEFAULT 'POST',
+  `status_code` INT(11) NULL DEFAULT NULL,
+  `status` ENUM('SUCCESS','FAILED') NOT NULL DEFAULT 'SUCCESS',
+  `response_time` INT(11) NULL DEFAULT NULL,
+  `request_payload` LONGTEXT NULL DEFAULT NULL,
+  `response_payload` LONGTEXT NULL DEFAULT NULL,
+  `error_message` TEXT NULL DEFAULT NULL,
+  `company_masters_id` INT(11) NULL DEFAULT NULL,
+  `a_application_login_id` INT(11) NULL DEFAULT NULL,
+  `created_date_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `modified_date` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  INDEX `idx_integration` (`integration`),
+  INDEX `idx_direction` (`direction`),
+  INDEX `idx_status` (`status`),
+  INDEX `idx_company_masters_id` (`company_masters_id`),
+  INDEX `idx_created_date_time` (`created_date_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+NOTE: Run this CREATE TABLE manually on each tenant's database (same
+      lazy per-tenant model.sync() pattern as miracle_logs above — this
+      entry exists for the same reason that one does: model.sync() alone
+      creates columns but no indexes, so a tenant only gets indexed if
+      this is also run there directly).
+      The `third_party_logs` table is per-tenant, NOT in the main/shared DB.
