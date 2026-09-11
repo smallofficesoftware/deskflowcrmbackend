@@ -357,20 +357,27 @@ export const contactAssignSendMessage = async (req, detail) => {
         const personName = contactDetailFetch?.person_name?.trim();
         const recipientName = (companyName && personName && personName !== 'Unknown') ? `${companyName} ${personName}` : (companyName || personName || 'Unknown');
 
+        // Past this point we're on a QR/Baileys handler (V1/V2), not the Cloud
+        // API. template_id here is only our internal saved-config module key
+        // (resolved earlier, Cloud-only, via sendWhatsappTemplateViaBackend) -
+        // it isn't a real WhatsApp Business template name these handlers can
+        // look up. sendsContactV2Qr doesn't even forward templateName to
+        // sendToWhatsApp, so nulling `message` whenever template_id was set
+        // silently sent nothing at all. Always send the prepared text here.
         return await handler({
             sessionName,
             recipientName,
             numbers,
             text,
             phone_number: `${numbers}`,
-            message: template_id ? null : text,
+            message: text,
             whatsapp_phone_number_id,
             whatsapp_connection_id,
             whatsapp_api_key,
             a_application_login_id,
             languageCode: "hi",
             templateName: template_id,
-            messageType: template_id ? "template" : 'text',
+            messageType: 'text',
             templateVariables: {
                 "1":
                     customer_person_name === "Unknown"

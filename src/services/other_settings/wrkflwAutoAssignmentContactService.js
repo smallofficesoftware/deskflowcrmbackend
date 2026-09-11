@@ -3,6 +3,7 @@ import nodemailer from "nodemailer";
 import { Op, Sequelize } from "sequelize";
 import loginModel from "../../models/application_login/loginModel.js";
 import { wrkflwAutoAssignmentContactModel } from "../../models/other_settings/wrkflwAutoAssignmentContactModel.js";
+import { whatsappTemplateConfigsModel } from "../../models/activities/whatsappTemplateConfigsModel.js";
 import {
     isValid,
     resBadRequest,
@@ -62,7 +63,31 @@ export const insertAutoAssignmentContactDetail = async (req) => {
         const existingIds = existingRecords.map((r) => r.team_person_id);
         const newIds = uniqueIds.filter((id) => !existingIds.includes(id));
 
-        const insertList = newIds.map((team_person_id) => ({ source_type_id, country_id, state_id, city_id, area_id, template_id, team_person_id, created_date_time, text_match_description, auto_sequence_flag, is_whatsapp_email_send_flag, send_description }))
+        // The add form never sends template_id - it's configured separately via
+        // "Template Config" (updateWhatappTemplateID), which always writes the
+        // deterministic id `auto_contact_assignment_${source_type_id}` AND saves
+        // a matching row in whatsappTemplateConfigs (module = that same id).
+        // Because this screen has no true edit (only soft-delete + re-add),
+        // re-adding a rule for a source that already had a template configured
+        // must not silently drop it - fall back to that deterministic id, but
+        // only when a saved config actually exists for it; otherwise a brand
+        // new source (never configured) would get a template_id pointing at a
+        // config that doesn't exist, and sendWhatsappTemplateViaBackend would
+        // hard-fail with "No saved config found" instead of just skipping.
+        let resolvedTemplateId = template_id;
+        if (!resolvedTemplateId) {
+            const fallbackModule = `auto_contact_assignment_${source_type_id}`;
+            const existingConfig = await whatsappTemplateConfigsModel(req.tenantDB).findOne({
+                where: { module: fallbackModule, isDelete: 0 },
+                attributes: ["id"],
+                raw: true,
+            });
+            if (existingConfig) {
+                resolvedTemplateId = fallbackModule;
+            }
+        }
+
+        const insertList = newIds.map((team_person_id) => ({ source_type_id, country_id, state_id, city_id, area_id, template_id: resolvedTemplateId, team_person_id, created_date_time, text_match_description, auto_sequence_flag, is_whatsapp_email_send_flag, send_description }))
         if (insertList.length > 0) {
             const createdEntry = await wrkflwAutoAssignmentContactModelInstance.bulkCreate(insertList);
             if (isValid(createdEntry)) {
