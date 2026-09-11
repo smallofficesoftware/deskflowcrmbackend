@@ -738,11 +738,11 @@ export const sendWhatsappTemplateViaBackend = async (req) => {
         const { whx_a_application_login_id, module, contextParams, recipientPhone } = req.body;
         const whatsappTemplateConfigsModelInstance = whatsappTemplateConfigsModel(req.tenantDB);
 
-        // 1. Load saved config — isDelete:0 + order guard against the same
-        // stale-duplicate-row issue the unique-key fix addresses (see
-        // migration 20260911120000-fix-whatsapp-template-configs-unique-key.js).
+        // 1. Load saved config — order guards against the same stale-
+        // duplicate-row issue the unique-key fix addresses (see migration
+        // 20260911120000-fix-whatsapp-template-configs-unique-key.js).
         const config = await whatsappTemplateConfigsModelInstance.findOne({
-            where: { module, isDelete: 0 },
+            where: { module },
             order: [["updated_at", "DESC"]],
             raw: true
         });
