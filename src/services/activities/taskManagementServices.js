@@ -55,6 +55,7 @@ export const buildAllTaskWhere = ({
   taskFilter,
   statusFilter,
   statusFilterComan,
+  statusField,
   priorityFilter,
   startDate,
   endDate,
@@ -293,46 +294,43 @@ export const buildAllTaskWhere = ({
   //   whereClauseForDueTask.status = statusFilter;
   // }
 
+  // statusField pins the match to exactly one column (status OR
+  // external_status) instead of matching either - used by the Kanban board's
+  // Internal/External toggle so a ticket whose status and external_status
+  // happen to land on the same numeric filter value isn't pulled into both
+  // an internal-status column and an external-status column at once (that
+  // double counting is what made the Kanban board's total disagree with the
+  // plain task list). Every other caller omits it and keeps the original
+  // either-field behavior.
+  const statusColumns =
+    statusField === "status" || statusField === "external_status"
+      ? [statusField]
+      : ["status", "external_status"];
+
   if (Array.isArray(statusFilterComan) && statusFilterComan.length > 0) {
-    whereClause[Op.or] = [
-      { status: { [Op.in]: statusFilterComan } },
-      { external_status: { [Op.in]: statusFilterComan } },
-    ];
+    const clause = statusColumns.length === 1
+      ? { [statusColumns[0]]: { [Op.in]: statusFilterComan } }
+      : {
+        [Op.or]: statusColumns.map((col) => ({
+          [col]: { [Op.in]: statusFilterComan },
+        })),
+      };
 
-    whereClauseForAllTask[Op.or] = [
-      { status: { [Op.in]: statusFilterComan } },
-      { external_status: { [Op.in]: statusFilterComan } },
-    ];
-
-    whereClauseForMyTask[Op.or] = [
-      { status: { [Op.in]: statusFilterComan } },
-      { external_status: { [Op.in]: statusFilterComan } },
-    ];
-
-    whereClauseForDueTask[Op.or] = [
-      { status: { [Op.in]: statusFilterComan } },
-      { external_status: { [Op.in]: statusFilterComan } },
-    ];
+    Object.assign(whereClause, clause);
+    Object.assign(whereClauseForAllTask, clause);
+    Object.assign(whereClauseForMyTask, clause);
+    Object.assign(whereClauseForDueTask, clause);
   } else if (statusFilter) {
-    whereClause[Op.or] = [
-      { status: statusFilter },
-      { external_status: statusFilter },
-    ];
+    const clause = statusColumns.length === 1
+      ? { [statusColumns[0]]: statusFilter }
+      : {
+        [Op.or]: statusColumns.map((col) => ({ [col]: statusFilter })),
+      };
 
-    whereClauseForAllTask[Op.or] = [
-      { status: statusFilter },
-      { external_status: statusFilter },
-    ];
-
-    whereClauseForMyTask[Op.or] = [
-      { status: statusFilter },
-      { external_status: statusFilter },
-    ];
-
-    whereClauseForDueTask[Op.or] = [
-      { status: statusFilter },
-      { external_status: statusFilter },
-    ];
+    Object.assign(whereClause, clause);
+    Object.assign(whereClauseForAllTask, clause);
+    Object.assign(whereClauseForMyTask, clause);
+    Object.assign(whereClauseForDueTask, clause);
   }
 
   /* ================= LABEL FILTER ================= */
@@ -612,6 +610,7 @@ export const AllTaskGet = async (req, res) => {
       startDate,
       endDate,
       statusFilterComan,
+      statusField,
       dueFilter,
       taskCategoryFilter,
       checkedOptionsTaskassignOrNot,
@@ -695,6 +694,7 @@ export const AllTaskGet = async (req, res) => {
       taskFilter,
       statusFilter,
       statusFilterComan,
+      statusField,
       priorityFilter,
       startDate,
       endDate,
