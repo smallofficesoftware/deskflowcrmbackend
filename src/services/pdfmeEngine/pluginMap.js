@@ -13,13 +13,17 @@
 // rectangle/date/signature below, just registered once instead of
 // generateDocument.js/formSubmissionGenerate.js each doing their own
 // `{ ...pluginMap, text: richText }` override.
+// table uses richTablePlugin.js (same bold/italic markdown support, inside
+// cells) — see that file's header comment for how it reuses pdfme's own
+// pagination/text-rendering machinery instead of reimplementing it.
 import * as plugins from "@pdfme/schemas";
 import { customRectangle } from "./customRectanglePlugin.js";
+import { richTable } from "./richTablePlugin.js";
 import { richText } from "./richTextPlugin.js";
 
 export const pluginMap = {
   text: richText,
-  table: plugins.table,
+  table: richTable,
   image: plugins.image,
   rectangle: customRectangle,
   ellipse: plugins.ellipse,
