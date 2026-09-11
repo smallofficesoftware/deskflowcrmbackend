@@ -3282,3 +3282,17 @@ CREATE TABLE `form_builder_form_team_rights` (
 
 10-09-2026 Dhaval
 ALTER TABLE `document_print_templates` ADD COLUMN `system_template_id` INT(11) NULL DEFAULT NULL AFTER `template_purpose`;
+
+11-09-2026 Dhaval
+-- Collapse (module, template_id) duplicates left over by the old
+-- (module, template_id, user_id) unique key before narrowing it — an edit
+-- whose user_id didn't match the prior save's inserted a duplicate row
+-- instead of updating it, and every read path ignores user_id, so the
+-- stale original row kept showing up as "my edit didn't save".
+DELETE t1 FROM whatsapp_template_configs t1
+INNER JOIN whatsapp_template_configs t2
+  ON t1.module = t2.module
+  AND t1.template_id = t2.template_id
+  AND (t1.updated_at < t2.updated_at OR (t1.updated_at = t2.updated_at AND t1.id < t2.id));
+ALTER TABLE `whatsapp_template_configs` DROP INDEX `unique_module_template_user`;
+ALTER TABLE `whatsapp_template_configs` ADD UNIQUE INDEX `unique_module_template` (`module`, `template_id`);

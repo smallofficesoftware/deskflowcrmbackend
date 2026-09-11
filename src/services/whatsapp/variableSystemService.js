@@ -444,7 +444,13 @@ export const whatsappTemplateConfigs = async (req, res) => {
         // }
 
         const config = await whatsappTemplateConfigsModelInstance.findOne({
-            where: whereClause
+            where: whereClause,
+            // Defensive: the unique index (module, template_id) should make
+            // this a single row already (see migration
+            // 20260911120000-fix-whatsapp-template-configs-unique-key.js) —
+            // ordering here just means if a duplicate ever slips back in,
+            // the most recently saved one wins instead of an arbitrary one.
+            order: [["updated_at", "DESC"]],
         });
 
         const responseData = config
@@ -655,7 +661,11 @@ export const whatsappTemplateConfigGet = async (req) => {
 
         if (activeTeamList) {
             result.forEach((item) => {
-                const username = activeTeamList.find(e => e.id == item.user_id).username;
+                // A config saved before user_id was reliably set (the exact
+                // bug this file's other fixes address), or by a team member
+                // since removed, has no matching entry here — .find() then
+                // returns undefined, and `.username` on that threw.
+                const username = activeTeamList.find(e => e.id == item.user_id)?.username ?? null;
                 item.dataValues.username = username;
             });
         }
@@ -728,9 +738,12 @@ export const sendWhatsappTemplateViaBackend = async (req) => {
         const { whx_a_application_login_id, module, contextParams, recipientPhone } = req.body;
         const whatsappTemplateConfigsModelInstance = whatsappTemplateConfigsModel(req.tenantDB);
 
-        // 1. Load saved config
+        // 1. Load saved config — isDelete:0 + order guard against the same
+        // stale-duplicate-row issue the unique-key fix addresses (see
+        // migration 20260911120000-fix-whatsapp-template-configs-unique-key.js).
         const config = await whatsappTemplateConfigsModelInstance.findOne({
-            where: { module },
+            where: { module, isDelete: 0 },
+            order: [["updated_at", "DESC"]],
             raw: true
         });
 
