@@ -46,13 +46,26 @@ export const employeePayrollModel = (sequelize) => {
             type: STRING,
         },
 
-        // compulsary_attendance / compulsary_attendance_image / (GPS)
-        // compulsary_gps_app_use moved to a_application_logins
-        // (loginModel.js) — that's the only table the Team edit screen
-        // (EditTeamController.dart's commonUpdate call) ever wrote them to;
-        // this table's copies were a second, unsynced source onLoad
-        // happened to read instead. See migration
-        // 20260911140000-drop-compulsory-attendance-flags-from-employee-payrolls.js.
+        compulsary_attendance: {
+            type: TINYINT,
+            defaultValue: 0,
+        },
+
+        compulsary_attendance_image: {
+            type: TINYINT,
+            defaultValue: 0,
+        },
+
+        // "GPS Compulsory for App Use" — same yes/no toggle shape as
+        // compulsary_attendance_image above. Single source of truth for all
+        // three of these flags: both the web "Edit Team Member" screen
+        // (EditTeam.tsx's Attendance & Salary tab, create/update-emp-payroll)
+        // and the Flutter "Edit Team" screen write here, and onLoad
+        // (loginService.js) reads from here too.
+        compulsary_gps_app_use: {
+            type: TINYINT,
+            defaultValue: 0,
+        },
 
         week_off_days: {
             type: STRING,

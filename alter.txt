@@ -3284,11 +3284,7 @@ CREATE TABLE `form_builder_form_team_rights` (
 ALTER TABLE `document_print_templates` ADD COLUMN `system_template_id` INT(11) NULL DEFAULT NULL AFTER `template_purpose`;
 
 11-09-2026 Dhaval
--- Collapse (module, template_id) duplicates left over by the old
--- (module, template_id, user_id) unique key before narrowing it — an edit
--- whose user_id didn't match the prior save's inserted a duplicate row
--- instead of updating it, and every read path ignores user_id, so the
--- stale original row kept showing up as "my edit didn't save".
+
 DELETE t1 FROM whatsapp_template_configs t1
 INNER JOIN whatsapp_template_configs t2
   ON t1.module = t2.module
@@ -3298,19 +3294,9 @@ ALTER TABLE `whatsapp_template_configs` DROP INDEX `unique_module_template_user`
 ALTER TABLE `whatsapp_template_configs` ADD UNIQUE INDEX `unique_module_template` (`module`, `template_id`);
 
 11-09-2026 Dhaval
--- compulsary_attendance/compulsary_attendance_image were duplicated across
--- two tables (a_application_logins, master DB, and employee_payrolls,
--- tenant DB) with no sync between them — the Team edit screen only ever
--- wrote the a_application_logins copy, while onLoad read the
--- employee_payrolls copy, so an edit in the Team screen never actually
--- changed what onLoad reported. Consolidating onto a_application_logins
--- (the one real UI writes to) and adding "GPS Compulsory for App Use"
--- there too, instead of introducing a third duplicate.
--- TENANT DB:
-ALTER TABLE `employee_payrolls` DROP COLUMN `compulsary_attendance`;
-ALTER TABLE `employee_payrolls` DROP COLUMN `compulsary_attendance_image`;
--- MASTER DB:
-ALTER TABLE `a_application_logins` ADD COLUMN `compulsary_gps_app_use` TINYINT(4) NOT NULL DEFAULT 0 COMMENT '1=>yes,0=>no' AFTER `compulsary_attendance_image`;
+
+ALTER TABLE `employee_payrolls` ADD COLUMN `compulsary_gps_app_use` TINYINT(4) NULL DEFAULT 0 AFTER `compulsary_attendance_image`;
+
 
 11-09-2026 Dhaval
 ***** CREATE TABLE `third_party_logs` (
@@ -3338,9 +3324,3 @@ ALTER TABLE `a_application_logins` ADD COLUMN `compulsary_gps_app_use` TINYINT(4
   INDEX `idx_created_date_time` (`created_date_time`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
-NOTE: Run this CREATE TABLE manually on each tenant's database (same
-      lazy per-tenant model.sync() pattern as miracle_logs above — this
-      entry exists for the same reason that one does: model.sync() alone
-      creates columns but no indexes, so a tenant only gets indexed if
-      this is also run there directly).
-      The `third_party_logs` table is per-tenant, NOT in the main/shared DB.

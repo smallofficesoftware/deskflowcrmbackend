@@ -133,12 +133,6 @@ const loginModel = sequelize.define("a_application_logins", {
     defaultValue: 0,
     comment: "1=>yes,0=>no",
   },
-  compulsary_gps_app_use: {
-    type: TINYINT,
-    allowNull: false,
-    defaultValue: 0,
-    comment: "1=>yes,0=>no",
-  },
   daily_in_time: {
     type: TIME,
   },
