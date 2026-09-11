@@ -92,6 +92,7 @@ import BillOfMaterials from "./masters/billOfmaterialsRouter.js";
 import sourceOfTypesRouter from "./masters/sourceOfTypesRouter.js";
 import getTaskTemplateDataSource from "./masters/taskTemplateRouter.js";
 import miracleRoutes from "./miracle/miracleRoutes.js";
+import thirdPartyLogRouter from "./activities/thirdPartyLogRouter.js";
 import onlineStoreRouter from "./online-store/onlineStoreRouter.js";
 import supportTicketRouter from "./online-store/supportTicketRouter.js";
 import customFieldFormRouter from "./other_settings/customFieldFormRouter.js";
@@ -194,6 +195,7 @@ export default () => {
   supportTicketRouter(app);
   whatsappRoutes(app);
   miracleRoutes(app);
+  thirdPartyLogRouter(app);
   allInsightsRouter(app);
   quickSearchRouter(app);
   employeePayrollRouter(app);
