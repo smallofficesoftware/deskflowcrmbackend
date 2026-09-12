@@ -262,6 +262,22 @@ export const getTeamTaskReport = async (req) => {
         })
         console.log("Sdfsfsfsfsf", taskMasterData)
 
+        // Contact Name column (support ticket report) - batched, not per-row,
+        // same reasoning as statusData/categoryData above.
+        const contactIdsForReport = [...new Set(
+            taskMasterData
+                .map((t) => t.contact_masters_id)
+                .filter((id) => id !== null && id !== undefined)
+        )];
+        const contactDataForReport = contactIdsForReport.length > 0
+            ? await contactModel(req.tenantDB).findAll({
+                where: { id: { [Op.in]: contactIdsForReport }, isDelete: 0 },
+                attributes: ["id", "person_name"],
+                raw: true,
+            })
+            : [];
+        const contactNameById = new Map(contactDataForReport.map((c) => [c.id, c.person_name]));
+
         const dynamicFormType =
             req.body.is_support_ticket_flag == 0 ? 14 : 15;
 
@@ -417,6 +433,7 @@ export const getTeamTaskReport = async (req) => {
                 type_name: typeItem ? typeItem.type_name : "",
                 selected_days_names: selectedDaysNames ? selectedDaysNames : "",
                 created_by_name: createdByName,
+                contact_person_name: contactNameById.get(task.contact_masters_id) || "",
                 customForm: customForm,
             };
         }));
