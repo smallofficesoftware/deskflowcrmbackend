@@ -1062,6 +1062,7 @@ export async function handleVoucherAddOrUpdate({ payload, context }) {
         type: cartType,
         cart_number: cartNumber,
         cart_date: cartDate,
+        update_Date_time: cartDate,
         due_date: dueDate,
         company_masters_id: companyId,
         a_application_login_id: tenantId,
