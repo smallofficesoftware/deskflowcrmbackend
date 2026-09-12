@@ -32,6 +32,8 @@ const thirdPartyApiPatterns = [
     { pattern: /^\/api\/gimini/i, integration: "GEMINI", direction: "OUTBOUND" },
     { pattern: /^\/api\/send-whatsapp-template/i, integration: "WHATSAPP_SEND", direction: "OUTBOUND" },
     { pattern: /^\/api\/whatsapp-sender-messages/i, integration: "WHATSAPP_WEBHOOK", direction: "INBOUND" },
+    { pattern: /^\/api\/wacloudhook(\/|$)/i, integration: "WHATSAPP_CLOUD", direction: "INBOUND" },
+    { pattern: /^\/api\/add-global-search-data/i, integration: "GOOGLE_MAP", direction: "INBOUND" },
 ];
 
 function inferCrmModule(url = "") {
