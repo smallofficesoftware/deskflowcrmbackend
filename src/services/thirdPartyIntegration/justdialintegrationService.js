@@ -189,7 +189,7 @@ export const addContactByjustdialPushApi = async (req, res) => {
                 pincode: lead.pincode === "0" ? "" : lead.pincode,
                 created_date_time: `${lead.date} ${lead.time}`,
                 a_application_login_id: tenantId,
-                company_masters_id,
+                company_masters_id: a_company_id,
                 source_type_id: SOURCE_TYPE_ID,
                 assinged_to_work_a_application_id: contactAssignedIdsStr || companyIdResult.a_application_login_id,
                 company_name: companyName || "JustDial Lead",
@@ -246,7 +246,7 @@ export const addContactByjustdialPushApi = async (req, res) => {
             description: `Inquiry for ${categoryName} in ${area}, ${cityName}`,
             inquiry_date_time: `${lead.date} ${lead.time}`,
             a_application_login_id: tenantId,
-            company_masters_id,
+            company_masters_id: a_company_id,
             source_type_id: SOURCE_TYPE_ID,
         };
         const createdInquiry = await CTInquiryModel.create(inquiryEntry);
@@ -274,7 +274,7 @@ export const addContactByjustdialPushApi = async (req, res) => {
         await CTContactMessageHistoryModel.create({
             contact_masters_id: contact.id,
             a_application_login_id: tenantId,
-            company_masters_id,
+            company_masters_id: a_company_id,
             description: messageHtml,
             created_date_time: `${lead.date} ${lead.time}`,
             message_side: "2",
@@ -301,7 +301,7 @@ export const addContactByjustdialPushApi = async (req, res) => {
         // Notification
         try {
             const ownerLogins = await companyVsApplicationLoginModel.findAll({
-                where: { company_masters_id, company_flag: 1, isDelete: 0 },
+                where: { company_masters_id: a_company_id, company_flag: 1, isDelete: 0 },
                 attributes: ["a_application_login_id"],
             });
 

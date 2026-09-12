@@ -314,9 +314,16 @@ export const taskSendWhatsappMessages = async (req) => {
 
 export const contactAssignSendMessage = async (req, detail) => {
     try {
-        const { a_application_login_id, template_id, sessionName, numbers, text, customer_person_name, customer_company_name, customer_id } = detail || {};
+        const { a_application_login_id, template_id, sessionName, numbers, text, customer_person_name, customer_company_name, customer_id, company_masters_id } = detail || {};
 
-        const company = await getCompanyByLoginId(a_application_login_id);
+        // Prefer the company already resolved by the caller (e.g. waCloudHook
+        // resolves it straight from qr_code). getCompanyByLoginId falls back to
+        // "most recently mapped company for this login" when no requestContext
+        // store exists (true for webhook-triggered sends), which picks the wrong
+        // company when one login owns multiple companies.
+        const company = company_masters_id
+            ? { company_masters_id }
+            : await getCompanyByLoginId(a_application_login_id);
 
         const config = await companyVsWhatsappConfigModel.findOne({
             where: { company_id: company.company_masters_id },

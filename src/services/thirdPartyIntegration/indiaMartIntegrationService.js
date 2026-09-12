@@ -22,7 +22,12 @@ export const addContactByIndiaMart = async (req) => {
     try {
         const { date } = req.body;
         //1. companyId Fatch
-        const findCompanyId = await getCompanyByLoginId(req.body.a_application_login_id);
+        // Prefer the company id the caller already knows (e.g. the cron loop
+        // iterates per-company) over re-deriving via getCompanyByLoginId, which
+        // picks the wrong company when one login owns multiple companies.
+        const findCompanyId = req.body.company_masters_id
+            ? { company_masters_id: req.body.company_masters_id }
+            : await getCompanyByLoginId(req.body.a_application_login_id);
         const source_type_id = "-1";
         let a_company_name;
         let a_company_id;
@@ -611,12 +616,14 @@ export const addContactByIndiaMartPushApi = async (req, res) => {
 
 
 
-        const findCompanyId = await getCompanyByLoginId(findIndiaMartApiKey.dataValues.a_application_login_id);
-
         let a_company_name;
         let a_company_id;
         a_company_name = findIndiaMartApiKey.dataValues.company_name;
         a_company_id = findIndiaMartApiKey.dataValues.id;
+        // Company already resolved above via qr_code — use it directly instead
+        // of re-deriving through getCompanyByLoginId, which picks the wrong
+        // company when one login owns multiple companies.
+        const findCompanyId = { company_masters_id: a_company_id };
         const tenantId = findIndiaMartApiKey.dataValues.a_application_login_id;
         let source_type_id = -1;
         req.headers["x-tenant-id"] = tenantId;

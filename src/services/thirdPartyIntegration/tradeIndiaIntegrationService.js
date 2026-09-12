@@ -30,9 +30,12 @@ export const addContactFromTradeIndia = async (req) => {
         const { date } = req.body;
 
         //1. companyId Fatch
-        const findCompanyId = await getCompanyByLoginId(
-            req.body.a_application_login_id
-        );
+        // Prefer the company id the caller already knows (the cron loop
+        // iterates per-company) over re-deriving via getCompanyByLoginId, which
+        // picks the wrong company when one login owns multiple companies.
+        const findCompanyId = req.body.company_masters_id
+            ? { company_masters_id: req.body.company_masters_id }
+            : await getCompanyByLoginId(req.body.a_application_login_id);
 
         let a_company_name;
         let a_company_id;
@@ -591,9 +594,12 @@ export const addContactFromTradeIndiaBuyLeads = async (req) => {
     try {
         const { date } = req.body;
         //1. companyId Fatch
-        const findCompanyId = await getCompanyByLoginId(
-            req.body.a_application_login_id
-        );
+        // Prefer the company id the caller already knows (the cron loop
+        // iterates per-company) over re-deriving via getCompanyByLoginId, which
+        // picks the wrong company when one login owns multiple companies.
+        const findCompanyId = req.body.company_masters_id
+            ? { company_masters_id: req.body.company_masters_id }
+            : await getCompanyByLoginId(req.body.a_application_login_id);
         let a_company_name;
         let a_company_id;
         const source_type_id = "-13";

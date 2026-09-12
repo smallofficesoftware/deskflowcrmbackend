@@ -506,6 +506,7 @@ const sendContactWhatsappThroughTeamPerson = async (req, d) => {
         sessionName: `a${team_person}_c${a_company_id}`,
         numbers: [normalizeIndiaPrefixMinimal(contact_detail?.mobile_number)],
         a_application_login_id: team_person,
+        company_masters_id: a_company_id,
         customer_person_name: contact_detail?.person_name,
         customer_company_name: contact_detail?.company_name,
         customer_id: contact_detail?.customer_id,

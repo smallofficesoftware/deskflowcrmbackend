@@ -258,6 +258,7 @@ export const indiaMartCroneTabRunner = async (req, res) => {
       if (!req.body) req.body = {};   // <-- Important
 
       req.body.a_application_login_id = tenantId;
+      req.body.company_masters_id = company.id;
       req.body.date = date;
 
       // Create fake req object for middleware
@@ -354,6 +355,7 @@ export const tradeIndiaCroneTabRunner = async (req, res) => {
       if (!req.body) req.body = {};
 
       req.body.a_application_login_id = tenantId;
+      req.body.company_masters_id = company.id;
       req.body.date = date;
 
       // Create fake req object for middleware
@@ -442,6 +444,7 @@ export const tradeIndiaBuyLeadsCroneTabRunner = async (req, res) => {
       if (!req.body) req.body = {};
 
       req.body.a_application_login_id = tenantId;
+      req.body.company_masters_id = company.id;
 
       // Create fake req object for middleware
       const fakeReq = {
