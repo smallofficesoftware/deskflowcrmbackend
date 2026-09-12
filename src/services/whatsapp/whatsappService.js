@@ -17,6 +17,7 @@ import { PAGE_ID } from "../../utils/AppEnumeration.js";
 import { isValid, normalizeToTenDigit, resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { accountPDFv1, allAccountTransactionOfContactPDF } from "../activities/accountTransactionServices.js";
 import { pdfOrder } from "../activities/orderServices.js";
+import { insertThirdPartyLog } from "../activities/thirdPartyLogService.js";
 import { getCompanyByLoginId, insertStagesAndStatusLogs } from "../commonServices.js";
 import { sendMultipleNotification } from "../company_setup/thirdPartyIntegrationService.js";
 import { autoAssignmentContactIdsGet, prepareMailAndWhatsappSenderToTheContact } from "../other_settings/wrkflwAutoAssignmentContactService.js";
@@ -344,7 +345,22 @@ export const contactAssignSendMessage = async (req, detail) => {
             req.body.contextParams = { customerId: customer_id, appId: a_application_login_id };
             req.body.module = template_id;
             req.body.whx_a_application_login_id = a_application_login_id;
+            const start = Date.now();
             const response = await sendWhatsappTemplateViaBackend(req);
+            insertThirdPartyLog(req.tenantDB, {
+                integration: "WHATSAPP_AUTO_ASSIGN",
+                direction: "OUTBOUND",
+                module_name: "auto_assignment_contact_send",
+                url: "sendWhatsappTemplateViaBackend",
+                status_code: response?.code || null,
+                status: response?.ack === 1 ? "SUCCESS" : "FAILED",
+                response_time: Date.now() - start,
+                request_payload: { numbers, template_id },
+                response_payload: response,
+                error_message: response?.ack === 1 ? null : (response?.data || response?.ack_msg),
+                company_masters_id: company.company_masters_id,
+                a_application_login_id,
+            });
             return response;
         }
 
@@ -371,7 +387,8 @@ export const contactAssignSendMessage = async (req, detail) => {
         // look up. sendsContactV2Qr doesn't even forward templateName to
         // sendToWhatsApp, so nulling `message` whenever template_id was set
         // silently sent nothing at all. Always send the prepared text here.
-        return await handler({
+        const qrStart = Date.now();
+        const qrResponse = await handler({
             sessionName,
             recipientName,
             numbers,
@@ -395,6 +412,21 @@ export const contactAssignSendMessage = async (req, detail) => {
             },
             axios
         });
+        insertThirdPartyLog(req.tenantDB, {
+            integration: "WHATSAPP_AUTO_ASSIGN",
+            direction: "OUTBOUND",
+            module_name: "auto_assignment_contact_send",
+            url: "contactAssignSendMessage (QR/Baileys)",
+            status_code: qrResponse?.code || null,
+            status: qrResponse?.ack === 1 ? "SUCCESS" : "FAILED",
+            response_time: Date.now() - qrStart,
+            request_payload: { numbers, template_id },
+            response_payload: qrResponse,
+            error_message: qrResponse?.ack === 1 ? null : (qrResponse?.data || qrResponse?.ack_msg),
+            company_masters_id: company.company_masters_id,
+            a_application_login_id,
+        });
+        return qrResponse;
     } catch (error) {
         console.log("contactAssignSendMessage Error", error);
         return resBadRequest({ developer_msg: `error ${error}` });
