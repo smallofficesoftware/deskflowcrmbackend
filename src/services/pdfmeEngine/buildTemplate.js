@@ -476,6 +476,36 @@ function buildHsnAndTotalsFields() {
   ];
 }
 
+// Additive alternative to buildHsnAndTotalsFields' per-row layout above —
+// one pdfme table field instead of N individually positioned label/value
+// rows, fed by orderInputMapper.js's "totalsTable" input (which already
+// only includes the rows applicable to a given transaction). Never gaps,
+// since a row that doesn't apply is simply absent from the table's data
+// rather than an empty reserved slot - but the whole block becomes one
+// draggable object (no more per-row repositioning) and every row shares
+// one bodyStyles (no more Grand Total's distinct bold/green or Payable
+// Amount's orange - pdfme table styling is uniform per table, not per
+// row). Not called from buildDocTemplate() below - swap it in for
+// buildHsnAndTotalsFields() only where the table layout is wanted, so
+// every already-saved company template (built with the per-row version)
+// is completely unaffected by this existing.
+export function buildCompactTotalsTableField() {
+  return tableField({
+    name: "totalsTable",
+    position: { x: 105, y: 200 },
+    width: 95,
+    height: 45,
+    showHead: false,
+    content: JSON.stringify([["Sub Total", "0.00"]]),
+    columnStyles: {
+      0: { alignment: "left" },
+      1: { alignment: "right" },
+    },
+    bodyStyles: { fontSize: 8, alignment: "left", padding: { top: 1, right: 2, bottom: 1, left: 2 } },
+    tableStyles: { borderWidth: 0 },
+  });
+}
+
 export function buildDocTemplate(
   docTitle,
   {

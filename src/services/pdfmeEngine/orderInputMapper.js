@@ -598,6 +598,54 @@ export function buildInputsForCart({ company, buyer, order, computed, items, pen
 
     hsnTaxTable: JSON.stringify(totals.hsnTaxRows ?? []),
 
+    // totalsTable: additive alternative to the per-row fields above, for a
+    // template that wants one pdfme table field instead of N individually
+    // positioned rows — see buildTemplate.js's buildCompactTotalsTableField.
+    // Only rows that actually apply to this transaction are included, so
+    // the table has no blank/gap rows regardless of which optional charges
+    // are present; trades away per-row Designer drag/reposition and Grand
+    // Total's distinct bold/green styling (pdfme table styles are uniform
+    // per table, not per row) for a template that opts into this instead.
+    // Never touches the classic per-row fields above, and is a no-op for
+    // any template whose schema doesn't reference "totalsTable".
+    totalsTable: JSON.stringify(
+      [
+        ["Sub Total", computed?.subTotal ?? ""],
+        computed?.packingCharge && Number(computed.packingCharge) !== 0
+          ? [totals.packingChargeLabel ?? "Packing Charge", num(computed.packingCharge)]
+          : null,
+        computed?.transportCharge && Number(computed.transportCharge) !== 0
+          ? [totals.transportChargeLabel ?? "Transport Charge", num(computed.transportCharge)]
+          : null,
+        totals.cashDiscountAmount
+          ? [totals.cashDiscountLabel ?? "Cash Discount", num(totals.cashDiscountAmount)]
+          : null,
+        ["Total Taxable Amount", computed?.taxableAmount ?? ""],
+        Number(computed?.gstAmount) > 0
+          ? [
+            totals.isSameState ? "CGST" : "IGST",
+            num(totals.isSameState ? Number(computed.gstAmount) / 2 : computed.gstAmount),
+          ]
+          : null,
+        Number(computed?.gstAmount) > 0 && totals.isSameState
+          ? ["SGST", num(Number(computed.gstAmount) / 2)]
+          : null,
+        computed?.tcsAmount && Number(computed.tcsAmount) !== 0
+          ? [totals.tcsLabel ?? "TCS", num(computed.tcsAmount)]
+          : null,
+        computed?.roundOff && Number(computed.roundOff) !== 0
+          ? ["Round Off", num(computed.roundOff)]
+          : null,
+        ["Grand Total", computed?.grandTotal ?? ""],
+        computed?.advancePayment && Number(computed.advancePayment) !== 0
+          ? ["Advance Received Amount", num(computed.advancePayment)]
+          : null,
+        computed?.advancePayment && Number(computed.advancePayment) !== 0
+          ? ["Payable Amount", num(computed.payableAmount)]
+          : null,
+      ].filter(Boolean),
+    ),
+
     // totalsBlock/grandTotalWords: legacy single-block fields, superseded
     // by the per-row fields above — no longer bound to a visible field in
     // buildDocTemplate.js, kept here only so a template saved before this
