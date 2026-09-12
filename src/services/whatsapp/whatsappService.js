@@ -872,6 +872,7 @@ export const waCloudHook = async (req, res) => {
                     person_name,
                     created_date_time,
                     source_type_id: SOURCE_TYPE_ID,
+                    company_masters_id,
                     a_application_login_id: companyRecord.a_application_login_id,
                     assinged_to_work_a_application_id: contactAssignedIdsStr || companyRecord.a_application_login_id
                 });

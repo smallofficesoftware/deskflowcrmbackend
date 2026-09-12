@@ -9,12 +9,18 @@ import Sequelize, { Op } from "sequelize";
 import { getUserRights } from '../../helpers/rightsHelper.js';
 import { buildSearchQuery } from '../../helpers/searchAlgoV1.js';
 import { tenantMiddleware } from "../../middlewares/tenantMiddleware.js";
+import { accountTransactionsModel } from "../../models/activities/accountTransactionsModel.js";
+import { callhistoryModel } from "../../models/activities/callhistoryModel.js";
+import { cartItemModel } from "../../models/activities/cartItemsModel.js";
 import { cartModel } from "../../models/activities/cartsModel.js";
 import { contactMessageHistory } from "../../models/activities/contactMessageHistoryModel.js";
 import { contactModel } from "../../models/activities/contactModel.js";
 import { inquiryModel } from "../../models/activities/inquiryModel.js";
 import { routePlanVsContactsModel } from "../../models/activities/routePlanVsContactsModel.js";
 import { reminderMessagesModel } from "../../models/activities/reminderMessagesModel.js";
+import { taskManagementModel } from "../../models/activities/taskManagementModel.js";
+import { visitsModel } from "../../models/activities/visitModel.js";
+import { JobCardsModel } from "../../models/production/JobCardsModel.js";
 import { applicationLoginTypeRightModel } from "../../models/application_login/applicationLoginTypeRightModel.js";
 import loginModel from "../../models/application_login/loginModel.js";
 import companyModel from "../../models/company_setup/companyModel.js";
@@ -746,7 +752,6 @@ export const addContact = async (req, res) => {
       const existingMobileNum = await COTModel.findOne({
         where: {
           mobile_number: contactBody.mobile_number,
-          company_masters_id: findCompanyId.company_masters_id,
           isDelete: 0,
         },
         attributes: ["mobile_number", "person_name", "id"],
@@ -1245,7 +1250,7 @@ export const addContactByQR = async (req, res) => {
     });
     let contactCreate;
     contactCreate = await contactData.findOne({
-      where: { mobile_number, company_masters_id, isDelete: 0 },
+      where: { mobile_number, isDelete: 0 },
       attributes: ["mobile_number", "person_name", "id"],
     });
     if (
@@ -3176,7 +3181,6 @@ export const CreateContactWithReminder = async (req, res) => {
     contactData = await COTModel.findOne({
       where: {
         isDelete: 0,
-        company_masters_id: findCompanyId.company_masters_id,
         mobile_number: {
           [Op.like]: `%${normalizedMobile}`,
         },
@@ -4174,7 +4178,6 @@ export const checkContactMobileDuplicate = async (req, res) => {
       const existingMobileNum = await COTModel.findOne({
         where: {
           mobile_number: normalizedMobile,
-          company_masters_id: findCompanyId.company_masters_id,
           isDelete: 0,
         },
         attributes: ["mobile_number", "person_name", "id"],
@@ -4534,4 +4537,192 @@ export async function buildContactWhereClause({
   }
   return { whereClause, relevanceOrder, findCompanyId, showAllData, showPersonalData };
 }
+
+// Every table that references a contact by id. Shared by the merge-preview
+// (counts only) and the actual merge (repoints then soft-deletes) so the
+// two can never drift out of sync with each other.
+const CONTACT_LINKED_TABLES = [
+  { label: "inquiries", model: inquiryModel, column: "contact_master_id" },
+  { label: "contact_message_histories", model: contactMessageHistory, column: "contact_masters_id" },
+  { label: "task_managements", model: taskManagementModel, column: "contact_masters_id" },
+  { label: "reminder_messages", model: reminderMessagesModel, column: "contact_masters_id" },
+  { label: "account_transactions", model: accountTransactionsModel, column: "contact_masters_id" },
+  { label: "cart_items", model: cartItemModel, column: "contact_master_id" },
+  { label: "carts", model: cartModel, column: "to_customer_id" },
+  { label: "call_histories", model: callhistoryModel, column: "contact_id" },
+  { label: "route_plan_vs_contacts", model: routePlanVsContactsModel, column: "contact_id" },
+  { label: "visits", model: visitsModel, column: "contact_id" },
+  { label: "job_cards", model: JobCardsModel, column: "contact_id" },
+];
+
+export const getDuplicateContactGroups = async (req) => {
+  try {
+    const { a_application_login_id } = req.body;
+    const findCompanyId = await getCompanyByLoginId(a_application_login_id);
+    if (!findCompanyId) {
+      return resError({ ack_msg: "Company not found", developer_msg: "Company not found" });
+    }
+
+    const COTModel = contactModel(req.tenantDB);
+
+    const dupGroups = await COTModel.findAll({
+      where: { isDelete: 0, company_masters_id: findCompanyId.company_masters_id },
+      attributes: ["mobile_number"],
+      group: ["mobile_number"],
+      having: Sequelize.literal("COUNT(id) > 1"),
+      raw: true,
+    });
+
+    const mobiles = dupGroups.map((g) => g.mobile_number).filter(Boolean);
+    if (!mobiles.length) {
+      return resSuccess({ ack_msg: "No duplicate contacts found", data: [] });
+    }
+
+    const contacts = await COTModel.findAll({
+      where: {
+        isDelete: 0,
+        company_masters_id: findCompanyId.company_masters_id,
+        mobile_number: { [Op.in]: mobiles },
+      },
+      attributes: ["id", "person_name", "mobile_number", "raw_mobile_number", "source_type_id", "created_date_time"],
+      order: [["mobile_number", "ASC"], ["created_date_time", "ASC"]],
+      raw: true,
+    });
+
+    const groupsByMobile = {};
+    contacts.forEach((c) => {
+      (groupsByMobile[c.mobile_number] ||= []).push(c);
+    });
+
+    const data = Object.entries(groupsByMobile).map(([mobile_number, groupContacts]) => ({
+      mobile_number,
+      contacts: groupContacts,
+    }));
+
+    return resSuccess({ ack_msg: "success", data });
+  } catch (error) {
+    logger.error("getDuplicateContactGroups error:", error);
+    return resBadRequest({ developer_msg: error.message });
+  }
+};
+
+export const getContactMergePreview = async (req) => {
+  try {
+    const { a_application_login_id, contact_ids } = req.body;
+    if (!Array.isArray(contact_ids) || contact_ids.length < 2) {
+      return resError({
+        ack_msg: "At least two contact_ids are required",
+        developer_msg: "contact_ids must be an array of 2 or more ids",
+      });
+    }
+
+    const findCompanyId = await getCompanyByLoginId(a_application_login_id);
+    if (!findCompanyId) {
+      return resError({ ack_msg: "Company not found", developer_msg: "Company not found" });
+    }
+
+    const COTModel = contactModel(req.tenantDB);
+    const contacts = await COTModel.findAll({
+      where: {
+        id: { [Op.in]: contact_ids },
+        company_masters_id: findCompanyId.company_masters_id,
+        isDelete: 0,
+      },
+      attributes: ["id", "person_name", "mobile_number", "raw_mobile_number", "source_type_id", "created_date_time"],
+      raw: true,
+    });
+
+    if (contacts.length !== contact_ids.length) {
+      return resError({
+        ack_msg: "One or more contacts were not found in this company",
+        developer_msg: "contact id mismatch",
+      });
+    }
+
+    const activity = {};
+    for (const { label, model, column } of CONTACT_LINKED_TABLES) {
+      const modelInstance = model(req.tenantDB);
+      const rows = await modelInstance.findAll({
+        where: { [column]: { [Op.in]: contact_ids } },
+        attributes: [
+          [column, "contact_id"],
+          [Sequelize.fn("COUNT", Sequelize.col("id")), "cnt"],
+          [Sequelize.fn("MAX", Sequelize.col("created_date_time")), "newest"],
+        ],
+        group: [column],
+        raw: true,
+      });
+      activity[label] = rows;
+    }
+
+    return resSuccess({ ack_msg: "success", data: { contacts, activity } });
+  } catch (error) {
+    logger.error("getContactMergePreview error:", error);
+    return resBadRequest({ developer_msg: error.message });
+  }
+};
+
+export const mergeContact = async (req) => {
+  const transaction = await req.tenantDB.transaction();
+  try {
+    const { a_application_login_id, keep_id, merge_id } = req.body;
+    if (!keep_id || !merge_id || Number(keep_id) === Number(merge_id)) {
+      await transaction.rollback();
+      return resError({
+        ack_msg: "keep_id and merge_id are required and must differ",
+        developer_msg: "invalid keep_id/merge_id",
+      });
+    }
+
+    const findCompanyId = await getCompanyByLoginId(a_application_login_id);
+    if (!findCompanyId) {
+      await transaction.rollback();
+      return resError({ ack_msg: "Company not found", developer_msg: "Company not found" });
+    }
+
+    const COTModel = contactModel(req.tenantDB);
+    const [keepContact, mergeContactRow] = await Promise.all([
+      COTModel.findOne({
+        where: { id: keep_id, company_masters_id: findCompanyId.company_masters_id, isDelete: 0 },
+      }),
+      COTModel.findOne({
+        where: { id: merge_id, company_masters_id: findCompanyId.company_masters_id, isDelete: 0 },
+      }),
+    ]);
+
+    if (!keepContact || !mergeContactRow) {
+      await transaction.rollback();
+      return resError({
+        ack_msg: "Both contacts must exist in this company",
+        developer_msg: "keep_id or merge_id not found",
+      });
+    }
+
+    const repointedCounts = {};
+    for (const { label, model, column } of CONTACT_LINKED_TABLES) {
+      const modelInstance = model(req.tenantDB);
+      const [count] = await modelInstance.update(
+        { [column]: keep_id },
+        { where: { [column]: merge_id }, transaction }
+      );
+      repointedCounts[label] = count;
+    }
+
+    await COTModel.update(
+      { isDelete: 1 },
+      { where: { id: merge_id }, transaction }
+    );
+
+    await transaction.commit();
+
+    return resSuccess({
+      ack_msg: "Contacts merged successfully",
+      data: { keep_id, merge_id, repointed: repointedCounts },
+    });
+  } catch (error) {
+    await transaction.rollback();
+    logger.error("mergeContact error:", error);
+    return resBadRequest({ developer_msg: error.message });
+  }
+};
 
