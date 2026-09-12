@@ -28,6 +28,7 @@ const SOCKET_EVENT_MAP = {
   CreateContactWithReminder: "contact-changed",
   visitingCardReadInsertContactProvider: "contact-changed",
   mergeContactProvider: ["contact-changed", "task-changed", "support-ticket-changed"],
+  waCloudHookProvider: ["contact-changed", "contact-chat-changed"],
   createcreateCustomerSupportTicketAllTask: "support-ticket-changed",
   convertSupportTicketAllTask: ["task-changed", "support-ticket-changed"],
 };

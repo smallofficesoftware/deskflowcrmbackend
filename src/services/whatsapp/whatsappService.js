@@ -850,7 +850,20 @@ export const waCloudHook = async (req, res) => {
         let description = message;
         let message_type_ = message_type;
         let recipent_number_ = recipent_number;
-        const created_date_time = moment(new Date(timestamp)).format("YYYY-MM-DD HH:mm:ss") || moment(currentDateTime).format("YYYY-MM-DD HH:mm:ss");
+        // `timestamp` can arrive as a numeric epoch (WhatsApp sends seconds, not
+        // milliseconds - passing it straight to `new Date()` produced 1970-era
+        // dates) or as an already-formatted date/time string, depending on the
+        // provider. Handle both, and fall back to now when it's missing/invalid.
+        let created_date_time;
+        const numericTimestamp = Number(timestamp);
+        if (timestamp && String(timestamp).trim() !== "" && !isNaN(numericTimestamp)) {
+            const timestampMs = numericTimestamp > 1e12 ? numericTimestamp : numericTimestamp * 1000;
+            created_date_time = moment(new Date(timestampMs)).format("YYYY-MM-DD HH:mm:ss");
+        } else if (timestamp && moment(timestamp).isValid()) {
+            created_date_time = moment(timestamp).format("YYYY-MM-DD HH:mm:ss");
+        } else {
+            created_date_time = moment(currentDateTime).format("YYYY-MM-DD HH:mm:ss");
+        }
 
         const checkIsNumberExist = await CTContactModel.findOne({
             where: { isDelete: 0, mobile_number: mobile_number },
@@ -872,13 +885,15 @@ export const waCloudHook = async (req, res) => {
                     person_name,
                     created_date_time,
                     source_type_id: SOURCE_TYPE_ID,
-                    company_masters_id,
+                    company_masters_id: a_company_id,
                     a_application_login_id: companyRecord.a_application_login_id,
                     assinged_to_work_a_application_id: contactAssignedIdsStr || companyRecord.a_application_login_id
                 });
             isNewContact = contactReponse ? true : false;
 
         }
+
+        req.body.contact_id = contactReponse.id;
 
         const createdInquiry = await CTInquiryModel.create(
             {
@@ -930,14 +945,18 @@ export const waCloudHook = async (req, res) => {
             });
         }
 
-        const messageEntry = await CTContactMessageHistoryModel.create({
-            contact_masters_id: contactReponse.id,
-            a_application_login_id: companyRecord.a_application_login_id,
-            description,
-            created_date_time: created_date_time,
-            message_side: "2",
-            message_type_id: "0",
-        });
+        const hasMessageText = typeof description === "string" && description.trim() !== "";
+        const messageEntry = hasMessageText
+            ? await CTContactMessageHistoryModel.create({
+                contact_masters_id: contactReponse.id,
+                company_masters_id: a_company_id,
+                a_application_login_id: companyRecord.a_application_login_id,
+                description,
+                created_date_time: created_date_time,
+                message_side: "2",
+                message_type_id: "0",
+            })
+            : null;
 
         if (createdInquiry || messageEntry) {
             await CTContactModel.update(
