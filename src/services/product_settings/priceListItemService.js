@@ -385,8 +385,6 @@ export const getExportsPriceListForUpdateData = async (req) => {
     const priceListData =
       await priceListModelIntance.findAll({
         where: {
-          company_masters_id:
-            companyDetail.company_masters_id,
           pricelist_masters_id: pricelistId,
           isDelete: 0,
         },
@@ -403,8 +401,6 @@ export const getExportsPriceListForUpdateData = async (req) => {
     const productList =
       await productModelIntance.findAll({
         where: {
-          company_masters_id:
-            companyDetail.company_masters_id,
           isDelete: 0,
         },
         attributes: [
