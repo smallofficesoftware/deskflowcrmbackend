@@ -27,6 +27,7 @@ import { resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { generateAccountStatementPdf } from "../pdfmeEngine/accountStatementGenerate.js";
 import { generateContactAddressPdf, generateContactEnvelopePdf } from "../pdfmeEngine/contactPrintGenerate.js";
 import { defaultTemplateForDocType } from "../pdfmeEngine/defaultTemplateForDocType.js";
+import { buildCompactTotalsTableField } from "../pdfmeEngine/buildTemplate.js";
 import { generateAccountTransactionPdf } from "../pdfmeEngine/accountTransactionGenerate.js";
 import { generateEmployeeAccountStatementPdf } from "../pdfmeEngine/employeeAccountStatementGenerate.js";
 import { generateEmployeeAccountTransactionPdf } from "../pdfmeEngine/employeeAccountTransactionGenerate.js";
@@ -1521,6 +1522,22 @@ export const testRunDocumentTemplate = async (req) => {
 // cart-shaped types). The editor lists this template's first-page fields in
 // a dropdown; picking one re-inserts that field verbatim (name/columns/
 // styles/position) — the generic palette can only add a blank field.
+// Doc types with no totals box at all (buildPendingOrderTemplate's 3-column
+// fulfillment tracker, and the 8 non-cart-shaped builders) — none of them
+// get the extra catalog-only field appended below.
+const NO_TOTALS_BLOCK_DOC_TYPES = new Set([
+  "accountStatement",
+  "accountTransaction",
+  "employeeAccountStatement",
+  "employeeAccountTransaction",
+  "taskDueList",
+  "shippingLabel",
+  "contactAddress",
+  "contactEnvelope",
+  "pendingSalesOrder",
+  "pendingPurchaseOrder",
+]);
+
 export const getDefaultTemplateForDocType = async (req) => {
   try {
     const doc_type = req.body?.doc_type || req.query?.doc_type;
@@ -1528,6 +1545,22 @@ export const getDefaultTemplateForDocType = async (req) => {
       return resError({ developer_msg: "doc_type is required" });
     }
     const template = defaultTemplateForDocType(doc_type);
+    // This response only feeds the Document Designer's "Add Field" picker
+    // (defaultTemplateForDocType.js's own comment) — it is never used to
+    // seed an actual new template or a generate-time fallback, both of
+    // which call defaultTemplateForDocType/getTemplate directly. So it's
+    // safe to append catalog-only fields here that are real, insertable
+    // pdfme fields but deliberately never part of the real default
+    // template — buildCompactTotalsTableField's own comment explains why
+    // (additive alternative to the per-row totals fields, opt-in only).
+    if (!NO_TOTALS_BLOCK_DOC_TYPES.has(doc_type)) {
+      const withCatalogFields = structuredClone(template);
+      withCatalogFields.schemas[0] = [
+        ...(withCatalogFields.schemas[0] || []),
+        buildCompactTotalsTableField(),
+      ];
+      return resSuccess({ data: { item: { template: withCatalogFields } } });
+    }
     return resSuccess({ data: { item: { template } } });
   } catch (e) {
     console.error("getDefaultTemplateForDocType error:", e);
