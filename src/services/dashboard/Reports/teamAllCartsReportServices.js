@@ -42,9 +42,13 @@ export const getTeamAllCarts = async (req) => {
       endDate.setHours(23, 59, 59, 999);
 
       dateFilter = {
-        update_Date_time: {
-          [Op.between]: [startDate, endDate],
-        },
+        [Op.or]: [
+          { update_Date_time: { [Op.between]: [startDate, endDate] } },
+          {
+            update_Date_time: null,
+            created_date_time: { [Op.between]: [startDate, endDate] },
+          },
+        ],
       };
     }
 
