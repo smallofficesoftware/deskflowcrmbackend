@@ -4553,6 +4553,7 @@ const CONTACT_LINKED_TABLES = [
   { label: "route_plan_vs_contacts", model: routePlanVsContactsModel, column: "contact_id" },
   { label: "visits", model: visitsModel, column: "contact_id" },
   { label: "job_cards", model: JobCardsModel, column: "contact_id" },
+  { label: "contact_masters", model: contactModel, column: "referance_contact" },
 ];
 
 export const getDuplicateContactGroups = async (req) => {

@@ -117,6 +117,12 @@ export const PAGE_ID = {
   // this was based on was stale/wrong. 178 was MAX(id)+1 at the time this
   // was added.
   FORM_BUILDER: "178",
+  // Find/Merge Duplicate Contacts (All Contact Report ⋮ menu + Settings ⋮
+  // menu). id 179 = "next after 178" — UNVERIFIED against a live DB; every
+  // prior addition in this block (159, 160, 178) found that assumption
+  // wrong at least once because adminpanel shares this same table. VERIFY
+  // (SELECT MAX(id) FROM a_application_pages) before running the migration.
+  CONTACT_MERGE: "179",
   // Add more pages as needed
 };
 // config/googleApi.ts
