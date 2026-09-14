@@ -29,6 +29,7 @@ export const getTeamAllCarts = async (req) => {
     const referenceWiseContact = req.body.referenceWiseContact || "";
     const selectedGstOptions = req.body.selectedGstOptions || [];
     const selectedTrasactionModeOptions = req.body.selectedTrasactionModeOptions || null;
+    const selectedApproveStatus = req.body.selectedApproveStatus || "";
     const { ll, ul } = req.body;
     const offset = ul
     const limit = ll
@@ -154,6 +155,15 @@ export const getTeamAllCarts = async (req) => {
       whereForCart.transaction_mode = 1;
     } else if (selectedTrasactionModeOptions == 2) {
       whereForCart.transaction_mode = 2;
+    }
+
+    // Approve status filter — mirrors the is_approve badge shown on the
+    // report itself (cart.cart_number != '' => Approved), not
+    // update_Date_time, since drafts never populate that column.
+    if (selectedApproveStatus === "Approved") {
+      whereForCart.cart_number = { [Op.ne]: "" };
+    } else if (selectedApproveStatus === "Draft") {
+      whereForCart.cart_number = "";
     }
     const CartItem = cartItemModel(req.tenantDB);
 
