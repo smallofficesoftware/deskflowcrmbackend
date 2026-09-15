@@ -81,7 +81,7 @@ export const addContactFromTradeIndia = async (req) => {
                     ack_msg: error.response.data?.message ||
                         error.response.data?.error ||
                         "External API request failed",
-                    developer_msg: `TradeIndia API returned HTTP status ${response.status}`,
+                    developer_msg: `TradeIndia API returned HTTP status ${error.response.status}`,
                     data: error.response.data
                 });
             }
@@ -90,14 +90,14 @@ export const addContactFromTradeIndia = async (req) => {
             if (error.request) {
                 return resError({
                     ack_msg: "No response from external service",
-                    developer_msg: `TradeIndia API returned HTTP status ${response.status}`,
+                    developer_msg: "TradeIndia API request timed out or received no response",
                 });
             }
 
             // Axios config / timeout / misc
             return resError({
                 ack_msg: error.message,
-                developer_msg: `TradeIndia API returned HTTP status ${response.status}`,
+                developer_msg: `TradeIndia API request failed: ${error.message}`,
             });
         }
 

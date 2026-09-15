@@ -54,7 +54,12 @@ export const MAIL_SETTING_HOST_USER_PASSWORD = process.env.MAIL_SETTING_HOST_USE
 
 // Time is set in hours
 export const JWT_TOKEN_EXPIRES_TIME = process.env.JWT_TOKEN_EXPIRES_TIME;
-export const JWT_TOKEN_SIGNATURE = "abcd123456789";
+// Was a hardcoded literal ("abcd123456789") committed to source - same weak
+// secret across every environment, forgeable by anyone who can read this
+// file. Falls back to the old value only so nothing breaks before every
+// .env file gets JWT_TOKEN_SIGNATURE set; set a real random secret in each
+// environment's own .env and this fallback stops mattering.
+export const JWT_TOKEN_SIGNATURE = process.env.JWT_TOKEN_SIGNATURE || "abcd123456789";
 // Tent Config
 export const TENANT_DB_HOST_NAME = process.env.TENANT_DB_HOST_NAME;
 export const TENANT_DB_USER_NAME = process.env.TENANT_DB_USER_NAME;
