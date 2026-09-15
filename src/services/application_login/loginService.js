@@ -1620,25 +1620,36 @@ export const onLoad = async (req, res) => {
     // calendar (marketing site) already reads — next upcoming event only,
     // same isDelete/isActive/date filters as that public query
     // (publicEvent.service.js's getMonthEvents), no status_id filter since
-    // that query doesn't apply one either. Only event_title/event_date
-    // queried — this table is owned by the adminpanel repo's own migration
-    // chain, not this one, so a column added there (start_time) can exist
-    // in code here before it's actually migrated on a given environment's
-    // DB ("Unknown column 'start_time'"); stick to the two original
-    // columns every environment has always had. try/catch below is the
-    // remaining safety net for any future drift on this externally-owned
-    // table — must never take onLoad down with it.
+    // that query doesn't apply one either. This table is owned by the
+    // adminpanel repo's own migration chain, not this one, so a column
+    // added there (start_time) can exist in code here before it's actually
+    // migrated on a given environment's DB — try WITH start_time first,
+    // fall back to WITHOUT it only if that's what actually fails, so an
+    // unmigrated environment still gets the date, just no time. Outer
+    // catch is the remaining safety net for anything else going wrong on
+    // this externally-owned table — must never take onLoad down with it.
     let nextEvent = null;
     try {
-      nextEvent = await eventMasterModel.findOne({
-        where: {
-          isDelete: 0,
-          isActive: 1,
-          event_date: { [Op.gte]: moment().format("YYYY-MM-DD") },
-        },
-        attributes: ["event_title", "event_date"],
-        order: [["event_date", "ASC"], ["id", "ASC"]],
-      });
+      const nextEventWhere = {
+        isDelete: 0,
+        isActive: 1,
+        event_date: { [Op.gte]: moment().format("YYYY-MM-DD") },
+      };
+      const nextEventOrder = [["event_date", "ASC"], ["id", "ASC"]];
+      try {
+        nextEvent = await eventMasterModel.findOne({
+          where: nextEventWhere,
+          attributes: ["event_title", "event_date", "start_time"],
+          order: nextEventOrder,
+        });
+      } catch (e) {
+        if (!/unknown column/i.test(e.message)) throw e;
+        nextEvent = await eventMasterModel.findOne({
+          where: nextEventWhere,
+          attributes: ["event_title", "event_date"],
+          order: nextEventOrder,
+        });
+      }
     } catch (e) {
       console.error("next_training_event lookup failed:", e.message);
     }
@@ -1650,6 +1661,7 @@ export const onLoad = async (req, res) => {
         ? {
             title: nextEvent.dataValues.event_title,
             date: nextEvent.dataValues.event_date,
+            start_time: nextEvent.dataValues.start_time ?? null,
           }
         : null,
       review: reviewStatus,
