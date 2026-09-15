@@ -514,6 +514,13 @@ export function buildInputsForCart({ company, buyer, order, computed, items, pen
     companyGSTIN: company?.gstin ?? "",
     companyMobile: company?.mobile ?? "",
     companyEmail: company?.email ?? "",
+    // signatureImage (buildTemplate.js) is a page field (schemas[0], part of
+    // buildHsnAndTotalsFields' output), unlike header/logo/footer which are
+    // staticSchema fields withCompanyHeader() resolves separately — a page
+    // field only ever gets real data through `inputs` at generate time, so
+    // without this the signature never rendered no matter what was set in
+    // company settings.
+    companySignatureImage: company?.signImage ?? "",
 
     buyerCompanyName: buyer?.companyName ?? "",
     buyerContactName: buyer?.contactName ?? "",
