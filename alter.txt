@@ -3298,8 +3298,9 @@ ALTER TABLE `whatsapp_template_configs` ADD UNIQUE INDEX `unique_module_template
 ALTER TABLE `employee_payrolls` ADD COLUMN `compulsary_gps_app_use` TINYINT(4) NULL DEFAULT 0 AFTER `compulsary_attendance_image`;
 
 
-11-09-2026 Dhaval
-***** CREATE TABLE `third_party_logs` (
+15-09-2026 Dhaval
+-- migration: migration/tenant/migrations/20260915130000-create-third-party-logs.js
+CREATE TABLE `third_party_logs` (
   `id` INT(11) NOT NULL AUTO_INCREMENT,
   `integration` VARCHAR(40) NOT NULL,
   `direction` ENUM('INBOUND','OUTBOUND') NOT NULL,
@@ -3363,3 +3364,59 @@ INSERT INTO `a_application_pages` (`page_name`, `modual_name`, `page_slug`, `des
 ('Event Type Master', 'Platform', 'event-types', 'Event Type Master', '1', '40', '0', '1', NOW(), UNIX_TIMESTAMP(), '0', '1'),
 ('Event Master', 'Platform', 'events', 'Event Master', '1', '41', '0', '1', NOW(), UNIX_TIMESTAMP(), '0', '1'),
 ('Event Participant Master', 'Platform', 'event-participants', 'Event Participant Master', '1', '42', '0', '1', NOW(), UNIX_TIMESTAMP(), '0', '1');
+
+05-09-2026 Dhaval
+-- migration: migration/master/migrations/20260905140000-add-icon-to-system-report-definitions.js
+ALTER TABLE `system_report_definitions` ADD `icon` VARCHAR(255) NULL DEFAULT NULL;
+
+05-09-2026 Dhaval
+-- migration: migration/master/migrations/20260905160000-add-dashboard-builder-application-page.js
+-- id 160 = "next after 159" assumption - VERIFY against live table before running (same caution report_builder's own migration flagged; form_builder's equivalent id (178, not the assumed 161) turned out wrong for the same reason).
+INSERT INTO `a_application_pages` (`id`, `page_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (160, 'Dashboard Builder', 'dashboard_builder', 'Dashboard Builder', '0', '0', '0', '1', NOW(), UNIX_TIMESTAMP(), '0', '1');
+INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `extra_information`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, '1', '160', '0', '', NOW(), current_timestamp(), '0', '1'), (NULL, '2', '160', '0', '', NOW(), current_timestamp(), '0', '1'), (NULL, '3', '160', '0', '', NOW(), current_timestamp(), '0', '1'), (NULL, '4', '160', '0', '', NOW(), current_timestamp(), '0', '1');
+
+05-09-2026 Dhaval
+-- migration: migration/master/migrations/20260905180000-create-system-dashboard-definitions.js
+CREATE TABLE `system_dashboard_definitions` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `name` VARCHAR(255) NULL,
+  `description` TEXT NULL,
+  `category` VARCHAR(255) NULL,
+  `priority` ENUM('critical','high','normal') NULL,
+  `icon` VARCHAR(255) NULL,
+  `display_order` INT(11) NOT NULL DEFAULT 0,
+  `isDelete` TINYINT(4) NOT NULL DEFAULT 0,
+  `isActive` TINYINT(4) NOT NULL DEFAULT 1,
+  `created_date_time` DATETIME NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+ALTER TABLE `system_dashboard_definitions` ADD INDEX `idx_system_dashboard_definitions_category`(`category`);
+
+05-09-2026 Dhaval
+-- migration: migration/master/migrations/20260905180001-create-system-dashboard-widgets.js
+CREATE TABLE `system_dashboard_widgets` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `system_dashboard_definition_id` INT(11) NOT NULL,
+  `widget_type` VARCHAR(255) NOT NULL,
+  `title` VARCHAR(255) NULL,
+  `model_key` VARCHAR(255) NOT NULL,
+  `label_column` VARCHAR(255) NULL,
+  `value_column` VARCHAR(255) NOT NULL,
+  `aggregate` VARCHAR(255) NULL,
+  `position_x` INT(11) NOT NULL DEFAULT 0,
+  `position_y` INT(11) NOT NULL DEFAULT 0,
+  `width` INT(11) NOT NULL DEFAULT 4,
+  `height` INT(11) NOT NULL DEFAULT 3,
+  `display_order` INT(11) NOT NULL DEFAULT 0,
+  `isDelete` TINYINT(4) NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+ALTER TABLE `system_dashboard_widgets` ADD INDEX `idx_system_dashboard_widgets_definition`(`system_dashboard_definition_id`, `isDelete`);
+
+08-09-2026 Dhaval
+-- migration: migration/master/migrations/20260908130000-add-form-builder-application-page.js
+-- id 178, verified against live DB (161 already taken; 162-177 are adminpanel's own pages sharing this table).
+INSERT INTO `a_application_pages` (`id`, `page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (178, 'Form Builder', 'Form Builder', 'form_builder', 'Custom Form Maker', '0', '0', '0', '1', NOW(), UNIX_TIMESTAMP(), '0', '1');
+INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `extra_information`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, '1', '178', '0', '', NOW(), current_timestamp(), '0', '1'), (NULL, '2', '178', '0', '', NOW(), current_timestamp(), '0', '1'), (NULL, '3', '178', '0', '', NOW(), current_timestamp(), '0', '1'), (NULL, '4', '178', '0', '', NOW(), current_timestamp(), '0', '1');
