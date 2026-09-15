@@ -7,14 +7,16 @@
  * independent of CONTACT's (id 1), so this destructive action can be
  * granted or withheld per role without affecting normal contact rights.
  *
- * id 179 chosen as "next after 178" (FORM_BUILDER) — UNVERIFIED against a
- * live DB. VERIFY (SELECT MAX(id) FROM a_application_pages) before running
- * this in any environment: every prior page added this way (159, 160, 178)
- * found that assumption wrong at least once, because adminpanel shares
- * this same table with rows not visible from the CRM codebase.
+ * id 184 — VERIFIED against the live a_application_pages table
+ * (2026-09-15, dev): 179 through 183 were already taken (179 = "Add On
+ * Master", ...183 = "Event Participant Master", none visible from the CRM
+ * codebase — adminpanel shares this same table). MAX(id) was 183, so 184
+ * is next. Still worth a MAX(id) re-check before running in an
+ * environment that diverged from dev, same caution every prior page added
+ * this way (159, 160, 178) needed at least once.
  */
 
-const CONTACT_MERGE_PAGE_ID = 179;
+const CONTACT_MERGE_PAGE_ID = 184;
 
 export const up = async (queryInterface, Sequelize) => {
   const [existingPage] = await queryInterface.sequelize.query(

@@ -118,11 +118,10 @@ export const PAGE_ID = {
   // was added.
   FORM_BUILDER: "178",
   // Find/Merge Duplicate Contacts (All Contact Report ⋮ menu + Settings ⋮
-  // menu). id 179 = "next after 178" — UNVERIFIED against a live DB; every
-  // prior addition in this block (159, 160, 178) found that assumption
-  // wrong at least once because adminpanel shares this same table. VERIFY
-  // (SELECT MAX(id) FROM a_application_pages) before running the migration.
-  CONTACT_MERGE: "179",
+  // menu). id 184 — VERIFIED against live a_application_pages (2026-09-15,
+  // dev): 179-183 were already taken by other rows not visible from the
+  // CRM codebase (adminpanel shares this table); MAX(id) was 183.
+  CONTACT_MERGE: "184",
   // Add more pages as needed
 };
 // config/googleApi.ts
@@ -271,6 +270,27 @@ export const NUMBER_SERIES_PATTERN_RULE = {
 }
 // Do Not Remove This code
 Object.freeze(NUMBER_SERIES_PATTERN_RULE);
+
+// Cart type -> the company_masters column holding that type's configured
+// series prefix(es). Single source of truth for getNumberSeries
+// (sharedFunctions.js, generates our own cart_numbers) and
+// parseSrByPrefixAndNumber (miracleWebhookService.js, recovers
+// sr_by_prifix/sr_by_number from Miracle's already-formatted invoice
+// number) - keep both in sync by editing only this map.
+export const CART_TYPE_TO_PREFIX_FIELD = {
+  1: "quotation_prefix",
+  2: "order_prefix",
+  3: "invoice_prefix",
+  4: "purchase_prefix",
+  5: "purchase_ord_prefix",
+  6: "return_sales_invoice_prefix",
+  7: "return_purchase_invoice_prefix",
+  8: "inward_prefix",
+  9: "dispatch_prefix",
+  12: "proforma_invoice_prefix"
+};
+// Do Not Remove This code
+Object.freeze(CART_TYPE_TO_PREFIX_FIELD);
 
 export const SALES_DEFINED_IDS_FOR_STATUS = {
   2: {
