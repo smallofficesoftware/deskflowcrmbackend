@@ -3324,3 +3324,14 @@ ALTER TABLE `employee_payrolls` ADD COLUMN `compulsary_gps_app_use` TINYINT(4) N
   INDEX `idx_created_date_time` (`created_date_time`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+
+15-09-2026 Dhaval
+-- migration: migration/master/migrations/20260914120000-add-contact-merge-application-page.js
+-- id corrected 179 -> 184 (179 was already taken in the live table by an unrelated row)
+INSERT INTO `a_application_pages` (`id`, `page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (184, 'Find/Merge Duplicate Contacts', 'Contact', 'contact_merge', 'Find and merge duplicate contacts', '0', '0', '0', '1', NOW(), UNIX_TIMESTAMP(), '0', '1');
+INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `extra_information`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, '1', '184', '0', '', NOW(), current_timestamp(), '0', '1'), (NULL, '2', '184', '0', '', NOW(), current_timestamp(), '0', '1'), (NULL, '3', '184', '0', '', NOW(), current_timestamp(), '0', '1'), (NULL, '4', '184', '0', '', NOW(), current_timestamp(), '0', '1');
+
+15-09-2026 Dhaval
+-- migration: migration/master/migrations/20260915120000-add-serial-number-stock-check-application-page.js
+INSERT INTO `a_application_pages` (`id`, `page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (185, 'Serial Number Wise Stock Check', 'Product', 'serial_number_stock_check', 'Track stock movement for a specific serial number', '0', '0', '0', '1', NOW(), UNIX_TIMESTAMP(), '0', '1');
+INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `extra_information`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, '1', '185', '0', '', NOW(), current_timestamp(), '0', '1'), (NULL, '2', '185', '0', '', NOW(), current_timestamp(), '0', '1'), (NULL, '3', '185', '0', '', NOW(), current_timestamp(), '0', '1'), (NULL, '4', '185', '0', '', NOW(), current_timestamp(), '0', '1');
