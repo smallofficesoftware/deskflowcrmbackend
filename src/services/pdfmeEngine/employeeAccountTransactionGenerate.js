@@ -1,11 +1,5 @@
-import { generate } from "@pdfme/generator";
-import * as plugins from "@pdfme/schemas";
-import { loadFonts } from "./fonts.js";
-import { applyTokenSubstitution, fillMissingInputsFromContent, resolveDataSources } from "./orderInputMapper.js";
+import { renderPdf } from "./renderPdf.js";
 import { buildEmployeeAccountTransactionTemplate } from "./employeeAccountTransactionTemplate.js";
-
-const fontMap = loadFonts();
-const pluginMap = { text: plugins.text };
 
 // Team's OWN generate function — deliberately NOT reusing
 // accountTransactionGenerate.js's generateAccountTransactionPdf, even though
@@ -90,10 +84,5 @@ export async function generateEmployeeAccountTransactionPdf({
     thankYouText: "Thank You!",
   };
 
-  let resolvedInputs = resolveDataSources(template, rawInputs);
-  resolvedInputs = fillMissingInputsFromContent(template, resolvedInputs);
-  resolvedInputs = applyTokenSubstitution(template, resolvedInputs);
-
-  const pdfBytes = await generate({ template, inputs: [resolvedInputs], plugins: pluginMap, options: { font: fontMap } });
-  return Buffer.from(pdfBytes);
+  return renderPdf(template, rawInputs, { applyVisibility: false });
 }

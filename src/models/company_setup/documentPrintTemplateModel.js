@@ -55,6 +55,14 @@ export const documentPrintTemplateModel = (sequelize) => {
             type: STRING,
             defaultValue: "main",
         },
+        // Nullable reference to the system_document_templates row this was
+        // created FROM via "Copy from Gallery" (copyFromSystemTemplate) —
+        // null for a template built from scratch. Lets Document Designer
+        // offer "Reset to Default": re-fetch that system template's CURRENT
+        // template_json and overwrite this row's draft with it.
+        system_template_id: {
+            type: INTEGER,
+        },
         // Per-template toggle (not company-wide) — only meaningful on
         // template_purpose='main' rows of the 7 cart-shaped doc types.
         // When on, generate-time splices each cart item's product's own

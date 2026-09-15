@@ -22,3 +22,23 @@ export const logAuditEvent = async (req, { module_key, action, entity_type, enti
     console.log("logAuditEvent failed:", e);
   }
 };
+
+// Read-side companion to logAuditEvent — was missing entirely (the file
+// only ever wrote). form_builder is the first module that needs to read
+// its own history back for a UI (form-level and submission-level history,
+// see formBuilderService.js's getFormAuditLog and
+// formBuilderSubmissionService.js's getSubmissionAuditLog), but this is
+// generic and reusable across the whole app the same way logAuditEvent
+// already is — any future module can call this too.
+export const listAuditLog = async (req, { entity_type, entity_id }) => {
+  const model = auditLogModel(req.tenantDB);
+  const rows = await model.findAll({
+    where: { entity_type, entity_id },
+    order: [["created_date_time", "DESC"]],
+    raw: true,
+  });
+  return rows.map((row) => ({
+    ...row,
+    details: row.details ? JSON.parse(row.details) : null,
+  }));
+};

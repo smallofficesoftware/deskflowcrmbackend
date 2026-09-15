@@ -20,7 +20,10 @@ import {
   generateContactSampleSheet,
   getAllContact,
   getContactByIds,
+  getContactMergePreview,
+  getDuplicateContactGroups,
   getExportsContacts,
+  mergeContact,
   singleContactGet,
   visitingCardReadByGeminiAndInsertDetail
 } from "../../services/activities/contactService.js";
@@ -44,6 +47,18 @@ export const createContactByOnlineStore = async (req, res) => {
 
 export const getContactById = async (req, res) => {
   await callServiceMethod(req, res, getContactByIds(req), "getContactById");
+};
+
+export const duplicateContactGroups = async (req, res) => {
+  await callServiceMethod(req, res, getDuplicateContactGroups(req), "duplicateContactGroups");
+};
+
+export const contactMergePreview = async (req, res) => {
+  await callServiceMethod(req, res, getContactMergePreview(req), "contactMergePreview");
+};
+
+export const mergeContactProvider = async (req, res) => {
+  await callServiceMethod(req, res, mergeContact(req), "mergeContactProvider");
 };
 
 export const contactAddressPrint = async (req, res) => {

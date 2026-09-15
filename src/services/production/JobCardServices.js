@@ -732,10 +732,48 @@ export const submitUnifiedProductionEntry = async (req) => {
             rejection_items = []
         } = req.body;
 
-        // Finished-good product id. For order job cards the frontend historically
-        // sent it as `order_item_id`; for product-direct job cards it sends the
-        // real product id in `product_id`. Prefer the explicit one.
-        const fgProductId = req.body.product_id || order_item_id;
+        // Finished-good product id. BUG (client-reported: finished goods entry
+        // never gets recorded for order-based job cards): the old code used
+        // `order_item_id` directly as the product id whenever `product_id`
+        // wasn't sent - but for job_card_type 1 (from order), item_id/
+        // order_item_id is a cart_items.id, NOT a products.id (confirmed by
+        // jobCardsDetails' own resolution below, and by its comment at line
+        // ~414: "type 1 -> item_id is a cart_items.id"). That wrong id was
+        // never found in productCache (built from real product ids only), so
+        // step 3A's `if (produced_qty > 0 && productCache[fgProductId])`
+        // guard silently skipped the whole FG stock-inward entry - no error,
+        // just nothing recorded. Resolve the REAL product id here the same
+        // way jobCardsDetails already does for the read side, instead of
+        // trusting order_item_id as-is.
+        const jobCardRow = await JobCardsModel(req.tenantDB).findOne({
+            where: { id: job_id, isDelete: 0 },
+            raw: true,
+        });
+        const jobCardType = Number(jobCardRow?.job_card_type) || 1;
+        const isProductDirect = jobCardType === 2 || jobCardType === 3;
+        const targetItemId = jobCardRow?.item_id || jobCardRow?.order_item_id || order_item_id;
+
+        let fgProductId = req.body.product_id;
+        if (!fgProductId) {
+            if (isProductDirect) {
+                // type 2/3 -> item_id IS already a products.id.
+                fgProductId = targetItemId;
+            } else {
+                // type 1 -> resolve the cart_items row's own product id.
+                // item_product_id is the only real column here (confirmed in
+                // cartItemsModel.js - no plain product_id column exists on
+                // this table, unlike jobCardsDetails' unrestricted `raw`
+                // fetch where reading a nonexistent .product_id is just
+                // harmless undefined; an explicit `attributes` whitelist
+                // naming a column that doesn't exist would instead throw).
+                const cartItemRow = await cartItemModel(req.tenantDB).findOne({
+                    where: { id: targetItemId, isDelete: 0 },
+                    attributes: ["item_product_id"],
+                    raw: true,
+                });
+                fgProductId = cartItemRow?.item_product_id;
+            }
+        }
 
         // Initialize Models
         const productModelInstance = productModel(req.tenantDB);

@@ -131,6 +131,16 @@ export function applyConditionalVisibility(template, resolvedInputs) {
 // company_masters.watermark_in_print (1=off, 2=on) exactly as it works
 // today (orderServices.js:4661-4671): centered, translucent, same logo,
 // same position on every generate. Not part of template_json.
+//
+// Lives on basePdf.staticSchema, not cloned.schemas — staticSchema is the
+// fixed overlay @pdfme/generator repeats on EVERY page automatically
+// (same mechanism the company header/footer images use), whereas
+// cloned.schemas only covers pages that exist in the template JSON at
+// this point. itemsTable's own dynamic pagination (rows overflowing onto
+// new pages) creates those pages internally, inside generate() itself,
+// AFTER this function returns — a schemas-array approach (the previous
+// version of this fix) can only ever cover pages that already existed
+// before that happens, leaving every overflow page unwatermarked.
 export function injectWatermarkField(template, company) {
   if (company?.watermark_in_print != 2 || !company?.logoImage) return template;
 
@@ -138,8 +148,8 @@ export function injectWatermarkField(template, company) {
   const { width, height } = cloned.basePdf;
   const boxSize = Math.min(width, height) * 0.55;
 
-  cloned.schemas[0] = [
-    ...cloned.schemas[0],
+  cloned.basePdf.staticSchema = [
+    ...(cloned.basePdf.staticSchema || []),
     {
       name: "__watermark",
       type: "image",
@@ -155,13 +165,13 @@ export function injectWatermarkField(template, company) {
 }
 
 // UPI payment QR — same deep link the old EJS pipeline builds
-// (orderServices.js:4494-4505), only for the same 3 doc types that get it
-// today (cart.type 1/2/3 — Quotation/Sales Order/Sales Invoice), only when
-// the company has enabled printSetting.paymentQR AND configured UPI
-// details. Same "resolved fresh at generate time, never baked into the
-// saved template_json" reasoning as the watermark above — async because
-// QR PNG generation is, unlike everything else in this file.
-const PAYMENT_QR_DOC_TYPES = ["quotation", "salesOrder", "salesInvoice"];
+// (orderServices.js:4494-4505), for the same doc types that get it today
+// (cart.type 1/2/3/12 — Quotation/Sales Order/Sales Invoice/Proforma
+// Invoice), only when the company has enabled printSetting.paymentQR AND
+// configured UPI details. Same "resolved fresh at generate time, never
+// baked into the saved template_json" reasoning as the watermark above —
+// async because QR PNG generation is, unlike everything else in this file.
+const PAYMENT_QR_DOC_TYPES = ["quotation", "salesOrder", "salesInvoice", "proformaInvoice"];
 
 export async function injectPaymentQRField(template, { docType, company, order, payableAmount }) {
   if (!PAYMENT_QR_DOC_TYPES.includes(docType)) return template;
@@ -184,9 +194,17 @@ export async function injectPaymentQRField(template, { docType, company, order, 
     return template;
   }
 
+  // basePdf.staticSchema, not cloned.schemas[0] — same reasoning as
+  // injectWatermarkField above: itemsTable's dynamic pagination creates
+  // overflow pages internally, inside generate() itself, after this
+  // function returns, so a schemas[0]-only placement never reaches them.
+  // The QR encodes a fixed total amount regardless of which page it lands
+  // on, so repeating it on every page (rather than trying to target
+  // specifically whichever page ends up last) is both correct and the only
+  // option that's actually reachable here.
   const cloned = structuredClone(template);
-  cloned.schemas[0] = [
-    ...cloned.schemas[0],
+  cloned.basePdf.staticSchema = [
+    ...(cloned.basePdf.staticSchema || []),
     {
       name: "__paymentQR",
       type: "image",
@@ -496,6 +514,13 @@ export function buildInputsForCart({ company, buyer, order, computed, items, pen
     companyGSTIN: company?.gstin ?? "",
     companyMobile: company?.mobile ?? "",
     companyEmail: company?.email ?? "",
+    // signatureImage (buildTemplate.js) is a page field (schemas[0], part of
+    // buildHsnAndTotalsFields' output), unlike header/logo/footer which are
+    // staticSchema fields withCompanyHeader() resolves separately — a page
+    // field only ever gets real data through `inputs` at generate time, so
+    // without this the signature never rendered no matter what was set in
+    // company settings.
+    companySignatureImage: company?.signImage ?? "",
 
     buyerCompanyName: buyer?.companyName ?? "",
     buyerContactName: buyer?.contactName ?? "",
@@ -579,6 +604,54 @@ export function buildInputsForCart({ company, buyer, order, computed, items, pen
     noteText: totals.note ?? "",
 
     hsnTaxTable: JSON.stringify(totals.hsnTaxRows ?? []),
+
+    // totalsTable: additive alternative to the per-row fields above, for a
+    // template that wants one pdfme table field instead of N individually
+    // positioned rows — see buildTemplate.js's buildCompactTotalsTableField.
+    // Only rows that actually apply to this transaction are included, so
+    // the table has no blank/gap rows regardless of which optional charges
+    // are present; trades away per-row Designer drag/reposition and Grand
+    // Total's distinct bold/green styling (pdfme table styles are uniform
+    // per table, not per row) for a template that opts into this instead.
+    // Never touches the classic per-row fields above, and is a no-op for
+    // any template whose schema doesn't reference "totalsTable".
+    totalsTable: JSON.stringify(
+      [
+        ["Sub Total", computed?.subTotal ?? ""],
+        computed?.packingCharge && Number(computed.packingCharge) !== 0
+          ? [totals.packingChargeLabel ?? "Packing Charge", num(computed.packingCharge)]
+          : null,
+        computed?.transportCharge && Number(computed.transportCharge) !== 0
+          ? [totals.transportChargeLabel ?? "Transport Charge", num(computed.transportCharge)]
+          : null,
+        totals.cashDiscountAmount
+          ? [totals.cashDiscountLabel ?? "Cash Discount", num(totals.cashDiscountAmount)]
+          : null,
+        ["Total Taxable Amount", computed?.taxableAmount ?? ""],
+        Number(computed?.gstAmount) > 0
+          ? [
+            totals.isSameState ? "CGST" : "IGST",
+            num(totals.isSameState ? Number(computed.gstAmount) / 2 : computed.gstAmount),
+          ]
+          : null,
+        Number(computed?.gstAmount) > 0 && totals.isSameState
+          ? ["SGST", num(Number(computed.gstAmount) / 2)]
+          : null,
+        computed?.tcsAmount && Number(computed.tcsAmount) !== 0
+          ? [totals.tcsLabel ?? "TCS", num(computed.tcsAmount)]
+          : null,
+        computed?.roundOff && Number(computed.roundOff) !== 0
+          ? ["Round Off", num(computed.roundOff)]
+          : null,
+        ["Grand Total", computed?.grandTotal ?? ""],
+        computed?.advancePayment && Number(computed.advancePayment) !== 0
+          ? ["Advance Received Amount", num(computed.advancePayment)]
+          : null,
+        computed?.advancePayment && Number(computed.advancePayment) !== 0
+          ? ["Payable Amount", num(computed.payableAmount)]
+          : null,
+      ].filter(Boolean),
+    ),
 
     // totalsBlock/grandTotalWords: legacy single-block fields, superseded
     // by the per-row fields above — no longer bound to a visible field in

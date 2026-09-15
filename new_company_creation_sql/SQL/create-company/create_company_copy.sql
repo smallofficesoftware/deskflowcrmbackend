@@ -117,6 +117,7 @@ CREATE TABLE `lock_controls` LIKE smalloffice_sample_tenant.lock_controls;
 CREATE TABLE `route_planners` LIKE smalloffice_sample_tenant.route_planners;
 CREATE TABLE `route_plan_vs_contacts` LIKE smalloffice_sample_tenant.route_plan_vs_contacts;
 CREATE TABLE `miracle_logs` LIKE smalloffice_sample_tenant.miracle_logs;
+CREATE TABLE `third_party_logs` LIKE smalloffice_sample_tenant.third_party_logs;
 CREATE TABLE `user_column_preferences` LIKE smalloffice_sample_tenant.user_column_preferences;
 CREATE TABLE `document_print_templates` LIKE smalloffice_sample_tenant.document_print_templates;
 ALTER TABLE `document_print_templates`  DISABLE KEYS;
@@ -129,6 +130,14 @@ CREATE TABLE `document_print_template_versions` LIKE smalloffice_sample_tenant.d
 CREATE TABLE `audit_logs` LIKE smalloffice_sample_tenant.audit_logs;
 CREATE TABLE `report_definitions` LIKE smalloffice_sample_tenant.report_definitions;
 CREATE TABLE `report_runs` LIKE smalloffice_sample_tenant.report_runs;
+CREATE TABLE `report_definition_team_rights` LIKE smalloffice_sample_tenant.report_definition_team_rights;
+CREATE TABLE `report_groups` LIKE smalloffice_sample_tenant.report_groups;
+CREATE TABLE `report_schedules` LIKE smalloffice_sample_tenant.report_schedules;
+CREATE TABLE `dashboards` LIKE smalloffice_sample_tenant.dashboards;
+CREATE TABLE `dashboard_widgets` LIKE smalloffice_sample_tenant.dashboard_widgets;
+CREATE TABLE `form_builder_forms` LIKE smalloffice_sample_tenant.form_builder_forms;
+CREATE TABLE `form_builder_submission_files` LIKE smalloffice_sample_tenant.form_builder_submission_files;
+CREATE TABLE `form_builder_form_team_rights` LIKE smalloffice_sample_tenant.form_builder_form_team_rights;
 
 CREATE TABLE `adjustment_types` LIKE smalloffice_sample_tenant.adjustment_types;
 ALTER TABLE `adjustment_types`  DISABLE KEYS;

@@ -8,6 +8,10 @@
  * MySQL's MODIFY COLUMN replaces the whole column definition, so that
  * migration silently dropped id's AUTO_INCREMENT and PRIMARY KEY. Backfill
  * any NULL ids left behind by that gap before restoring the constraint.
+ *
+ * Guarded against re-run: some server copies never actually lost the PK
+ * (this migration was a no-op there), so ADD PRIMARY KEY would otherwise
+ * fail with "Multiple primary key defined".
  */
 
 export const up = async (queryInterface, Sequelize) => {
@@ -20,11 +24,22 @@ export const up = async (queryInterface, Sequelize) => {
     WHERE id IS NULL
     ORDER BY updated_date;
   `);
-  await queryInterface.sequelize.query(`
-    ALTER TABLE socket_connections
-    MODIFY id INT(11) NOT NULL AUTO_INCREMENT,
-    ADD PRIMARY KEY (id);
-  `);
+
+  const indexes = await queryInterface.showIndex("socket_connections");
+  const hasPrimaryKey = indexes.some((i) => i.primary);
+
+  if (hasPrimaryKey) {
+    await queryInterface.sequelize.query(`
+      ALTER TABLE socket_connections
+      MODIFY id INT(11) NOT NULL AUTO_INCREMENT;
+    `);
+  } else {
+    await queryInterface.sequelize.query(`
+      ALTER TABLE socket_connections
+      MODIFY id INT(11) NOT NULL AUTO_INCREMENT,
+      ADD PRIMARY KEY (id);
+    `);
+  }
 };
 
 export const down = async (queryInterface, Sequelize) => {

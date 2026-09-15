@@ -990,7 +990,7 @@ export const orderCreate = async (req, res) => {
 
       await sendMultipleNotification({
         deviceTokens: uniqueTokens,
-        title: `New ${orderType}`,
+        title: `New ${orderType} #${cartId} Created by ${username} for ${assigned_team_member?.person_name || "customer"}`,
         body: notificationBody,
       });
     } else {
@@ -4474,7 +4474,7 @@ const generateSingleOrderPdf = async (req, res) => {
       // 100KB is already generous for that; skip embedding (same graceful
       // "" fallback already used for a missing file) rather than crash the
       // whole PDF over one oversized image.
-      const MAX_EMBEDDED_IMAGE_BYTES = 100 * 1024;
+      const MAX_EMBEDDED_IMAGE_BYTES = 600 * 1024;
       const encodeImageToBase64 = (filePath) => {
         try {
           const image = fs.readFileSync(filePath);

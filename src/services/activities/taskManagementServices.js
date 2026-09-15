@@ -55,6 +55,7 @@ export const buildAllTaskWhere = ({
   taskFilter,
   statusFilter,
   statusFilterComan,
+  statusField,
   priorityFilter,
   startDate,
   endDate,
@@ -73,6 +74,7 @@ export const buildAllTaskWhere = ({
   contact_masters_id,
   labelwiseContactShowAndOrNot,
   labelFilter,
+  demographyContactIds,
 }) => {
 
   const currentDate = moment().format("YYYY-MM-DD HH:mm:ss");
@@ -134,6 +136,22 @@ export const buildAllTaskWhere = ({
       ...whereClauseForDueTask,
       contact_masters_id: contactId,
     };
+  }
+
+  // ─── Demography filter (Country/State/City) — a ticket has no geography
+  // of its own, only the contact it's linked to does, so the caller already
+  // resolved matching contact ids for us. Skip if a single contact is
+  // already pinned above (that's the more specific "view this contact's
+  // tasks" mode).
+  if (!contact_masters_id && demographyContactIds) {
+    const idsFilter = {
+      [Op.in]: demographyContactIds.length > 0 ? demographyContactIds : [-1],
+    };
+
+    whereClause = { ...whereClause, contact_masters_id: idsFilter };
+    whereClauseForAllTask = { ...whereClauseForAllTask, contact_masters_id: idsFilter };
+    whereClauseForMyTask = { ...whereClauseForMyTask, contact_masters_id: idsFilter };
+    whereClauseForDueTask = { ...whereClauseForDueTask, contact_masters_id: idsFilter };
   }
 
   /* ================= STATUS BASE LOGIC ================= */
@@ -276,46 +294,43 @@ export const buildAllTaskWhere = ({
   //   whereClauseForDueTask.status = statusFilter;
   // }
 
+  // statusField pins the match to exactly one column (status OR
+  // external_status) instead of matching either - used by the Kanban board's
+  // Internal/External toggle so a ticket whose status and external_status
+  // happen to land on the same numeric filter value isn't pulled into both
+  // an internal-status column and an external-status column at once (that
+  // double counting is what made the Kanban board's total disagree with the
+  // plain task list). Every other caller omits it and keeps the original
+  // either-field behavior.
+  const statusColumns =
+    statusField === "status" || statusField === "external_status"
+      ? [statusField]
+      : ["status", "external_status"];
+
   if (Array.isArray(statusFilterComan) && statusFilterComan.length > 0) {
-    whereClause[Op.or] = [
-      { status: { [Op.in]: statusFilterComan } },
-      { external_status: { [Op.in]: statusFilterComan } },
-    ];
+    const clause = statusColumns.length === 1
+      ? { [statusColumns[0]]: { [Op.in]: statusFilterComan } }
+      : {
+        [Op.or]: statusColumns.map((col) => ({
+          [col]: { [Op.in]: statusFilterComan },
+        })),
+      };
 
-    whereClauseForAllTask[Op.or] = [
-      { status: { [Op.in]: statusFilterComan } },
-      { external_status: { [Op.in]: statusFilterComan } },
-    ];
-
-    whereClauseForMyTask[Op.or] = [
-      { status: { [Op.in]: statusFilterComan } },
-      { external_status: { [Op.in]: statusFilterComan } },
-    ];
-
-    whereClauseForDueTask[Op.or] = [
-      { status: { [Op.in]: statusFilterComan } },
-      { external_status: { [Op.in]: statusFilterComan } },
-    ];
+    Object.assign(whereClause, clause);
+    Object.assign(whereClauseForAllTask, clause);
+    Object.assign(whereClauseForMyTask, clause);
+    Object.assign(whereClauseForDueTask, clause);
   } else if (statusFilter) {
-    whereClause[Op.or] = [
-      { status: statusFilter },
-      { external_status: statusFilter },
-    ];
+    const clause = statusColumns.length === 1
+      ? { [statusColumns[0]]: statusFilter }
+      : {
+        [Op.or]: statusColumns.map((col) => ({ [col]: statusFilter })),
+      };
 
-    whereClauseForAllTask[Op.or] = [
-      { status: statusFilter },
-      { external_status: statusFilter },
-    ];
-
-    whereClauseForMyTask[Op.or] = [
-      { status: statusFilter },
-      { external_status: statusFilter },
-    ];
-
-    whereClauseForDueTask[Op.or] = [
-      { status: statusFilter },
-      { external_status: statusFilter },
-    ];
+    Object.assign(whereClause, clause);
+    Object.assign(whereClauseForAllTask, clause);
+    Object.assign(whereClauseForMyTask, clause);
+    Object.assign(whereClauseForDueTask, clause);
   }
 
   /* ================= LABEL FILTER ================= */
@@ -595,6 +610,7 @@ export const AllTaskGet = async (req, res) => {
       startDate,
       endDate,
       statusFilterComan,
+      statusField,
       dueFilter,
       taskCategoryFilter,
       checkedOptionsTaskassignOrNot,
@@ -609,6 +625,10 @@ export const AllTaskGet = async (req, res) => {
       labelwiseContactShowAndOrNot,
       labelFilter,
       isUnread,
+      country,
+      state,
+      city,
+      area,
     } = req.body;
 
     const limit = Number(ll) || 10;
@@ -639,6 +659,25 @@ export const AllTaskGet = async (req, res) => {
       tenentId: req.tenantDB
     });
 
+    /* ================= DEMOGRAPHY (country/state/city) ================= */
+    // A task/ticket has no geography of its own, only the contact it's
+    // linked to does — resolve matching contact ids first.
+    let demographyContactIds;
+    if (country || state || city || area) {
+      const ContactModelForFilter = contactModel(req.tenantDB);
+      const contactWhere = { isDelete: "0" };
+      if (country) contactWhere.country = country;
+      if (state) contactWhere.state = state;
+      if (city) contactWhere.city = city;
+      if (area) contactWhere.area = area;
+      const matchingContacts = await ContactModelForFilter.findAll({
+        where: contactWhere,
+        attributes: ["id"],
+        raw: true
+      });
+      demographyContactIds = matchingContacts.map(c => c.id);
+    }
+
     /* ================= BUILD WHERE ================= */
 
     const {
@@ -655,6 +694,7 @@ export const AllTaskGet = async (req, res) => {
       taskFilter,
       statusFilter,
       statusFilterComan,
+      statusField,
       priorityFilter,
       startDate,
       endDate,
@@ -673,6 +713,7 @@ export const AllTaskGet = async (req, res) => {
       contact_masters_id,
       labelwiseContactShowAndOrNot,
       labelFilter,
+      demographyContactIds,
     });
 
     /* ================= FINAL WHERE (WITH DUE) ================= */
@@ -740,6 +781,34 @@ export const AllTaskGet = async (req, res) => {
             WHERE contact_masters.id = task_managements.contact_masters_id
               AND contact_masters.isDelete = 0
           )`), "contact_company_name"],
+          [Sequelize.literal(`(
+            SELECT a_countries.country_name
+            FROM contact_masters
+            JOIN a_countries ON a_countries.id = contact_masters.country AND a_countries.isDelete = 0
+            WHERE contact_masters.id = task_managements.contact_masters_id
+              AND contact_masters.isDelete = 0
+          )`), "contact_country"],
+          [Sequelize.literal(`(
+            SELECT a_states.state_name
+            FROM contact_masters
+            JOIN a_states ON a_states.id = contact_masters.state AND a_states.isDelete = 0
+            WHERE contact_masters.id = task_managements.contact_masters_id
+              AND contact_masters.isDelete = 0
+          )`), "contact_state"],
+          [Sequelize.literal(`(
+            SELECT a_cities.city_name
+            FROM contact_masters
+            JOIN a_cities ON a_cities.id = contact_masters.city AND a_cities.isDelete = 0
+            WHERE contact_masters.id = task_managements.contact_masters_id
+              AND contact_masters.isDelete = 0
+          )`), "contact_city"],
+          [Sequelize.literal(`(
+            SELECT a_areas.area_name
+            FROM contact_masters
+            JOIN a_areas ON a_areas.id = contact_masters.area AND a_areas.isDelete = 0
+            WHERE contact_masters.id = task_managements.contact_masters_id
+              AND contact_masters.isDelete = 0
+          )`), "contact_area"],
           [
             Sequelize.literal(
               `(SELECT GROUP_CONCAT(lable_masters.color) FROM lable_masters WHERE lable_masters.isDelete = 0 AND FIND_IN_SET(lable_masters.id, task_managements.label_id))`
@@ -1771,7 +1840,7 @@ export const createAllTask = async (req) => {
           // Send notifications to all assigned members
           await sendMultipleNotification({
             deviceTokens: uniqueTokens,
-            title: `${assignerName} has assigned you a new task`,
+            title: `New Task #${finalTaskId} Assigned to You by ${assignerName}`,
             body: `Task: ${task_title}`,
           });
         } catch (notificationError) {
@@ -4419,7 +4488,7 @@ export const createCustomerSupportTicket = async (req, res) => {
             // Send notifications to all assigned members
             await sendMultipleNotification({
               deviceTokens: uniqueTokens,
-              title: `Ticket number ${newTask.id}... From ${getCompanyName.company_name}... Please Check`,
+              title: `Support Ticket #${newTask.id} from ${getCompanyName.company_name} Created as a Task`,
               body: `Ticket: ${task_title}`,
               notification_modual: "customer_support_ticket_create"
             });

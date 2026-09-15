@@ -56,6 +56,17 @@ export const employeePayrollModel = (sequelize) => {
             defaultValue: 0,
         },
 
+        // "GPS Compulsory for App Use" — same yes/no toggle shape as
+        // compulsary_attendance_image above. Single source of truth for all
+        // three of these flags: both the web "Edit Team Member" screen
+        // (EditTeam.tsx's Attendance & Salary tab, create/update-emp-payroll)
+        // and the Flutter "Edit Team" screen write here, and onLoad
+        // (loginService.js) reads from here too.
+        compulsary_gps_app_use: {
+            type: TINYINT,
+            defaultValue: 0,
+        },
+
         week_off_days: {
             type: STRING,
         },

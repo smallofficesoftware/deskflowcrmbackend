@@ -90,6 +90,29 @@ export function imageField(overrides) {
   return { ...plugins.image.propPanel.defaultSchema, dataSource: overrides.name, ...overrides };
 }
 
+// NOT @pdfme/schemas' stock `rectangle` plugin — generateDocument.js (and
+// this repo's own DocumentDesignerView.tsx propPanel) registers
+// customRectanglePlugin.js under the SAME "rectangle" type key, which adds
+// independent per-side borderWidth. Building against its defaultSchema here
+// (rather than plugins.rectangle's own) would miss that per-side shape.
+function rectangleField(overrides) {
+  return {
+    name: "",
+    type: "rectangle",
+    position: { x: 0, y: 0 },
+    width: A4.width,
+    height: A4.height,
+    rotate: 0,
+    opacity: 1,
+    borderWidth: { top: 0.5, right: 0.5, bottom: 0.5, left: 0.5 },
+    borderColor: "#000000",
+    color: "",
+    readOnly: true,
+    radius: 0,
+    ...overrides,
+  };
+}
+
 export function tableField(overrides) {
   const base = plugins.table.propPanel.defaultSchema;
   return {
@@ -105,7 +128,7 @@ export function tableField(overrides) {
 // Builds the header-zone static fields (y=5..23mm) for one variant. Field
 // names are variant-specific so withCompanyHeader() (templates.js) can tell
 // which text/image field(s) to resolve real company data into.
-export function buildHeaderFields(variant, headerHeightMM = 18) {
+export function buildHeaderFields(variant, headerHeightMM = 28.5) {
   switch (variant) {
     case "image":
       return [
@@ -189,7 +212,48 @@ export function buildHeaderFields(variant, headerHeightMM = 18) {
 
 export const FOOTER_BOTTOM_MARGIN = 12; // reserves room for pageNumber below the footer image
 
-export function buildFooterFields(showFooterImage, footerHeightMM = 15) {
+// Takes a [top, right, bottom, left] box (same shape as basePdf.padding)
+// to frame — but callers pass their OWN choice here, not necessarily
+// basePdf.padding itself. buildDocTemplate/buildPendingOrderTemplate pass
+// a small fixed top/bottom inset (not topPadding/bottomPadding) so the
+// header/footer banners land INSIDE the frame instead of being excluded
+// from it — content padding alone is large (25-35mm+) specifically to
+// clear the header banner's own height, which would put the frame's top
+// edge well below the banner. Left/right still use the actual content
+// margin since that doesn't create the same conflict (header/footer are
+// always full page width regardless of the border's left/right inset).
+// Same repeat-on-every-page mechanism header/footer images use
+// (basePdf.staticSchema, not a cloned.schemas injection — see
+// injectWatermarkField/injectPaymentQRField in orderInputMapper.js for why
+// that distinction matters for a multi-page document).
+// customBox ({x, y, width, height}, all numbers) skips the padding-based
+// auto-calc entirely and uses those values as-is — a manual override for
+// when the user wants direct control over the frame instead of it tracking
+// margin/header/footer automatically. Only takes effect when ALL 4 are
+// actually numbers; any missing one falls back to the computed box below
+// (a half-set override would otherwise mix an old auto value with a new
+// manual one in a way that doesn't correspond to anything the user set).
+export function buildPageBorderField(enabled, color = "#000000", widthMM = 0.5, padding = [2, 10, 2, 10], customBox = null) {
+  if (!enabled) return [];
+  const hasCustomBox =
+    customBox && ["x", "y", "width", "height"].every((k) => typeof customBox[k] === "number");
+  const [top, right, bottom, left] = padding;
+  const box = hasCustomBox
+    ? customBox
+    : { x: left, y: top, width: A4.width - left - right, height: A4.height - top - bottom };
+  return [
+    rectangleField({
+      name: "pageBorder",
+      position: { x: box.x, y: box.y },
+      width: box.width,
+      height: box.height,
+      borderColor: color,
+      borderWidth: { top: widthMM, right: widthMM, bottom: widthMM, left: widthMM },
+    }),
+  ];
+}
+
+export function buildFooterFields(showFooterImage, footerHeightMM = 28.5) {
   if (!showFooterImage) return [];
   return [
     imageField({
@@ -412,9 +476,68 @@ function buildHsnAndTotalsFields() {
   ];
 }
 
+// Additive alternative to buildHsnAndTotalsFields' per-row layout above —
+// one pdfme table field instead of N individually positioned label/value
+// rows, fed by orderInputMapper.js's "totalsTable" input (which already
+// only includes the rows applicable to a given transaction). Never gaps,
+// since a row that doesn't apply is simply absent from the table's data
+// rather than an empty reserved slot - but the whole block becomes one
+// draggable object (no more per-row repositioning) and every row shares
+// one bodyStyles (no more Grand Total's distinct bold/green or Payable
+// Amount's orange - pdfme table styling is uniform per table, not per
+// row). Not called from buildDocTemplate() below - swap it in for
+// buildHsnAndTotalsFields() only where the table layout is wanted, so
+// every already-saved company template (built with the per-row version)
+// is completely unaffected by this existing.
+export function buildCompactTotalsTableField() {
+  return tableField({
+    name: "totalsTable",
+    position: { x: 105, y: 200 },
+    width: 95,
+    height: 45,
+    showHead: false,
+    // head/headWidthPercentages: showHead:false only hides the header ROW —
+    // pdfme's own column-width math still reads head.length and
+    // headWidthPercentages, both independent of showHead. Left unset, they
+    // fell back to the table plugin's own default schema (a different
+    // column count than this field's 2-column content), which is what was
+    // throwing "Cannot read properties of undefined (reading 'split')" the
+    // moment this field got added on the canvas — buildItemsTableField
+    // above always sets both for the same reason.
+    head: ["Label", "Amount"],
+    headWidthPercentages: [60, 40],
+    content: JSON.stringify([["Sub Total", "0.00"]]),
+    columnStyles: {
+      0: { alignment: "left" },
+      1: { alignment: "right" },
+    },
+    bodyStyles: { fontSize: 8, alignment: "left", padding: { top: 1, right: 2, bottom: 1, left: 2 } },
+    tableStyles: { borderWidth: 0 },
+  });
+}
+
 export function buildDocTemplate(
   docTitle,
-  { headerVariant = "details", footerImage = false, columnOptions = {}, headerHeightMM = 18, footerHeightMM = 15 } = {},
+  {
+    headerVariant = "details",
+    footerImage = false,
+    columnOptions = {},
+    headerHeightMM = 28.5,
+    footerHeightMM = 28.5,
+    pageBorder = false,
+    pageBorderColor = "#000000",
+    pageBorderWidth = 0.5,
+    // Manual override for the border's box — see buildPageBorderField's
+    // customBox param. null/undefined (the default) means "keep
+    // auto-computing from margin/header/footer", matching every existing
+    // template that predates this option.
+    pageBorderX = null,
+    pageBorderY = null,
+    pageBorderWidthMM = null,
+    pageBorderHeightMM = null,
+    marginLeft = 10,
+    marginRight = 10,
+  } = {},
 ) {
   // Top padding must clear the header banner's actual height (only the
   // "image" variant's height is configurable). Bottom padding must clear the
@@ -425,7 +548,7 @@ export function buildDocTemplate(
   // contentTopOffset below shifts every OTHER field down by that same
   // delta automatically, so nothing further needed any position edits.
   const topPadding = headerVariant === "image" ? Math.max(25, 5 + headerHeightMM + 2) : 34;
-  const bottomPadding = footerImage ? Math.max(30, FOOTER_BOTTOM_MARGIN + footerHeightMM + 3) : 15;
+  const bottomPadding = footerImage ? Math.max(30, FOOTER_BOTTOM_MARGIN + footerHeightMM + 3) : 10;
 
   const contentTopOffset = topPadding - 25;
   const applyContentOffset = (field) => shiftFieldY(field, contentTopOffset);
@@ -437,7 +560,11 @@ export function buildDocTemplate(
       // top/bottom padding must clear the staticSchema header/footer height —
       // pdfme's dynamic-table continuation-page start Y is literally
       // `basePdf.padding[0]`, with ZERO awareness of staticSchema field positions.
-      padding: [topPadding, 10, bottomPadding, 10],
+      // Left/right default to 10mm but carry through whatever the Margins
+      // toolbar last set (applyHeaderOptions always sends its current
+      // marginLeft/marginRight state) — a caller that omits them (a fresh
+      // template, or a caller that genuinely wants the default) still gets 10.
+      padding: [topPadding, marginRight, bottomPadding, marginLeft],
       // Not real pdfme properties — pdfme ignores unknown keys. Self-
       // describing metadata so a fresh rebuild for a paper-size change can
       // recover the CURRENT header variant/footer-image state.
@@ -445,12 +572,59 @@ export function buildDocTemplate(
       footerImage,
       headerHeightMM,
       footerHeightMM,
+      pageBorder,
+      pageBorderColor,
+      pageBorderWidth,
+      pageBorderX,
+      pageBorderY,
+      pageBorderWidthMM,
+      pageBorderHeightMM,
+      marginLeft,
+      marginRight,
       staticSchema: [
         ...buildHeaderFields(headerVariant, headerHeightMM),
         ...buildFooterFields(footerImage, footerHeightMM),
+        // Border drawn before pageNumber but after header/footer — paints
+        // over the header/footer banner wherever they overlap (frame stays
+        // visibly continuous crossing the banner, instead of disappearing
+        // behind it), but pageNumber renders AFTER it (last = on top) so
+        // its text stays readable. Left/right frame the content margin but
+        // with an extra 1.5mm inward gap (marginLeft/marginRight + 1.5) —
+        // docTitle/buyer-info/etc. all start at x:10, exactly matching the
+        // default 10mm margin the border's left edge would otherwise sit
+        // flush against; a text field's backgroundColor generally only
+        // paints its glyph/line box, not the full declared field width, so
+        // the border's line showed through at that shared edge (looked like
+        // it was cutting through the field). Top/bottom are topPadding/
+        // bottomPadding MINUS header/footerHeightMM — topPadding/
+        // bottomPadding alone are the clearance for BODY content (outside
+        // the header/footer banner), so subtracting the banner's own height
+        // pulls the frame's edge back to roughly where the banner itself
+        // starts, putting it inside the frame instead of excluding it.
+        // Footer's subtraction only applies when it's actually on — off,
+        // bottomPadding is already a small fixed value not tied to any
+        // banner. Both floored at 2mm so a banner taller than its padding
+        // can't push this negative.
+        ...buildPageBorderField(
+          pageBorder,
+          pageBorderColor,
+          pageBorderWidth,
+          [
+            Math.max(2, topPadding - headerHeightMM),
+            marginRight + 1.5,
+            footerImage ? Math.max(2, bottomPadding - footerHeightMM) : bottomPadding,
+            marginLeft + 1.5,
+          ],
+          { x: pageBorderX, y: pageBorderY, width: pageBorderWidthMM, height: pageBorderHeightMM },
+        ),
         textField({
           name: "pageNumber",
-          position: { x: 180, y: 287 },
+          // Right-aligned text in a 20mm box, flush against the actual
+          // content margin's right edge — was hardcoded x:180 (only
+          // correct at the 10mm marginRight default), so a custom right
+          // margin left it stranded at the old position instead of
+          // following the margin.
+          position: { x: A4.width - marginRight - 20, y: 287 },
           width: 20,
           height: 5,
           fontSize: 8,

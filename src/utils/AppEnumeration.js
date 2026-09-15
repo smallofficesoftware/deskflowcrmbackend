@@ -104,6 +104,29 @@ export const PAGE_ID = {
   // moved to 159 to avoid the collision.
   DOCUMENT_DESIGNER_RIGHTS: "157",
   REPORT_BUILDER: "159",
+  // Dashboard's own feature gate — independent of REPORT_BUILDER's, see
+  // migration 20260905160000-add-dashboard-builder-application-page.js.
+  DASHBOARD_BUILDER: "160",
+  // Custom Form Maker's own feature gate — independent of REPORT_BUILDER's
+  // and DASHBOARD_BUILDER's, see migration
+  // 20260908130000-add-form-builder-application-page.js.
+  // id 178, not 161: verified live against a_application_pages before
+  // running — 161-177 turned out to already be taken (161 itself by an
+  // existing 'system_document_templates' row, then 162-177 by adminpanel's
+  // own pages sharing this same table) — the "160 is last used" comment
+  // this was based on was stale/wrong. 178 was MAX(id)+1 at the time this
+  // was added.
+  FORM_BUILDER: "178",
+  // Find/Merge Duplicate Contacts (All Contact Report ⋮ menu + Settings ⋮
+  // menu). id 184 — VERIFIED against live a_application_pages (2026-09-15,
+  // dev): 179-183 were already taken by other rows not visible from the
+  // CRM codebase (adminpanel shares this table); MAX(id) was 183.
+  CONTACT_MERGE: "184",
+  // Serial Number Wise Stock Check, as its own report tile (previously
+  // only reachable from Products Report's ⋮ menu). Migration
+  // 20260915120000-add-serial-number-stock-check-application-page.js
+  // (master DB). id 185 = next after CONTACT_MERGE (184).
+  SERIAL_NUMBER_STOCK_CHECK: "185",
   // Add more pages as needed
 };
 // config/googleApi.ts
@@ -252,6 +275,27 @@ export const NUMBER_SERIES_PATTERN_RULE = {
 }
 // Do Not Remove This code
 Object.freeze(NUMBER_SERIES_PATTERN_RULE);
+
+// Cart type -> the company_masters column holding that type's configured
+// series prefix(es). Single source of truth for getNumberSeries
+// (sharedFunctions.js, generates our own cart_numbers) and
+// parseSrByPrefixAndNumber (miracleWebhookService.js, recovers
+// sr_by_prifix/sr_by_number from Miracle's already-formatted invoice
+// number) - keep both in sync by editing only this map.
+export const CART_TYPE_TO_PREFIX_FIELD = {
+  1: "quotation_prefix",
+  2: "order_prefix",
+  3: "invoice_prefix",
+  4: "purchase_prefix",
+  5: "purchase_ord_prefix",
+  6: "return_sales_invoice_prefix",
+  7: "return_purchase_invoice_prefix",
+  8: "inward_prefix",
+  9: "dispatch_prefix",
+  12: "proforma_invoice_prefix"
+};
+// Do Not Remove This code
+Object.freeze(CART_TYPE_TO_PREFIX_FIELD);
 
 export const SALES_DEFINED_IDS_FOR_STATUS = {
   2: {

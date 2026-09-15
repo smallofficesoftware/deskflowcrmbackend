@@ -15,7 +15,7 @@ import { autoAssignmentContactIdsGet, prepareMailAndWhatsappSenderToTheContact }
 
 export const addContactMessageFromWhatsApp = async (req, res) => {
     const payload = req.body;
-    const { a_application_login_id } = parseSession(payload?.sessionName);
+    const { a_application_login_id, company_masters_id: sessionCompanyMastersId } = parseSession(payload?.sessionName);
     let description = payload?.text?.trim();
     if (!description) {
         return resError({
@@ -61,11 +61,13 @@ export const addContactMessageFromWhatsApp = async (req, res) => {
 
         let a_company_name;
         let a_company_id;
-        const findCompanyId = await getCompanyByLoginId(a_application_login_id);
-
+        // sessionName already encodes the exact company this message belongs
+        // to (format a<login>_c<company>, set at send time) — use it directly
+        // instead of re-deriving via getCompanyByLoginId, which picks the wrong
+        // company when one login owns multiple companies.
         const findIndiaMartApiKey = await companyModel.findOne({
             where: {
-                id: findCompanyId.company_masters_id,
+                id: sessionCompanyMastersId,
                 isDelete: "0",
             },
             attributes: ["id", "company_name"],
@@ -82,7 +84,7 @@ export const addContactMessageFromWhatsApp = async (req, res) => {
             where: {
                 isDelete: "0",
                 mobile_number: normalizedSenderLast10,
-                company_masters_id: findCompanyId.company_masters_id,
+                company_masters_id: sessionCompanyMastersId,
             },
             attributes: ["id", "sync_whatsapp"],
         });
@@ -93,7 +95,7 @@ export const addContactMessageFromWhatsApp = async (req, res) => {
                 const parsedData = {
                     description,
                     entry_flag: "1",
-                    company_masters_id: findCompanyId.company_masters_id,
+                    company_masters_id: sessionCompanyMastersId,
                     a_application_login_id: a_application_login_id,
                     contact_masters_id: resultContact.id,
                     message_side: payload?.direction === "outgoing" ? "1" : "2",
@@ -155,7 +157,7 @@ export const addContactMessageFromWhatsApp = async (req, res) => {
                 raw_mobile_number: senderContactNumber || "",
                 person_name: payload?.fromName || "Unknown",
                 a_application_login_id: a_application_login_id,
-                company_masters_id: findCompanyId.company_masters_id,
+                company_masters_id: sessionCompanyMastersId,
                 created_date_time: senderDateTimeFormattedDate,
                 source_type_id: -4,
                 sync_whatsapp: 0,
@@ -163,14 +165,14 @@ export const addContactMessageFromWhatsApp = async (req, res) => {
             };
             const userList = await CTContactModelModel.findAll({
                 where: {
-                    company_masters_id: findCompanyId.company_masters_id,
+                    company_masters_id: sessionCompanyMastersId,
                     isDelete: 0,
                 },
                 attributes: ["company_masters_id", "a_application_login_id"],
             });
             const userRightsList = await applicationLoginTypeRightModelIntance.findAll({
                 where: {
-                    company_masters_id: findCompanyId.company_masters_id,
+                    company_masters_id: sessionCompanyMastersId,
                     page_id: 1,
                     isDelete: 0,
                 },
@@ -236,7 +238,7 @@ export const addContactMessageFromWhatsApp = async (req, res) => {
             const parsedData = {
                 description,
                 entry_flag: "1",
-                company_masters_id: findCompanyId.company_masters_id,
+                company_masters_id: sessionCompanyMastersId,
                 a_application_login_id: a_application_login_id,
                 contact_masters_id: newContact.dataValues.id,
                 message_side: payload?.direction === "outgoing" ? "1" : "2",

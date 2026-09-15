@@ -8,6 +8,7 @@ import {
   discardDraftChanges,
   duplicateDocumentTemplate,
   exportDocumentTemplate,
+  getDefaultTemplateForDocType,
   getDocumentTemplate,
   importDocumentTemplate,
   listAllDocumentTemplates,
@@ -17,8 +18,10 @@ import {
   previewDocumentTemplate,
   publishDocumentTemplate,
   reorderDocumentTemplates,
+  resetDocumentTemplateToSystemDefault,
   restoreTemplateVersion,
   setDefaultDocumentTemplate,
+  testRunDocumentTemplate,
   updateDocumentTemplate,
 } from "../../services/company_setup/documentPrintTemplateServices.js";
 import callServiceMethod from "../baseController.js";
@@ -45,6 +48,10 @@ export const updateDocumentTemplateController = async (req, res) => {
 
 export const applyOptionsToDraftController = async (req, res) => {
   await callServiceMethod(req, res, applyOptionsToDraft(req), "applyOptionsToDraft");
+};
+
+export const resetDocumentTemplateToSystemDefaultController = async (req, res) => {
+  await callServiceMethod(req, res, resetDocumentTemplateToSystemDefault(req), "resetDocumentTemplateToSystemDefault");
 };
 
 export const publishDocumentTemplateController = async (req, res) => {
@@ -93,6 +100,14 @@ export const listSystemTemplatesController = async (req, res) => {
 
 export const copyFromSystemTemplateController = async (req, res) => {
   await callServiceMethod(req, res, copyFromSystemTemplate(req), "copyFromSystemTemplate");
+};
+
+export const testRunDocumentTemplateController = async (req, res) => {
+  await callServiceMethod(req, res, testRunDocumentTemplate(req), "testRunDocumentTemplate");
+};
+
+export const getDefaultTemplateForDocTypeController = async (req, res) => {
+  await callServiceMethod(req, res, getDefaultTemplateForDocType(req), "getDefaultTemplateForDocType");
 };
 
 export const previewDocumentTemplateController = async (req, res) => {

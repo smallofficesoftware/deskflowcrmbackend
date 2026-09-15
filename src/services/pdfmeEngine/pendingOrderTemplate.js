@@ -9,6 +9,7 @@
 import {
   buildFooterFields,
   buildHeaderFields,
+  buildPageBorderField,
   FOOTER_BOTTOM_MARGIN,
   imageField,
   shiftFieldY,
@@ -62,13 +63,27 @@ function buildPendingItemsTableField() {
 
 export function buildPendingOrderTemplate(
   docTitle,
-  { headerVariant = "details", footerImage = false, headerHeightMM = 18, footerHeightMM = 15 } = {},
+  {
+    headerVariant = "details",
+    footerImage = false,
+    headerHeightMM = 28.5,
+    footerHeightMM = 28.5,
+    pageBorder = false,
+    pageBorderColor = "#000000",
+    pageBorderWidth = 0.5,
+    pageBorderX = null,
+    pageBorderY = null,
+    pageBorderWidthMM = null,
+    pageBorderHeightMM = null,
+    marginLeft = 10,
+    marginRight = 10,
+  } = {},
 ) {
   // Kept in sync with buildTemplate.js's buildDocTemplate — both share
   // buildHeaderFields, whose non-image variants now reserve 34mm (was 25)
   // for the added companyGSTIN/companyMobile/companyEmail lines.
   const topPadding = headerVariant === "image" ? Math.max(25, 5 + headerHeightMM + 2) : 34;
-  const bottomPadding = footerImage ? Math.max(30, FOOTER_BOTTOM_MARGIN + footerHeightMM + 3) : 15;
+  const bottomPadding = footerImage ? Math.max(30, FOOTER_BOTTOM_MARGIN + footerHeightMM + 3) : 10;
 
   const contentTopOffset = topPadding - 25;
   const applyContentOffset = (field) => shiftFieldY(field, contentTopOffset);
@@ -77,17 +92,44 @@ export function buildPendingOrderTemplate(
     basePdf: {
       width: A4.width,
       height: A4.height,
-      padding: [topPadding, 10, bottomPadding, 10],
+      padding: [topPadding, marginRight, bottomPadding, marginLeft],
       headerVariant,
       footerImage,
       headerHeightMM,
       footerHeightMM,
+      pageBorder,
+      pageBorderColor,
+      pageBorderWidth,
+      pageBorderX,
+      pageBorderY,
+      pageBorderWidthMM,
+      pageBorderHeightMM,
+      marginLeft,
+      marginRight,
       staticSchema: [
         ...buildHeaderFields(headerVariant, headerHeightMM),
         ...buildFooterFields(footerImage, footerHeightMM),
+        // Border before pageNumber but after header/footer — see
+        // buildTemplate.js's buildDocTemplate for the full reasoning (same
+        // call shape). pageNumber renders after it so its text stays
+        // readable on top.
+        ...buildPageBorderField(
+          pageBorder,
+          pageBorderColor,
+          pageBorderWidth,
+          [
+            Math.max(2, topPadding - headerHeightMM),
+            marginRight + 1.5,
+            footerImage ? Math.max(2, bottomPadding - footerHeightMM) : bottomPadding,
+            marginLeft + 1.5,
+          ],
+          { x: pageBorderX, y: pageBorderY, width: pageBorderWidthMM, height: pageBorderHeightMM },
+        ),
         textField({
           name: "pageNumber",
-          position: { x: 180, y: 287 },
+          // Flush against the actual content margin's right edge — see
+          // buildTemplate.js's buildDocTemplate for the full reasoning.
+          position: { x: A4.width - marginRight - 20, y: 287 },
           width: 20,
           height: 5,
           fontSize: 8,

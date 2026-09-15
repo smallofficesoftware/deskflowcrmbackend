@@ -187,7 +187,7 @@ export const storeSupportTicketCreate = async (req, res) => {
                         // Send notifications to all assigned members
                         await sendMultipleNotification({
                             deviceTokens: uniqueTokens,
-                            title: `Ticket number ${newTask.id}... From ${companyIdFind.company_name}... Please Check`,
+                            title: `New Support Ticket #${newTask.id} from ${companyIdFind.company_name}`,
                             body: `Ticket: ${task_title}`,
                             notification_modual: "customer_support_ticket_create"
                         });

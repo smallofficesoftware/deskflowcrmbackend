@@ -5,11 +5,11 @@
 // metric covers every member at once, instead of one query per metric PER
 // member.
 import { col, fn, Op } from "sequelize";
-import { getUserRights } from "../../helpers/rightsHelper.js";
 import loginModel from "../../models/application_login/loginModel.js";
 import companyVsApplicationLoginModel from "../../models/company_setup/companyVsApplicationLoginModel.js";
 import { resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { getCompanyByLoginId } from "../commonServices.js";
+import { getReportDataScope } from "./dataScopeService.js";
 import { getRegisteredMetric } from "./metricsRegistry.js";
 import { getRegisteredModel } from "./modelRegistry.js";
 import { COMPUTE_OPS, evaluateCaseSpec } from "./queryEngine.js";
@@ -40,15 +40,21 @@ export const runCompositeReport = async (definition, req) => {
       throw new Error(`report_definitions row ${definition.id} has no page_id`);
     }
 
-    const { showAllData, showPersonalData } = await getUserRights({
-      company_masters_id: resolvedCompanyId,
+    const { scope } = await getReportDataScope({
+      report_definition_id: definition.id,
       a_application_login_id,
-      page_id: definition.page_id,
-      tenentId: req.tenantDB,
+      company_masters_id: resolvedCompanyId,
+      tenantDB: req.tenantDB,
     });
-    if (!showAllData && !showPersonalData) {
-      return resError({ ack_msg: "No access to this report", developer_msg: "User has neither showAllData nor showPersonalData rights" });
+    if (!scope) {
+      return resError({ ack_msg: "No access to this report", developer_msg: "No report_definition_team_rights grant for this login on this report" });
     }
+    // "chain" has no defined meaning for a composite report — its dimension
+    // is team members, not contacts, so there's no chain to walk. Falls
+    // back to "own" (just this login), same documented-limitation rule
+    // dataScopeService.js's buildChainWhere uses for a table with no
+    // contact relation.
+    const showAllData = scope === "all";
 
     // columns_json for composite type was originally a plain array of
     // metric-key strings — still is, for backward compatibility. Now also

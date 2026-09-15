@@ -800,7 +800,7 @@ export const StartAllWorkflow = async (req) => {
 
                     await sendMultipleNotification({
                         deviceTokens: uniqueTokens,
-                        title: `${assignerName} has assigned you new task(s)`,
+                        title: `New Task(s) Assigned to You by ${assignerName}`,
                         body: `You have been assigned to new task(s)`,
                     });
 

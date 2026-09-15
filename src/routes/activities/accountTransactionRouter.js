@@ -28,7 +28,7 @@ export default (app) => {
     allAccountTransactions
   );
   app.post(
-    "/account-transaction-list-online-store/:contact_id/:qr_code/:contactRequestData",
+    "/account-transaction-list-online-store/:contact_id/:qr_code",
     allAccountTransactionsOnlineStore
   );
   app.post(

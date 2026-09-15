@@ -5,12 +5,10 @@
 import axios from "axios";
 import { generate } from "@pdfme/generator";
 import { PDFDocument } from "@pdfme/pdf-lib";
-import * as plugins from "@pdfme/schemas";
-import { customRectangle } from "./customRectanglePlugin.js";
 import { documentPrintTemplateModel } from "../../models/company_setup/documentPrintTemplateModel.js";
 import { productModel } from "../../models/product_settings/productModel.js";
 import { getTemplate, withCompanyHeader } from "./templates.js";
-import { loadFonts } from "./fonts.js";
+import { fontMap } from "./fonts.js";
 import { overlayItemImages, sniffImageMime } from "./imageOverlay.js";
 import {
   applyConditionalVisibility,
@@ -27,20 +25,7 @@ import {
   num,
   resolveDataSources,
 } from "./orderInputMapper.js";
-
-// Loaded once at process start (font files don't change at runtime), reused
-// across every generate call — same reasoning as the POC.
-const fontMap = loadFonts();
-
-const pluginMap = {
-  text: plugins.text,
-  table: plugins.table,
-  image: plugins.image,
-  line: plugins.line,
-  rectangle: customRectangle,
-  date: plugins.date,
-  signature: plugins.signature,
-};
+import { pluginMap } from "./pluginMap.js";
 
 // Builds one tiny single-field template sized to match the main document's
 // basePdf, for a pageText/pageURL extra page — same technique the POC's
@@ -278,7 +263,19 @@ export async function generateQuotationPdf({
   // An explicit `columnOptions` argument is still honored (Designer toolbar
   // live-apply / preview flows that intentionally override), it just isn't
   // the generate-time default anymore.
-  const templateItemsTableField = template.schemas?.[0]?.find((f) => f.name === "itemsTable");
+  //
+  // Searches EVERY page, not just schemas[0] — itemsTable only starts out on
+  // page 0 for a freshly-generated template; a company that prepends their
+  // own custom pages (e.g. an "About Us" page before the actual quotation)
+  // pushes it onto a later page. Searching page 0 only silently found
+  // nothing here, falling through to columnOptions:{} — resolveColumns({})
+  // then dropped whichever opt-in columns (image/discount/cgst/sgst/igst)
+  // the template's REAL saved columnOptions had turned on, producing rows
+  // with fewer cells than the table's own (unchanged) head/columnStyles —
+  // exactly the "table plugin indexes past the end" crash this comment
+  // already warned about, just not actually prevented for a non-page-0
+  // itemsTable.
+  const templateItemsTableField = template.schemas?.flat()?.find((f) => f.name === "itemsTable");
   const resolvedColumnOptions = columnOptions || templateItemsTableField?.columnOptions || {};
 
   template = withCompanyHeader(template, company);

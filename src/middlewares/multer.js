@@ -967,3 +967,48 @@ export const supportChatUpload = multer({
     }
   }
 }).single("attachment");
+
+// Custom Form Maker — file/signature/image field uploads (plan §3). Same
+// majority convention as orderAttachmentUpload above: permanent per-form
+// disk folder, Date.now()+ext filename, no temp/move step. company_masters_id
+// and form_id are text fields sent alongside the file parts in the same
+// multipart request, so they're already on req.body by the time `destination`
+// runs (multer parses fields in stream order — the frontend sends them first).
+const formBuilderStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const companyId = req.body?.company_masters_id || "unknown";
+    const formId = req.body?.form_id || "unknown";
+    const dir = path.join(process.cwd(), "media-folder", "form_builder", String(companyId), String(formId));
+    fs.ensureDirSync(dir);
+    cb(null, dir);
+  },
+  filename: (req, file, cb) => {
+    cb(null, Date.now() + "-" + generateTimeBasedPrefixedUUID() + path.extname(file.originalname));
+  },
+});
+
+export const formBuilderUpload = multer({
+  storage: formBuilderStorage,
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    // signature/image (capture) fields are image-only; plain "file" fields
+    // also allow PDF/doc — the field's declared type arrives as the
+    // fieldname suffix from the frontend (see formBuilderUpload usage in
+    // formBuilderSubmissionController.js) so we can't distinguish here
+    // per-field; allow the union of both and let server-side validation
+    // (formBuilderSubmissionService.js) reject a mismatch by field config.
+    const allowedMimeTypes = [
+      "image/jpeg", "image/jpg", "image/png", "image/webp",
+      "application/pdf",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ];
+    const allowedExtensions = /jpeg|jpg|png|webp|pdf|docx?|/;
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (allowedMimeTypes.includes(file.mimetype) || allowedExtensions.test(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Invalid file format."));
+    }
+  },
+}).any();

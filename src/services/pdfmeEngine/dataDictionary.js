@@ -29,6 +29,7 @@ const CART_DOC_DICTIONARY = [
   { key: "contactPerson", label: "Contact Person", group: "Order" },
 
   { key: "itemsTable", label: "Items Table", group: "Item" },
+  { key: "pendingItemsTable", label: "Pending Items Table", group: "Item" },
   { key: "firstItemName", label: "First Item — Name", group: "Item" },
   { key: "firstItemPrice", label: "First Item — Rate", group: "Item" },
   // firstItemImage removed — confirmed via orderInputMapper.js's actual
@@ -62,19 +63,32 @@ const CART_DOC_DICTIONARY = [
   // state) or IGST alone (different state), computed from the cart's one
   // total gst_amt column at generate time — there's still no separate
   // cgst/sgst/igst column on cart_items itself.
+  { key: "subTotalLabel", label: "Sub Total — Label", group: "Totals" },
   { key: "subTotalValue", label: "Sub Total", group: "Totals" },
+  { key: "taxableAmountLabel", label: "Total Taxable Amount — Label", group: "Totals" },
   { key: "taxableAmountValue", label: "Total Taxable Amount", group: "Totals" },
+  { key: "packingChargeLabel", label: "Packing & Forwarding Charge — Label", group: "Totals" },
   { key: "packingChargeValue", label: "Packing & Forwarding Charge", group: "Totals" },
+  { key: "transportChargeLabel", label: "Transport Charge — Label", group: "Totals" },
   { key: "transportChargeValue", label: "Transport Charge", group: "Totals" },
+  { key: "cashDiscountLabel", label: "Cash Discount — Label", group: "Totals" },
   { key: "cashDiscountValue", label: "Cash Discount", group: "Totals" },
+  { key: "gstLine1Label", label: "GST Line 1 — Label (CGST or IGST)", group: "Totals" },
   { key: "gstLine1Value", label: "GST Line 1 (CGST or IGST)", group: "Totals" },
+  { key: "gstLine2Label", label: "GST Line 2 — Label (SGST)", group: "Totals" },
   { key: "gstLine2Value", label: "GST Line 2 (SGST)", group: "Totals" },
+  { key: "tcsLabel", label: "TCS Amount — Label", group: "Totals" },
   { key: "tcsValue", label: "TCS Amount", group: "Totals" },
+  { key: "roundOffLabel", label: "Round Off — Label", group: "Totals" },
   { key: "roundOffValue", label: "Round Off", group: "Totals" },
+  { key: "grandTotalLabel", label: "Grand Total — Label", group: "Totals" },
   { key: "grandTotalValue", label: "Grand Total", group: "Totals" },
+  { key: "advancePaymentLabel", label: "Advance Payment — Label", group: "Totals" },
   { key: "advancePaymentValue", label: "Advance Payment", group: "Totals" },
+  { key: "payableAmountLabel", label: "Payable Amount — Label", group: "Totals" },
   { key: "payableAmountValue", label: "Payable Amount", group: "Totals" },
   { key: "hsnTaxTable", label: "HSN Tax Table", group: "Totals" },
+  { key: "totalsTable", label: "Totals Table (compact, no gaps)", group: "Totals" },
   { key: "grandTotalWordsText", label: "Grand Total (In Words)", group: "Totals" },
   { key: "bankDetailsText", label: "Bank Details", group: "Footer" },
   { key: "remarksText", label: "Remarks", group: "Footer" },
@@ -272,7 +286,30 @@ const CART_CUSTOM_FIELD_FORM_TYPE_BY_DOC_TYPE = {
 };
 const PRODUCT_CUSTOM_FIELD_FORM_TYPE = 4;
 
+// Report Builder's doc_type is dynamic — "report_" + report_definition_id
+// (reportPdfExport.js's reportDocType()), one per report, not a fixed
+// registrable id like the cart-shaped types above. Same bindable set for
+// every report (reportPdfExport.js's rawInputs: reportTitle/reportTable/
+// appliedFilters, plus the company fields it also now feeds in alongside
+// withCompanyHeader's static-field injection) — no per-report customization
+// needed since a report's OWN columns render inside the single reportTable
+// field, not as individually bindable keys.
+const REPORT_DICTIONARY = [
+  { key: "reportTitle", label: "Report Title", group: "Report" },
+  { key: "reportTable", label: "Report Table", group: "Report" },
+  { key: "appliedFilters", label: "Applied Filters", group: "Report" },
+  { key: "companyName", label: "Company Name", group: "Company" },
+  { key: "companyAddress", label: "Company Address", group: "Company" },
+  { key: "companyGSTIN", label: "Company GSTIN", group: "Company" },
+  { key: "companyMobile", label: "Company Mobile", group: "Company" },
+  { key: "companyEmail", label: "Company Email", group: "Company" },
+];
+
 export async function buildDataDictionary(req, doc_type) {
+  if (doc_type.startsWith("report_")) {
+    return REPORT_DICTIONARY;
+  }
+
   const base = DICTIONARY_BY_DOC_TYPE[doc_type];
   if (!base) {
     throw new Error(`No data dictionary registered for doc_type: ${doc_type}`);

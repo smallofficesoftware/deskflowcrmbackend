@@ -53,7 +53,6 @@ import {
   RAISE_SUPPORT_TICKET_FLAG,
   SUPPORT_TICKET_INFO_MESSAGE,
   UPDATE_VERSION_MSG,
-  MAINTENANCE_BYPASS_IPS,
 } from "../../utils/appConstants.js";
 // const whatsAppKey = "aa771918-d589-4ad1-a5b0-fca2f3abdf71";
 // const whatsappAuthKey = "s9Iz7gqyCfknn1RW0XBAklxQbwJAMHPym2JlRlAa1qNusiTjr1";
@@ -65,6 +64,7 @@ import applicationLoginHistoriesModel from "../../models/application_login/appli
 import { applicationLoginTypeRightModel } from "../../models/application_login/applicationLoginTypeRightModel.js";
 import companyVsWhatsappConfigModel from "../../models/company_setup/companyVsWhatsappConfigModel.js";
 import miracleConfigModel from "../../models/company_setup/miracleConfigModel.js";
+import eventMasterModel from "../../models/configuration/eventMasterModel.js";
 import maintenanceModesModel from "../../models/configuration/maintenanceModesModel.js";
 import tenantMasterModel from "../../models/configuration/tenantMasterModel.js";
 import { attendanceModel } from "../../models/hr/attendanceModel.js";
@@ -1299,13 +1299,24 @@ export const onLoad = async (req, res) => {
       req.socket?.remoteAddress ||
       "";
     if (clientIp.startsWith("::ffff:")) clientIp = clientIp.replace("::ffff:", "");
-    const isIpBypassed = clientIp && MAINTENANCE_BYPASS_IPS.includes(clientIp.trim());
+    const normalizeIp = (ip) =>
+      ip
+        .trim()
+        .replace(/^\[/, "")
+        .replace(/\]$/, "")
+        .replace(/%.*$/, "")
+        .toLowerCase();
+
+    const setting = await maintenanceModesModel.findOne({
+      where: { isDelete: 0 },
+    });
+    const bypassIps = (setting?.dataValues.bypass_ips || "")
+      .split(",")
+      .map(normalizeIp)
+      .filter(Boolean);
+    const isIpBypassed = clientIp && bypassIps.includes(normalizeIp(clientIp));
 
     if (!isIpBypassed) {
-      const setting = await maintenanceModesModel.findOne({
-        where: { isDelete: 0 },
-      });
-
       if (setting && setting.dataValues.is_maintenance === 1) {
         return resError({
           ack: -1,
@@ -1407,7 +1418,7 @@ export const onLoad = async (req, res) => {
         a_application_login_id: req.body.a_application_login_id,
         isDelete: 0,
       },
-      attributes: ["compulsary_attendance", "compulsary_attendance_image", "daily_out_time"],
+      attributes: ["compulsary_attendance", "compulsary_attendance_image", "compulsary_gps_app_use", "daily_out_time"],
       raw: true,
     });
 
@@ -1430,6 +1441,7 @@ export const onLoad = async (req, res) => {
 
     const compulsary_attendance = employee ? employee.compulsary_attendance == 1 : false;
     const compulsary_attendance_image = employee ? employee.compulsary_attendance_image == 1 : false;
+    const compulsary_gps_app_use = employee ? employee.compulsary_gps_app_use == 1 : false;
     const hasCheckedInToday =
       todayAttendance ? todayAttendance.attendance_status === 1 : false;
 
@@ -1604,9 +1616,54 @@ export const onLoad = async (req, res) => {
       attributes: ["is_training_disabled"],
     });
 
+    // Same shared master DB's event_masters table adminpanel's public
+    // calendar (marketing site) already reads — next upcoming event only,
+    // same isDelete/isActive/date filters as that public query
+    // (publicEvent.service.js's getMonthEvents), no status_id filter since
+    // that query doesn't apply one either. This table is owned by the
+    // adminpanel repo's own migration chain, not this one, so a column
+    // added there (start_time) can exist in code here before it's actually
+    // migrated on a given environment's DB — try WITH start_time first,
+    // fall back to WITHOUT it only if that's what actually fails, so an
+    // unmigrated environment still gets the date, just no time. Outer
+    // catch is the remaining safety net for anything else going wrong on
+    // this externally-owned table — must never take onLoad down with it.
+    let nextEvent = null;
+    try {
+      const nextEventWhere = {
+        isDelete: 0,
+        isActive: 1,
+        event_date: { [Op.gte]: moment().format("YYYY-MM-DD") },
+      };
+      const nextEventOrder = [["event_date", "ASC"], ["id", "ASC"]];
+      try {
+        nextEvent = await eventMasterModel.findOne({
+          where: nextEventWhere,
+          attributes: ["event_title", "event_date", "start_time"],
+          order: nextEventOrder,
+        });
+      } catch (e) {
+        if (!/unknown column/i.test(e.message)) throw e;
+        nextEvent = await eventMasterModel.findOne({
+          where: nextEventWhere,
+          attributes: ["event_title", "event_date"],
+          order: nextEventOrder,
+        });
+      }
+    } catch (e) {
+      console.error("next_training_event lookup failed:", e.message);
+    }
+
     /* ===================== RESPONSE ===================== */
     const commonData = {
       is_training_disabled: maintenanceSetting?.dataValues?.is_training_disabled === 1 ? 1 : 0,
+      next_training_event: nextEvent
+        ? {
+            title: nextEvent.dataValues.event_title,
+            date: nextEvent.dataValues.event_date,
+            start_time: nextEvent.dataValues.start_time ?? null,
+          }
+        : null,
       review: reviewStatus,
       MIRACLE_FLAG: getMiracleFlag ? 1 : 2,
       WHATSAPP_PLATEFORM: WHATSAPP_PLATEFORM,
@@ -1614,6 +1671,7 @@ export const onLoad = async (req, res) => {
       SUPPORT_TICKET_INFO_MESSAGE: SUPPORT_TICKET_INFO_MESSAGE,
       compulsary_attendance,
       compulsary_attendance_image,
+      compulsary_gps_app_use,
       hasCheckedInToday,
       resultRights,
       PinNumber,

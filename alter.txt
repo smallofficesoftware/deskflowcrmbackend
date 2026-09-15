@@ -2872,30 +2872,7 @@ DROP TABLE IF EXISTS `quotations`;
 ALTER TABLE `socket_connections` MODIFY COLUMN `id` INT(11) NOT NULL AUTO_INCREMENT COMMENT 'Primary key: Unique identifier for each socket connection';
 
 27-08-2026 Deep
-CREATE TABLE `event_type_masters`(
-    `id` INT(11) NOT NULL AUTO_INCREMENT,
-    `event_type_name` TEXT NOT NULL,
-    `event_type_color` VARCHAR(255) NOT NULL,
-    `created_date_time` DATETIME NOT NULL,
-    `modified_date` DATETIME NULL DEFAULT NULL,
-    `s_timestemp` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    `isDelete` TINYINT(4) NOT NULL DEFAULT '0',
-    `isActive` TINYINT(4) NOT NULL DEFAULT '1',
-    PRIMARY KEY(`id`)
-) ENGINE = InnoDB;
 
-CREATE TABLE `event_masters`(
-    `id` INT(11) NOT NULL AUTO_INCREMENT,
-    `event_type_id` INT(11) NOT NULL,
-    `event_title` VARCHAR(255) NOT NULL,
-    `event_date` DATE NOT NULL,
-    `created_date_time` DATETIME NOT NULL,
-    `modified_date` DATETIME NULL DEFAULT NULL,
-    `s_timestemp` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    `isDelete` TINYINT(4) NOT NULL DEFAULT '0',
-    `isActive` TINYINT(4) NOT NULL DEFAULT '1',
-    PRIMARY KEY(`id`)
-) ENGINE = InnoDB;
 
 CREATE TABLE `event_participate_masters`(
     `id` INT(11) NOT NULL AUTO_INCREMENT,
@@ -3089,3 +3066,357 @@ CREATE TABLE `addon_vs_pages`(
 ) ENGINE = InnoDB;
 
 ALTER TABLE `company_vs_addon_masters` ADD `addon_type` TINYINT(4) NOT NULL COMMENT '1: Addon, 2: Page' AFTER `addon_id`;
+
+01-09-2026 Dhaval
+ALTER TABLE `contact_masters` ADD INDEX `company_masters_id` (`company_masters_id`);
+
+01-09-2026 Dhaval
+ALTER TABLE `carts` ADD INDEX `company_masters_id` (`company_masters_id`);
+
+01-09-2026 Dhaval
+ALTER TABLE `location_trackings` ADD INDEX `company_masters_id` (`company_masters_id`);
+
+01-09-2026 Dhaval
+ALTER TABLE `task_managements` ADD INDEX `idx_task_managements_list_filter` (`company_masters_id`, `is_archive`, `is_not_visible`, `status`, `task_template`, `task_type`);
+
+01-09-2026 Dhaval
+ALTER TABLE `reminder_messages` ADD INDEX `idx_reminder_messages_login_flag_status` (`a_application_login_id`, `is_reminder_app_flag`, `status`);
+
+01-09-2026 Dhaval
+ALTER TABLE `company_masters` ADD INDEX `parent_company_id` (`parent_company_id`);
+
+02-09-2026 Dhaval
+CREATE TABLE `system_report_definitions` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `name` VARCHAR(255) NULL,
+  `type` VARCHAR(255) NOT NULL DEFAULT 'query',
+  `model_key` VARCHAR(255) NULL,
+  `plugin_key` VARCHAR(255) NULL,
+  `columns_json` TEXT NULL,
+  `filters_json` TEXT NULL,
+  `group_by_json` TEXT NULL,
+  `filters_to_show` TEXT NULL,
+  `category` VARCHAR(255) NULL,
+  `description` TEXT NULL,
+  `priority` ENUM('critical','high','normal') NULL,
+  `display_order` INT(11) NOT NULL DEFAULT 0,
+  `isDelete` TINYINT(4) NOT NULL DEFAULT 0,
+  `isActive` TINYINT(4) NOT NULL DEFAULT 1,
+  `created_date_time` DATETIME NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+ALTER TABLE `system_report_definitions` ADD INDEX(`category`);
+
+02-09-2026 Dhaval
+ALTER TABLE `report_definitions` ADD `source_system_report_definition_id` INT(11) NULL DEFAULT NULL AFTER `group_by_json`;
+
+02-09-2026 Dhaval
+CREATE TABLE `report_definition_team_rights` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `company_masters_id` INT(11) NOT NULL,
+  `report_definition_id` INT(11) NOT NULL,
+  `a_application_login_id` INT(11) NOT NULL,
+  `data_scope` ENUM('own','all','chain') NOT NULL DEFAULT 'own',
+  `created_date_time` DATETIME NOT NULL,
+  `isDelete` TINYINT(4) NOT NULL DEFAULT 0,
+  `isActive` TINYINT(4) NOT NULL DEFAULT 1,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uniq_report_login` (`report_definition_id`, `a_application_login_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+02-09-2026 Dhaval
+ALTER TABLE `report_definitions` ADD `filters_to_show` TEXT NULL DEFAULT NULL AFTER `source_system_report_definition_id`;
+
+03-09-2026 Dhaval
+CREATE TABLE `report_groups` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `company_masters_id` INT(11) NOT NULL,
+  `group_name` VARCHAR(255) NOT NULL,
+  `display_order` INT(11) NOT NULL DEFAULT 0,
+  `created_date_time` DATETIME NOT NULL,
+  `isDelete` TINYINT(4) NOT NULL DEFAULT 0,
+  `isActive` TINYINT(4) NOT NULL DEFAULT 1,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+03-09-2026 Dhaval
+ALTER TABLE `report_definitions` ADD `report_group_id` INT(11) NULL DEFAULT NULL AFTER `filters_to_show`;
+
+03-09-2026 Dhaval
+CREATE TABLE `report_schedules` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `company_masters_id` INT(11) NOT NULL,
+  `report_definition_id` INT(11) NOT NULL,
+  `a_application_login_id` INT(11) NOT NULL,
+  `frequency` ENUM('daily','weekly','monthly') NOT NULL,
+  `send_time` VARCHAR(10) NOT NULL,
+  `day_of_week` TINYINT(4) NULL DEFAULT NULL,
+  `day_of_month` TINYINT(4) NULL DEFAULT NULL,
+  `delivery_format` ENUM('excel','pdf','both') NOT NULL DEFAULT 'excel',
+  `recipients` TEXT NOT NULL,
+  `next_run_at` DATETIME NOT NULL,
+  `last_run_at` DATETIME NULL DEFAULT NULL,
+  `created_date_time` DATETIME NOT NULL,
+  `isDelete` TINYINT(4) NOT NULL DEFAULT 0,
+  `isActive` TINYINT(4) NOT NULL DEFAULT 1,
+  PRIMARY KEY (`id`),
+  INDEX `idx_report_schedules_due` (`next_run_at`, `isActive`, `isDelete`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+03-09-2026 Dhaval
+ALTER TABLE `report_runs` ADD `trigger_type` ENUM('manual','scheduled') NOT NULL DEFAULT 'manual' AFTER `error_message`;
+
+03-09-2026 Dhaval
+ALTER TABLE `report_definitions` ADD `description` TEXT NULL DEFAULT NULL AFTER `report_group_id`;
+
+03-09-2026 Dhaval
+ALTER TABLE `report_definitions` ADD `icon` VARCHAR(255) NULL DEFAULT NULL AFTER `description`;
+
+05-09-2026 Dhaval
+CREATE TABLE `dashboards` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `company_masters_id` INT(11) NOT NULL,
+  `a_application_login_id` INT(11) NULL DEFAULT NULL,
+  `name` VARCHAR(255) NOT NULL,
+  `description` TEXT NULL DEFAULT NULL,
+  `icon` VARCHAR(255) NULL DEFAULT NULL,
+  `is_default` TINYINT(4) NOT NULL DEFAULT 0,
+  `display_order` INT(11) NOT NULL DEFAULT 0,
+  `created_date_time` DATETIME NOT NULL,
+  `modified_date` DATETIME NULL DEFAULT NULL,
+  `isDelete` TINYINT(4) NOT NULL DEFAULT 0,
+  `isActive` TINYINT(4) NOT NULL DEFAULT 1,
+  PRIMARY KEY (`id`),
+  INDEX `idx_dashboards_company` (`company_masters_id`, `isDelete`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+05-09-2026 Dhaval
+CREATE TABLE `dashboard_widgets` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `dashboard_id` INT(11) NOT NULL,
+  `report_definition_id` INT(11) NOT NULL,
+  `widget_type` VARCHAR(255) NOT NULL,
+  `title` VARCHAR(255) NULL DEFAULT NULL,
+  `chart_config_json` TEXT NULL DEFAULT NULL,
+  `position_x` INT(11) NOT NULL DEFAULT 0,
+  `position_y` INT(11) NOT NULL DEFAULT 0,
+  `width` INT(11) NOT NULL DEFAULT 4,
+  `height` INT(11) NOT NULL DEFAULT 3,
+  `display_order` INT(11) NOT NULL DEFAULT 0,
+  `created_date_time` DATETIME NOT NULL,
+  `modified_date` DATETIME NULL DEFAULT NULL,
+  `isDelete` TINYINT(4) NOT NULL DEFAULT 0,
+  `isActive` TINYINT(4) NOT NULL DEFAULT 1,
+  PRIMARY KEY (`id`),
+  INDEX `idx_dashboard_widgets_dashboard` (`dashboard_id`, `isDelete`),
+  INDEX `idx_dashboard_widgets_report_definition` (`report_definition_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+05-09-2026 Dhaval
+ALTER TABLE `report_definitions` ADD `is_dashboard_only` TINYINT(4) NOT NULL DEFAULT 0 AFTER `s_timestemp`;
+
+07-09-2026 Dhaval
+ALTER TABLE `maintenance_modes` ADD `bypass_ips` TEXT NULL DEFAULT NULL AFTER `is_training_disabled`;
+
+08-09-2026 Dhaval
+CREATE TABLE `form_builder_forms` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `company_masters_id` INT(11) NOT NULL,
+  `a_application_login_id` INT(11) NOT NULL,
+  `title` VARCHAR(255) NOT NULL,
+  `description` TEXT NULL DEFAULT NULL,
+  `schema_json` LONGTEXT NULL DEFAULT NULL,
+  `published_schema_json` LONGTEXT NULL DEFAULT NULL,
+  `has_unpublished_changes` TINYINT(4) NOT NULL DEFAULT 0,
+  `version` INT(11) NOT NULL DEFAULT 1,
+  `related_module` VARCHAR(50) NULL DEFAULT NULL,
+  `allow_public_submission` TINYINT(4) NOT NULL DEFAULT 0,
+  `share_token` VARCHAR(64) NULL DEFAULT NULL,
+  `submission_table_name` VARCHAR(100) NULL DEFAULT NULL,
+  `restrict_to_assigned_team` TINYINT(4) NOT NULL DEFAULT 0,
+  `display_order` INT(11) NOT NULL DEFAULT 0,
+  `created_date_time` DATETIME NOT NULL,
+  `modified_date` DATETIME NULL DEFAULT NULL,
+  `isDelete` TINYINT(4) NOT NULL DEFAULT 0,
+  `isActive` TINYINT(4) NOT NULL DEFAULT 1,
+  PRIMARY KEY (`id`),
+  UNIQUE INDEX `uniq_form_builder_forms_company_share_token` (`company_masters_id`, `share_token`),
+  INDEX `idx_form_builder_forms_company_isdelete` (`company_masters_id`, `isDelete`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+08-09-2026 Dhaval
+CREATE TABLE `form_builder_submission_files` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `company_masters_id` INT(11) NOT NULL,
+  `form_id` INT(11) NOT NULL,
+  `submission_id` INT(11) NOT NULL,
+  `field_key` VARCHAR(255) NOT NULL,
+  `file_type` VARCHAR(20) NOT NULL,
+  `original_file_name` VARCHAR(255) NULL DEFAULT NULL,
+  `stored_file_name` VARCHAR(255) NULL DEFAULT NULL,
+  `file_path` VARCHAR(500) NULL DEFAULT NULL,
+  `mime_type` VARCHAR(100) NULL DEFAULT NULL,
+  `file_size` INT(11) NULL DEFAULT NULL,
+  `created_date_time` DATETIME NOT NULL,
+  `isDelete` TINYINT(4) NOT NULL DEFAULT 0,
+  `isActive` TINYINT(4) NOT NULL DEFAULT 1,
+  PRIMARY KEY (`id`),
+  INDEX `idx_form_builder_submission_files_form_submission` (`form_id`, `submission_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+08-09-2026 Dhaval
+CREATE TABLE `form_builder_form_team_rights` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `company_masters_id` INT(11) NOT NULL,
+  `form_id` INT(11) NOT NULL,
+  `a_application_login_id` INT(11) NOT NULL,
+  `can_fill` TINYINT(4) NOT NULL DEFAULT 1,
+  `submissions_scope` ENUM('none','own','all') NOT NULL DEFAULT 'own',
+  `created_date_time` DATETIME NOT NULL,
+  `isDelete` TINYINT(4) NOT NULL DEFAULT 0,
+  `isActive` TINYINT(4) NOT NULL DEFAULT 1,
+  PRIMARY KEY (`id`),
+  UNIQUE INDEX `uniq_form_builder_team_rights_form_login` (`form_id`, `a_application_login_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+10-09-2026 Dhaval
+ALTER TABLE `document_print_templates` ADD COLUMN `system_template_id` INT(11) NULL DEFAULT NULL AFTER `template_purpose`;
+
+11-09-2026 Dhaval
+
+DELETE t1 FROM whatsapp_template_configs t1
+INNER JOIN whatsapp_template_configs t2
+  ON t1.module = t2.module
+  AND t1.template_id = t2.template_id
+  AND (t1.updated_at < t2.updated_at OR (t1.updated_at = t2.updated_at AND t1.id < t2.id));
+ALTER TABLE `whatsapp_template_configs` DROP INDEX `unique_module_template_user`;
+ALTER TABLE `whatsapp_template_configs` ADD UNIQUE INDEX `unique_module_template` (`module`, `template_id`);
+
+11-09-2026 Dhaval
+
+ALTER TABLE `employee_payrolls` ADD COLUMN `compulsary_gps_app_use` TINYINT(4) NULL DEFAULT 0 AFTER `compulsary_attendance_image`;
+
+
+15-09-2026 Dhaval
+-- migration: migration/tenant/migrations/20260915130000-create-third-party-logs.js
+CREATE TABLE `third_party_logs` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `integration` VARCHAR(40) NOT NULL,
+  `direction` ENUM('INBOUND','OUTBOUND') NOT NULL,
+  `module_name` VARCHAR(100) NOT NULL DEFAULT '',
+  `url` VARCHAR(500) NOT NULL DEFAULT '',
+  `method` VARCHAR(10) NOT NULL DEFAULT 'POST',
+  `status_code` INT(11) NULL DEFAULT NULL,
+  `status` ENUM('SUCCESS','FAILED') NOT NULL DEFAULT 'SUCCESS',
+  `response_time` INT(11) NULL DEFAULT NULL,
+  `request_payload` LONGTEXT NULL DEFAULT NULL,
+  `response_payload` LONGTEXT NULL DEFAULT NULL,
+  `error_message` TEXT NULL DEFAULT NULL,
+  `company_masters_id` INT(11) NULL DEFAULT NULL,
+  `a_application_login_id` INT(11) NULL DEFAULT NULL,
+  `created_date_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `modified_date` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  INDEX `idx_integration` (`integration`),
+  INDEX `idx_direction` (`direction`),
+  INDEX `idx_status` (`status`),
+  INDEX `idx_company_masters_id` (`company_masters_id`),
+  INDEX `idx_created_date_time` (`created_date_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+
+14-09-2026 Dhaval
+-- migration: migration/master/migrations/20260914120000-add-contact-merge-application-page.js
+-- id corrected 179 -> 184 (179 was already taken in the live table by an unrelated row)
+INSERT INTO `a_application_pages` (`id`, `page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (184, 'Find/Merge Duplicate Contacts', 'Contact', 'contact_merge', 'Find and merge duplicate contacts', '0', '0', '0', '1', NOW(), UNIX_TIMESTAMP(), '0', '1');
+INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `extra_information`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, '1', '184', '0', '', NOW(), current_timestamp(), '0', '1'), (NULL, '2', '184', '0', '', NOW(), current_timestamp(), '0', '1'), (NULL, '3', '184', '0', '', NOW(), current_timestamp(), '0', '1'), (NULL, '4', '184', '0', '', NOW(), current_timestamp(), '0', '1');
+
+15-09-2026 Dhaval
+-- migration: migration/master/migrations/20260915120000-add-serial-number-stock-check-application-page.js
+INSERT INTO `a_application_pages` (`id`, `page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (185, 'Serial Number Wise Stock Check', 'Product', 'serial_number_stock_check', 'Track stock movement for a specific serial number', '0', '0', '0', '1', NOW(), UNIX_TIMESTAMP(), '0', '1');
+INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `extra_information`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, '1', '185', '0', '', NOW(), current_timestamp(), '0', '1'), (NULL, '2', '185', '0', '', NOW(), current_timestamp(), '0', '1'), (NULL, '3', '185', '0', '', NOW(), current_timestamp(), '0', '1'), (NULL, '4', '185', '0', '', NOW(), current_timestamp(), '0', '1');
+
+12-09-2026 Dhaval
+-- adminpanel migration: backend/src/database/migrations/20260912150000-add-time-remarks-to-event-masters.js
+ALTER TABLE `event_masters` ADD `start_time` VARCHAR(8) NULL, ADD `end_time` VARCHAR(8) NULL, ADD `remarks` TEXT NULL;
+
+28-08-2026 Dhaval
+-- adminpanel seeder: backend/src/database/seeders/20260828150000-seed-system-document-templates-page.js
+INSERT INTO `a_application_pages` (`page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES ('System Document Template Library', 'Platform', 'system_document_templates', 'System Document Template Library', '1', '14', '0', '1', NOW(), UNIX_TIMESTAMP(), '0', '1');
+
+02-09-2026 Dhaval
+-- adminpanel seeder: backend/src/database/seeders/20260902100000-seed-system-report-definitions-page.js
+INSERT INTO `a_application_pages` (`page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES ('System Report Definition Library', 'Platform', 'system_report_definitions', 'System Report Definition Library', '1', '15', '0', '1', NOW(), UNIX_TIMESTAMP(), '0', '1');
+
+05-09-2026 Dhaval
+-- adminpanel seeder: backend/src/database/seeders/20260905180000-seed-system-dashboard-definitions-page.js
+INSERT INTO `a_application_pages` (`page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES ('System Dashboard Gallery', 'Platform', 'system_dashboard_definitions', 'System Dashboard Gallery', '1', '16', '0', '1', NOW(), UNIX_TIMESTAMP(), '0', '1');
+
+08-09-2026 Dhaval
+-- adminpanel seeder: backend/src/database/seeders/20260908150000-seed-addons-page.js
+INSERT INTO `a_application_pages` (`page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES ('Add On Master', 'Platform', 'addons', 'Add On Master', '1', '38', '0', '1', NOW(), UNIX_TIMESTAMP(), '0', '1');
+
+08-09-2026 Dhaval
+-- adminpanel seeder: backend/src/database/seeders/20260908160000-seed-statuses-and-events-pages.js
+INSERT INTO `a_application_pages` (`page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES
+('Status Master', 'Platform', 'statuses', 'Status Master', '1', '39', '0', '1', NOW(), UNIX_TIMESTAMP(), '0', '1'),
+('Event Type Master', 'Platform', 'event-types', 'Event Type Master', '1', '40', '0', '1', NOW(), UNIX_TIMESTAMP(), '0', '1'),
+('Event Master', 'Platform', 'events', 'Event Master', '1', '41', '0', '1', NOW(), UNIX_TIMESTAMP(), '0', '1'),
+('Event Participant Master', 'Platform', 'event-participants', 'Event Participant Master', '1', '42', '0', '1', NOW(), UNIX_TIMESTAMP(), '0', '1');
+
+05-09-2026 Dhaval
+-- migration: migration/master/migrations/20260905140000-add-icon-to-system-report-definitions.js
+ALTER TABLE `system_report_definitions` ADD `icon` VARCHAR(255) NULL DEFAULT NULL;
+
+05-09-2026 Dhaval
+-- migration: migration/master/migrations/20260905160000-add-dashboard-builder-application-page.js
+-- id 160 = "next after 159" assumption - VERIFY against live table before running (same caution report_builder's own migration flagged; form_builder's equivalent id (178, not the assumed 161) turned out wrong for the same reason).
+INSERT INTO `a_application_pages` (`id`, `page_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (160, 'Dashboard Builder', 'dashboard_builder', 'Dashboard Builder', '0', '0', '0', '1', NOW(), UNIX_TIMESTAMP(), '0', '1');
+INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `extra_information`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, '1', '160', '0', '', NOW(), current_timestamp(), '0', '1'), (NULL, '2', '160', '0', '', NOW(), current_timestamp(), '0', '1'), (NULL, '3', '160', '0', '', NOW(), current_timestamp(), '0', '1'), (NULL, '4', '160', '0', '', NOW(), current_timestamp(), '0', '1');
+
+05-09-2026 Dhaval
+-- migration: migration/master/migrations/20260905180000-create-system-dashboard-definitions.js
+CREATE TABLE `system_dashboard_definitions` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `name` VARCHAR(255) NULL,
+  `description` TEXT NULL,
+  `category` VARCHAR(255) NULL,
+  `priority` ENUM('critical','high','normal') NULL,
+  `icon` VARCHAR(255) NULL,
+  `display_order` INT(11) NOT NULL DEFAULT 0,
+  `isDelete` TINYINT(4) NOT NULL DEFAULT 0,
+  `isActive` TINYINT(4) NOT NULL DEFAULT 1,
+  `created_date_time` DATETIME NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+ALTER TABLE `system_dashboard_definitions` ADD INDEX `idx_system_dashboard_definitions_category`(`category`);
+
+05-09-2026 Dhaval
+-- migration: migration/master/migrations/20260905180001-create-system-dashboard-widgets.js
+CREATE TABLE `system_dashboard_widgets` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `system_dashboard_definition_id` INT(11) NOT NULL,
+  `widget_type` VARCHAR(255) NOT NULL,
+  `title` VARCHAR(255) NULL,
+  `model_key` VARCHAR(255) NOT NULL,
+  `label_column` VARCHAR(255) NULL,
+  `value_column` VARCHAR(255) NOT NULL,
+  `aggregate` VARCHAR(255) NULL,
+  `position_x` INT(11) NOT NULL DEFAULT 0,
+  `position_y` INT(11) NOT NULL DEFAULT 0,
+  `width` INT(11) NOT NULL DEFAULT 4,
+  `height` INT(11) NOT NULL DEFAULT 3,
+  `display_order` INT(11) NOT NULL DEFAULT 0,
+  `isDelete` TINYINT(4) NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+ALTER TABLE `system_dashboard_widgets` ADD INDEX `idx_system_dashboard_widgets_definition`(`system_dashboard_definition_id`, `isDelete`);
+
+08-09-2026 Dhaval
+-- migration: migration/master/migrations/20260908130000-add-form-builder-application-page.js
+-- id 178, verified against live DB (161 already taken; 162-177 are adminpanel's own pages sharing this table).
+INSERT INTO `a_application_pages` (`id`, `page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (178, 'Form Builder', 'Form Builder', 'form_builder', 'Custom Form Maker', '0', '0', '0', '1', NOW(), UNIX_TIMESTAMP(), '0', '1');
+INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `extra_information`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (NULL, '1', '178', '0', '', NOW(), current_timestamp(), '0', '1'), (NULL, '2', '178', '0', '', NOW(), current_timestamp(), '0', '1'), (NULL, '3', '178', '0', '', NOW(), current_timestamp(), '0', '1'), (NULL, '4', '178', '0', '', NOW(), current_timestamp(), '0', '1');

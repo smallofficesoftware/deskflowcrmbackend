@@ -36,3 +36,11 @@ export function loadFonts() {
     },
   };
 }
+
+// Single shared instance — every pdfmeEngine generator file used to call
+// loadFonts() independently at its own module scope, each one re-reading
+// all 5 font files off disk again (loadFonts() itself has no caching).
+// ESM module caching makes this genuinely load-once: the first import of
+// this file runs loadFonts() here, every later `import { fontMap } from
+// "./fonts.js"` across the whole process reuses that same object.
+export const fontMap = loadFonts();

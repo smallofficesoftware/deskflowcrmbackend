@@ -997,6 +997,7 @@ export const newCompanyStep = async (req, res) => {
           grace_period: 10,
           compulsary_attendance: 0,
           compulsary_attendance_image: 0,
+          compulsary_gps_app_use: 0,
           week_off_days: 0,
         });
       }
@@ -1067,6 +1068,7 @@ export const newCompanyStep = async (req, res) => {
           grace_period: 10,
           compulsary_attendance: 0,
           compulsary_attendance_image: 0,
+          compulsary_gps_app_use: 0,
           week_off_days: 0,
         });
       }
@@ -3026,6 +3028,7 @@ export const TeamJoinInnerMain = async (req, res) => {
         grace_period: 10,
         compulsary_attendance: 0,
         compulsary_attendance_image: 0,
+        compulsary_gps_app_use: 0,
         week_off_days: 0,
       });
     }

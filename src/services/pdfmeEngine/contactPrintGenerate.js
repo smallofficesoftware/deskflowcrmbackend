@@ -3,21 +3,10 @@
 // -> applyTokenSubstitution -> applyConditionalVisibility -> generate()).
 // Both doc types share the same raw-input composition (contact + company data)
 // and template-resolution lookup, only the fallback template builder differs.
-import { generate } from "@pdfme/generator";
-import * as plugins from "@pdfme/schemas";
 import { documentPrintTemplateModel } from "../../models/company_setup/documentPrintTemplateModel.js";
 import { buildContactAddressTemplate } from "./contactAddressTemplate.js";
 import { buildContactEnvelopeTemplate } from "./contactEnvelopeTemplate.js";
-import { loadFonts } from "./fonts.js";
-import {
-  applyConditionalVisibility,
-  applyTokenSubstitution,
-  fillMissingInputsFromContent,
-  resolveDataSources,
-} from "./orderInputMapper.js";
-
-const fontMap = loadFonts();
-const pluginMap = { text: plugins.text, table: plugins.table, image: plugins.image };
+import { renderPdf } from "./renderPdf.js";
 
 // Same lookup order generateShippingLabelPdf/generateQuotationPdf use: an
 // explicitly picked template, else the company's own default for this
@@ -62,17 +51,14 @@ function buildContactRawInputs({ contact, company }) {
   };
 }
 
-async function generateContactPdf(docType, fallbackBuilder, { contact, company, documentTemplateId, tenantDB }) {
-  const template = await resolveContactTemplate(tenantDB, company?.id, docType, documentTemplateId, fallbackBuilder);
+async function generateContactPdf(docType, fallbackBuilder, { contact, company, documentTemplateId, tenantDB, templateOverride = null }) {
+  // templateOverride (an unsaved draft, e.g. from Document Designer's
+  // "Generate Preview"/test-run) short-circuits the saved-template lookup,
+  // same as every other generator's templateOverride.
+  const template = templateOverride || (await resolveContactTemplate(tenantDB, company?.id, docType, documentTemplateId, fallbackBuilder));
   const rawInputs = buildContactRawInputs({ contact, company });
 
-  let resolvedInputs = resolveDataSources(template, rawInputs);
-  resolvedInputs = fillMissingInputsFromContent(template, resolvedInputs);
-  resolvedInputs = applyTokenSubstitution(template, resolvedInputs);
-  const visibleTemplate = applyConditionalVisibility(template, resolvedInputs);
-
-  const pdfBytes = await generate({ template: visibleTemplate, inputs: [resolvedInputs], plugins: pluginMap, options: { font: fontMap } });
-  return Buffer.from(pdfBytes);
+  return renderPdf(template, rawInputs);
 }
 
 export async function generateContactAddressPdf(args) {

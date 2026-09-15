@@ -3,20 +3,9 @@
 // applyConditionalVisibility -> generate()) but without any of the
 // cart-invoice-only machinery (HSN, watermark, payment QR, extra pages,
 // per-company Designer template lookup) that doesn't apply to a label.
-import { generate } from "@pdfme/generator";
-import * as plugins from "@pdfme/schemas";
 import { documentPrintTemplateModel } from "../../models/company_setup/documentPrintTemplateModel.js";
-import { loadFonts } from "./fonts.js";
-import {
-  applyConditionalVisibility,
-  applyTokenSubstitution,
-  fillMissingInputsFromContent,
-  resolveDataSources,
-} from "./orderInputMapper.js";
+import { renderPdf } from "./renderPdf.js";
 import { buildShippingLabelTemplate } from "./shippingLabelTemplate.js";
-
-const fontMap = loadFonts();
-const pluginMap = { text: plugins.text, table: plugins.table, image: plugins.image };
 
 // Same "₹" + en-IN grouping the old EJS uses (Number(x).toLocaleString('en-IN')).
 function formatInr(value) {
@@ -38,12 +27,14 @@ export async function generateShippingLabelPdf({
   showProductSection,
   documentTemplateId,
   tenantDB,
+  templateOverride = null,
 }) {
   // Same lookup order generateQuotationPdf uses: an explicitly picked
   // template, else the company's own default for this doc_type, else the
-  // built-in fixed layout.
-  let template = null;
-  if (tenantDB) {
+  // built-in fixed layout. templateOverride (an unsaved draft, e.g. from
+  // Document Designer's test-run) short-circuits all of that.
+  let template = templateOverride || null;
+  if (!template && tenantDB) {
     const Template = documentPrintTemplateModel(tenantDB);
     let templateRow = null;
     if (documentTemplateId) {
@@ -98,11 +89,5 @@ export async function generateShippingLabelPdf({
     termsText: dynamicTerms || "",
   };
 
-  let resolvedInputs = resolveDataSources(template, rawInputs);
-  resolvedInputs = fillMissingInputsFromContent(template, resolvedInputs);
-  resolvedInputs = applyTokenSubstitution(template, resolvedInputs);
-  const visibleTemplate = applyConditionalVisibility(template, resolvedInputs);
-
-  const pdfBytes = await generate({ template: visibleTemplate, inputs: [resolvedInputs], plugins: pluginMap, options: { font: fontMap } });
-  return Buffer.from(pdfBytes);
+  return renderPdf(template, rawInputs);
 }

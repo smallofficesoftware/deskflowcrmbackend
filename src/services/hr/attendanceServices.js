@@ -258,7 +258,7 @@ export const attendanceCheck = async (req) => {
           try {
             await sendMultipleNotification({
               deviceTokens: tokens,
-              title: `${username} has successfully ${attendanceBody.attendance_status == 1 ? 'checked in' : 'checked out'}`,
+              title: `${username}'s Attendance Marked (${attendanceBody.attendance_status == 1 ? 'Check-in' : 'Check-out'})`,
               // body: remark || "A new visit has been created",
               data: {
                 page_id: PAGE_ID.ATTENDANCE,

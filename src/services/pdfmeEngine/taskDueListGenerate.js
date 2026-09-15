@@ -1,23 +1,12 @@
-import { generate } from "@pdfme/generator";
-import * as plugins from "@pdfme/schemas";
-import { loadFonts } from "./fonts.js";
-import {
-  applyConditionalVisibility,
-  applyTokenSubstitution,
-  fillMissingInputsFromContent,
-  resolveDataSources,
-} from "./orderInputMapper.js";
+import { renderPdf } from "./renderPdf.js";
 import { buildTaskDueListTemplate, TASK_TABLE_COLUMNS } from "./taskDueListTemplate.js";
-
-const fontMap = loadFonts();
-const pluginMap = { text: plugins.text, table: plugins.table };
 
 // companyData: same shape generateDueTaskPdfandSendMail (taskManagementServices.js)
 // already fetches for the EJS path (id/company_name/address/company_contact/
 // company_email/gst_number). teamWiseTaskList: same [{team_name, tasks:[...]}]
 // shape that function builds.
-export async function generateTaskDueListPdf({ companyData, teamWiseTaskList }) {
-  const template = buildTaskDueListTemplate();
+export async function generateTaskDueListPdf({ companyData, teamWiseTaskList, templateOverride = null }) {
+  const template = templateOverride || buildTaskDueListTemplate();
 
   // Same conditional-join logic as dueTaskListViewV1.ejs's header block
   // (only show a line/separator when the underlying value is actually set) —
@@ -75,11 +64,5 @@ export async function generateTaskDueListPdf({ companyData, teamWiseTaskList }) 
     noDataText: "No due task found",
   };
 
-  let resolvedInputs = resolveDataSources(template, rawInputs);
-  resolvedInputs = fillMissingInputsFromContent(template, resolvedInputs);
-  resolvedInputs = applyTokenSubstitution(template, resolvedInputs);
-  const visibleTemplate = applyConditionalVisibility(template, resolvedInputs);
-
-  const pdfBytes = await generate({ template: visibleTemplate, inputs: [resolvedInputs], plugins: pluginMap, options: { font: fontMap } });
-  return Buffer.from(pdfBytes);
+  return renderPdf(template, rawInputs);
 }

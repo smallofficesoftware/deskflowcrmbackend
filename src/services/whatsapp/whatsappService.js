@@ -17,6 +17,7 @@ import { PAGE_ID } from "../../utils/AppEnumeration.js";
 import { isValid, normalizeToTenDigit, resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { accountPDFv1, allAccountTransactionOfContactPDF } from "../activities/accountTransactionServices.js";
 import { pdfOrder } from "../activities/orderServices.js";
+import { insertThirdPartyLog } from "../activities/thirdPartyLogService.js";
 import { getCompanyByLoginId, insertStagesAndStatusLogs } from "../commonServices.js";
 import { sendMultipleNotification } from "../company_setup/thirdPartyIntegrationService.js";
 import { autoAssignmentContactIdsGet, prepareMailAndWhatsappSenderToTheContact } from "../other_settings/wrkflwAutoAssignmentContactService.js";
@@ -314,9 +315,16 @@ export const taskSendWhatsappMessages = async (req) => {
 
 export const contactAssignSendMessage = async (req, detail) => {
     try {
-        const { a_application_login_id, template_id, sessionName, numbers, text, customer_person_name, customer_company_name, customer_id } = detail || {};
+        const { a_application_login_id, template_id, sessionName, numbers, text, customer_person_name, customer_company_name, customer_id, company_masters_id } = detail || {};
 
-        const company = await getCompanyByLoginId(a_application_login_id);
+        // Prefer the company already resolved by the caller (e.g. waCloudHook
+        // resolves it straight from qr_code). getCompanyByLoginId falls back to
+        // "most recently mapped company for this login" when no requestContext
+        // store exists (true for webhook-triggered sends), which picks the wrong
+        // company when one login owns multiple companies.
+        const company = company_masters_id
+            ? { company_masters_id }
+            : await getCompanyByLoginId(a_application_login_id);
 
         const config = await companyVsWhatsappConfigModel.findOne({
             where: { company_id: company.company_masters_id },
@@ -337,7 +345,22 @@ export const contactAssignSendMessage = async (req, detail) => {
             req.body.contextParams = { customerId: customer_id, appId: a_application_login_id };
             req.body.module = template_id;
             req.body.whx_a_application_login_id = a_application_login_id;
+            const start = Date.now();
             const response = await sendWhatsappTemplateViaBackend(req);
+            insertThirdPartyLog(req.tenantDB, {
+                integration: "WHATSAPP_AUTO_ASSIGN",
+                direction: "OUTBOUND",
+                module_name: "auto_assignment_contact_send",
+                url: "sendWhatsappTemplateViaBackend",
+                status_code: response?.code || null,
+                status: response?.ack === 1 ? "SUCCESS" : "FAILED",
+                response_time: Date.now() - start,
+                request_payload: { numbers, template_id },
+                response_payload: response,
+                error_message: response?.ack === 1 ? null : (response?.data || response?.ack_msg),
+                company_masters_id: company.company_masters_id,
+                a_application_login_id,
+            });
             return response;
         }
 
@@ -357,20 +380,28 @@ export const contactAssignSendMessage = async (req, detail) => {
         const personName = contactDetailFetch?.person_name?.trim();
         const recipientName = (companyName && personName && personName !== 'Unknown') ? `${companyName} ${personName}` : (companyName || personName || 'Unknown');
 
-        return await handler({
+        // Past this point we're on a QR/Baileys handler (V1/V2), not the Cloud
+        // API. template_id here is only our internal saved-config module key
+        // (resolved earlier, Cloud-only, via sendWhatsappTemplateViaBackend) -
+        // it isn't a real WhatsApp Business template name these handlers can
+        // look up. sendsContactV2Qr doesn't even forward templateName to
+        // sendToWhatsApp, so nulling `message` whenever template_id was set
+        // silently sent nothing at all. Always send the prepared text here.
+        const qrStart = Date.now();
+        const qrResponse = await handler({
             sessionName,
             recipientName,
             numbers,
             text,
             phone_number: `${numbers}`,
-            message: template_id ? null : text,
+            message: text,
             whatsapp_phone_number_id,
             whatsapp_connection_id,
             whatsapp_api_key,
             a_application_login_id,
             languageCode: "hi",
             templateName: template_id,
-            messageType: template_id ? "template" : 'text',
+            messageType: 'text',
             templateVariables: {
                 "1":
                     customer_person_name === "Unknown"
@@ -381,6 +412,21 @@ export const contactAssignSendMessage = async (req, detail) => {
             },
             axios
         });
+        insertThirdPartyLog(req.tenantDB, {
+            integration: "WHATSAPP_AUTO_ASSIGN",
+            direction: "OUTBOUND",
+            module_name: "auto_assignment_contact_send",
+            url: "contactAssignSendMessage (QR/Baileys)",
+            status_code: qrResponse?.code || null,
+            status: qrResponse?.ack === 1 ? "SUCCESS" : "FAILED",
+            response_time: Date.now() - qrStart,
+            request_payload: { numbers, template_id },
+            response_payload: qrResponse,
+            error_message: qrResponse?.ack === 1 ? null : (qrResponse?.data || qrResponse?.ack_msg),
+            company_masters_id: company.company_masters_id,
+            a_application_login_id,
+        });
+        return qrResponse;
     } catch (error) {
         console.log("contactAssignSendMessage Error", error);
         return resBadRequest({ developer_msg: `error ${error}` });
@@ -843,7 +889,20 @@ export const waCloudHook = async (req, res) => {
         let description = message;
         let message_type_ = message_type;
         let recipent_number_ = recipent_number;
-        const created_date_time = moment(new Date(timestamp)).format("YYYY-MM-DD HH:mm:ss") || moment(currentDateTime).format("YYYY-MM-DD HH:mm:ss");
+        // `timestamp` can arrive as a numeric epoch (WhatsApp sends seconds, not
+        // milliseconds - passing it straight to `new Date()` produced 1970-era
+        // dates) or as an already-formatted date/time string, depending on the
+        // provider. Handle both, and fall back to now when it's missing/invalid.
+        let created_date_time;
+        const numericTimestamp = Number(timestamp);
+        if (timestamp && String(timestamp).trim() !== "" && !isNaN(numericTimestamp)) {
+            const timestampMs = numericTimestamp > 1e12 ? numericTimestamp : numericTimestamp * 1000;
+            created_date_time = moment(new Date(timestampMs)).format("YYYY-MM-DD HH:mm:ss");
+        } else if (timestamp && moment(timestamp).isValid()) {
+            created_date_time = moment(timestamp).format("YYYY-MM-DD HH:mm:ss");
+        } else {
+            created_date_time = moment(currentDateTime).format("YYYY-MM-DD HH:mm:ss");
+        }
 
         const checkIsNumberExist = await CTContactModel.findOne({
             where: { isDelete: 0, mobile_number: mobile_number },
@@ -865,12 +924,15 @@ export const waCloudHook = async (req, res) => {
                     person_name,
                     created_date_time,
                     source_type_id: SOURCE_TYPE_ID,
+                    company_masters_id: a_company_id,
                     a_application_login_id: companyRecord.a_application_login_id,
                     assinged_to_work_a_application_id: contactAssignedIdsStr || companyRecord.a_application_login_id
                 });
             isNewContact = contactReponse ? true : false;
 
         }
+
+        req.body.contact_id = contactReponse.id;
 
         const createdInquiry = await CTInquiryModel.create(
             {
@@ -922,14 +984,18 @@ export const waCloudHook = async (req, res) => {
             });
         }
 
-        const messageEntry = await CTContactMessageHistoryModel.create({
-            contact_masters_id: contactReponse.id,
-            a_application_login_id: companyRecord.a_application_login_id,
-            description,
-            created_date_time: created_date_time,
-            message_side: "2",
-            message_type_id: "0",
-        });
+        const hasMessageText = typeof description === "string" && description.trim() !== "";
+        const messageEntry = hasMessageText
+            ? await CTContactMessageHistoryModel.create({
+                contact_masters_id: contactReponse.id,
+                company_masters_id: a_company_id,
+                a_application_login_id: companyRecord.a_application_login_id,
+                description,
+                created_date_time: created_date_time,
+                message_side: "2",
+                message_type_id: "0",
+            })
+            : null;
 
         if (createdInquiry || messageEntry) {
             await CTContactModel.update(
@@ -973,8 +1039,8 @@ export const waCloudHook = async (req, res) => {
                 if (tokens.length > 0) {
                     await sendMultipleNotification({
                         deviceTokens: tokens,
-                        title: "New Whatsapp Lead",
-                        body: `${isNewContact ? "New lead" : "Follow-up"} from Whatsapp`,
+                        title: "New WhatsApp Lead Assigned to You",
+                        body: `${isNewContact ? "New lead" : "Follow-up"} from WhatsApp`,
                     });
                 }
             }

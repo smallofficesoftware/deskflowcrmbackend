@@ -450,7 +450,7 @@ export const visitMasterCreate = async (req) => {
           id: newVisitData.contact_id, // Assuming contactBody has contact_id
           isDelete: 0,
         },
-        attributes: ["assinged_to_work_a_application_id"],
+        attributes: ["assinged_to_work_a_application_id", "person_name"],
       });
 
       // Parse assigned_team_member (comma-separated string) into an array
@@ -527,9 +527,13 @@ export const visitMasterCreate = async (req) => {
 
         if (tokens.length > 0) {
           try {
+            const visitStartedBy = await loginModel.findOne({
+              where: { id: a_application_login_id, isDelete: 0 },
+              attributes: ["username"],
+            });
             await sendMultipleNotification({
               deviceTokens: tokens,
-              title: "Visit Created",
+              title: `New Visit Started by ${visitStartedBy?.username || "Someone"} for ${contactData?.person_name || "Contact"}`,
               // body: remark || 'A new visit has been created',
               data: {
                 page_id: PAGE_ID.VISIT,
@@ -976,7 +980,7 @@ export const visitMasterUpdate = async (req) => {
           try {
             await sendMultipleNotification({
               deviceTokens: tokens,
-              title: `#${visit_id} Visit Stopped by ${contactData.person_name}`,
+              title: `Visit #${visit_id} Completed by ${username || "Someone"} for ${visitTable.dataValues.person_name || "Contact"}`,
               data: {
                 page_id: PAGE_ID.VISIT,
               },

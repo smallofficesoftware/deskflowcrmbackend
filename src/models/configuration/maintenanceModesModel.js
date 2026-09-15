@@ -21,6 +21,10 @@ const maintenanceModesModel = sequelize.define("maintenance_modes", {
     type: INTEGER,
     defaultValue: 0,
   },
+  bypass_ips: {
+    type: TEXT,
+    defaultValue: null,
+  },
   created_date_time: {
     type: DATE,
     defaultValue: NOW,

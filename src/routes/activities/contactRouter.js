@@ -9,14 +9,17 @@ import {
   checkContactNumberDuplication,
   contactAddressPrint,
   contactEnvelopePrint,
+  contactMergePreview,
   contactWithReminder,
   createContact,
   createContactByOnlineStore,
   createContactByQR,
   deleteContact,
+  duplicateContactGroups,
   exportsContacts,
   generateContactSampleSheetProvider,
   getContactById,
+  mergeContactProvider,
   pinUnpinContact,
   readContact,
   recoverContact,
@@ -60,4 +63,7 @@ export default (app) => {
   app.post("/assign-source", authenticateToken, tenantMiddleware, assignSourceContactsProvider);
   app.post("/assign-status", authenticateToken, tenantMiddleware, assignStatusContactsProvider);
   app.post("/readunread-contact", authenticateToken, tenantMiddleware, assignreadUnreadContactsProvider);
+  app.post("/duplicate-contact-groups", authenticateToken, tenantMiddleware, duplicateContactGroups);
+  app.post("/contact-merge-preview", authenticateToken, tenantMiddleware, contactMergePreview);
+  app.post("/merge-contact", authenticateToken, tenantMiddleware, mergeContactProvider);
 };

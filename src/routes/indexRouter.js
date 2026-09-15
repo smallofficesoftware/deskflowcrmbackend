@@ -36,6 +36,7 @@ import getTeamAttendanceReport from "./dashboard/Reports/teamAttendanceReportRou
 import getTeamDayExpense from "./dashboard/Reports/teamDaywiseExpenseReportRouter.js";
 import getTeamPendingWorkReport from "./dashboard/Reports/teamPendingWorkReportRouter.js";
 import getTeamPerformanceReport from "./dashboard/Reports/teamPerformanceReportRouter.js";
+import genericReportExportRouter from "./dashboard/Reports/genericReportExportRouter.js";
 import attendanceRouter from "./hr/attendanceRouter.js";
 import categoryDelete from "./product_settings/categoryDeleteRouter.js";
 // import ConnectionRouter from "./connectionRouter.js";
@@ -54,7 +55,10 @@ import { default as getprintSetting, default as printSetting } from './company_s
 import documentPrintTemplateRouter from './company_setup/documentPrintTemplateRouter.js';
 import featureFlagRouter from './company_setup/featureFlagRouter.js';
 import reportPinRouter from './company_setup/reportPinRouter.js';
+import dashboardRouter from './report_builder/dashboardRouter.js';
 import reportDefinitionRouter from './report_builder/reportDefinitionRouter.js';
+import formBuilderRouter from './form_builder/formBuilderRouter.js';
+import formBuilderPublicRouter from './form_builder/formBuilderPublicRouter.js';
 import reviewRouter from './company_setup/reviewRouter.js';
 import currencyRouter from "./configuration/currencyRouter.js";
 import updateTenent from "./configuration/updateTenentRouter.js";
@@ -88,6 +92,7 @@ import BillOfMaterials from "./masters/billOfmaterialsRouter.js";
 import sourceOfTypesRouter from "./masters/sourceOfTypesRouter.js";
 import getTaskTemplateDataSource from "./masters/taskTemplateRouter.js";
 import miracleRoutes from "./miracle/miracleRoutes.js";
+import thirdPartyLogRouter from "./activities/thirdPartyLogRouter.js";
 import onlineStoreRouter from "./online-store/onlineStoreRouter.js";
 import supportTicketRouter from "./online-store/supportTicketRouter.js";
 import customFieldFormRouter from "./other_settings/customFieldFormRouter.js";
@@ -139,6 +144,7 @@ export default () => {
   statistics(app);
   accountOutstandingReport(app);
   getTeamPerformanceReport(app);
+  genericReportExportRouter(app);
   getTeamPendingWorkReport(app);
   getProductInventoryReport(app);
   reminderNotificationRouter(app);
@@ -163,6 +169,9 @@ export default () => {
   featureFlagRouter(app);
   reportPinRouter(app);
   reportDefinitionRouter(app);
+  formBuilderRouter(app);
+  formBuilderPublicRouter(app);
+  dashboardRouter(app);
   reviewRouter(app);
   TaskManagement(app);
   TaskMessageHistory(app);
@@ -186,6 +195,7 @@ export default () => {
   supportTicketRouter(app);
   whatsappRoutes(app);
   miracleRoutes(app);
+  thirdPartyLogRouter(app);
   allInsightsRouter(app);
   quickSearchRouter(app);
   employeePayrollRouter(app);

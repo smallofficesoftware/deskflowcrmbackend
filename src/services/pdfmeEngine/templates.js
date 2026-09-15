@@ -69,6 +69,15 @@ export function applyTemplateOptions(id, loadedTemplate, { header = null, column
     cloned.basePdf.footerImage = fresh.basePdf.footerImage;
     cloned.basePdf.headerHeightMM = fresh.basePdf.headerHeightMM;
     cloned.basePdf.footerHeightMM = fresh.basePdf.footerHeightMM;
+    cloned.basePdf.pageBorder = fresh.basePdf.pageBorder;
+    cloned.basePdf.pageBorderColor = fresh.basePdf.pageBorderColor;
+    cloned.basePdf.pageBorderWidth = fresh.basePdf.pageBorderWidth;
+    cloned.basePdf.pageBorderX = fresh.basePdf.pageBorderX;
+    cloned.basePdf.pageBorderY = fresh.basePdf.pageBorderY;
+    cloned.basePdf.pageBorderWidthMM = fresh.basePdf.pageBorderWidthMM;
+    cloned.basePdf.pageBorderHeightMM = fresh.basePdf.pageBorderHeightMM;
+    cloned.basePdf.marginLeft = fresh.basePdf.marginLeft;
+    cloned.basePdf.marginRight = fresh.basePdf.marginRight;
     cloned.schemas = cloned.schemas.map((page) => page.map((field) => shiftFieldY(field, deltaY)));
   }
 
@@ -103,6 +112,15 @@ export function applyTemplateOptions(id, loadedTemplate, { header = null, column
       footerImage: cloned.basePdf.footerImage,
       headerHeightMM: cloned.basePdf.headerHeightMM,
       footerHeightMM: cloned.basePdf.footerHeightMM,
+      pageBorder: cloned.basePdf.pageBorder,
+      pageBorderColor: cloned.basePdf.pageBorderColor,
+      pageBorderWidth: cloned.basePdf.pageBorderWidth,
+      pageBorderX: cloned.basePdf.pageBorderX,
+      pageBorderY: cloned.basePdf.pageBorderY,
+      pageBorderWidthMM: cloned.basePdf.pageBorderWidthMM,
+      pageBorderHeightMM: cloned.basePdf.pageBorderHeightMM,
+      marginLeft: cloned.basePdf.marginLeft,
+      marginRight: cloned.basePdf.marginRight,
     };
     const effectiveColumnOptions = columnOptions || currentItemsTable?.columnOptions;
 
@@ -131,7 +149,11 @@ export function withCompanyHeader(template, company) {
   const addressLine = `Address: ${company.address}\n${contactLine}`;
   const combinedBlock = `${company.name}\n${addressLine}`;
 
-  cloned.basePdf.staticSchema = cloned.basePdf.staticSchema.map((field) => {
+  // A Report Builder bootstrap template (buildDefaultReportTemplate) has no
+  // header/footer overlay fields baked into basePdf at all — nothing to
+  // substitute company info into, so this is correctly a no-op for those,
+  // not a crash (cart-type templates always have a real staticSchema).
+  cloned.basePdf.staticSchema = (cloned.basePdf.staticSchema || []).map((field) => {
     // dataSource, not name — a renamed duplicate of e.g. companyName should
     // still receive the real company name. Falls back to `field.name` for
     // templates saved before dataSource existed.

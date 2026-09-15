@@ -82,10 +82,18 @@ export const whatsappTemplateConfigsModel = (sequelize) => {
             updatedAt: "updated_at",
 
             indexes: [
+                // module+template_id only (NOT +user_id) — every read path
+                // (whatsappTemplateConfigs/whatsappTemplateConfigGet,
+                // sendWhatsappTemplateViaBackend) already treats this as one
+                // config per module+template, not per user; the unique key
+                // used to also include user_id, which let an edit under a
+                // different/missing a_application_login_id insert a
+                // duplicate row instead of updating the existing one — see
+                // migration 20260911120000-fix-whatsapp-template-configs-unique-key.js.
                 {
                     unique: true,
-                    fields: ["module", "template_id", "user_id"],
-                    name: "unique_module_template_user",
+                    fields: ["module", "template_id"],
+                    name: "unique_module_template",
                 },
                 {
                     fields: ["displayModule"],

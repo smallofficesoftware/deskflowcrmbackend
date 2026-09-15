@@ -245,7 +245,7 @@ export const getAllJoinURL = async (req, res) => {
       try {
         await sendMultipleNotification({
           deviceTokens: tokens,
-          title: `${joinedUser.username} has joined the team.`,
+          title: `${joinedUser.username} Joined the Team`,
           body: `Welcome to the team ${joinedUser.username}!`,
         });
       } catch (notificationError) {
@@ -704,7 +704,7 @@ export const removeFromTeamList = async (req) => {
       try {
         await sendMultipleNotification({
           deviceTokens: tokens,
-          title: `removed from the team.`,
+          title: `${removedUser.username} Removed from the Team`,
           body: `${removedUser.username} has been removed from the team.`,
         });
       } catch (notificationError) {
