@@ -122,6 +122,11 @@ export const PAGE_ID = {
   // dev): 179-183 were already taken by other rows not visible from the
   // CRM codebase (adminpanel shares this table); MAX(id) was 183.
   CONTACT_MERGE: "184",
+  // Serial Number Wise Stock Check, as its own report tile (previously
+  // only reachable from Products Report's ⋮ menu). Migration
+  // 20260915120000-add-serial-number-stock-check-application-page.js
+  // (master DB). id 185 = next after CONTACT_MERGE (184).
+  SERIAL_NUMBER_STOCK_CHECK: "185",
   // Add more pages as needed
 };
 // config/googleApi.ts
