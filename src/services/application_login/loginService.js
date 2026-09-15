@@ -1620,16 +1620,28 @@ export const onLoad = async (req, res) => {
     // calendar (marketing site) already reads — next upcoming event only,
     // same isDelete/isActive/date filters as that public query
     // (publicEvent.service.js's getMonthEvents), no status_id filter since
-    // that query doesn't apply one either.
-    const nextEvent = await eventMasterModel.findOne({
-      where: {
-        isDelete: 0,
-        isActive: 1,
-        event_date: { [Op.gte]: moment().format("YYYY-MM-DD") },
-      },
-      attributes: ["event_title", "event_date", "start_time"],
-      order: [["event_date", "ASC"], ["id", "ASC"]],
-    });
+    // that query doesn't apply one either. Only event_title/event_date
+    // queried — this table is owned by the adminpanel repo's own migration
+    // chain, not this one, so a column added there (start_time) can exist
+    // in code here before it's actually migrated on a given environment's
+    // DB ("Unknown column 'start_time'"); stick to the two original
+    // columns every environment has always had. try/catch below is the
+    // remaining safety net for any future drift on this externally-owned
+    // table — must never take onLoad down with it.
+    let nextEvent = null;
+    try {
+      nextEvent = await eventMasterModel.findOne({
+        where: {
+          isDelete: 0,
+          isActive: 1,
+          event_date: { [Op.gte]: moment().format("YYYY-MM-DD") },
+        },
+        attributes: ["event_title", "event_date"],
+        order: [["event_date", "ASC"], ["id", "ASC"]],
+      });
+    } catch (e) {
+      console.error("next_training_event lookup failed:", e.message);
+    }
 
     /* ===================== RESPONSE ===================== */
     const commonData = {
@@ -1638,7 +1650,6 @@ export const onLoad = async (req, res) => {
         ? {
             title: nextEvent.dataValues.event_title,
             date: nextEvent.dataValues.event_date,
-            start_time: nextEvent.dataValues.start_time || null,
           }
         : null,
       review: reviewStatus,
