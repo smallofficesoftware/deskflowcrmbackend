@@ -26,6 +26,68 @@ import { priceListModel } from "../../models/product_settings/priceListModel.js"
 import { customFieldFormModel } from "../../models/other_settings/customFieldFormModel.js";
 import { Op } from "sequelize";
 
+// Maps a webhook cart_type to the company_masters prefix column
+// getNumberSeries (sharedFunctions.js) would use for that same type — kept
+// in sync with that function's switch so a Miracle-imported cart's
+// sr_by_prifix always resolves against a prefix the CRM itself would
+// generate for that type.
+const CART_TYPE_TO_PREFIX_FIELD = {
+    1: "quotation_prefix",
+    2: "order_prefix",
+    3: "invoice_prefix",
+    4: "purchase_prefix",
+    5: "purchase_ord_prefix",
+    6: "return_sales_invoice_prefix",
+    7: "return_purchase_invoice_prefix",
+    8: "inward_prefix",
+    9: "dispatch_prefix",
+};
+
+/**
+ * Miracle invoice numbers arrive as one opaque string (e.g. "RJT1769/26-27")
+ * with no separator between the series prefix and the running number —
+ * unlike our own generated cart_numbers. Carts created straight from the
+ * webhook (cartModelInstance.findOrCreate below) never went through
+ * getNumberSeries, so sr_by_prifix/sr_by_number stayed unset (shows as a
+ * bare "0" wherever the UI displays sr_by_number, e.g. the SR. No. field on
+ * edit). This recovers both by matching cartNumber's leading letters against
+ * the tenant's own configured prefixes for that cart type — never guesses
+ * a prefix that isn't actually configured, so an unrecognized format just
+ * leaves both fields unset (today's existing behavior) rather than storing
+ * something wrong.
+ */
+const parseSrByPrefixAndNumber = async (companyId, cartType, cartNumber) => {
+    const prefixField = CART_TYPE_TO_PREFIX_FIELD[cartType];
+    if (!prefixField || !cartNumber) return { sr_by_prifix: null, sr_by_number: null };
+
+    const company = await companyModel.findOne({
+        attributes: [prefixField],
+        where: { isDelete: 0, id: companyId },
+    });
+    const prefixCsv = company?.dataValues?.[prefixField];
+    if (!prefixCsv) return { sr_by_prifix: null, sr_by_number: null };
+
+    const candidatePrefixes = prefixCsv
+        .split(",")
+        .map((p) => p.trim())
+        .filter(Boolean)
+        // Longest first so a prefix that's a substring of another (e.g.
+        // "RJT" inside a hypothetical "XRJT") can't shadow the real match.
+        .sort((a, b) => b.length - a.length);
+
+    for (const prefix of candidatePrefixes) {
+        if (cartNumber.toUpperCase().startsWith(prefix.toUpperCase())) {
+            const rest = cartNumber.slice(prefix.length);
+            const numberMatch = rest.match(/^(\d+)/);
+            if (numberMatch) {
+                return { sr_by_prifix: prefix, sr_by_number: Number(numberMatch[1]) };
+            }
+        }
+    }
+
+    return { sr_by_prifix: null, sr_by_number: null };
+};
+
 const extractMiracleCustomFields = async (tenantDB, companyId, formType, ufddetPayload, targetModule = null) => {
     if (!tenantDB || !companyId || !formType || !ufddetPayload || typeof ufddetPayload !== "object") return {};
     try {
@@ -918,6 +980,8 @@ export async function handleVoucherAddOrUpdate({ payload, context }) {
         cartNumber = existingCart.cart_number;
     }
 
+    const { sr_by_prifix, sr_by_number } = await parseSrByPrefixAndNumber(companyId, cartType, cartNumber);
+
     let transactionMode = 0;
     if (flgcd === "C") {
         transactionMode = 1;
@@ -1061,6 +1125,11 @@ export async function handleVoucherAddOrUpdate({ payload, context }) {
     const cartPayload = {
         type: cartType,
         cart_number: cartNumber,
+        // Only set when parsing actually matched a configured prefix —
+        // omitting the keys (rather than sending null) means a later
+        // webhook call that fails to parse never clobbers a previously
+        // resolved value on cart.update() below.
+        ...(sr_by_prifix ? { sr_by_prifix, sr_by_number } : {}),
         cart_date: cartDate,
         update_Date_time: cartDate,
         due_date: dueDate,
