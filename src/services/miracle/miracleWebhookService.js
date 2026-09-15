@@ -25,23 +25,7 @@ import { stateModel } from "../../models/masters/stateModel.js";
 import { priceListModel } from "../../models/product_settings/priceListModel.js";
 import { customFieldFormModel } from "../../models/other_settings/customFieldFormModel.js";
 import { Op } from "sequelize";
-
-// Maps a webhook cart_type to the company_masters prefix column
-// getNumberSeries (sharedFunctions.js) would use for that same type — kept
-// in sync with that function's switch so a Miracle-imported cart's
-// sr_by_prifix always resolves against a prefix the CRM itself would
-// generate for that type.
-const CART_TYPE_TO_PREFIX_FIELD = {
-    1: "quotation_prefix",
-    2: "order_prefix",
-    3: "invoice_prefix",
-    4: "purchase_prefix",
-    5: "purchase_ord_prefix",
-    6: "return_sales_invoice_prefix",
-    7: "return_purchase_invoice_prefix",
-    8: "inward_prefix",
-    9: "dispatch_prefix",
-};
+import { CART_TYPE_TO_PREFIX_FIELD } from "../../utils/AppEnumeration.js";
 
 /**
  * Miracle invoice numbers arrive as one opaque string (e.g. "RJT1769/26-27")

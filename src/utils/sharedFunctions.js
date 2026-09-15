@@ -7,6 +7,7 @@ import { cartModel } from "../models/activities/cartsModel.js";
 import companyModel from "../models/company_setup/companyModel.js";
 import { customFieldFormModel } from "../models/other_settings/customFieldFormModel.js";
 import { CUSTOM_FORM_FEILD_LIMIT } from "./appConstants.js";
+import { CART_TYPE_TO_PREFIX_FIELD } from "./AppEnumeration.js";
 
 export const resSuccess = (payload) => {
   return {
@@ -347,91 +348,19 @@ export const getNumberSeries = async (
   });
   let prefix;
   if (prefixResult) {
-    switch (Number(order_type_flag)) {
-      case 1:
-        if (sr_by_prifix == null || sr_by_prifix == undefined || sr_by_prifix == '' || sr_by_prifix == ' ') {
-
-          prefix = sr_by_prifix || getFirstPrefix(prefixResult?.dataValues?.quotation_prefix);
-        } else {
-
-          prefix = sr_by_prifix || prefixResult?.dataValues?.quotation_prefix;
-        }
-        pattern = prefixResult?.dataValues?.quotation_series_pattern;
-        break;
-      case 2:
-        if (sr_by_prifix == null || sr_by_prifix == undefined || sr_by_prifix == '' || sr_by_prifix == ' ') {
-          prefix = sr_by_prifix || getFirstPrefix(prefixResult?.dataValues?.order_prefix);
-        } else {
-          prefix = sr_by_prifix || prefixResult?.dataValues?.order_prefix;
-        }
-        pattern = prefixResult?.dataValues?.order_series_pattern;
-        break;
-      case 3:
-        if (sr_by_prifix == null || sr_by_prifix == undefined || sr_by_prifix == '' || sr_by_prifix == ' ') {
-          prefix = sr_by_prifix || getFirstPrefix(prefixResult?.dataValues?.invoice_prefix);
-        } else {
-          prefix = sr_by_prifix || prefixResult?.dataValues?.invoice_prefix;
-        }
-        pattern = prefixResult?.dataValues?.invoice_series_pattern;
-        break;
-      case 4:
-        if (sr_by_prifix == null || sr_by_prifix == undefined || sr_by_prifix == '' || sr_by_prifix == ' ') {
-          prefix = sr_by_prifix || getFirstPrefix(prefixResult?.dataValues?.purchase_prefix);
-        } else {
-          prefix = sr_by_prifix || prefixResult?.dataValues?.purchase_prefix;
-        }
-        pattern = prefixResult?.dataValues?.purchase_series_pattern;
-        break;
-      case 5:
-        if (sr_by_prifix == null || sr_by_prifix == undefined || sr_by_prifix == '' || sr_by_prifix == ' ') {
-          prefix = sr_by_prifix || getFirstPrefix(prefixResult?.dataValues?.purchase_ord_prefix);
-        } else {
-          prefix = sr_by_prifix || prefixResult?.dataValues?.purchase_ord_prefix;
-        }
-        pattern = prefixResult?.dataValues?.purchase_ord_series_pattern;
-        break;
-      case 6:
-        if (sr_by_prifix == null || sr_by_prifix == undefined || sr_by_prifix == '' || sr_by_prifix == ' ') {
-          prefix = sr_by_prifix || getFirstPrefix(prefixResult?.dataValues?.return_sales_invoice_prefix);
-        } else {
-          prefix = sr_by_prifix || prefixResult?.dataValues?.return_sales_invoice_prefix;
-        }
-        pattern = prefixResult?.dataValues?.return_sales_invoice_series_pattern;
-        break;
-      case 7:
-        if (sr_by_prifix == null || sr_by_prifix == undefined || sr_by_prifix == '' || sr_by_prifix == ' ') {
-          prefix = sr_by_prifix || getFirstPrefix(prefixResult?.dataValues?.return_purchase_invoice_prefix);
-        } else {
-          prefix = sr_by_prifix || prefixResult?.dataValues?.return_purchase_invoice_prefix;
-        }
-        pattern = prefixResult?.dataValues?.return_purchase_invoice_series_pattern;
-        break;
-      case 8:
-        if (sr_by_prifix == null || sr_by_prifix == undefined || sr_by_prifix == '' || sr_by_prifix == ' ') {
-          prefix = sr_by_prifix || getFirstPrefix(prefixResult?.dataValues?.inward_prefix);
-        } else {
-          prefix = sr_by_prifix || prefixResult?.dataValues?.inward_prefix;
-        }
-        pattern = prefixResult?.dataValues?.inward_series_pattern;
-        break;
-      case 9:
-        if (sr_by_prifix == null || sr_by_prifix == undefined || sr_by_prifix == '' || sr_by_prifix == ' ') {
-          prefix = sr_by_prifix || getFirstPrefix(prefixResult?.dataValues?.dispatch_prefix);
-        } else {
-          prefix = sr_by_prifix || prefixResult?.dataValues?.dispatch_prefix;
-        }
-        pattern = prefixResult?.dataValues?.dispatch_series_pattern;
-        break;
-      case 12:
-        if (sr_by_prifix == null || sr_by_prifix == undefined || sr_by_prifix == '' || sr_by_prifix == ' ') {
-          prefix = sr_by_prifix || getFirstPrefix(prefixResult?.dataValues?.proforma_invoice_prefix);
-        } else {
-          prefix = sr_by_prifix || prefixResult?.dataValues?.proforma_invoice_prefix;
-        }
-        pattern = prefixResult?.dataValues?.proforma_invoice_series_pattern;
-        break;
-      default:
-        "XXX";
+    // Cart type -> prefix/pattern field names, from the single shared map
+    // (AppEnumeration.js) also used by miracleWebhookService.js's
+    // parseSrByPrefixAndNumber - edit that map, not a case here, to add a
+    // cart type. sr_by_prifix (an explicitly chosen series) always wins;
+    // otherwise fall back to the tenant's first configured prefix for
+    // this type - behaviorally identical to the old per-case if/else,
+    // which reduced to exactly this once sr_by_prifix's truthiness was
+    // followed through both branches.
+    const prefixField = CART_TYPE_TO_PREFIX_FIELD[Number(order_type_flag)];
+    if (prefixField) {
+      prefix = sr_by_prifix || getFirstPrefix(prefixResult?.dataValues?.[prefixField]);
+      const patternField = prefixField.replace(/_prefix$/, "_series_pattern");
+      pattern = prefixResult?.dataValues?.[patternField];
     }
   } else {
     return resError({
