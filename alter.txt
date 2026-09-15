@@ -3339,3 +3339,27 @@ INSERT INTO `plan_vs_pages` (`id`, `plan_id`, `page_id`, `data_limit`, `extra_in
 12-09-2026 Dhaval
 -- adminpanel migration: backend/src/database/migrations/20260912150000-add-time-remarks-to-event-masters.js
 ALTER TABLE `event_masters` ADD `start_time` VARCHAR(8) NULL, ADD `end_time` VARCHAR(8) NULL, ADD `remarks` TEXT NULL;
+
+28-08-2026 Dhaval
+-- adminpanel seeder: backend/src/database/seeders/20260828150000-seed-system-document-templates-page.js
+INSERT INTO `a_application_pages` (`page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES ('System Document Template Library', 'Platform', 'system_document_templates', 'System Document Template Library', '1', '14', '0', '1', NOW(), UNIX_TIMESTAMP(), '0', '1');
+
+02-09-2026 Dhaval
+-- adminpanel seeder: backend/src/database/seeders/20260902100000-seed-system-report-definitions-page.js
+INSERT INTO `a_application_pages` (`page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES ('System Report Definition Library', 'Platform', 'system_report_definitions', 'System Report Definition Library', '1', '15', '0', '1', NOW(), UNIX_TIMESTAMP(), '0', '1');
+
+05-09-2026 Dhaval
+-- adminpanel seeder: backend/src/database/seeders/20260905180000-seed-system-dashboard-definitions-page.js
+INSERT INTO `a_application_pages` (`page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES ('System Dashboard Gallery', 'Platform', 'system_dashboard_definitions', 'System Dashboard Gallery', '1', '16', '0', '1', NOW(), UNIX_TIMESTAMP(), '0', '1');
+
+08-09-2026 Dhaval
+-- adminpanel seeder: backend/src/database/seeders/20260908150000-seed-addons-page.js
+INSERT INTO `a_application_pages` (`page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES ('Add On Master', 'Platform', 'addons', 'Add On Master', '1', '38', '0', '1', NOW(), UNIX_TIMESTAMP(), '0', '1');
+
+08-09-2026 Dhaval
+-- adminpanel seeder: backend/src/database/seeders/20260908160000-seed-statuses-and-events-pages.js
+INSERT INTO `a_application_pages` (`page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES
+('Status Master', 'Platform', 'statuses', 'Status Master', '1', '39', '0', '1', NOW(), UNIX_TIMESTAMP(), '0', '1'),
+('Event Type Master', 'Platform', 'event-types', 'Event Type Master', '1', '40', '0', '1', NOW(), UNIX_TIMESTAMP(), '0', '1'),
+('Event Master', 'Platform', 'events', 'Event Master', '1', '41', '0', '1', NOW(), UNIX_TIMESTAMP(), '0', '1'),
+('Event Participant Master', 'Platform', 'event-participants', 'Event Participant Master', '1', '42', '0', '1', NOW(), UNIX_TIMESTAMP(), '0', '1');
