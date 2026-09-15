@@ -37,6 +37,66 @@ if (!fs.existsSync(seedersPath)) fs.mkdirSync(seedersPath, { recursive: true });
 
 const timestamp = () => new Date().getTime();
 
+// Older tenant DBs (demo/prod) got schema changes applied by hand
+// (alter.txt) before this runner existed, so SequelizeMeta is missing
+// rows for structure that's already live. Treat a MySQL "already
+// exists" class error during `up` as proof the migration is already
+// applied: record it in SequelizeMeta without re-running it, instead
+// of aborting the whole run.
+const ALREADY_EXISTS_CODES = new Set([
+    'ER_DUP_FIELDNAME',
+    'ER_DUP_KEYNAME',
+    'ER_TABLE_EXISTS_ERROR',
+    'ER_DUP_ENTRY',
+]);
+const ALREADY_EXISTS_RE = /already exists|duplicate (column|key) name|duplicate entry/i;
+const isAlreadyExistsError = (err) => {
+    const code = err?.original?.code || err?.parent?.code;
+    if (code && ALREADY_EXISTS_CODES.has(code)) return true;
+    return ALREADY_EXISTS_RE.test(err?.original?.sqlMessage || err?.message || '');
+};
+
+async function runTenantMigrationsUpSelfHealing(tenant, dialect) {
+    const sequelize = new SequelizePkg(tenant.db_name, tenant.db_user, tenant.db_password, {
+        host: tenant.db_host,
+        dialect,
+        logging: false,
+        timezone: "+05:30",
+        define: { timestamps: false },
+    });
+    try {
+        const [rows] = await sequelize.query('SELECT name FROM `SequelizeMeta`');
+        const applied = new Set(rows.map(r => r.name));
+        const absMigrationsPath = path.resolve(process.cwd(), migrationsPath);
+        const files = (await fsp.readdir(absMigrationsPath)).filter(f => f.endsWith('.js')).sort();
+        const queryInterface = sequelize.getQueryInterface();
+
+        for (const file of files) {
+            if (applied.has(file)) continue;
+            const modulePath = path.join(absMigrationsPath, file).replace(/\\/g, '/');
+            const migration = await import(`file://${modulePath}`);
+            try {
+                await migration.up(queryInterface, SequelizePkg);
+                await sequelize.query('INSERT INTO `SequelizeMeta` (`name`) VALUES (:name)', { replacements: { name: file } });
+                console.log(`Tenant ${tenant.db_name}: migrated ${file}`);
+            } catch (err) {
+                if (isAlreadyExistsError(err)) {
+                    await sequelize.query('INSERT INTO `SequelizeMeta` (`name`) VALUES (:name)', { replacements: { name: file } });
+                    console.log(`Tenant ${tenant.db_name}: already applied, marked complete - ${file}`);
+                } else {
+                    console.error(`Tenant ${tenant.db_name}: FAILED at ${file}: ${err.message}`);
+                    break;
+                }
+            }
+        }
+        console.log(`Tenant ${tenant.db_name}: done`);
+    } catch (err) {
+        console.error(`Error on tenant ${tenant.db_name}:`, err.message);
+    } finally {
+        await sequelize.close?.();
+    }
+}
+
 const spawnCommandStream = (cmd, argsArray, cwd = process.cwd()) =>
     new Promise((resolve, reject) => {
         const child = spawn(cmd, argsArray, { shell: true, cwd, stdio: ['inherit', 'inherit', 'inherit'] });
@@ -181,10 +241,12 @@ async function runForTenant(tenant, category, action, dialect) {
             await fsp.unlink(tempFile).catch(() => { });
             return;
         }
-        if (action === 'up') {
-            const args = ['sequelize-cli', `${baseCommand}${isSeeder ? ':all' : ''}`, '--config', tempFile];
-            if (isSeeder) args.push('--seeders-path', seedersPath);
-            else args.push('--migrations-path', migrationsPath);
+        if (action === 'up' && !isSeeder) {
+            await fsp.unlink(tempFile).catch(() => { });
+            await runTenantMigrationsUpSelfHealing(tenant, dialect);
+            return;
+        } else if (action === 'up') {
+            const args = ['sequelize-cli', `${baseCommand}:all`, '--config', tempFile, '--seeders-path', seedersPath];
             await spawnCommandStream('npx', args);
         } else if (action === 'down') {
             for (let i = 0; i < stepsArg; i++) {
