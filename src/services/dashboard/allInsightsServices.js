@@ -398,6 +398,7 @@ export const getCrmInsight = async (req) => {
             7: PAGE_ID.RETURN_PURCHASE_INVOICE,
             8: PAGE_ID.INWARD,
             9: PAGE_ID.DISPATCH,
+            12: PAGE_ID.PROFOMA_INVOICE,
         };
 
         const countByType = async (type) => {
@@ -438,6 +439,7 @@ export const getCrmInsight = async (req) => {
             returnPurchaseInvoice,
             inward,
             dispath,
+            performa,
         ] = await Promise.all([
             countByType(1),
             countByType(2),
@@ -448,6 +450,7 @@ export const getCrmInsight = async (req) => {
             countByType(7),
             countByType(8),
             countByType(9),
+            countByType(12),
         ]);
 
         /* ----------- Out-of-stock (use Purchase rights as the gate for stock view) ----------- */
@@ -642,6 +645,8 @@ export const getCrmInsight = async (req) => {
                 inwardCount: inward.sum,
                 TotalDispath: dispath.count,
                 dispathCount: dispath.sum,
+                totalPerforma: performa.count,
+                performaApprovedCount: performa.sum,
                 workOrderCount: 0,
                 workOrderApprovedCount: 0,
                 todayVisitCount,
