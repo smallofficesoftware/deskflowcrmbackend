@@ -64,6 +64,7 @@ import applicationLoginHistoriesModel from "../../models/application_login/appli
 import { applicationLoginTypeRightModel } from "../../models/application_login/applicationLoginTypeRightModel.js";
 import companyVsWhatsappConfigModel from "../../models/company_setup/companyVsWhatsappConfigModel.js";
 import miracleConfigModel from "../../models/company_setup/miracleConfigModel.js";
+import eventMasterModel from "../../models/configuration/eventMasterModel.js";
 import maintenanceModesModel from "../../models/configuration/maintenanceModesModel.js";
 import tenantMasterModel from "../../models/configuration/tenantMasterModel.js";
 import { attendanceModel } from "../../models/hr/attendanceModel.js";
@@ -1615,9 +1616,31 @@ export const onLoad = async (req, res) => {
       attributes: ["is_training_disabled"],
     });
 
+    // Same shared master DB's event_masters table adminpanel's public
+    // calendar (marketing site) already reads — next upcoming event only,
+    // same isDelete/isActive/date filters as that public query
+    // (publicEvent.service.js's getMonthEvents), no status_id filter since
+    // that query doesn't apply one either.
+    const nextEvent = await eventMasterModel.findOne({
+      where: {
+        isDelete: 0,
+        isActive: 1,
+        event_date: { [Op.gte]: moment().format("YYYY-MM-DD") },
+      },
+      attributes: ["event_title", "event_date", "start_time"],
+      order: [["event_date", "ASC"], ["id", "ASC"]],
+    });
+
     /* ===================== RESPONSE ===================== */
     const commonData = {
       is_training_disabled: maintenanceSetting?.dataValues?.is_training_disabled === 1 ? 1 : 0,
+      next_training_event: nextEvent
+        ? {
+            title: nextEvent.dataValues.event_title,
+            date: nextEvent.dataValues.event_date,
+            start_time: nextEvent.dataValues.start_time || null,
+          }
+        : null,
       review: reviewStatus,
       MIRACLE_FLAG: getMiracleFlag ? 1 : 2,
       WHATSAPP_PLATEFORM: WHATSAPP_PLATEFORM,
