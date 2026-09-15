@@ -496,6 +496,16 @@ export function buildCompactTotalsTableField() {
     width: 95,
     height: 45,
     showHead: false,
+    // head/headWidthPercentages: showHead:false only hides the header ROW —
+    // pdfme's own column-width math still reads head.length and
+    // headWidthPercentages, both independent of showHead. Left unset, they
+    // fell back to the table plugin's own default schema (a different
+    // column count than this field's 2-column content), which is what was
+    // throwing "Cannot read properties of undefined (reading 'split')" the
+    // moment this field got added on the canvas — buildItemsTableField
+    // above always sets both for the same reason.
+    head: ["Label", "Amount"],
+    headWidthPercentages: [60, 40],
     content: JSON.stringify([["Sub Total", "0.00"]]),
     columnStyles: {
       0: { alignment: "left" },
