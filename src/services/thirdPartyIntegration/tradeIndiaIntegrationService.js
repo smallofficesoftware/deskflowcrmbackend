@@ -24,6 +24,7 @@ import {
 } from "../../utils/sharedFunctions.js";
 import { getCompanyByLoginId, insertStagesAndStatusLogs } from "../commonServices.js";
 import { autoAssignmentContactIdsGet, prepareMailAndWhatsappSenderToTheContact } from "../other_settings/wrkflwAutoAssignmentContactService.js";
+import logger from "../../utils/logger.js";
 
 export const addContactFromTradeIndia = async (req) => {
     try {
@@ -73,8 +74,6 @@ export const addContactFromTradeIndia = async (req) => {
         let response;
         try {
             response = await axios.get(`https://www.tradeindia.com/utils/my_inquiry.html?userid=${userid}&profile_id=${profile_id}&key=${key}&from_date=${tradeIndiaStartTime}&to_date=${tradeIndiaEndTime}`);
-
-            console.log("sfsdfssdfsd", response);
         } catch (error) {
             if (error.response) {
                 return resError({
@@ -136,9 +135,7 @@ export const addContactFromTradeIndia = async (req) => {
         const contactBody = (responseBody ?? [])
             .filter((entry) => {
                 if (seen.has(entry.rfi_id)) {
-                    console.log(
-                        `Skipping duplicate entry with rfi_id: ${entry.rfi_id}`
-                    );
+                    logger.debug(`Skipping duplicate entry with rfi_id: ${entry.rfi_id}`);
                     return false;
                 }
                 seen.add(entry.rfi_id);
@@ -342,11 +339,10 @@ export const addContactFromTradeIndia = async (req) => {
                     }
                 }
             } catch (err) {
-                console.error(
-                    "Error parsing JSON for a_application_login_id:",
-                    userRight.a_application_login_id,
+                logger.error("Error parsing JSON for a_application_login_id:", {
+                    a_application_login_id: userRight.a_application_login_id,
                     err
-                );
+                });
             }
         }
 
@@ -403,8 +399,8 @@ export const addContactFromTradeIndia = async (req) => {
                 }
                 )
             );
-            console.log("Error Log 2", contactWhatsappSendList);
-            console.log("Error Log 3", contactEmailSendList);
+            logger.debug("WhatsApp send list:", contactWhatsappSendList);
+            logger.debug("Email send list:", contactEmailSendList);
             await prepareMailAndWhatsappSenderToTheContact(req, { contactWhatsappSendList, contactEmailSendList });
         }
 
@@ -509,13 +505,10 @@ export const addContactFromTradeIndia = async (req) => {
                             body: notificationBody,
                         });
                     } else {
-                        console.log("No device tokens found for notification.");
+                        logger.debug("No device tokens found for notification.");
                     }
                 } catch (notificationError) {
-                    console.error(
-                        "Notification failed (non-critical):",
-                        notificationError.message
-                    );
+                    logger.warn("Notification failed (non-critical):", notificationError.message);
                 }
                 /* notification code */
             }
@@ -583,7 +576,7 @@ export const addContactFromTradeIndia = async (req) => {
             ack_msg: filteredContactBody.length > 0 ? "New leads added successfully" : "No new leads found",
         });
     } catch (error) {
-        console.error("Error in addContactFromTradeIndia:", error);
+        logger.error("Error in addContactFromTradeIndia:", error);
         return resBadRequest({
             ack_msg: "Something went wrong",
             developer_msg: `Error: ${error.message}`,
@@ -697,9 +690,7 @@ export const addContactFromTradeIndiaBuyLeads = async (req) => {
         const contactBody = (responseBody ?? [])
             .filter((entry) => {
                 if (seen.has(entry.lead_id)) {
-                    console.log(
-                        `Skipping duplicate entry with lead_id: ${entry.lead_id}`
-                    );
+                    logger.debug(`Skipping duplicate entry with lead_id: ${entry.lead_id}`);
                     return false;
                 }
                 seen.add(entry.lead_id);
@@ -903,11 +894,10 @@ export const addContactFromTradeIndiaBuyLeads = async (req) => {
                     }
                 }
             } catch (err) {
-                console.error(
-                    "Error parsing JSON for a_application_login_id:",
-                    userRight.a_application_login_id,
+                logger.error("Error parsing JSON for a_application_login_id:", {
+                    a_application_login_id: userRight.a_application_login_id,
                     err
-                );
+                });
             }
         }
 
@@ -964,8 +954,8 @@ export const addContactFromTradeIndiaBuyLeads = async (req) => {
                 }
                 )
             );
-            console.log("Error Log 2", contactWhatsappSendList);
-            console.log("Error Log 3", contactEmailSendList);
+            logger.debug("WhatsApp send list:", contactWhatsappSendList);
+            logger.debug("Email send list:", contactEmailSendList);
             await prepareMailAndWhatsappSenderToTheContact(req, { contactWhatsappSendList, contactEmailSendList });
         }
 
@@ -1071,13 +1061,10 @@ export const addContactFromTradeIndiaBuyLeads = async (req) => {
                         });
 
                     } else {
-                        console.log("No device tokens found for notification.");
+                        logger.debug("No device tokens found for notification.");
                     }
                 } catch (notificationError) {
-                    console.error(
-                        "Notification failed (non-critical):",
-                        notificationError.message
-                    );
+                    logger.warn("Notification failed (non-critical):", notificationError.message);
                 }
                 /* notification code */
             }
@@ -1149,7 +1136,7 @@ export const addContactFromTradeIndiaBuyLeads = async (req) => {
             ack_msg: filteredContactBody.length > 0 ? "New leads added successfully" : "No new leads found",
         });
     } catch (error) {
-        console.error("Error in addContactFromTradeIndia:", error);
+        logger.error("Error in addContactFromTradeIndia:", error);
         return resBadRequest({
             ack_msg: "Something went wrong",
             developer_msg: `Error: ${error.message}`,
