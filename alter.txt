@@ -3326,7 +3326,7 @@ CREATE TABLE `third_party_logs` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 
-15-09-2026 Dhaval
+14-09-2026 Dhaval
 -- migration: migration/master/migrations/20260914120000-add-contact-merge-application-page.js
 -- id corrected 179 -> 184 (179 was already taken in the live table by an unrelated row)
 INSERT INTO `a_application_pages` (`id`, `page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (184, 'Find/Merge Duplicate Contacts', 'Contact', 'contact_merge', 'Find and merge duplicate contacts', '0', '0', '0', '1', NOW(), UNIX_TIMESTAMP(), '0', '1');
