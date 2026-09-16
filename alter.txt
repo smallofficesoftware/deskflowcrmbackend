@@ -3447,3 +3447,11 @@ CREATE TABLE `production_transaction_process_times` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 ALTER TABLE `production_transactions` ADD COLUMN `total_actual_time` INT(11) NULL DEFAULT NULL COMMENT 'seconds, summed from production_transaction_process_times' AFTER `rejection_qty`;
+
+16-09-2026 Dhaval
+-- migration: migration/master/migrations/20260916120000-remove-document-designer-blanket-feature-flag.js
+-- document_designer was a single blanket company_feature_flags row gating every pdfme doc type at once.
+-- Replaced by one row per doc type (e.g. accountTransaction_document_designer, taskDueList_document_designer, ...).
+-- No code reads the "document_designer" key anymore - deletes the now-orphaned rows. Irreversible -
+-- companies that had it on need the specific new keys turned on again from the admin panel.
+DELETE FROM `company_feature_flags` WHERE `feature_key` = 'document_designer';
