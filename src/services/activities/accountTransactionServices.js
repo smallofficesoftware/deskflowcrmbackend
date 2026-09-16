@@ -1409,7 +1409,7 @@ export const accountPDFv1 = async (req, res) => {
     // (orderServices.js:4810). document_template_id (from the frontend's
     // picker, when the company has 2+ accountTransaction templates) selects
     // a company-customized template instead of the default dynamic layout.
-    const documentDesignerEnabled = await isFeatureEnabled(companyDetail.id, "document_designer");
+    const documentDesignerEnabled = await isFeatureEnabled(companyDetail.id, "accountTransaction_document_designer");
 
     if (documentDesignerEnabled) {
       const templateOverride = await loadAccountTemplateOverride(
@@ -1657,7 +1657,7 @@ export const allAccountTransactionOfContactPDF = async (req, res) => {
     // (orderServices.js:4810). document_template_id (from the frontend's
     // picker, when the company has 2+ accountStatement templates) selects
     // a company-customized template instead of the default dynamic layout.
-    const documentDesignerEnabled = await isFeatureEnabled(companyData.id, "document_designer");
+    const documentDesignerEnabled = await isFeatureEnabled(companyData.id, "accountStatement_document_designer");
 
     if (documentDesignerEnabled) {
       const templateOverride = await loadAccountTemplateOverride(

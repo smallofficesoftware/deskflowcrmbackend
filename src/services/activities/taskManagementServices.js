@@ -3711,7 +3711,7 @@ export const generateDueTaskPdfandSendMail = async (req) => {
     // pdfme Document Designer — same per-company opt-in as §5's cart-doc path
     // (orderServices.js:4810). This report isn't Designer-customizable yet
     // (taskDueListTemplate.js is a fixed port), just a renderer switch.
-    const documentDesignerEnabled = await isFeatureEnabled(companyData.id, "document_designer");
+    const documentDesignerEnabled = await isFeatureEnabled(companyData.id, "taskDueList_document_designer");
 
     if (documentDesignerEnabled) {
       const buffer = await generateTaskDueListPdf({ companyData, teamWiseTaskList });
