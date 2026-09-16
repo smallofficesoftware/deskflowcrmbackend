@@ -1477,6 +1477,23 @@ export const orderById = async (req, res) => {
 
       resultCartById.dataValues.city_name = city_name;
 
+      let area_name = null;
+      let cart_area_id = resultCartById.dataValues.area_id;
+
+      if (cart_area_id > 0) {
+        const area = await areaModel(req.tenantDB).findOne({
+          where: {
+            id: cart_area_id,
+            isDelete: 0,
+          },
+          attributes: ["area_name"],
+        });
+
+        area_name = area ? area.dataValues.area_name : null;
+      }
+
+      resultCartById.dataValues.area_name = area_name;
+
       const cartData = {
         ...resultCartById.dataValues,
         packing_forwarding_charge_title: resultCartById.dataValues.packing_forwarding_charge_title || "Packing Forwarding charge",
@@ -4887,7 +4904,7 @@ const generateSingleOrderPdf = async (req, res) => {
         : PDFME_DOC_TYPE_BY_CART_TYPE[resultCartById.dataValues.type];
       const documentDesignerEnabled =
         !!pdfmeDocType &&
-        (await isFeatureEnabled(companyDetail.id, "document_designer"));
+        (await isFeatureEnabled(companyDetail.id, `${pdfmeDocType}_document_designer`));
 
       // The legacy fallback below (pdf.create with the EJS-rendered regular
       // order document) is the WRONG document for a pending-print request —
@@ -6171,7 +6188,7 @@ export const fetchShippingLabelPrint = async (req, res) => {
     // frontend's picker, when the company has 2+ shippingLabel templates)
     // selects a company-customized template; otherwise the company's
     // default row (if any) or the built-in fixed layout is used.
-    const documentDesignerEnabled = await isFeatureEnabled(company.id, "document_designer");
+    const documentDesignerEnabled = await isFeatureEnabled(company.id, "shippingLabel_document_designer");
 
     if (documentDesignerEnabled) {
       let qrDataUri = "";
