@@ -112,6 +112,7 @@ CREATE TABLE `salary_registers` LIKE smalloffice_sample_tenant.salary_registers;
 CREATE TABLE `job_cards` LIKE smalloffice_sample_tenant.job_cards;
 CREATE TABLE `production_transactions` LIKE smalloffice_sample_tenant.production_transactions;
 CREATE TABLE `production_transaction_items` LIKE smalloffice_sample_tenant.production_transaction_items;
+CREATE TABLE `production_transaction_process_times` LIKE smalloffice_sample_tenant.production_transaction_process_times;
 CREATE TABLE `day_conversions` LIKE smalloffice_sample_tenant.day_conversions;
 CREATE TABLE `lock_controls` LIKE smalloffice_sample_tenant.lock_controls;
 CREATE TABLE `route_planners` LIKE smalloffice_sample_tenant.route_planners;
