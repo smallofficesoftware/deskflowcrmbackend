@@ -34,6 +34,7 @@ import companyModel from "../../models/company_setup/companyModel.js";
 import companyVsApplicationLoginModel from "../../models/company_setup/companyVsApplicationLoginModel.js";
 import { printSettingModel } from "../../models/company_setup/printSettingModel.js";
 import currencyModel from "../../models/configuration/currencyModel.js";
+import { areaModel } from "../../models/masters/areaModel.js";
 import { cityModel } from "../../models/masters/cityModel.js";
 import { stateModel } from "../../models/masters/stateModel.js";
 import { customFieldFormModel } from "../../models/other_settings/customFieldFormModel.js";
@@ -4416,6 +4417,27 @@ const generateSingleOrderPdf = async (req, res) => {
         : "";
     }
 
+    // Only use cart area_id
+    const areaIdToUse = resultCartById.dataValues.area_id;
+
+    // Get Area Name
+    let customerAreaName = "";
+
+    if (areaIdToUse > 0) {
+      const areaModels = areaModel(req.tenantDB);
+      const areaNameCustomer = await areaModels.findOne({
+        where: {
+          isDelete: 0,
+          id: areaIdToUse,
+        },
+        attributes: ["area_name"],
+      });
+
+      customerAreaName = areaNameCustomer
+        ? areaNameCustomer.area_name
+        : "";
+    }
+
 
     // State_id to name for company
     const stateNameCompany = await stateModels.findAll({
@@ -4635,6 +4657,7 @@ const generateSingleOrderPdf = async (req, res) => {
         company_logo: logoImage,
         cart_state_name: customerStateName,
         cart_city_name: customerCityName,
+        cart_area_name: customerAreaName,
         company_state_name: companyStateName,
         formatNum: formatNumber,
         orderTypesList: orderTypesListPdf,
@@ -5026,7 +5049,7 @@ const generateSingleOrderPdf = async (req, res) => {
             billingAddress: cartData.Address,
             shippingAddress: cartData.shipping_address,
             gstin: cartData.to_customer_gst_number,
-            supplyTo: [customerStateName, customerCityName].filter(Boolean).join(" - "),
+            supplyTo: [customerStateName, customerCityName, settingDetails.supplyToArea ? customerAreaName : ""].filter(Boolean).join(" - "),
           },
           order: {
             number: cartData.cart_number,

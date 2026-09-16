@@ -408,6 +408,10 @@
               <br /><strong>Billing Address:</strong><br />
               <%= cart.Address %>
               <% } %>
+
+              <% if (printSetting.supplyTo && cart_state_name && cart_state_name.length > 0) { %>
+              <br /><strong>Supply To:</strong> <%= cart_state_name %><%= cart_city_name && cart_city_name.length > 0 ? ' - ' + cart_city_name : '' %><%= printSetting.supplyToArea && cart_area_name && cart_area_name.length > 0 ? ' - ' + cart_area_name : '' %>
+              <% } %>
             </td>
             <td style="
                   padding-top: 5;
