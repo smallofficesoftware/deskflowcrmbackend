@@ -5,7 +5,7 @@
     <title><%= title %></title>
     <style>
       @page {
-        size: A4 landscape;
+        size: <%= pageFormat %> landscape;
         margin: 10mm;
       }
       body {
@@ -30,10 +30,15 @@
         word-break: break-word;
       }
       th {
-        background-color: #f2f2f2;
+        background-color: #2980b9;
+        color: #fff;
         font-weight: bold;
-        text-transform: uppercase;
         font-size: 8px;
+      }
+      td.no-data {
+        text-align: center;
+        padding: 20px;
+        color: #666;
       }
       tr.footer-row td {
         font-weight: bold;
@@ -55,13 +60,17 @@
         </tr>
       </thead>
       <tbody>
-        <% rows.forEach(function(row) { %>
-          <tr class="<%= row.__isFooter ? 'footer-row' : '' %>">
-            <% columns.forEach(function(col) { %>
-              <td class="<%= col.numeric ? 'numeric' : '' %>"><% if (col.html) { %><%- row[col.key] ?? '' %><% } else { %><%= row[col.key] ?? '' %><% } %></td>
-            <% }); %>
-          </tr>
-        <% }); %>
+        <% if (rows.length === 0) { %>
+          <tr><td class="no-data" colspan="<%= columns.length %>">No data available to export</td></tr>
+        <% } else { %>
+          <% rows.forEach(function(row) { %>
+            <tr class="<%= row.__isFooter ? 'footer-row' : '' %>">
+              <% columns.forEach(function(col) { %>
+                <td class="<%= col.numeric ? 'numeric' : '' %>"><% if (col.html) { %><%- row[col.key] ?? '' %><% } else { %><%= row[col.key] ?? '' %><% } %></td>
+              <% }); %>
+            </tr>
+          <% }); %>
+        <% } %>
       </tbody>
     </table>
   </body>

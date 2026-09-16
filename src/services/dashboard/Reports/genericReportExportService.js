@@ -116,7 +116,7 @@ const computeFooterRows = (rows, footer) => {
 // rows, compute footer, resolve currency symbol). Returns either
 // { rows, columnFormats, currencySymbol, findCompanyId } or
 // { error: <resError(...) payload> } so callers just check `.error` once.
-const resolveExportInputs = async (req) => {
+const resolveExportInputs = async (req, { allowEmptyRows = false } = {}) => {
   const { reportType, filters = {}, columns = [], footer, rows: providedRows } = req.body;
 
   if (!Array.isArray(columns) || columns.length === 0) {
@@ -139,11 +139,11 @@ const resolveExportInputs = async (req) => {
     rows = await fetchAllRows(registryEntry, pageReq);
   }
 
-  if (!rows.length) {
+  if (!rows.length && !allowEmptyRows) {
     return { error: resError({ ack_msg: "No data to export" }) };
   }
 
-  const allRows = [...rows, ...computeFooterRows(rows, footer)];
+  const allRows = rows.length ? [...rows, ...computeFooterRows(rows, footer)] : [];
 
   const keys = columns.map((c) => c.key);
   const headers = Object.fromEntries(columns.map((c) => [c.key, c.label]));
@@ -198,7 +198,7 @@ export const exportReportExcel = async (req) => {
 
 export const exportReportPdf = async (req) => {
   try {
-    const resolved = await resolveExportInputs(req);
+    const resolved = await resolveExportInputs(req, { allowEmptyRows: true });
     if (resolved.error) return resolved.error;
     const { allRows, keys, headers, columnFormats, badgeColorKeys, currencySymbol, findCompanyId, reportType } = resolved;
 

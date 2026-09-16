@@ -47,7 +47,14 @@ export async function exportData(data, options = {}) {
             badgeColorKeys = null
         } = options || {};
 
-        if (!Array.isArray(data) || data.length === 0) {
+        if (!Array.isArray(data)) {
+            throw new Error("Data must be an array of objects.");
+        }
+
+        // xlsx has no "no data" placeholder row to fall back on, so it keeps
+        // requiring a non-empty array; pdf renders its own "No data
+        // available to export" row instead (see genericReportExport.ejs).
+        if (data.length === 0 && fileFormat !== 'pdf') {
             throw new Error("Data must be a non-empty array of objects.");
         }
 
@@ -235,8 +242,14 @@ async function exportPdf(data, { keys, headerMap, fileName, outputPath, file_nam
         return formatted;
     });
 
+    // Old per-report jsPDF exports picked a4/a3/a2 by hand to fit however
+    // many columns that report had; this mirrors that by column count so
+    // wide reports (e.g. Attendance's one column per date) still get a
+    // bigger page instead of every column being squeezed onto a fixed A4.
+    const pageFormat = columns.length <= 10 ? "A4" : columns.length <= 16 ? "A3" : "A2";
+
     const templateHtml = fs.readFileSync(REPORT_PDF_TEMPLATE_PATH, "utf-8");
-    const renderedHtml = ejs.render(templateHtml, { title: fileName, columns, rows });
+    const renderedHtml = ejs.render(templateHtml, { title: fileName, columns, rows, pageFormat });
 
     const document = {
         html: renderedHtml,
@@ -246,7 +259,7 @@ async function exportPdf(data, { keys, headerMap, fileName, outputPath, file_nam
     };
 
     const options = {
-        format: "A4",
+        format: pageFormat,
         orientation: "landscape",
         border: "10mm",
         footer: {
