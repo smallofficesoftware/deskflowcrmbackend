@@ -44,7 +44,12 @@ export async function exportData(data, options = {}) {
             // format: "badge" columns only (PDF) — { key: [candidate row
             // field names holding that column's pill color, checked in
             // order] }. Ignored entirely by the xlsx branch.
-            badgeColorKeys = null
+            badgeColorKeys = null,
+
+            // format: "nested-table" columns only (PDF) — { key: [{key,
+            // label}] } describing the inner table's own columns. Ignored
+            // entirely by the xlsx branch.
+            columnSubColumns = null
         } = options || {};
 
         if (!Array.isArray(data)) {
@@ -81,6 +86,7 @@ export async function exportData(data, options = {}) {
                 columnFormats,
                 currencySymbol,
                 badgeColorKeys,
+                columnSubColumns,
             });
         }
 
@@ -197,6 +203,33 @@ function renderBadgeHtml(row, key, colorKeys) {
     return `<span style="background-color:${color};color:#fff;padding:2px 8px;border-radius:12px;display:inline-block;">${label}</span>`;
 }
 
+// format: "multiline" - a plain string containing literal "\n"s (e.g. a
+// pre-joined "Name: X\nPhone: Y" block) that needs those breaks preserved
+// in the rendered HTML, which collapses raw newlines otherwise.
+function renderMultilineHtml(raw) {
+    return escapeHtml(raw ?? "").replace(/\n/g, "<br/>");
+}
+
+// format: "nested-table" - the column's value is an array of row objects
+// (e.g. one invoice's product line items) rendered as its own small HTML
+// table inside the cell, per `subColumns` ({key,label}[], set on the
+// column same as badge's colorKeys). Mirrors the old per-report jsPDF
+// exports that drew a nested autoTable inside a cell for this exact case.
+function renderNestedTableHtml(value, subColumns) {
+    const items = Array.isArray(value) ? value : [];
+    if (!Array.isArray(subColumns) || subColumns.length === 0 || items.length === 0) return "";
+
+    const head = subColumns.map((c) => `<th>${escapeHtml(c.label)}</th>`).join("");
+    const body = items
+        .map(
+            (item) =>
+                `<tr>${subColumns.map((c) => `<td>${escapeHtml(getNested(item, c.key) ?? "-")}</td>`).join("")}</tr>`,
+        )
+        .join("");
+
+    return `<table class="nested-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+}
+
 function formatCellForDisplay(raw, format, currencySymbol) {
     if (raw === null || raw === undefined || raw === "") return "";
     if (format === "date") {
@@ -218,12 +251,13 @@ function formatCellForDisplay(raw, format, currencySymbol) {
 // then converts to PDF. Returns { outputPath, file_name } to match xlsx's
 // return shape so callers (genericReportExportService.js) don't need to
 // branch on format.
-async function exportPdf(data, { keys, headerMap, fileName, outputPath, file_name, autoDownload, columnFormats, currencySymbol, badgeColorKeys }) {
+async function exportPdf(data, { keys, headerMap, fileName, outputPath, file_name, autoDownload, columnFormats, currencySymbol, badgeColorKeys, columnSubColumns }) {
+    const HTML_FORMATS = ["badge", "multiline", "nested-table"];
     const columns = keys.map((key) => ({
         key,
         label: headerMap[key] || key,
         numeric: columnFormats?.[key] === "number" || columnFormats?.[key] === "currency",
-        html: columnFormats?.[key] === "badge",
+        html: HTML_FORMATS.includes(columnFormats?.[key]),
     }));
 
     const rows = data.map((row) => {
@@ -232,6 +266,14 @@ async function exportPdf(data, { keys, headerMap, fileName, outputPath, file_nam
             const format = columnFormats?.[key];
             if (format === "badge") {
                 formatted[key] = renderBadgeHtml(row, key, badgeColorKeys?.[key]);
+                return;
+            }
+            if (format === "multiline") {
+                formatted[key] = renderMultilineHtml(getNested(row, key));
+                return;
+            }
+            if (format === "nested-table") {
+                formatted[key] = renderNestedTableHtml(getNested(row, key), columnSubColumns?.[key]);
                 return;
             }
             const raw = getNested(row, key);

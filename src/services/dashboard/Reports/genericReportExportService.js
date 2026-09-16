@@ -161,8 +161,13 @@ const resolveExportInputs = async (req, { allowEmptyRows = false } = {}) => {
   const badgeColorKeys = Object.fromEntries(
     columns.filter((c) => c.format === "badge" && Array.isArray(c.colorKeys)).map((c) => [c.key, c.colorKeys]),
   );
+  // format: "nested-table" (PDF only) - the inner table's own {key,label}
+  // columns. Ignored by the xlsx branch, same as any other format.
+  const columnSubColumns = Object.fromEntries(
+    columns.filter((c) => c.format === "nested-table" && Array.isArray(c.subColumns)).map((c) => [c.key, c.subColumns]),
+  );
 
-  return { allRows, keys, headers, columnFormats, badgeColorKeys, currencySymbol, findCompanyId, reportType };
+  return { allRows, keys, headers, columnFormats, badgeColorKeys, columnSubColumns, currencySymbol, findCompanyId, reportType };
 };
 
 export const exportReportExcel = async (req) => {
@@ -200,7 +205,7 @@ export const exportReportPdf = async (req) => {
   try {
     const resolved = await resolveExportInputs(req, { allowEmptyRows: true });
     if (resolved.error) return resolved.error;
-    const { allRows, keys, headers, columnFormats, badgeColorKeys, currencySymbol, findCompanyId, reportType } = resolved;
+    const { allRows, keys, headers, columnFormats, badgeColorKeys, columnSubColumns, currencySymbol, findCompanyId, reportType } = resolved;
 
     const uploadDir = ensureUploadDir(
       `media-folder/exports/reports/${findCompanyId.company_masters_id}`,
@@ -214,6 +219,7 @@ export const exportReportPdf = async (req) => {
       outputDir: uploadDir,
       columnFormats: Object.keys(columnFormats).length > 0 ? columnFormats : undefined,
       badgeColorKeys: Object.keys(badgeColorKeys).length > 0 ? badgeColorKeys : undefined,
+      columnSubColumns: Object.keys(columnSubColumns).length > 0 ? columnSubColumns : undefined,
       currencySymbol,
     });
     if (!savedFile) {
