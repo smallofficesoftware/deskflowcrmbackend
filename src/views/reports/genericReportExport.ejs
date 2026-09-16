@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title><%= title %></title>
+    <style>
+      @page {
+        size: A4 landscape;
+        margin: 10mm;
+      }
+      body {
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 9px;
+        color: #000;
+        margin: 0;
+        padding: 0;
+      }
+      h1 {
+        font-size: 14px;
+        margin: 0 0 10px 0;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th, td {
+        border: 1px solid #ccc;
+        padding: 4px 6px;
+        text-align: left;
+        word-break: break-word;
+      }
+      th {
+        background-color: #f2f2f2;
+        font-weight: bold;
+        text-transform: uppercase;
+        font-size: 8px;
+      }
+      tr.footer-row td {
+        font-weight: bold;
+        background-color: #fafafa;
+      }
+      td.numeric {
+        text-align: right;
+      }
+    </style>
+  </head>
+  <body>
+    <h1><%= title %></h1>
+    <table>
+      <thead>
+        <tr>
+          <% columns.forEach(function(col) { %>
+            <th><%= col.label %></th>
+          <% }); %>
+        </tr>
+      </thead>
+      <tbody>
+        <% rows.forEach(function(row) { %>
+          <tr class="<%= row.__isFooter ? 'footer-row' : '' %>">
+            <% columns.forEach(function(col) { %>
+              <td class="<%= col.numeric ? 'numeric' : '' %>"><% if (col.html) { %><%- row[col.key] ?? '' %><% } else { %><%= row[col.key] ?? '' %><% } %></td>
+            <% }); %>
+          </tr>
+        <% }); %>
+      </tbody>
+    </table>
+  </body>
+</html>

@@ -111,47 +111,65 @@ const computeFooterRows = (rows, footer) => {
   });
 };
 
+// Shared by exportReportExcel and exportReportPdf - everything up to
+// "which exportData format to call" is identical between them (resolve
+// rows, compute footer, resolve currency symbol). Returns either
+// { rows, columnFormats, currencySymbol, findCompanyId } or
+// { error: <resError(...) payload> } so callers just check `.error` once.
+const resolveExportInputs = async (req) => {
+  const { reportType, filters = {}, columns = [], footer, rows: providedRows } = req.body;
+
+  if (!Array.isArray(columns) || columns.length === 0) {
+    return { error: resError({ ack_msg: "columns is required" }) };
+  }
+
+  const findCompanyId = await getCompanyByLoginId(filters.a_application_login_id);
+
+  // A grid-selection export already has its exact rows in hand
+  // client-side - skip re-querying the DB and just export those.
+  let rows;
+  if (Array.isArray(providedRows) && providedRows.length > 0) {
+    rows = providedRows;
+  } else {
+    const registryEntry = reportExportRegistry[reportType];
+    if (!registryEntry) {
+      return { error: resError({ ack_msg: `Unknown reportType "${reportType}"` }) };
+    }
+    const pageReq = { ...req, body: { ...filters } };
+    rows = await fetchAllRows(registryEntry, pageReq);
+  }
+
+  if (!rows.length) {
+    return { error: resError({ ack_msg: "No data to export" }) };
+  }
+
+  const allRows = [...rows, ...computeFooterRows(rows, footer)];
+
+  const keys = columns.map((c) => c.key);
+  const headers = Object.fromEntries(columns.map((c) => [c.key, c.label]));
+  // "date"/"number"/"currency" columns get real typed formatting in
+  // exporter.js; a column with no `format` (every existing caller, and
+  // any string/lookup column here) keeps today's exact stringified
+  // behavior. Only resolve the company's currency symbol when at least
+  // one column actually needs it - one extra query, not on every export.
+  const columnFormats = Object.fromEntries(columns.filter((c) => c.format).map((c) => [c.key, c.format]));
+  const currencySymbol = Object.values(columnFormats).includes("currency")
+    ? await resolveCurrencySymbol(findCompanyId.company_masters_id)
+    : "";
+  // format: "badge" (PDF only) - which row field(s) hold that column's
+  // pill color. Ignored by the xlsx branch, same as any other format.
+  const badgeColorKeys = Object.fromEntries(
+    columns.filter((c) => c.format === "badge" && Array.isArray(c.colorKeys)).map((c) => [c.key, c.colorKeys]),
+  );
+
+  return { allRows, keys, headers, columnFormats, badgeColorKeys, currencySymbol, findCompanyId, reportType };
+};
+
 export const exportReportExcel = async (req) => {
   try {
-    const { reportType, filters = {}, columns = [], footer, rows: providedRows } = req.body;
-
-    if (!Array.isArray(columns) || columns.length === 0) {
-      return resError({ ack_msg: "columns is required" });
-    }
-
-    const findCompanyId = await getCompanyByLoginId(filters.a_application_login_id);
-
-    // A grid-selection export already has its exact rows in hand
-    // client-side - skip re-querying the DB and just export those.
-    let rows;
-    if (Array.isArray(providedRows) && providedRows.length > 0) {
-      rows = providedRows;
-    } else {
-      const registryEntry = reportExportRegistry[reportType];
-      if (!registryEntry) {
-        return resError({ ack_msg: `Unknown reportType "${reportType}"` });
-      }
-      const pageReq = { ...req, body: { ...filters } };
-      rows = await fetchAllRows(registryEntry, pageReq);
-    }
-
-    if (!rows.length) {
-      return resError({ ack_msg: "No data to export" });
-    }
-
-    const allRows = [...rows, ...computeFooterRows(rows, footer)];
-
-    const keys = columns.map((c) => c.key);
-    const headers = Object.fromEntries(columns.map((c) => [c.key, c.label]));
-    // "date"/"number"/"currency" columns get a real typed cell + numFmt in
-    // exporter.js; a column with no `format` (every existing caller, and
-    // any string/lookup column here) keeps today's exact stringified
-    // behavior. Only resolve the company's currency symbol when at least
-    // one column actually needs it - one extra query, not on every export.
-    const columnFormats = Object.fromEntries(columns.filter((c) => c.format).map((c) => [c.key, c.format]));
-    const currencySymbol = Object.values(columnFormats).includes("currency")
-      ? await resolveCurrencySymbol(findCompanyId.company_masters_id)
-      : "";
+    const resolved = await resolveExportInputs(req);
+    if (resolved.error) return resolved.error;
+    const { allRows, keys, headers, columnFormats, currencySymbol, findCompanyId, reportType } = resolved;
 
     const uploadDir = ensureUploadDir(
       `media-folder/exports/reports/${findCompanyId.company_masters_id}`,
@@ -174,6 +192,38 @@ export const exportReportExcel = async (req) => {
     return resSuccess({ data: { fileUrl, fileName: savedFile.file_name } });
   } catch (error) {
     console.error("exportReportExcel error:", error);
+    return resError({ developer_msg: `Failed to export report: ${error}` });
+  }
+};
+
+export const exportReportPdf = async (req) => {
+  try {
+    const resolved = await resolveExportInputs(req);
+    if (resolved.error) return resolved.error;
+    const { allRows, keys, headers, columnFormats, badgeColorKeys, currencySymbol, findCompanyId, reportType } = resolved;
+
+    const uploadDir = ensureUploadDir(
+      `media-folder/exports/reports/${findCompanyId.company_masters_id}`,
+    );
+    const savedFile = await exportData(allRows, {
+      format: "pdf",
+      fileName: reportType,
+      columns: keys,
+      headers,
+      autoDownload: false,
+      outputDir: uploadDir,
+      columnFormats: Object.keys(columnFormats).length > 0 ? columnFormats : undefined,
+      badgeColorKeys: Object.keys(badgeColorKeys).length > 0 ? badgeColorKeys : undefined,
+      currencySymbol,
+    });
+    if (!savedFile) {
+      return resError({ developer_msg: "Failed to generate PDF export" });
+    }
+
+    const fileUrl = `${EXPORTS_LINK_EXTENDED}reports/${findCompanyId.company_masters_id}/${savedFile.file_name}`;
+    return resSuccess({ data: { fileUrl, fileName: savedFile.file_name } });
+  } catch (error) {
+    console.error("exportReportPdf error:", error);
     return resError({ developer_msg: `Failed to export report: ${error}` });
   }
 };
