@@ -141,7 +141,7 @@ const fetchContactPrint = async (req, docType, generateFn) => {
     company.city_name = companyCity?.city_name || "";
     company.state_name = companyState?.state_name || "";
 
-    const documentDesignerEnabled = await isFeatureEnabled(findCompanyId.company_masters_id, "document_designer");
+    const documentDesignerEnabled = await isFeatureEnabled(findCompanyId.company_masters_id, `${docType}_document_designer`);
     if (!documentDesignerEnabled) {
       return resBadRequest({ ack_msg: "Document Designer is not enabled for this company" });
     }
@@ -2273,7 +2273,6 @@ export const singleContactGet = async (req, res) => {
 
           if (rights.all_data == 1) {
             where = {
-              company_masters_id: company_id,
               id: contact_master_id,
             };
           } else if (rights.personal == 1) {
@@ -2296,7 +2295,6 @@ export const singleContactGet = async (req, res) => {
     //Override ONLY when needed
     if (company_flag === 1 || request_flag === 1) {
       where = {
-        company_masters_id: company_id,
         id: contact_master_id,
       };
     }
