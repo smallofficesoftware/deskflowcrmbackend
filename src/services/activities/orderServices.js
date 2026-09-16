@@ -5049,7 +5049,7 @@ const generateSingleOrderPdf = async (req, res) => {
             billingAddress: cartData.Address,
             shippingAddress: cartData.shipping_address,
             gstin: cartData.to_customer_gst_number,
-            supplyTo: [customerStateName, customerCityName, customerAreaName].filter(Boolean).join(" - "),
+            supplyTo: [customerStateName, customerCityName, settingDetails.supplyToArea ? customerAreaName : ""].filter(Boolean).join(" - "),
           },
           order: {
             number: cartData.cart_number,

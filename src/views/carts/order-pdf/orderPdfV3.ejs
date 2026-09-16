@@ -428,7 +428,7 @@ if (cart.update_Date_time && cart.update_Date_time !== "00-00-00 00:00:00") {
               <% } %>
 
               <% if (printSetting.supplyTo && cart_state_name && cart_state_name.length > 0) { %>
-              <strong>Supply To:</strong> <%= cart_state_name%><%= cart_city_name && cart_city_name.length > 0 ? ' - ' + cart_city_name : '' %><%= cart_area_name && cart_area_name.length > 0 ? ' - ' + cart_area_name : '' %>
+              <strong>Supply To:</strong> <%= cart_state_name%><%= cart_city_name && cart_city_name.length > 0 ? ' - ' + cart_city_name : '' %><%= printSetting.supplyToArea && cart_area_name && cart_area_name.length > 0 ? ' - ' + cart_area_name : '' %>
               <% } %>
             </td>
             <td style="padding-top:5; padding-left:5px; vertical-align: top; border-bottom: 0;">
