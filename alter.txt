@@ -3522,3 +3522,30 @@ WHERE sn.isDelete = 0
     OR (sn.cart_type = 3 AND sn.sn_reference_type != 9)
     OR sn.cart_type IN (6,7,8,9,10,11)
   );
+
+17-09-2026 Dhaval
+-- Serial Number Wise Stock Check (page_id 185) got its own dedicated view permission
+-- (a_application_login_type_rights), but existing logins were never granted it - the
+-- report tile was invisible to everyone until manually enabled per team. Run once per
+-- tenant DB on deploy to backfill view-only rights for every existing login that
+-- doesn't already have a row for this page.
+INSERT INTO `a_application_login_type_rights`
+  (`a_application_login_id`, `company_masters_id`, `page_id`, `page_name`, `a_page_id_rights_jason`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`)
+SELECT DISTINCT
+  t.a_application_login_id,
+  t.company_masters_id,
+  185,
+  'Serial Number Wise Stock Check',
+  '{"view":1,"add":0,"edit":0,"delete":0,"approve":0,"import":0,"print":0,"share":0,"all_data":0,"personal":0,"limit":"0"}',
+  NOW(),
+  NOW(),
+  0,
+  1
+FROM `a_application_login_type_rights` t
+WHERE t.isDelete = 0
+  AND NOT EXISTS (
+    SELECT 1 FROM `a_application_login_type_rights` x
+    WHERE x.a_application_login_id = t.a_application_login_id
+      AND x.page_id = 185
+      AND x.isDelete = 0
+  );
