@@ -84,7 +84,7 @@ export const sendSalesPdfWhatsapp = async (req) => {
             title,
             phone_number: normalizeToTenDigit(customer_phone),
             mediaUrl: fileUrl,
-            fileName: `${customer_phone}.pdf`,
+            fileName: `${title}.pdf`,
             // messageText: `Please find attached the invoice.`,
             messageType: 'document',
             whatsapp_phone_number_id,

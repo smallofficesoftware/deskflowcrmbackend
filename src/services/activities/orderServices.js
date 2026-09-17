@@ -4877,8 +4877,18 @@ const generateSingleOrderPdf = async (req, res) => {
       };
       // Generate temporary PDF name
       const tempFilePath = path.join(uploadDir, `cart_temp_${Date.now()}.pdf`);
-      const finalFilePath = path.join(uploadDir, `cart_${Date.now()}.pdf`);
-      const pdfPath = `${companyDetail.id.toString()}/cart_${Date.now()}.pdf`;
+      // Customer-facing name (same format used for the download's suggested
+      // filename below) - the actual stored file, not just a browser-side
+      // override, since WhatsApp providers that ignore the fileName metadata
+      // field fall back to this URL's basename instead. Regenerating the
+      // same order's PDF overwrites the previous file at this same name.
+      const pdfFrontName =
+        resultCartById.dataValues.to_customer_company_name?.trim()
+          ? resultCartById.dataValues.to_customer_company_name
+          : resultCartById.dataValues.to_customer_name;
+      const sanitizedTitle = sanitizeFileName(pdfFrontName + "_" + viewTitle + "_" + resultCartById.dataValues.sr_by_number + "_" + formatDateWithoutDash(resultCartById.dataValues.update_Date_time));
+      const finalFilePath = path.join(uploadDir, `${sanitizedTitle}.pdf`);
+      const pdfPath = `${companyDetail.id.toString()}/${sanitizedTitle}.pdf`;
 
       const document = {
         html: renderedHtml,
@@ -5324,16 +5334,10 @@ const generateSingleOrderPdf = async (req, res) => {
 
       const fileLinkPath = PDF_LINK_EXTENDED + pdfPath;
 
-      const pdfFrontName =
-        resultCartById.dataValues.to_customer_company_name?.trim()
-          ? resultCartById.dataValues.to_customer_company_name
-          : resultCartById.dataValues.to_customer_name;
-
-
       return resSuccess({
         ack_msg: "Pdf generated",
         data: {
-          title: sanitizeFileName(pdfFrontName + "_" + viewTitle + "_" + resultCartById.dataValues.sr_by_number + "_" + formatDateWithoutDash(resultCartById.dataValues.update_Date_time)),
+          title: sanitizedTitle,
           path: fileLinkPath,
           customer_phone: resultCartById.dataValues.to_customer_phone,
           sessionName: `a${req.headers?.["x-tenant-id"]}_c${companyDetail.id.toString()}`
