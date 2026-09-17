@@ -1,9 +1,7 @@
 import {
   copyFromSystemReportDefinition,
   createReportDefinition,
-  createReportGroup,
   deleteReportDefinition,
-  deleteReportGroup,
   duplicateReportDefinition,
   exportReportDefinition,
   importReportDefinition,
@@ -14,7 +12,6 @@ import {
   getPluginRegistry,
   getReportTeamRights,
   listReportDefinitions,
-  listReportGroups,
   listRunnableReportDefinitions,
   listSystemReportDefinitions,
   runBatchReportDefinitions,
@@ -22,7 +19,6 @@ import {
   saveReportTeamRights,
   testRunReportDefinition,
   updateReportDefinition,
-  updateReportGroup,
 } from "../../services/report_builder/reportDefinitionServices.js";
 import { exportReportExcel, exportReportPdf, previewReportPdf } from "../../services/report_builder/reportPdfExport.js";
 import {
@@ -124,22 +120,6 @@ export const exportReportPdfController = async (req, res) => {
 
 export const previewReportPdfController = async (req, res) => {
   await callServiceMethod(req, res, previewReportPdf(req, res), "previewReportPdf");
-};
-
-export const listReportGroupsController = async (req, res) => {
-  await callServiceMethod(req, res, listReportGroups(req), "listReportGroups");
-};
-
-export const createReportGroupController = async (req, res) => {
-  await callServiceMethod(req, res, createReportGroup(req), "createReportGroup");
-};
-
-export const updateReportGroupController = async (req, res) => {
-  await callServiceMethod(req, res, updateReportGroup(req), "updateReportGroup");
-};
-
-export const deleteReportGroupController = async (req, res) => {
-  await callServiceMethod(req, res, deleteReportGroup(req), "deleteReportGroup");
 };
 
 export const listReportSchedulesController = async (req, res) => {

@@ -53,10 +53,12 @@ export const reportDefinitionModel = (sequelize) => {
       filters_to_show: {
         type: TEXT,
       },
-      // Tenant-defined organization (Step 10) — distinct from
-      // system_report_definitions' admin-fixed `category`. NULL = ungrouped.
-      report_group_id: {
-        type: INTEGER,
+      // Fixed category (SideBarView.tsx's openMenu keys: CRM, HRMS,
+      // Production, Account, ... "Others"), same taxonomy every built-in
+      // report is already grouped by — not the old tenant-created
+      // report_group_id, dropped in favor of this.
+      category: {
+        type: STRING,
       },
       // Report-picker search matches name + description (Step 5's "Search
       // scope" decision).

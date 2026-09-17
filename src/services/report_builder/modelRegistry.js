@@ -91,6 +91,17 @@ export const MODEL_REGISTRY = {
       1: "created_date_time",
       7: "category_id",
     },
+    relations: {
+      category: {
+        label: "Category",
+        foreignKey: "category_id",
+        getModel: (tenantDB) => categoryModel(tenantDB),
+        targetKey: "id",
+        columns: {
+          category_name: { label: "Category Name", type: "string" },
+        },
+      },
+    },
   },
 
   contacts: {
@@ -347,7 +358,10 @@ export const MODEL_REGISTRY = {
         getModel: (tenantDB) => productModel(tenantDB),
         targetKey: "id",
         // Reuses products' own column defs — not a duplicate definition.
-        columns: { product_name: PRODUCT_COLUMNS.product_name },
+        // Borrows products' own full whitelist + relations (category
+        // included) via modelKey — same pattern stock_ledger's product
+        // relation uses, instead of a product_name-only subset.
+        modelKey: "products",
       },
       category: {
         label: "Category",
@@ -586,7 +600,10 @@ export const MODEL_REGISTRY = {
         getModel: (tenantDB) => productModel(tenantDB),
         targetKey: "id",
         // Reuses products' own column defs — not a duplicate definition.
-        columns: { product_name: PRODUCT_COLUMNS.product_name },
+        // Borrows products' own full whitelist + relations (category
+        // included) via modelKey — same pattern stock_ledger's product
+        // relation uses, instead of a product_name-only subset.
+        modelKey: "products",
       },
       sourceType: {
         label: "Source Type",
@@ -959,9 +976,10 @@ export const MODEL_REGISTRY = {
         foreignKey: "task_id",
         getModel: (tenantDB) => taskManagementModel(tenantDB),
         targetKey: "id",
-        columns: {
-          task_title: { label: "Task Title", type: "string" },
-        },
+        // Borrows task_managements' own full whitelist + relations via
+        // modelKey, same pattern as products/contacts elsewhere in this
+        // registry — was task_title only.
+        modelKey: "task_managements",
       },
     },
   },
@@ -1139,13 +1157,11 @@ export const MODEL_REGISTRY = {
         foreignKey: "item_product_id",
         getModel: (tenantDB) => productModel(tenantDB),
         targetKey: "id",
-        columns: {
-          product_name: PRODUCT_COLUMNS.product_name,
-          min_stock_quantity: PRODUCT_COLUMNS.min_stock_quantity,
-          max_stock_quantity: PRODUCT_COLUMNS.max_stock_quantity,
-          purchase_rate: PRODUCT_COLUMNS.purchase_rate,
-          purchase_net_rate: PRODUCT_COLUMNS.purchase_net_rate,
-        },
+        // Borrows products' own full whitelist + relations (its new
+        // "category" sub-relation included) via modelKey — same "contacts"
+        // pattern used everywhere else, instead of a hand-curated 5-column
+        // subset that silently drifted out of sync with PRODUCT_COLUMNS.
+        modelKey: "products",
       },
     },
   },
@@ -1233,9 +1249,9 @@ export const MODEL_REGISTRY = {
         foreignKey: "product_id",
         getModel: (tenantDB) => productModel(tenantDB),
         targetKey: "id",
-        columns: {
-          product_name: PRODUCT_COLUMNS.product_name,
-        },
+        // Borrows products' own full whitelist + relations (category
+        // included) via modelKey, same pattern used everywhere else.
+        modelKey: "products",
       },
     },
   },
@@ -1276,7 +1292,10 @@ export const MODEL_REGISTRY = {
         foreignKey: "item_id",
         getModel: (tenantDB) => productModel(tenantDB),
         targetKey: "id",
-        columns: { product_name: PRODUCT_COLUMNS.product_name },
+        // Borrows products' own full whitelist + relations (category
+        // included) via modelKey — same pattern stock_ledger's product
+        // relation uses, instead of a product_name-only subset.
+        modelKey: "products",
       },
       contact: {
         label: "Contact",
@@ -1343,7 +1362,10 @@ export const MODEL_REGISTRY = {
         foreignKey: "production_item_id",
         getModel: (tenantDB) => productModel(tenantDB),
         targetKey: "id",
-        columns: { product_name: PRODUCT_COLUMNS.product_name },
+        // Borrows products' own full whitelist + relations (category
+        // included) via modelKey — same pattern stock_ledger's product
+        // relation uses, instead of a product_name-only subset.
+        modelKey: "products",
       },
       employee: {
         label: "Team Member",
@@ -1383,7 +1405,10 @@ export const MODEL_REGISTRY = {
         foreignKey: "item_id",
         getModel: (tenantDB) => productModel(tenantDB),
         targetKey: "id",
-        columns: { product_name: PRODUCT_COLUMNS.product_name },
+        // Borrows products' own full whitelist + relations (category
+        // included) via modelKey — same pattern stock_ledger's product
+        // relation uses, instead of a product_name-only subset.
+        modelKey: "products",
       },
     },
   },
@@ -1411,7 +1436,10 @@ export const MODEL_REGISTRY = {
         foreignKey: "product_id",
         getModel: (tenantDB) => productModel(tenantDB),
         targetKey: "id",
-        columns: { product_name: PRODUCT_COLUMNS.product_name },
+        // Borrows products' own full whitelist + relations (category
+        // included) via modelKey — same pattern stock_ledger's product
+        // relation uses, instead of a product_name-only subset.
+        modelKey: "products",
       },
     },
   },
@@ -1442,14 +1470,20 @@ export const MODEL_REGISTRY = {
         foreignKey: "item_id",
         getModel: (tenantDB) => productModel(tenantDB),
         targetKey: "id",
-        columns: { product_name: PRODUCT_COLUMNS.product_name },
+        // Borrows products' own full whitelist + relations (category
+        // included) via modelKey — same pattern stock_ledger's product
+        // relation uses, instead of a product_name-only subset.
+        modelKey: "products",
       },
       finishedProduct: {
         label: "Finished Product",
         foreignKey: "master_product_id",
         getModel: (tenantDB) => productModel(tenantDB),
         targetKey: "id",
-        columns: { product_name: PRODUCT_COLUMNS.product_name },
+        // Borrows products' own full whitelist + relations (category
+        // included) via modelKey — same pattern stock_ledger's product
+        // relation uses, instead of a product_name-only subset.
+        modelKey: "products",
       },
     },
   },
