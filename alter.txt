@@ -3483,3 +3483,10 @@ DROP TABLE `report_groups`;
 -- report_runs was write-only - every report run/schedule dispatch logged a row here, but nothing
 -- ever read it back (no Run History screen/endpoint was ever built on top of it). Dropped as dead weight.
 DROP TABLE `report_runs`;
+
+17-09-2026 Dhaval
+-- migration: migration/master/migrations/20260917100000-add-tenant-master-application-page.js
+-- Tenant Master (adminpanel) had no a_application_pages row of its own - its sidebar entry
+-- piggybacked on hasRight("companies"), so it never appeared as its own row in adminpanel's
+-- Rbac page-roles matrix. Gives it a real slug so it can be granted independently.
+INSERT INTO `a_application_pages` (`id`, `page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (186, 'Tenant Master', 'Tenants', 'tenant-master', 'Admin panel Tenant Master listing', '1', '0', '0', '1', NOW(), UNIX_TIMESTAMP(), '0', '1');
