@@ -321,7 +321,7 @@ export const getAllAccountTransactions = async (req, res) => {
 
     const queryOptions = {
       where: whereClause,
-      order: [["created_date_time", sortDir]],
+      order: [["payment_date_time", sortDir]],
     };
 
     if (ll !== undefined && ul !== undefined) {
@@ -552,7 +552,7 @@ export const getAllAccountTransactionsForOnlineStore = async (req, res) => {
       String("DESC").toUpperCase() === "ASC" ? "ASC" : "DESC";
     const queryOptions = {
       where: whereClause,
-      order: [["created_date_time", sortDir]],
+      order: [["payment_date_time", sortDir]],
     };
     const accountTransactionResult = await tenantDBInfo.models.account_transactions.findAll(queryOptions);
 
@@ -670,7 +670,7 @@ export const accountTransactionById = async (req) => {
 
     const accountTransactionResult = await aTModel.findAll({
       where: whereClause,
-      order: [["created_date_time", "DESC"]],
+      order: [["payment_date_time", "DESC"]],
     });
 
     const companyModels = companyModel;
@@ -1260,7 +1260,7 @@ export const getAccountStatementOfContact = async (req, res) => {
         company_masters_id: findCompanyId.company_masters_id,
         contact_masters_id: contact_master_id,
       },
-      order: [["created_date_time", "DESC"]],
+      order: [["payment_date_time", "DESC"]],
       raw: true,
     });
 

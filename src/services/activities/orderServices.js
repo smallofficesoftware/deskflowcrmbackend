@@ -2543,7 +2543,9 @@ export const orderUpdate = async (req, res) => {
         const invoiceNum = findCartData.dataValues.cart_number;
         const invoiceDate = findCartData.dataValues.cart_date;
         const customerName = findCartData.dataValues.to_customer_name;
-        const createDateTime = findCartData.dataValues.created_date_time.toISOString();
+        const createDateTime = new Date(
+          findCartData.dataValues.update_Date_time || findCartData.dataValues.cart_date || findCartData.dataValues.created_date_time
+        ).toISOString();
 
         await createAccountTransaction({
           mode: update_cart.payment_type ? update_cart.payment_type : -1,
@@ -2572,8 +2574,18 @@ export const orderUpdate = async (req, res) => {
         });
 
         if (findAccountTr) {
+          const updatedInvoiceNum = findCartData.dataValues.cart_number;
+          const updatedResolvedDate =
+            findCartData.dataValues.update_Date_time || findCartData.dataValues.cart_date || findCartData.dataValues.created_date_time;
+          const updatedInvoiceDate = moment(updatedResolvedDate).format("YYYY-MM-DD");
+          const updatedCustomerName = findCartData.dataValues.to_customer_name;
+
           await ATModel.update(
-            { amount: update_cart.grand_total },
+            {
+              amount: update_cart.grand_total,
+              payment_date_time: new Date(updatedResolvedDate).toISOString(),
+              remark: `<p>Inv No.: ${updatedInvoiceNum}<br>Inv Date : ${updatedInvoiceDate || ""}<br>Contact Name : ${updatedCustomerName}</p>`,
+            },
             {
               where: {
                 id: findAccountTr.dataValues.id,
@@ -2602,8 +2614,9 @@ export const orderUpdate = async (req, res) => {
           const invoiceDate = findCartData.dataValues.cart_date;
           const customerName = findCartData.dataValues.to_customer_name;
           const customerEmail = findCartData.dataValues.to_customer_email;
-          const createDateTime = findCartData.dataValues.created_date_time;
-          const convertDateTimeString = createDateTime.toISOString();
+          const createDateTime =
+            findCartData.dataValues.update_Date_time || findCartData.dataValues.cart_date || findCartData.dataValues.created_date_time;
+          const convertDateTimeString = new Date(createDateTime).toISOString();
 
           await createAccountTransaction({
             mode: update_cart.payment_type ? update_cart.payment_type : -1,
@@ -2649,7 +2662,9 @@ export const orderUpdate = async (req, res) => {
         const invoiceNum = findCartData.dataValues.cart_number;
         const invoiceDate = findCartData.dataValues.cart_date;
         const customerName = findCartData.dataValues.to_customer_name;
-        const createDateTime = findCartData.dataValues.created_date_time.toISOString();
+        const createDateTime = new Date(
+          findCartData.dataValues.update_Date_time || findCartData.dataValues.cart_date || findCartData.dataValues.created_date_time
+        ).toISOString();
 
         await createAccountTransaction({
           mode: update_cart.payment_type ? update_cart.payment_type : -1,
@@ -2687,8 +2702,9 @@ export const orderUpdate = async (req, res) => {
         const invoiceDate = findCartData.dataValues.cart_date;
         const customerName = findCartData.dataValues.to_customer_name;
         const customerEmail = findCartData.dataValues.to_customer_email;
-        const createDateTime = findCartData.dataValues.created_date_time;
-        const convertDateTimeString = createDateTime.toISOString();
+        const createDateTime =
+          findCartData.dataValues.update_Date_time || findCartData.dataValues.cart_date || findCartData.dataValues.created_date_time;
+        const convertDateTimeString = new Date(createDateTime).toISOString();
 
         await createAccountTransaction({
           mode: update_cart.payment_type ? update_cart.payment_type : -1,
