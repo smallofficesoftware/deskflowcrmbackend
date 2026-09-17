@@ -3455,3 +3455,31 @@ ALTER TABLE `production_transactions` ADD COLUMN `total_actual_time` INT(11) NUL
 -- No code reads the "document_designer" key anymore - deletes the now-orphaned rows. Irreversible -
 -- companies that had it on need the specific new keys turned on again from the admin panel.
 DELETE FROM `company_feature_flags` WHERE `feature_key` = 'document_designer';
+
+16-09-2026 Dhaval
+-- migrations: migration/tenant/migrations/20260916130000-add-category-to-report-definitions.js,
+--             migration/tenant/migrations/20260916130001-migrate-report-group-to-category.js,
+--             migration/tenant/migrations/20260916130002-drop-report-groups.js
+-- Report Builder's custom user-created groups (report_groups table) replaced by a fixed category
+-- picked from the same taxonomy the reports sidebar tree already groups every built-in report by
+-- (SideBarView.tsx's openMenu keys). Existing reports' report_group_id is best-effort mapped to a
+-- matching fixed category name, else "Others"; report_group_id and report_groups are then dropped.
+ALTER TABLE `report_definitions` ADD COLUMN `category` VARCHAR(255) NULL DEFAULT NULL;
+
+UPDATE `report_definitions` rd
+JOIN `report_groups` rg ON rg.`id` = rd.`report_group_id`
+SET rd.`category` = rg.`group_name`
+WHERE LOWER(rg.`group_name`) IN ('companysetup','hr','activities','crm','hrms','production','account','automation','settings','masters','product settings','others','new reports','inventory','cs')
+  AND rd.`category` IS NULL;
+
+UPDATE `report_definitions` SET `category` = 'Others' WHERE `category` IS NULL;
+
+ALTER TABLE `report_definitions` DROP COLUMN `report_group_id`;
+
+DROP TABLE `report_groups`;
+
+16-09-2026 Dhaval
+-- migration: migration/tenant/migrations/20260916130003-drop-report-runs.js
+-- report_runs was write-only - every report run/schedule dispatch logged a row here, but nothing
+-- ever read it back (no Run History screen/endpoint was ever built on top of it). Dropped as dead weight.
+DROP TABLE `report_runs`;

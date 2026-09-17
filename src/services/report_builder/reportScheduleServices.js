@@ -24,7 +24,6 @@ import cronJobsModel from "../../models/configuration/cronJobsModel.js";
 import tenantMasterModel from "../../models/configuration/tenantMasterModel.js";
 import loginModel from "../../models/application_login/loginModel.js";
 import { reportDefinitionModel } from "../../models/report_builder/reportDefinitionModel.js";
-import { reportRunModel } from "../../models/report_builder/reportRunModel.js";
 import { reportScheduleModel } from "../../models/report_builder/reportScheduleModel.js";
 import { tenantMiddleware } from "../../middlewares/tenantMiddleware.js";
 import {
@@ -308,12 +307,10 @@ const resolveRecipients = async (recipients) => {
 };
 
 // One schedule's full cycle: run -> generate file(s) -> deliver ->
-// bookkeeping (last_run_at/next_run_at, a report_runs row with
-// trigger_type:'scheduled'). Delivery errors are caught per-schedule so
-// one bad schedule's mail-server hiccup doesn't stop the dispatcher from
-// reaching the rest of this tenant's schedules.
+// bookkeeping (last_run_at/next_run_at). Delivery errors are caught
+// per-schedule so one bad schedule's mail-server hiccup doesn't stop the
+// dispatcher from reaching the rest of this tenant's schedules.
 const dispatchOneSchedule = async (schedule, req) => {
-  const startedAt = Date.now();
   const ReportDefinition = reportDefinitionModel(req.tenantDB);
   const definition = await ReportDefinition.findOne({
     where: { id: schedule.report_definition_id, company_masters_id: schedule.company_masters_id, isDelete: 0 },
@@ -325,8 +322,6 @@ const dispatchOneSchedule = async (schedule, req) => {
 
   const exportReq = { ...req, params: { id: definition.id }, body: { a_application_login_id: schedule.a_application_login_id } };
   const attachments = [];
-  let runSucceeded = true;
-  let errorMessage = null;
 
   // `{}` stands in for `res` — confirmed neither exportReportExcel/
   // exportReportPdf nor the one registered plugin (productInventoryReport,
@@ -339,9 +334,6 @@ const dispatchOneSchedule = async (schedule, req) => {
       if (result?.ack === 1) {
         const buffer = readGeneratedFile(schedule.company_masters_id, result.data.fileName);
         if (buffer) attachments.push({ filename: result.data.fileName, content: buffer, contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-      } else {
-        runSucceeded = false;
-        errorMessage = result?.developer_msg || result?.ack_msg || "Excel export failed";
       }
     }
     if (schedule.delivery_format === "pdf" || schedule.delivery_format === "both") {
@@ -349,9 +341,6 @@ const dispatchOneSchedule = async (schedule, req) => {
       if (result?.ack === 1) {
         const buffer = readGeneratedFile(schedule.company_masters_id, result.data.fileName);
         if (buffer) attachments.push({ filename: result.data.fileName, content: buffer, contentType: "application/pdf" });
-      } else {
-        runSucceeded = false;
-        errorMessage = errorMessage || result?.developer_msg || result?.ack_msg || "PDF export failed";
       }
     }
 
@@ -359,23 +348,8 @@ const dispatchOneSchedule = async (schedule, req) => {
       await sendScheduleEmail({ toEmails: emails, subject: `Scheduled report: ${definition.name}`, reportName: definition.name, attachments });
     }
   } catch (e) {
-    runSucceeded = false;
-    errorMessage = String(e).slice(0, 500);
     console.error(`dispatchOneSchedule error (schedule ${schedule.id}):`, e);
   }
-
-  const ReportRun = reportRunModel(req.tenantDB);
-  await ReportRun.create({
-    company_masters_id: schedule.company_masters_id,
-    report_definition_id: definition.id,
-    executed_by: schedule.a_application_login_id,
-    executed_at: now(),
-    row_count: null,
-    duration_ms: Date.now() - startedAt,
-    success: runSucceeded ? 1 : 0,
-    error_message: errorMessage,
-    trigger_type: "scheduled",
-  });
 
   const nextRun = computeNextRunAt({
     frequency: schedule.frequency,
