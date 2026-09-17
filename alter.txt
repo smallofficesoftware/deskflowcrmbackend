@@ -3490,3 +3490,35 @@ DROP TABLE `report_runs`;
 -- piggybacked on hasRight("companies"), so it never appeared as its own row in adminpanel's
 -- Rbac page-roles matrix. Gives it a real slug so it can be granted independently.
 INSERT INTO `a_application_pages` (`id`, `page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (186, 'Tenant Master', 'Tenants', 'tenant-master', 'Admin panel Tenant Master listing', '1', '0', '0', '1', NOW(), UNIX_TIMESTAMP(), '0', '1');
+
+17-09-2026 Dhaval
+-- migration: migration/tenant/migrations/20260917150000-create-serial-stock-ledger-view.js
+-- Same in/out classification stock_ledger_view uses (21-08-2026 entry above), applied per
+-- serial number instead of per cart_item quantity - lets Report Builder show, for one serial
+-- number, every cart that touched it plus a running in-stock/sold-out balance.
+CREATE OR REPLACE VIEW `serial_stock_ledger_view` AS
+SELECT
+  sn.id,
+  sn.company_masters_id,
+  sn.a_application_login_id,
+  sn.product_id,
+  sn.serial_numbers,
+  sn.cart_id,
+  sn.cart_type,
+  sn.cart_item_id,
+  sn.sn_reference_type,
+  sn.sn_reference_cart_id,
+  sn.created_date_time,
+  0 AS isDelete,
+  CASE
+    WHEN (sn.cart_type = 4 AND sn.sn_reference_type != 8) OR sn.cart_type IN (6,8,10) THEN 1
+    WHEN (sn.cart_type = 3 AND sn.sn_reference_type != 9) OR sn.cart_type IN (7,9,11) THEN -1
+    ELSE 0
+  END AS stock_delta
+FROM `cart_vs_serial_numbers` sn
+WHERE sn.isDelete = 0
+  AND (
+    (sn.cart_type = 4 AND sn.sn_reference_type != 8)
+    OR (sn.cart_type = 3 AND sn.sn_reference_type != 9)
+    OR sn.cart_type IN (6,7,8,9,10,11)
+  );

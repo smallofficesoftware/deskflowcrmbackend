@@ -310,6 +310,35 @@ WHERE ci.isDelete = 0
     OR ci.cart_type IN (6,7,8,9,10,11)
   );
 
+-- Report Builder's serial_stock_ledger_view (not a table) — same reasoning
+-- as stock_ledger_view above, created after cart_vs_serial_numbers exists.
+CREATE OR REPLACE VIEW `serial_stock_ledger_view` AS
+SELECT
+  sn.id,
+  sn.company_masters_id,
+  sn.a_application_login_id,
+  sn.product_id,
+  sn.serial_numbers,
+  sn.cart_id,
+  sn.cart_type,
+  sn.cart_item_id,
+  sn.sn_reference_type,
+  sn.sn_reference_cart_id,
+  sn.created_date_time,
+  0 AS isDelete,
+  CASE
+    WHEN (sn.cart_type = 4 AND sn.sn_reference_type != 8) OR sn.cart_type IN (6,8,10) THEN 1
+    WHEN (sn.cart_type = 3 AND sn.sn_reference_type != 9) OR sn.cart_type IN (7,9,11) THEN -1
+    ELSE 0
+  END AS stock_delta
+FROM `cart_vs_serial_numbers` sn
+WHERE sn.isDelete = 0
+  AND (
+    (sn.cart_type = 4 AND sn.sn_reference_type != 8)
+    OR (sn.cart_type = 3 AND sn.sn_reference_type != 9)
+    OR sn.cart_type IN (6,7,8,9,10,11)
+  );
+
 -- Report Builder's account_outstanding_view (not a table) — same reasoning
 -- as stock_ledger_view above, created after account_transactions exists.
 CREATE OR REPLACE VIEW `account_outstanding_view` AS
