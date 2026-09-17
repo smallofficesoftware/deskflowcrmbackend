@@ -1568,7 +1568,7 @@ export const allAccountTransactionOfContactPDF = async (req, res) => {
     }
     const transactions = await AccountTransactionModel.findAll({
       where: whereClause,
-      order: [["created_date_time", "ASC"]],
+      order: [["payment_date_time", "ASC"]],
       raw: true,
     });
 
