@@ -755,6 +755,12 @@ export const listRunnableReportDefinitions = async (req) => {
       // outputKeyForColumn exactly, so a key here always matches the same
       // key runQueryReport's own row-reassembly pass produces.
       let column_formats = {};
+      // column_display_labels: bare display-key -> the author's typed
+      // header rename (Step 4's "Type in a field to rename its header"),
+      // same "just the bare keys ReportRunnerView.tsx needs" boundary as
+      // hidden_grid_columns/column_formats above. Distinct from `alias`,
+      // which names the output ROW KEY, not what a viewer sees.
+      let column_display_labels = {};
       const resolveDisplayKey = (c) => {
         if (c.compute || c.case) return c.alias;
         if (c.column && c.column.includes(".")) return c.column;
@@ -773,16 +779,20 @@ export const listRunnableReportDefinitions = async (req) => {
               if (c && typeof c === "object" && c.format && Object.keys(c.format).length > 0) {
                 column_formats[resolveDisplayKey(c)] = c.format;
               }
+              if (c && typeof c === "object" && c.displayLabel) {
+                column_display_labels[resolveDisplayKey(c)] = c.displayLabel;
+              }
             });
           }
         } catch {
           hidden_grid_columns = [];
           column_formats = {};
+          column_display_labels = {};
         }
       }
       delete plain.columns_json;
 
-      return { ...plain, is_aggregated, group_by_columns, hidden_grid_columns, column_formats };
+      return { ...plain, is_aggregated, group_by_columns, hidden_grid_columns, column_formats, column_display_labels };
     };
 
     const owner = await isCompanyOwner(a_application_login_id, company_masters_id);
