@@ -12,6 +12,7 @@ import { createAxiosIntance } from "../../utils/miracleAxiosInstance.js";
 import { parseMiracleRights } from "../../utils/miracleRightsHelper.js";
 import { normalizeToTenDigit, resBadRequest, resSuccess } from "../../utils/sharedFunctions.js";
 import { insertMiracleLog } from "../activities/miracleLogService.js";
+import { createAccountTransaction } from "../commonServices.js";
 
 import { accountTransactionsModel } from "../../models/activities/accountTransactionsModel.js";
 import { cartItemModel } from "../../models/activities/cartItemsModel.js";
@@ -1162,6 +1163,36 @@ export async function handleVoucherAddOrUpdate({ payload, context }) {
 
     await cartItemModelInstance.bulkCreate(itemsToCreate);
 
+    // Invoice types need the second ledger entry (mirrors orderServices.js
+    // native invoice flow) — SS/PP/SR/PR carry a grand_total that must post
+    // to account_transactions, or the ledger never sees Miracle-origin invoices.
+    if ([3, 4, 6, 7].includes(cartType) && grandTotal) {
+        const referenceTable = cart.account_transactions_ref_table || "carts";
+        const accountTransactionsModelInstance = accountTransactionsModel(tenantDB);
+
+        // Re-sync (TE) replaces the cart's ledger entry rather than duplicating it.
+        await accountTransactionsModelInstance.update(
+            { isDelete: 1 },
+            { where: { reference_id: cart.id, reference_table: referenceTable, isDelete: 0 } }
+        );
+
+        await createAccountTransaction({
+            mode: -1,
+            type: (cartType === 3 || cartType === 7) ? 2 : 1,
+            amount: grandTotal,
+            referenceId: cart.id,
+            referenceTable,
+            remarkDetails: { invoiceNum: cartNumber, invoiceDate: cartDate, customerName },
+            paymentDateTime: cartDate,
+            approvedBy: tenantId,
+            contactMasterId: customerId,
+            applicationLoginId: tenantId,
+            companyMasterId: companyId,
+            miracle_account_legder: "",
+            req,
+        });
+    }
+
     return { UniqueId, cartId: cart.id, status: created ? "created" : "updated" };
 }
 
@@ -1184,6 +1215,8 @@ export async function handleVoucherDelete({ payload, context }) {
         where: { miracle_UniqueId: UniqueId, company_masters_id: companyId, isDelete: "0" },
     });
 
+    const accountTransactionsModelInstance = accountTransactionsModel(tenantDB);
+
     if (cart) {
         await cart.update({ isDelete: 1 });
         await cartItemModelInstance.update(
@@ -1191,10 +1224,22 @@ export async function handleVoucherDelete({ payload, context }) {
             { where: { cart_id: cart.id, isDelete: 0 } }
         );
         deletedCartId = cart.id;
+
+        // Invoice's own ledger entry has no miracle_UniqueId of its own —
+        // it's linked back to the cart via reference_id, not the voucher's UniqueId.
+        await accountTransactionsModelInstance.update(
+            { isDelete: 1 },
+            {
+                where: {
+                    reference_id: cart.id,
+                    reference_table: cart.account_transactions_ref_table || "carts",
+                    isDelete: 0,
+                },
+            }
+        );
     }
 
     // 2. Check in Account Transactions (Cash / Bank Payments & Receipts)
-    const accountTransactionsModelInstance = accountTransactionsModel(tenantDB);
     const transaction = await accountTransactionsModelInstance.findOne({
         where: { miracle_UniqueId: UniqueId, company_masters_id: companyId, isDelete: "0" },
     });

@@ -2907,7 +2907,7 @@ export const orderUpdate = async (req, res) => {
           {
             amount: update_cart.advance_payment,
             mode: update_cart.payment_type,
-            miracle_account_legder: update_cart.miracle_account_ledger_adv ? update_cart.miracle_account_ledger_adv : "",
+            miracle_account_ledger: update_cart.miracle_account_ledger_adv ? update_cart.miracle_account_ledger_adv : "",
           },
           {
             where: {
