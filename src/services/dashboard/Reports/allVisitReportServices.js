@@ -378,102 +378,108 @@ export const getVisitReport = async (req) => {
     const visitsModels = visitsModel(req.tenantDB);
     const contactModels = contactModel(req.tenantDB);
 
-    // ---------------- MAIN QUERY - GLOBAL SORT BY ID DESC ----------------
-    const visitDataRaw = await Promise.all(
-      teamIds.map(async (loginId) => {
-        const user = await loginModel.findOne({
-          where: { id: loginId, isDelete: 0 },
-          attributes: ["username", "recovery_mobile"],
+    // ---------------- MAIN QUERY - fetch ALL matching visits across every
+    // team member in ONE globally id-sorted query, so pagination (applied
+    // below, after the contact-match enrichment) is a real global page
+    // instead of up-to-`limit`-per-user chunks ----------------
+    const users = await loginModel.findAll({
+      where: { id: { [Op.in]: teamIds }, isDelete: 0 },
+      attributes: ["id", "username", "recovery_mobile"],
+    });
+    const userMap = {};
+    users.forEach((u) => { userMap[u.id] = u; });
+
+    const allVisits = await visitsModels.findAll({
+      where: {
+        ...fullTextSearchCondition,
+        ...contactCondition,
+        isDelete: 0,
+        company_masters_id: company_master_id,
+        a_application_login_id: { [Op.in]: teamIds },
+        ...dateFilter,
+      },
+      order: [["id", "DESC"]],
+    });
+
+    const CustomFormFeilds = await customFieldFormModel(req.tenantDB).findAll({
+      where: {
+        form_type: 3,
+        isDelete: 0,
+        report_print_or_not: 1,
+        data_type: { [Op.ne]: 11 },
+      },
+    });
+
+    const enrichedResults = await Promise.all(
+      allVisits.map(async (visit) => {
+        const contact = await contactModels.findOne({
+          where: { id: visit.contact_id, isDelete: 0, ...whereForContact },
+          attributes: ["person_name", "company_name", "address", "latitude", "longitude"],
         });
 
-        const visits = await visitsModels.findAll({
-          where: {
-            ...fullTextSearchCondition,
-            ...contactCondition,
-            isDelete: 0,
-            company_masters_id: company_master_id,
-            a_application_login_id: loginId,
-            ...dateFilter,
-          },
-          order: [["id", "DESC"]],        // Keep per user for now
-          offset,
-          limit,
-        });
-
-        // ... rest of your custom fields and contact logic remains same
-        const CustomFormFeilds = await customFieldFormModel(req.tenantDB).findAll({
-          where: {
-            form_type: 3,
-            isDelete: 0,
-            report_print_or_not: 1,
-            data_type: { [Op.ne]: 11 },
-          },
-        });
-        console.log("CustomFormFeildsCustomFormFeilds", CustomFormFeilds);
-
-        const results = await Promise.all(
-          visits.map(async (visit) => {
-            const contact = await contactModels.findOne({
-              where: { id: visit.contact_id, isDelete: 0, ...whereForContact },
-              attributes: ["person_name", "company_name", "address", "latitude", "longitude"],
-            });
-
-            if (!contact) return null;
-
-            return {
-              ...visit.toJSON(),
-              contactNumber: `${contact.company_name}`,
-              // visit.address (from the spread above) is the actual visit
-              // location, reverse-geocoded from GPS at check-in time —
-              // contact_address is the contact's separate, fixed registered
-              // address. Keep both distinct; don't let one clobber the other.
-              contact_address: `${contact.address}`,
-              distance_km: haversineDistanceKm(
-                visit.latitude,
-                visit.longitude,
-                contact.latitude,
-                contact.longitude
-              ),
-              customForm: CustomFormFeilds,
-              visit_image: visit.visit_image
-                ? `${VISIT_IMG_LINK_EXTENDED}/${visit.visit_image}`
-                : null,
-              visit_column_attechments_1: visit.visit_column_attechments_1
-                ? `${VISIT_IMG_LINK_EXTENDED}/${visit.visit_column_attechments_1}`
-                : null,
-              visit_column_attechments_2: visit.visit_column_attechments_2
-                ? `${VISIT_IMG_LINK_EXTENDED}/${visit.visit_column_attechments_2}`
-                : null,
-              visit_column_attechments_3: visit.visit_column_attechments_3
-                ? `${VISIT_IMG_LINK_EXTENDED}/${visit.visit_column_attechments_3}`
-                : null,
-              visit_column_attechments_4: visit.visit_column_attechments_4
-                ? `${VISIT_IMG_LINK_EXTENDED}/${visit.visit_column_attechments_4}`
-                : null,
-              visit_column_attechments_5: visit.visit_column_attechments_5
-                ? `${VISIT_IMG_LINK_EXTENDED}/${visit.visit_column_attechments_5}`
-                : null,
-            };
-          })
-        );
+        if (!contact) return null;
 
         return {
-          user: user || null,
-          visits: results.filter(Boolean),
-          maxVisitId: visits.length > 0 ? Math.max(...visits.map(v => v.id)) : 0   // For sorting
+          ...visit.toJSON(),
+          contactNumber: `${contact.company_name}`,
+          // visit.address (from the spread above) is the actual visit
+          // location, reverse-geocoded from GPS at check-in time —
+          // contact_address is the contact's separate, fixed registered
+          // address. Keep both distinct; don't let one clobber the other.
+          contact_address: `${contact.address}`,
+          distance_km: haversineDistanceKm(
+            visit.latitude,
+            visit.longitude,
+            contact.latitude,
+            contact.longitude
+          ),
+          customForm: CustomFormFeilds,
+          visit_image: visit.visit_image
+            ? `${VISIT_IMG_LINK_EXTENDED}/${visit.visit_image}`
+            : null,
+          visit_column_attechments_1: visit.visit_column_attechments_1
+            ? `${VISIT_IMG_LINK_EXTENDED}/${visit.visit_column_attechments_1}`
+            : null,
+          visit_column_attechments_2: visit.visit_column_attechments_2
+            ? `${VISIT_IMG_LINK_EXTENDED}/${visit.visit_column_attechments_2}`
+            : null,
+          visit_column_attechments_3: visit.visit_column_attechments_3
+            ? `${VISIT_IMG_LINK_EXTENDED}/${visit.visit_column_attechments_3}`
+            : null,
+          visit_column_attechments_4: visit.visit_column_attechments_4
+            ? `${VISIT_IMG_LINK_EXTENDED}/${visit.visit_column_attechments_4}`
+            : null,
+          visit_column_attechments_5: visit.visit_column_attechments_5
+            ? `${VISIT_IMG_LINK_EXTENDED}/${visit.visit_column_attechments_5}`
+            : null,
         };
       })
     );
 
-    // ---------------- GLOBAL SORT BY VISIT ID DESC ----------------
-    const visitData = visitDataRaw
-      .filter(item => item.visits.length > 0)                    // Optional: remove users with no visits
-      .sort((a, b) => (b.maxVisitId || 0) - (a.maxVisitId || 0)) // Sort users by newest visit first
-      .map(({ user, visits }) => ({ user, visits }));            // Clean output
+    const filteredVisits = enrichedResults.filter(Boolean);
+
+    // ---------------- APPLY PAGINATION on the fully filtered result ----------------
+    const totalRecords = filteredVisits.length;
+    const paginatedVisits = filteredVisits.slice(offset, offset + limit);
+
+    // Re-group the paginated slice into { user, visits } runs, preserving
+    // the global id-DESC order (a run breaks only when the user changes).
+    const visitData = [];
+    let currentUserId = null;
+    let currentGroup = null;
+    paginatedVisits.forEach((visit) => {
+      const uid = visit.a_application_login_id;
+      if (uid !== currentUserId) {
+        currentGroup = { user: userMap[uid] || null, visits: [] };
+        visitData.push(currentGroup);
+        currentUserId = uid;
+      }
+      currentGroup.visits.push(visit);
+    });
 
     return resSuccess({
       ack_msg: "Success",
-      data: visitData,
+      data: { data: visitData, total: totalRecords },
     });
 
   } catch (error) {
