@@ -254,14 +254,13 @@ export const getCallReport = async (req) => {
 
     const callModel = callhistoryModel(req.tenantDB);
 
-    // Fetch all calls in ONE query (optimized)
+    // Fetch ALL matching calls (paginate after the contact-match
+    // filter below, so offset/limit and the total reflect the real
+    // result set instead of a pre-filter page)
     const calls = await callModel.findAll({
       where: callWhere,
       order: [["call_date_time", "DESC"]],
-      offset: ul,
-      limit: ll,
     });
-    console.log("callscallscallscalls111111111111", calls);
 
     // Get unique user IDs
     const userIds = [...new Set(calls.map((c) => c.a_application_login_id))];
@@ -488,6 +487,14 @@ export const getCallReport = async (req) => {
       (call) => call.dataValues.contactDetails !== null
     );
 
+    // ────────────────────────────────────────────────
+    // APPLY PAGINATION on the fully filtered/enriched result
+    // ────────────────────────────────────────────────
+    const totalRecords = filteredCalls.length;
+    const paginatedCalls = ll
+      ? filteredCalls.slice(ul, ul + ll)
+      : filteredCalls.slice(ul);
+
     // Map users
     const userMap = {};
     users.forEach((u) => {
@@ -496,7 +503,7 @@ export const getCallReport = async (req) => {
 
     // Group calls by user
     const groupedData = {};
-    filteredCalls.forEach((call) => {
+    paginatedCalls.forEach((call) => {
       const userId = call.a_application_login_id;
 
       if (!groupedData[userId]) {
@@ -514,6 +521,7 @@ export const getCallReport = async (req) => {
     return resSuccess({
       ack_msg: "Success",
       data: result,
+      total: totalRecords,
     });
   } catch (error) {
     logger.error("Error in getCallReport:", error);
