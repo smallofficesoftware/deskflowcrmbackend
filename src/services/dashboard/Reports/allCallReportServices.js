@@ -520,8 +520,7 @@ export const getCallReport = async (req) => {
 
     return resSuccess({
       ack_msg: "Success",
-      data: result,
-      total: totalRecords,
+      data: { data: result, total: totalRecords },
     });
   } catch (error) {
     logger.error("Error in getCallReport:", error);

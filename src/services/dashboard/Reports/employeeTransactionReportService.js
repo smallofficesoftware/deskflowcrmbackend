@@ -360,7 +360,7 @@ export const getEmployeeAccountOutstandingReport = async (req, res) => {
 
         if (empIds.length === 0) {
             return resSuccess({
-                data: [],
+                data: { data: [], total: 0 },
                 ack_msg: "No data found",
             });
         }
@@ -431,11 +431,8 @@ export const getEmployeeAccountOutstandingReport = async (req, res) => {
         const paginatedResults = results.slice(offset, offset + limit);
 
         return resSuccess({
-            data: paginatedResults,
+            data: { data: paginatedResults, total: totalRecords, offset, limit },
             ack_msg: "Data fetched successfully",
-            total: totalRecords,
-            offset,
-            limit,
         });
     } catch (error) {
         console.error("getEmployeeAccountOutstandingReport Error:", error);
