@@ -105,28 +105,31 @@ export const getAllProduct = async (req) => {
     }
     order.push(['product_name', 'ASC']);
 
-    const resultProduct = await productCustom.findAll({
-      where: whereClause,
-      limit: Number(ll) || 100000,
-      offset: Number(ul) || 0,
-      order,
-      attributes: {
-        include: [
-          [
-            Sequelize.literal(
-              "(SELECT categories.category_name FROM categories WHERE categories.id = products.category_id AND products.isDelete=0)"
-            ),
-            "category_name",
+    const [resultProduct, totalProductCount] = await Promise.all([
+      productCustom.findAll({
+        where: whereClause,
+        limit: Number(ll) || 100000,
+        offset: Number(ul) || 0,
+        order,
+        attributes: {
+          include: [
+            [
+              Sequelize.literal(
+                "(SELECT categories.category_name FROM categories WHERE categories.id = products.category_id AND products.isDelete=0)"
+              ),
+              "category_name",
+            ],
+            [
+              Sequelize.literal(
+                `(SELECT group_name FROM product_groups WHERE product_groups.id = products.product_group_id AND products.isDelete = '${0}')`
+              ),
+              "group_name",
+            ],
           ],
-          [
-            Sequelize.literal(
-              `(SELECT group_name FROM product_groups WHERE product_groups.id = products.product_group_id AND products.isDelete = '${0}')`
-            ),
-            "group_name",
-          ],
-        ],
-      },
-    });
+        },
+      }),
+      productCustom.count({ where: whereClause }),
+    ]);
 
     const ProUnitModel = productUnitMasterModel(req.tenantDB);
     const allUnitIds = new Set();
@@ -324,11 +327,11 @@ export const getAllProduct = async (req) => {
           }
         });
         return resSuccess({
-          data: { item: productsWithStock, resultPriceListItem },
+          data: { item: productsWithStock, resultPriceListItem, total: totalProductCount },
         });
       } else {
         return resSuccess({
-          data: { item: productsWithStock },
+          data: { item: productsWithStock, total: totalProductCount },
         });
       }
     } else {
