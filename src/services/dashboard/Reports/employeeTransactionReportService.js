@@ -132,18 +132,6 @@ export const getEmployeeAccountTranctionReport = async (req, res) => {
         };
 
         // ────────────────────────────────────────────────
-        // Fetch transactions
-        // ────────────────────────────────────────────────
-        const accountModel = employeeAccountTransactionsModel(req.tenantDB);
-        let accountData = await accountModel.findAll({
-            where: whereClause,
-            offset,
-            limit,
-            raw: true,
-            order: [['created_date_time', 'DESC']] // ← added common default sort
-        });
-
-        // ────────────────────────────────────────────────
         // Fetch all active employees (for filtering + lookup)
         // ────────────────────────────────────────────────
         const companyVsApplicationLoginResult =
@@ -173,8 +161,21 @@ export const getEmployeeAccountTranctionReport = async (req, res) => {
 
         const employeeMap = new Map(employees.map(e => [String(e.id), e])) || [];
 
-        // Filter transactions to only those with valid/existing employee
-        accountData = accountData.filter(acc => employeeMap?.has(String(acc.team_id))) || accountData;
+        // Only transactions belonging to a currently valid/existing employee count
+        whereClause.team_id = { [Op.in]: employees.map(e => Number(e.id)) };
+
+        // ────────────────────────────────────────────────
+        // Fetch transactions (+ true total after employee-existence filter)
+        // ────────────────────────────────────────────────
+        const accountModel = employeeAccountTransactionsModel(req.tenantDB);
+        const totalRecords = await accountModel.count({ where: whereClause });
+        let accountData = await accountModel.findAll({
+            where: whereClause,
+            offset,
+            limit,
+            raw: true,
+            order: [['created_date_time', 'DESC']] // ← added common default sort
+        });
 
         // ────────────────────────────────────────────────
         // Enrich data
@@ -219,7 +220,8 @@ export const getEmployeeAccountTranctionReport = async (req, res) => {
         return resSuccess({
             data: {
                 data: accounts,
-                currency_name: currency?.short_name || ""
+                currency_name: currency?.short_name || "",
+                total: totalRecords
             },
             ack_msg: "All Account transactions fetched successfully",
             developer_msg: "success",
