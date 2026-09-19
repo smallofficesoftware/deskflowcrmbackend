@@ -2200,6 +2200,120 @@ export const AllTaskUpdate = async (req) => {
   }
 };
 
+/**
+ * Assign team members to one or more tasks / support tickets from the assign
+ * dialogs. `keepExisting` merges the selected members into each task's
+ * current assignees instead of replacing them. Members newly added to a
+ * task get the same push notification the create/edit flows send.
+ */
+export const assignTaskTeamMembersToTasks = async (req) => {
+  try {
+    const { taskIds, teamMembers, keepExisting, a_application_login_id } = req.body;
+
+    const ids = (Array.isArray(taskIds) ? taskIds : [taskIds])
+      .map((v) => Number(v))
+      .filter(Boolean);
+    const selected = (Array.isArray(teamMembers) ? teamMembers : [])
+      .map((v) => String(v).trim())
+      .filter(Boolean);
+
+    if (ids.length === 0) {
+      return resBadRequest({ ack_msg: "No task selected.", developer_msg: "taskIds required" });
+    }
+
+    const findCompanyId = await getCompanyByLoginId(a_application_login_id);
+    const TaskModel = taskManagementModel(req.tenantDB);
+
+    const tasks = await TaskModel.findAll({
+      where: {
+        id: ids,
+        isDelete: "0",
+        company_masters_id: findCompanyId.company_masters_id,
+      },
+      attributes: ["id", "task_title", "assigned_team_member", "team_task_assignement_type"],
+    });
+
+    const assigner = await loginModel.findOne({
+      where: { id: a_application_login_id, isDelete: 0 },
+      attributes: ["username"],
+    });
+    const assignerName = assigner?.username || "Someone";
+
+    let updated = 0;
+    let skippedIndividual = 0;
+
+    for (const task of tasks) {
+      const existing = String(task.assigned_team_member || "")
+        .split(",")
+        .map((v) => v.trim())
+        .filter(Boolean);
+      const finalList = keepExisting
+        ? [...new Set([...existing, ...selected])]
+        : selected;
+
+      // Individual tasks are one row per person - exactly one assignee.
+      if (String(task.team_task_assignement_type) === "2" && finalList.length > 1) {
+        skippedIndividual += 1;
+        continue;
+      }
+
+      await TaskModel.update(
+        { assigned_team_member: finalList.join(",") },
+        { where: { id: task.id } },
+      );
+      updated += 1;
+
+      const existingSet = new Set(existing);
+      const newlyAdded = finalList.filter((id) => !existingSet.has(id));
+      if (newlyAdded.length === 0) continue;
+
+      try {
+        const addedMembers = await loginModel.findAll({
+          where: { id: newlyAdded, isDelete: 0 },
+          attributes: ["id", "web_refresh_token", "android_refresh_token", "ios_refresh_token"],
+        });
+        const tokens = [
+          ...new Set(
+            addedMembers
+              .flatMap((m) => [m.web_refresh_token, m.android_refresh_token, m.ios_refresh_token])
+              .filter((t) => t && t.trim() !== ""),
+          ),
+        ];
+        if (tokens.length > 0) {
+          await sendMultipleNotification({
+            deviceTokens: tokens,
+            title: `Task #${task.id} Assigned to You by ${assignerName}`,
+            body: `Task: ${task.task_title || ""}`,
+          });
+        }
+      } catch (notificationError) {
+        req.logger?.error("Assignee notification failed (non-critical):", notificationError.message);
+      }
+    }
+
+    if (updated === 0 && skippedIndividual > 0) {
+      return resError({
+        ack_msg: "Individual tasks can only be assigned to one team member.",
+        developer_msg: "all selected tasks are team_task_assignement_type=2",
+      });
+    }
+
+    return resSuccess({
+      ack_msg:
+        skippedIndividual > 0
+          ? `Assigned ${updated} task(s). ${skippedIndividual} individual task(s) skipped (one member only).`
+          : "Team member assigned successfully.",
+      data: { updated, skippedIndividual },
+    });
+  } catch (error) {
+    console.error("assignTaskTeamMembersToTasks error:", error);
+    return resBadRequest({
+      ack_msg: "Something went wrong",
+      developer_msg: `${error.message}`,
+    });
+  }
+};
+
 export const AllTaskDelete = async (req) => {
   const TaskInput = req.body.TaskId;
   const taskIds = Array.isArray(TaskInput) ? TaskInput : [TaskInput];

@@ -1,5 +1,5 @@
 import { decryptRequestForMultipart } from "../../middlewares/payloadSecurity.js";
-import { AllSupportTicketCategory, AllSupportTicketGet, AllTaskCountGet, AllTaskDelete, AllTaskGet, AllTaskUpdate, archiveTasks, assignReadUnreadTask, completeStickeyNote, convertSupportTicketToTasks, createAllTask, createCustomerSupportTicket, createStickeyNote, deleteStickeyNote, editStickeyNote, generateTaskSampleSheet, getStickeyNotesData, getTeamMemberTaskWorkload, supportTicketMessageCreate, supportTicketMessageGet, taskCategoryGet, unarchiveTasks, widgetAdd } from "../../services/activities/taskManagementServices.js";
+import { AllSupportTicketCategory, AllSupportTicketGet, AllTaskCountGet, AllTaskDelete, AllTaskGet, AllTaskUpdate, archiveTasks, assignReadUnreadTask, assignTaskTeamMembersToTasks, completeStickeyNote, convertSupportTicketToTasks, createAllTask, createCustomerSupportTicket, createStickeyNote, deleteStickeyNote, editStickeyNote, generateTaskSampleSheet, getStickeyNotesData, getTeamMemberTaskWorkload, supportTicketMessageCreate, supportTicketMessageGet, taskCategoryGet, unarchiveTasks, widgetAdd } from "../../services/activities/taskManagementServices.js";
 import callServiceMethod from "../baseController.js";
 
 export const AllTask = async (req, res) => {
@@ -87,4 +87,7 @@ export const getTaskCategory = async (req, res) => {
 };
 export const WidgetAddRemove = async (req, res) => {
   await callServiceMethod(req, res, widgetAdd(req), "WidgetAddRemove");
+};
+export const assignTaskTeamMembers = async (req, res) => {
+  await callServiceMethod(req, res, assignTaskTeamMembersToTasks(req), "assignTaskTeamMembersToTasks");
 };
