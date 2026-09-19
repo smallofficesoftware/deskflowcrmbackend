@@ -4493,6 +4493,11 @@ export const createCustomerSupportTicket = async (req, res) => {
       mobileConditions.push({ mobile_number: rawMobile });
       mobileConditions.push({ raw_mobile_number: rawMobile });
     }
+    if (normalizedMobile && normalizedMobile.startsWith("91") && normalizedMobile.length === 12) {
+      const tenDigit = normalizedMobile.slice(2);
+      mobileConditions.push({ mobile_number: tenDigit });
+      mobileConditions.push({ raw_mobile_number: tenDigit });
+    }
 
     let contactData = null;
     if (mobileConditions.length > 0) {
@@ -4502,21 +4507,7 @@ export const createCustomerSupportTicket = async (req, res) => {
           company_masters_id: tenantDBFind.company_masters_id,
           isDelete: 0
         },
-        attributes: ["id"],
-        order: [["id", "ASC"]]
-      });
-    } else {
-      // No mobile on the login or the request: without this fallback nothing could ever
-      // match, so every ticket created a brand-new empty-mobile contact for the same user.
-      contactData = await ContactModel.findOne({
-        where: {
-          person_name: username || user_name || "unknown",
-          mobile_number: "",
-          company_masters_id: tenantDBFind.company_masters_id,
-          isDelete: 0
-        },
-        attributes: ["id"],
-        order: [["id", "ASC"]]
+        attributes: ["id"]
       });
     }
 

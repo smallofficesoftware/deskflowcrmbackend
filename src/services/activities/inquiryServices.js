@@ -9,7 +9,6 @@ import { categoryModel } from "../../models/product_settings/categoryModel.js";
 import { PAGE_ID } from "../../utils/AppEnumeration.js";
 import {
   formatDateAndTimeCreateDateTime,
-  normalizeToTenDigit,
   resBadRequest,
   resSuccess,
   sanitizeObjectOfNull,
@@ -479,18 +478,16 @@ export const CreateInquiryBtoB = async (req, res) => {
     const INQContactModel = contactModel(req.tenantDB);
     let existingContact = await INQContactModel.findOne({
       where: {
-        mobile_number: normalizeToTenDigit(contact_number) || contact_number,
+        mobile_number: contact_number,
         company_masters_id: company_masters_id,
         a_application_login_id: a_application_login_id,
         isDelete: "0",
       },
-      order: [["id", "ASC"]],
     });
 
     if (!existingContact) {
       existingContact = await INQContactModel.create({
-        mobile_number: normalizeToTenDigit(contact_number) || contact_number,
-        raw_mobile_number: contact_number ? String(contact_number).trim() : "",
+        mobile_number: contact_number,
         person_name: contact_name,
         company_masters_id: company_masters_id,
         a_application_login_id: a_application_login_id,
