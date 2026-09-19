@@ -997,7 +997,9 @@ export const waCloudHook = async (req, res) => {
             })
             : null;
 
-        if (createdInquiry || messageEntry) {
+        // Only a payload that actually carried message text marks the contact
+        // unread (messageEntry is only created when hasMessageText is true).
+        if (messageEntry) {
             await CTContactModel.update(
                 {
                     is_read_by_a_application_login_id: '',
