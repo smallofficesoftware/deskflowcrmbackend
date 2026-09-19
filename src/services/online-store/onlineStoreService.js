@@ -6,6 +6,8 @@ import companyModel from "../../models/company_setup/companyModel.js";
 import { PAGE_ID } from "../../utils/AppEnumeration.js";
 import {
     getNumberSeries,
+    mobileLookupVariants,
+    normalizeToTenDigit,
     resBadRequest,
     resError,
     resSuccess
@@ -82,8 +84,16 @@ export const orderCreateByOnlineStore = async (req, res) => {
         if (!foundProducts || foundProducts.length === 0) {
             return resError({ ack_msg: "No matching products found", developer_msg: "Provided product codes do not exist" });
         }
+        // Match every spelling of the number (10 digit / 91 prefixed / +91 / 0 prefixed) so
+        // an existing contact is reused instead of a duplicate being created per order.
+        const canonicalMobile = normalizeToTenDigit(customerMobileNumber) || String(customerMobileNumber).trim();
         let contact = await models.contact_masters.findOne({
-            where: { mobile_number: customerMobileNumber, company_masters_id, isDelete: 0 },
+            where: {
+                mobile_number: { [Op.in]: mobileLookupVariants(customerMobileNumber) },
+                company_masters_id,
+                isDelete: 0,
+            },
+            order: [["id", "ASC"]],
         });
         if (!contact) {
             const userList = await models.contact_masters.findAll({
@@ -124,7 +134,8 @@ export const orderCreateByOnlineStore = async (req, res) => {
                 company_masters_id,
                 person_name: customerName || "Guest",
                 company_name: cart.to_customer_company_name || "",
-                mobile_number: customerMobileNumber,
+                mobile_number: canonicalMobile,
+                raw_mobile_number: String(customerMobileNumber).trim(),
                 email_id: cart.to_customer_email || "",
                 isDelete: 0,
                 isActive: 1,

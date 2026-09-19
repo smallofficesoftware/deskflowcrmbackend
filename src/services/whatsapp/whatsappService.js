@@ -14,7 +14,8 @@ import companyVsApplicationLoginModel from "../../models/company_setup/companyVs
 import companyVsWhatsappConfigModel from "../../models/company_setup/companyVsWhatsappConfigModel.js";
 import { WHATSAPP_TEMPLATE_STATIC_ATTACHMENT_GENEREATE_LINK } from "../../utils/appConstants.js";
 import { PAGE_ID } from "../../utils/AppEnumeration.js";
-import { isValid, normalizeToTenDigit, resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
+import { Op } from "sequelize";
+import { isValid, mobileLookupVariants, normalizeToTenDigit, resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { accountPDFv1, allAccountTransactionOfContactPDF } from "../activities/accountTransactionServices.js";
 import { pdfOrder } from "../activities/orderServices.js";
 import { insertThirdPartyLog } from "../activities/thirdPartyLogService.js";
@@ -905,7 +906,8 @@ export const waCloudHook = async (req, res) => {
         }
 
         const checkIsNumberExist = await CTContactModel.findOne({
-            where: { isDelete: 0, mobile_number: mobile_number },
+            where: { isDelete: 0, mobile_number: { [Op.in]: mobileLookupVariants(sender_number) } },
+            order: [["id", "ASC"]],
             raw: true
         });
 

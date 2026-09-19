@@ -11,6 +11,7 @@ import {
   generateFileName,
   isValid,
   normalizeToTenDigit,
+  mobileLookupVariants,
   resBadRequest,
   resError,
   resSuccess,
@@ -4485,18 +4486,10 @@ export const createCustomerSupportTicket = async (req, res) => {
     const rawMobile = targetMobile ? String(targetMobile).trim() : "";
 
     const mobileConditions = [];
-    if (normalizedMobile) {
-      mobileConditions.push({ mobile_number: normalizedMobile });
-      mobileConditions.push({ raw_mobile_number: normalizedMobile });
-    }
-    if (rawMobile) {
-      mobileConditions.push({ mobile_number: rawMobile });
-      mobileConditions.push({ raw_mobile_number: rawMobile });
-    }
-    if (normalizedMobile && normalizedMobile.startsWith("91") && normalizedMobile.length === 12) {
-      const tenDigit = normalizedMobile.slice(2);
-      mobileConditions.push({ mobile_number: tenDigit });
-      mobileConditions.push({ raw_mobile_number: tenDigit });
+    const mobileVariants = mobileLookupVariants(targetMobile);
+    if (mobileVariants.length) {
+      mobileConditions.push({ mobile_number: { [Op.in]: mobileVariants } });
+      mobileConditions.push({ raw_mobile_number: { [Op.in]: mobileVariants } });
     }
 
     let contactData = null;
@@ -4507,7 +4500,21 @@ export const createCustomerSupportTicket = async (req, res) => {
           company_masters_id: tenantDBFind.company_masters_id,
           isDelete: 0
         },
-        attributes: ["id"]
+        attributes: ["id"],
+        order: [["id", "ASC"]]
+      });
+    } else {
+      // No mobile on the login or the request: without this fallback nothing could ever
+      // match, so every ticket created a brand-new empty-mobile contact for the same user.
+      contactData = await ContactModel.findOne({
+        where: {
+          person_name: username || user_name || "unknown",
+          mobile_number: "",
+          company_masters_id: tenantDBFind.company_masters_id,
+          isDelete: 0
+        },
+        attributes: ["id"],
+        order: [["id", "ASC"]]
       });
     }
 

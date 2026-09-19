@@ -9,7 +9,7 @@ import companyVsApplicationLoginModel from "../../models/company_setup/companyVs
 import { cityModel } from "../../models/masters/cityModel.js";
 import { categoryModel } from "../../models/product_settings/categoryModel.js";
 import { PAGE_ID } from "../../utils/AppEnumeration.js";
-import { generateNumber, isValid, normalizeToTenDigit, resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
+import { generateNumber, isValid, mobileLookupVariants, normalizeToTenDigit, resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { getCompanyByLoginId, insertStagesAndStatusLogs } from "../commonServices.js";
 import { autoAssignmentContactIdsGet, prepareMailAndWhatsappSenderToTheContact } from "../other_settings/wrkflwAutoAssignmentContactService.js";
 import logger from "../../utils/logger.js";
@@ -121,8 +121,10 @@ export const addContactByjustdialPushApi = async (req, res) => {
         });
 
         const existingLeadIds = new Set(existingContacts.map(c => String(c.column_6)));
-        const existingMobiles = new Set(existingContacts.map(c => String(c.mobile_number).trim()));
-        const mobileToContactMap = new Map(existingContacts.map(c => [String(c.mobile_number).trim(), c]));
+        // Keyed by the last 10 digits so 10 digit / 91 / +91 spellings of one number hit the same contact.
+        const mobileKey = (m) => String(m ?? "").replace(/\D/g, "").slice(-10);
+        const existingMobiles = new Set(existingContacts.map(c => mobileKey(c.mobile_number)));
+        const mobileToContactMap = new Map(existingContacts.map(c => [mobileKey(c.mobile_number), c]));
 
         // Maps for category, city etc.
         const categories = await CTcategoryModel.findAll({ where: { isDelete: 0 } });
@@ -174,8 +176,8 @@ export const addContactByjustdialPushApi = async (req, res) => {
         const contactWhatsappSendList = [];
 
         // 2. Same mobile but different leadId → use existing contact
-        if (existingMobiles.has(mobile)) {
-            contact = mobileToContactMap.get(mobile);
+        if (existingMobiles.has(mobileKey(mobile))) {
+            contact = mobileToContactMap.get(mobileKey(mobile));
         } else {
             // Create new contact
             isNewContact = true;
