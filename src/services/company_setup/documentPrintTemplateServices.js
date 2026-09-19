@@ -1379,7 +1379,12 @@ const renderTemplateAsPdf = async ({ req, company_masters_id, draftTemplate, car
         hsn: item.item_hsn_code,
         qty: item.item_unit_name ? `${item.item_qty} / ${item.item_unit_name}` : item.item_qty,
         rate: item.item_rate,
-        discount: item.item_discount_pct,
+        // item_discount_type (cart-level): 2 = flat amount per unit, else
+        // percentage (NULL on older carts) - same rule the order PDF uses.
+        discount:
+          Number(cartRow.item_discount_type) === 2
+            ? Number(item.item_discount_pr || 0).toFixed(2)
+            : item.item_discount_pct,
         total: item.item_total,
         item_hsn_code: item.item_hsn_code,
         item_total: item.item_total,
