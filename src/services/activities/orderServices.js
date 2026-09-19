@@ -757,7 +757,7 @@ export const orderCreate = async (req, res) => {
     });
 
     const selectedCurrency = currencyDetails[0]?.short_name || "INR";
-    const finalCurrency = selectedCurrency === "INR" ? "INR" : "USD";
+    const finalCurrency = String(selectedCurrency).trim().toUpperCase();
 
 
     // Handle notifications and messages for approved orders
