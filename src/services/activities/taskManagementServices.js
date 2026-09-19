@@ -2142,6 +2142,46 @@ export const AllTaskUpdate = async (req) => {
     }
 
     if (updatedTask) {
+      // Notify only the members newly added to this task (same push
+      // notification the create flow sends), not everyone already on it.
+      try {
+        const previousIds = new Set(
+          String(taskExists.assigned_team_member || "").split(",").map((v) => v.trim()).filter(Boolean),
+        );
+        const newlyAddedIds = assignedTeamStr
+          .split(",")
+          .map((v) => v.trim())
+          .filter((id) => id && !previousIds.has(id));
+
+        if (newlyAddedIds.length > 0) {
+          const addedMembers = await loginModel.findAll({
+            where: { id: newlyAddedIds, isDelete: 0 },
+            attributes: ["id", "web_refresh_token", "android_refresh_token", "ios_refresh_token"],
+          });
+          const tokens = [
+            ...new Set(
+              addedMembers
+                .flatMap((m) => [m.web_refresh_token, m.android_refresh_token, m.ios_refresh_token])
+                .filter((t) => t && t.trim() !== ""),
+            ),
+          ];
+
+          if (tokens.length > 0) {
+            const assigner = await loginModel.findOne({
+              where: { id: a_application_login_id, isDelete: 0 },
+              attributes: ["username"],
+            });
+            await sendMultipleNotification({
+              deviceTokens: tokens,
+              title: `Task #${editId} Assigned to You by ${assigner?.username || "Someone"}`,
+              body: `Task: ${task_title || taskExists.task_title || ""}`,
+            });
+          }
+        }
+      } catch (notificationError) {
+        req.logger?.error("Assignee notification failed (non-critical):", notificationError.message);
+      }
+
       return resSuccess({
         ack_msg: "Task updated successfully",
         data: { id: editId },
