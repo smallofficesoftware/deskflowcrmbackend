@@ -291,6 +291,22 @@ export async function generateQuotationPdf({
     payableAmount: computed.payableAmount,
   });
 
+  // Item discount column values are per-unit amounts (not %) when the cart uses
+  // flat discount (item_discount_type 2), so the baked-in "Dis(%)" head must follow.
+  if (Number(cart?.item_discount_type) === 2) {
+    const currencySymbol = "₹"; // engine hardcodes INR everywhere
+    template = {
+      ...template,
+      schemas: (template.schemas || []).map((page) =>
+        (page || []).map((f) =>
+          f?.name === "itemsTable" && Array.isArray(f.head)
+            ? { ...f, head: f.head.map((h) => (h === "Dis(%)" ? `Dis(${currencySymbol})` : h)) }
+            : f,
+        ),
+      ),
+    };
+  }
+
   const cashDiscount = buildCashDiscount(cart);
   const hsnTaxRows = buildHsnTaxRows({ items, cart, isSameState, packingHSN, packingGSTRate, transportHSN, transportGSTRate });
 
