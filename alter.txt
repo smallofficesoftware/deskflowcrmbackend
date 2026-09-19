@@ -3549,3 +3549,26 @@ WHERE t.isDelete = 0
       AND x.page_id = 185
       AND x.isDelete = 0
   );
+
+19-09-2026 Dhaval
+-- Online store (onlineStoreService) saved cart_items.item_discount_pr as the WHOLE LINE
+-- discount (per-unit discount x qty). Every consumer (web cart, order recompute, print)
+-- treats it as PER UNIT, so qty > 1 lines double-multiplied. Code fixed going forward;
+-- this converts old rows. Only rows matching the old signature are touched:
+-- item_discount_pr ~= item_rate * item_discount_pct/100 * item_qty (qty > 1).
+-- Web-cart rows (already per unit) never match since pr ~= rate*pct/100 (only equal when qty = 1).
+-- Run the SELECT first to preview, then the UPDATE, once per tenant DB (and smalloffice_sample_tenant).
+SELECT id, cart_id, item_qty, item_rate, item_discount_pct, item_discount_pr,
+       ROUND(item_discount_pr / item_qty, 2) AS new_item_discount_pr
+FROM `cart_items`
+WHERE item_qty > 1
+  AND item_discount_pct > 0
+  AND item_discount_pr > 0
+  AND ABS(item_discount_pr - (item_rate * item_discount_pct / 100 * item_qty)) <= 0.01 * item_qty;
+
+UPDATE `cart_items`
+SET item_discount_pr = ROUND(item_discount_pr / item_qty, 2)
+WHERE item_qty > 1
+  AND item_discount_pct > 0
+  AND item_discount_pr > 0
+  AND ABS(item_discount_pr - (item_rate * item_discount_pct / 100 * item_qty)) <= 0.01 * item_qty;
