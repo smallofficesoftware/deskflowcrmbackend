@@ -114,13 +114,17 @@ export const detailedExpenseGet = async (req) => {
             attributes: ["id", "symbol"],
         });
 
+        const expenseWhere = {
+            ...whereClause,
+            isDelete: 0,
+            ...dateFilter,
+            ...fullTextSearchCondition,
+        };
+
+        const totalRecords = await expenseModels.count({ where: expenseWhere });
+
         const expenseData = await expenseModels.findAll({
-            where: {
-                ...whereClause,
-                isDelete: 0,
-                ...dateFilter,
-                ...fullTextSearchCondition,
-            },
+            where: expenseWhere,
             attributes: [
                 "id", "amount", "pass_amount", "expense_date", "expense_type_id", "expense_status", "a_application_login_id", "image", "remark", "created_date_time", "status_remark", "kilometers",
                 [
@@ -198,7 +202,7 @@ export const detailedExpenseGet = async (req) => {
         })
 
         return resSuccess({
-            data: { item: expenseData },
+            data: { item: expenseData, total: totalRecords },
             ack_msg: "Successfully get Data",
         });
     } catch (e) {
