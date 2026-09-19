@@ -11,7 +11,6 @@ import {
   generateFileName,
   isValid,
   normalizeToTenDigit,
-  mobileLookupVariants,
   resBadRequest,
   resError,
   resSuccess,
@@ -4486,10 +4485,13 @@ export const createCustomerSupportTicket = async (req, res) => {
     const rawMobile = targetMobile ? String(targetMobile).trim() : "";
 
     const mobileConditions = [];
-    const mobileVariants = mobileLookupVariants(targetMobile);
-    if (mobileVariants.length) {
-      mobileConditions.push({ mobile_number: { [Op.in]: mobileVariants } });
-      mobileConditions.push({ raw_mobile_number: { [Op.in]: mobileVariants } });
+    if (normalizedMobile) {
+      mobileConditions.push({ mobile_number: normalizedMobile });
+      mobileConditions.push({ raw_mobile_number: normalizedMobile });
+    }
+    if (rawMobile) {
+      mobileConditions.push({ mobile_number: rawMobile });
+      mobileConditions.push({ raw_mobile_number: rawMobile });
     }
 
     let contactData = null;

@@ -728,31 +728,6 @@ export function normalizeToTenDigit(number) {
   return digits.length >= 7 ? digits : null;
 }
 
-// Every spelling a stored contact phone can have for the same number: the app's
-// canonical form (91 + 10 digits, see normalizeToTenDigit), the bare 10 digits,
-// digits-only, and the raw input. Use with `{ [Op.in]: variants }` so a lookup
-// by phone matches regardless of how the earlier contact was written
-// (9876543210 / +91 98765 43210 / 919876543210 / 09876543210) instead of
-// creating a duplicate contact.
-export function mobileLookupVariants(number) {
-  if (number === undefined || number === null || String(number).trim() === "") return [];
-  const raw = String(number).trim();
-  const variants = new Set([raw]);
-  const digits = raw.replace(/\D/g, "");
-  if (digits) variants.add(digits);
-  const canonical = normalizeToTenDigit(raw);
-  if (canonical) {
-    variants.add(canonical);
-    if (canonical.length === 12 && canonical.startsWith("91")) {
-      const ten = canonical.slice(2);
-      variants.add(ten);
-      variants.add(`+${canonical}`);
-      variants.add(`0${ten}`);
-    }
-  }
-  return [...variants];
-}
-
 export function sanitizeFileName(input) {
   return input
     .toString()
