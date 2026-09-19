@@ -1961,6 +1961,26 @@ export const AllTaskUpdate = async (req) => {
       ? assigned_team_member.join(",")
       : assigned_team_member || "";
 
+    // The edit form can now change assignees. Only validate when they
+    // actually changed, so editing legacy tasks with odd data still works.
+    // An Individual task (type "2") is one row per person - exactly one
+    // assignee; any task needs at least one.
+    if (assignedTeamStr !== (taskExists.assigned_team_member || "")) {
+      const newAssignees = assignedTeamStr.split(",").map((v) => v.trim()).filter(Boolean);
+      if (newAssignees.length === 0) {
+        return resError({
+          ack_msg: "Please assign at least one team member.",
+          developer_msg: "assigned_team_member cannot be empty",
+        });
+      }
+      if (String(taskExists.team_task_assignement_type) === "2" && newAssignees.length !== 1) {
+        return resError({
+          ack_msg: "An individual task can only be assigned to one team member.",
+          developer_msg: "team_task_assignement_type=2 requires exactly one assignee",
+        });
+      }
+    }
+
     const selectedDaysStr = Array.isArray(selected_task_days)
       ? selected_task_days.join(",")
       : selected_task_days || "";
