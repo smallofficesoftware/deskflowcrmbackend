@@ -12,6 +12,7 @@ import { employeeAccountTransactionsModel } from "../../models/activities/employ
 import { paymentTypeModel } from "../../models/activities/paymentTypeModel.js";
 import loginModel from "../../models/application_login/loginModel.js";
 import companyModel from "../../models/company_setup/companyModel.js";
+import currencyModel from "../../models/configuration/currencyModel.js";
 import { documentPrintTemplateModel } from "../../models/company_setup/documentPrintTemplateModel.js";
 import { documentPrintTemplateVersionModel } from "../../models/company_setup/documentPrintTemplateVersionModel.js";
 import { printSettingModel } from "../../models/company_setup/printSettingModel.js";
@@ -1411,7 +1412,10 @@ const renderTemplateAsPdf = async ({ req, company_masters_id, draftTemplate, car
         dateTime: cart.update_Date_time ? moment(cart.update_Date_time).format("DD-MM-YYYY hh:mm A") : "",
         contactPerson: "",
       };
-      numberTowords = numberToWordsCurrency(cart.grand_total ?? 0, "INR");
+      const cartCurrency = cart.currency_id
+        ? await currencyModel.findOne({ where: { id: cart.currency_id, isDelete: 0 }, attributes: ["short_name"] })
+        : null;
+      numberTowords = numberToWordsCurrency(cart.grand_total ?? 0, String(cartCurrency?.short_name || "INR").trim().toUpperCase());
     } else {
       const sample = getSampleDataForPreview();
       buyer = sample.buyer;

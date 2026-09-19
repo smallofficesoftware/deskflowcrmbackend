@@ -4574,15 +4574,16 @@ const generateSingleOrderPdf = async (req, res) => {
       ];
 
       const selectedCurrency = currencyDetails[0]?.short_name || "INR";
-      const finalCurrency = selectedCurrency === "INR" ? "INR" : "USD";
+      // words follow the cart's own currency (unknown codes fall back safely in the util)
+      const wordsCurrency = String(selectedCurrency).trim().toUpperCase();
 
       const numberTowords = numberToWordsCurrency(
         resultCartById.dataValues.grand_total ?? 0,
-        finalCurrency
+        wordsCurrency
       );
       const gstnumberTowords = numberToWordsCurrency(
         resultCartById.dataValues.gst_amt ?? 0,
-        finalCurrency
+        wordsCurrency
       );
 
       const currencySymbol = currencyDetails[0]?.symbol || "₹";
