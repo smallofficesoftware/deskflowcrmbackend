@@ -5,6 +5,8 @@
 import axios from "axios";
 import { generate } from "@pdfme/generator";
 import { PDFDocument } from "@pdfme/pdf-lib";
+import companyModel from "../../models/company_setup/companyModel.js";
+import currencyModel from "../../models/configuration/currencyModel.js";
 import { documentPrintTemplateModel } from "../../models/company_setup/documentPrintTemplateModel.js";
 import { productModel } from "../../models/product_settings/productModel.js";
 import { getTemplate, withCompanyHeader } from "./templates.js";
@@ -290,6 +292,34 @@ export async function generateQuotationPdf({
     order,
     payableAmount: computed.payableAmount,
   });
+
+  // Item discount column values are per-unit amounts (not %) when the cart uses
+  // flat discount (item_discount_type 2), so the baked-in "Dis(%)" head must follow.
+  if (Number(cart?.item_discount_type) === 2) {
+    let currencySymbol = "₹";
+    try {
+      const companyRow = await companyModel.findOne({
+        where: { id: cart.company_masters_id, isDelete: 0 },
+        attributes: ["currency_id"],
+      });
+      const currencyRow = companyRow?.currency_id
+        ? await currencyModel.findOne({ where: { id: companyRow.currency_id, isDelete: 0 }, attributes: ["symbol"] })
+        : null;
+      if (currencyRow?.symbol) currencySymbol = currencyRow.symbol;
+    } catch (e) {
+      console.log("generateQuotationPdf currency lookup failed, using default symbol:", e);
+    }
+    template = {
+      ...template,
+      schemas: (template.schemas || []).map((page) =>
+        (page || []).map((f) =>
+          f?.name === "itemsTable" && Array.isArray(f.head)
+            ? { ...f, head: f.head.map((h) => (h === "Dis(%)" ? `Dis(${currencySymbol})` : h)) }
+            : f,
+        ),
+      ),
+    };
+  }
 
   const cashDiscount = buildCashDiscount(cart);
   const hsnTaxRows = buildHsnTaxRows({ items, cart, isSameState, packingHSN, packingGSTRate, transportHSN, transportGSTRate });

@@ -1,3 +1,4 @@
+import logger from "../../utils/logger.js";
 import currencyModel from "../../models/configuration/currencyModel.js";
 import { resError, resSuccess } from "../../utils/sharedFunctions.js";
 

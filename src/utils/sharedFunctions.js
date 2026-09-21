@@ -736,8 +736,7 @@ export function sanitizeFileName(input) {
     .replace(/[\/\\?%*:|"<>]/g, '_') // remove illegal chars
     .replace(/\s+/g, '_')            // spaces → _
     .replace(/_+/g, '_')             // collapse multiple _
-    .replace(/^_+|_+$/g, '')         // trim _
-    .toLowerCase();
+    .replace(/^_+|_+$/g, '');        // trim _
 }
 
 // export function normalizeToTenDigitToCheck(number) {

@@ -106,6 +106,10 @@ export const salaryRegistrationGet = async (req) => {
             ...salaryRegisterWhere,
         }
 
+        const totalRecords = await salaryRegisterModelInstance.count({
+            where: finalSalaryRegisterWhere,
+        });
+
         const result = await salaryRegisterModelInstance.findAll({
             where: finalSalaryRegisterWhere,
             attributes: [
@@ -202,7 +206,7 @@ export const salaryRegistrationGet = async (req) => {
 
         if (result) {
             return resSuccess({
-                data: { item: result },
+                data: { item: result, total: totalRecords },
                 ack_msg: "Salary Register report fetched successfully",
             });
         } else {

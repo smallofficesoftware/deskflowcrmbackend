@@ -322,7 +322,8 @@ export const orderCreateByOnlineStore = async (req, res) => {
                     item_net_rate: Number(effective_net_rate),
                     item_qty: item_qty,
                     item_discount_pct: item_discount_pct,
-                    item_discount_pr: Number((discountAmtPerUnit * item_qty).toFixed(2)),
+                    // per unit, same as the web cart and every consumer of this field
+                    item_discount_pr: Number(discountAmtPerUnit.toFixed(2)),
                     item_total: Number(item_total),
                     item_hsn_code: p.hsn_code || it.item_hsn_code || "",
                     cart_date: cart.cart_date || moment().format("YYYY-MM-DD"),

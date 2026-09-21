@@ -12,6 +12,7 @@ import {
 } from "../../utils/sharedFunctions.js";
 import { getCompanyByLoginId, getLoginDetailById, insertStagesAndStatusLogs } from "../commonServices.js";
 import { autoAssignmentContactIdsGet, prepareMailAndWhatsappSenderToTheContact } from "../other_settings/wrkflwAutoAssignmentContactService.js";
+import logger from "../../utils/logger.js";
 
 export const addContactMessageFromWhatsApp = async (req, res) => {
     const payload = req.body;
@@ -25,7 +26,6 @@ export const addContactMessageFromWhatsApp = async (req, res) => {
     }
     const senderContactNumber = payload?.from.replace("@s.whatsapp.net", "").replace("@c.us", "").split(":")[0];
     const receiverContactNumber = payload?.to.replace("@s.whatsapp.net", "").replace("@c.us", "").split(":")[0];
-    console.log("receiverContactNumber", receiverContactNumber);
     if (!senderContactNumber || !receiverContactNumber) {
         return resError({
             ack_msg: "Sender and receiver numbers are required",
@@ -193,11 +193,10 @@ export const addContactMessageFromWhatsApp = async (req, res) => {
                         }
                     }
                 } catch (err) {
-                    console.error(
-                        "Error parsing JSON for a_application_login_id:",
-                        userRight.a_application_login_id,
+                    logger.error("Error parsing JSON for a_application_login_id:", {
+                        a_application_login_id: userRight.a_application_login_id,
                         err
-                    );
+                    });
                 }
             }
             const newContact = await CTContactModelModel.create(contactBody);
@@ -262,7 +261,7 @@ export const addContactMessageFromWhatsApp = async (req, res) => {
             data: { item: createdItem },
         });
     } catch (error) {
-        console.error("Error processing message:", error);
+        logger.error("Error processing message:", error);
         return res
             .status(500)
             .json({ message: "Internal server error", error: error.message });
@@ -297,7 +296,7 @@ export const getPermissionForWhatsAppMessage = async (req, res) => {
             return resSuccess({ data: {} });
         }
     } catch (error) {
-        console.error("Error processing message:", error);
+        logger.error("Error processing message:", error);
         return res
             .status(500)
             .json({ message: "Internal server error", error: error.message });

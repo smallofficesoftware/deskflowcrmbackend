@@ -12,6 +12,7 @@ import { PAGE_ID } from "../../utils/AppEnumeration.js";
 import { generateNumber, isValid, normalizeToTenDigit, resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { getCompanyByLoginId, insertStagesAndStatusLogs } from "../commonServices.js";
 import { autoAssignmentContactIdsGet, prepareMailAndWhatsappSenderToTheContact } from "../other_settings/wrkflwAutoAssignmentContactService.js";
+import logger from "../../utils/logger.js";
 
 
 
@@ -108,7 +109,7 @@ export const addContactByjustdialPushApi = async (req, res) => {
                     }
                 }
             } catch (err) {
-                console.error("Contact rights JSON parse error:", err);
+                logger.error("Contact rights JSON parse error:", err);
             }
         }
         // ==================== CONTACT LIMIT CHECK END ====================
@@ -332,7 +333,7 @@ export const addContactByjustdialPushApi = async (req, res) => {
                 }
             }
         } catch (notifyErr) {
-            console.error("JustDial Notification Failed:", notifyErr.message);
+            logger.warn("JustDial Notification Failed:", notifyErr.message);
         }
 
         return resSuccess({
@@ -349,7 +350,7 @@ export const addContactByjustdialPushApi = async (req, res) => {
         });
 
     } catch (error) {
-        console.error("JustDial API Error:", error);
+        logger.error("JustDial API Error:", error);
         return resBadRequest(res, {
             ack_msg: "Internal server error",
             developer_msg: error.message,

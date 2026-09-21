@@ -334,18 +334,22 @@ export const inquiryReport = async (req) => {
 
     const inquiryModels = await inquiryModel(req.tenantDB);
 
+    const inquiryWhere = {
+      ...fullTextSearchConditionForInquiry,
+      ...whereClause,
+      isDelete: 0,
+      [Op.and]: [
+        ...(whereClause[Op.and] || []),
+        Sequelize.literal(`DATE(create_date_time) >= '${startDate}'`),
+        Sequelize.literal(`DATE(create_date_time) <= '${endDate}'`),
+      ],
+    };
+
+    const totalRecords = await inquiryModels.count({ where: inquiryWhere });
+
     console.log("-----Inquiry queiry get-----")
     const inquires = await inquiryModels.findAll({
-      where: {
-        ...fullTextSearchConditionForInquiry,
-        ...whereClause,
-        isDelete: 0,
-        [Op.and]: [
-          ...(whereClause[Op.and] || []),
-          Sequelize.literal(`DATE(create_date_time) >= '${startDate}'`),
-          Sequelize.literal(`DATE(create_date_time) <= '${endDate}'`),
-        ],
-      },
+      where: inquiryWhere,
       offset,
       limit
     });
@@ -532,7 +536,7 @@ export const inquiryReport = async (req) => {
     });
 
     return resSuccess({
-      data: { items: result },
+      data: { items: result, total: totalRecords },
       ack_msg: "Inquiry Data with Contact Details Found Successfully",
       developer_msg: "Success",
     });

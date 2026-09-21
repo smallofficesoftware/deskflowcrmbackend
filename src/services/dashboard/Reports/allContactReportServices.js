@@ -523,16 +523,21 @@ export const getAllContactReport = async (req) => {
       };
     }
 
-    const contacts = await contactModels.findAll({
-      where: {
-        isDelete: 0,
-        ...dateFilter,
-        ...whereClause,
-      },
-      order: [["id", "DESC"]],
-      offset,
-      limit,
-    });
+    const contactWhere = {
+      isDelete: 0,
+      ...dateFilter,
+      ...whereClause,
+    };
+
+    const [contacts, totalCount] = await Promise.all([
+      contactModels.findAll({
+        where: contactWhere,
+        order: [["id", "DESC"]],
+        offset,
+        limit,
+      }),
+      contactModels.count({ where: contactWhere }),
+    ]);
 
     // ==========================
     // LOGIN USERS FETCH
@@ -844,6 +849,7 @@ export const getAllContactReport = async (req) => {
     return resSuccess({
       data: {
         item: transformedContacts,
+        total: totalCount,
       },
       ack_msg: "Run Successfully",
     });

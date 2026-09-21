@@ -420,7 +420,7 @@
               <strong>GSTIN No.:</strong> <%= cart.to_customer_gst_number %><br />
               <% } %>
               <% if (printSetting.supplyTo && cart_state_name && cart_state_name.length > 0) { %>
-              <strong>Supply To:</strong> <%= cart_state_name%><%= cart_city_name && cart_city_name.length > 0 ? ' - ' + cart_city_name : '' %>
+              <strong>Supply To:</strong> <%= cart_state_name%><%= cart_city_name && cart_city_name.length > 0 ? ' - ' + cart_city_name : '' %><%= printSetting.supplyToArea && cart_area_name && cart_area_name.length > 0 ? ' - ' + cart_area_name : '' %>
               <% } %>
 
             </td>

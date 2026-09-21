@@ -10,8 +10,10 @@ import { categoryModel } from "../../models/product_settings/categoryModel.js";
 import { processMastersModel } from "../../models/product_settings/processMastersModel.js";
 import { productBillOfMaterialModel } from "../../models/product_settings/productBillOfMaterialModel.js";
 import { productModel } from "../../models/product_settings/productModel.js";
+import { wareHouseModel } from "../../models/other_settings/wareHouseModel.js";
 import { JobCardsModel } from "../../models/production/JobCardsModel.js";
 import { productionTransactionModel } from "../../models/production/productionTransactionModel.js";
+import { productionTransactionProcessTimesModel } from "../../models/production/productionTransactionProcessTimesModel.js";
 import { productionTransactionsItemsModel } from "../../models/production/productionTransactionsItemsModel.js";
 import { PAGE_ID } from "../../utils/AppEnumeration.js";
 import { isValid, resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
@@ -729,7 +731,8 @@ export const submitUnifiedProductionEntry = async (req) => {
             remark,
             team_member_id,
             consumption_items = [],
-            rejection_items = []
+            rejection_items = [],
+            process_times = []
         } = req.body;
 
         // Finished-good product id. BUG (client-reported: finished goods entry
@@ -780,6 +783,7 @@ export const submitUnifiedProductionEntry = async (req) => {
         const categoryModelInstance = categoryModel(req.tenantDB);
         const productionTransactionModelInstance = productionTransactionModel(req.tenantDB);
         const productionTransactionsItemsModelInstance = productionTransactionsItemsModel(req.tenantDB);
+        const productionTransactionProcessTimesModelInstance = productionTransactionProcessTimesModel(req.tenantDB);
 
         // ==========================================
         // 1. SAVE PRODUCTION MASTER & ITEMS
@@ -787,6 +791,7 @@ export const submitUnifiedProductionEntry = async (req) => {
 
         const totalConsumption = consumption_items.reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
         const totalRejection = rejection_items.reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
+        const totalActualTime = process_times.reduce((sum, item) => sum + (Number(item.actual_time) || 0), 0);
 
         const productionMaster = await productionTransactionModelInstance.create({
             job_id,
@@ -796,6 +801,7 @@ export const submitUnifiedProductionEntry = async (req) => {
             production_qty: produced_qty,
             consumption_qty: totalConsumption,
             rejection_qty: totalRejection,
+            total_actual_time: totalActualTime,
             date: entry_date,
             remark,
             a_application_login_id,
@@ -826,6 +832,21 @@ export const submitUnifiedProductionEntry = async (req) => {
 
         if (productionItemsData.length > 0) {
             await productionTransactionsItemsModelInstance.bulkCreate(productionItemsData);
+        }
+
+        const processTimesData = process_times
+            .filter(pt => pt.process_id && Number(pt.actual_time) > 0)
+            .map(pt => ({
+                job_id,
+                production_id: productionId,
+                bom_id: "",
+                process_id: pt.process_id,
+                actual_time: Number(pt.actual_time),
+                a_application_login_id,
+            }));
+
+        if (processTimesData.length > 0) {
+            await productionTransactionProcessTimesModelInstance.bulkCreate(processTimesData);
         }
 
         // ==========================================
@@ -1046,8 +1067,8 @@ export const fetchProductionList = async (req) => {
             const relatedItems = allProductionItems.filter(item => item.production_id === prod.id);
 
             // Entry Type '2' = Consumption, '1' = Rejection
-            const consumptionCount = relatedItems.filter(item => item.entry_type === '2').length;
-            const rejectionCount = relatedItems.filter(item => item.entry_type === '1').length;
+            const consumptionCount = relatedItems.filter(item => Number(item.entry_type) === 2).length;
+            const rejectionCount = relatedItems.filter(item => Number(item.entry_type) === 1).length;
 
             return {
                 id: prod.id,
@@ -1090,6 +1111,7 @@ export const deleteProductionEntry = async (req) => {
 
         const productionTransactionModelInstance = productionTransactionModel(req.tenantDB);
         const productionTransactionsItemsModelInstance = productionTransactionsItemsModel(req.tenantDB);
+        const productionTransactionProcessTimesModelInstance = productionTransactionProcessTimesModel(req.tenantDB);
 
         // Use your actual stock ledger models here
         const stockMasterModelInstance = cartModel(req.tenantDB);
@@ -1136,6 +1158,12 @@ export const deleteProductionEntry = async (req) => {
 
         // 5. Soft-delete all child production items
         await productionTransactionsItemsModelInstance.update(
+            { isDelete: 1, modified_date: new Date() },
+            { where: { production_id: id } }
+        );
+
+        // 6. Soft-delete per-process actual time rows
+        await productionTransactionProcessTimesModelInstance.update(
             { isDelete: 1, modified_date: new Date() },
             { where: { production_id: id } }
         );
@@ -1520,7 +1548,11 @@ export const fetchProductionEntryDetail = async (req) => {
 
         const productionTransactionModelInstance = productionTransactionModel(req.tenantDB);
         const productionTransactionsItemsModelInstance = productionTransactionsItemsModel(req.tenantDB);
+        const productionTransactionProcessTimesModelInstance = productionTransactionProcessTimesModel(req.tenantDB);
         const productModelInstance = productModel(req.tenantDB);
+        const BOMProcessModelInstance = bomVsProcessListsModel(req.tenantDB);
+        const ProcessMasterInstance = processMastersModel(req.tenantDB);
+        const WarehouseModelInstance = wareHouseModel(req.tenantDB);
 
         const prodMaster = await productionTransactionModelInstance.findOne({
             where: { id: id, isDelete: 0 },
@@ -1536,6 +1568,12 @@ export const fetchProductionEntryDetail = async (req) => {
             raw: true
         });
 
+        const prodProcessTimes = await productionTransactionProcessTimesModelInstance.findAll({
+            where: { production_id: id, isDelete: 0 },
+            attributes: ["process_id", "actual_time"],
+            raw: true
+        });
+
         const productIds = prodItems.map(item => item.item_id).filter(id => id);
         let products = [];
         if (productIds.length > 0) {
@@ -1547,6 +1585,44 @@ export const fetchProductionEntryDetail = async (req) => {
         }
         const productMap = new Map(products.map(p => [p.id, p]));
 
+        // Resolve process names — process_id on items/process_times is
+        // bom_vs_process_lists.id, which itself FKs to process_masters.id.
+        const processListIds = [
+            ...new Set([
+                ...prodItems.map(item => item.process_id),
+                ...prodProcessTimes.map(pt => pt.process_id),
+            ].filter(Boolean)),
+        ];
+        const processLists = processListIds.length > 0
+            ? await BOMProcessModelInstance.findAll({
+                where: { id: processListIds },
+                attributes: ["id", "process_id"],
+                raw: true
+            })
+            : [];
+        const processMasterIds = [...new Set(processLists.map(pl => pl.process_id).filter(Boolean))];
+        const processMasters = processMasterIds.length > 0
+            ? await ProcessMasterInstance.findAll({
+                where: { id: processMasterIds },
+                attributes: ["id", "process_name"],
+                raw: true
+            })
+            : [];
+        const processMasterNameMap = new Map(processMasters.map(pm => [pm.id, pm.process_name]));
+        const processListNameMap = new Map(
+            processLists.map(pl => [pl.id, processMasterNameMap.get(pl.process_id) || `Process #${pl.process_id}`])
+        );
+
+        const warehouseIds = [...new Set(prodItems.map(item => item.warehouse).filter(Boolean))];
+        const warehouses = warehouseIds.length > 0
+            ? await WarehouseModelInstance.findAll({
+                where: { id: warehouseIds },
+                attributes: ["id", "warehouse_name"],
+                raw: true
+            })
+            : [];
+        const warehouseNameMap = new Map(warehouses.map(w => [w.id, w.warehouse_name]));
+
         const consumption_items = [];
         const rejection_items = [];
 
@@ -1554,18 +1630,53 @@ export const fetchProductionEntryDetail = async (req) => {
             const pInfo = productMap.get(item.item_id) || {};
             const payloadItem = {
                 process_id: item.process_id,
+                process_name: processListNameMap.get(item.process_id) || "",
                 material_id: item.item_id,
                 material_name: pInfo.product_name || `Material #${item.item_id}`,
                 unit: pInfo.unit || "",
                 warehouse_id: item.warehouse,
+                warehouse_name: warehouseNameMap.get(item.warehouse) || "",
                 qty: Number(item.qty) || 0
             };
-            if (item.entry_type === '2') { // 2 = consumption
+            if (Number(item.entry_type) === 2) { // 2 = consumption
                 consumption_items.push(payloadItem);
-            } else if (item.entry_type === '1') { // 1 = rejection
+            } else if (Number(item.entry_type) === 1) { // 1 = rejection
                 rejection_items.push(payloadItem);
             }
         });
+
+        // Grouped by process, purpose-built for the read-only view popup —
+        // avoids the frontend having to re-fetch the BOM and re-derive
+        // groupings just to display a saved entry.
+        const processGroups = new Map();
+        const getGroup = (processId) => {
+            if (!processGroups.has(processId)) {
+                processGroups.set(processId, {
+                    process_id: processId,
+                    process_name: processListNameMap.get(processId) || "",
+                    actual_time: 0,
+                    consumption: [],
+                    rejection: [],
+                });
+            }
+            return processGroups.get(processId);
+        };
+        consumption_items.forEach(item => getGroup(item.process_id).consumption.push(item));
+        rejection_items.forEach(item => getGroup(item.process_id).rejection.push(item));
+        prodProcessTimes.forEach(pt => {
+            getGroup(pt.process_id).actual_time = Number(pt.actual_time) || 0;
+        });
+        const processes = [...processGroups.values()];
+
+        let team_member_name = "";
+        if (prodMaster.team_member) {
+            const teamMember = await loginModel.findOne({
+                where: { id: prodMaster.team_member, isDelete: 0 },
+                attributes: ["username"],
+                raw: true
+            });
+            team_member_name = teamMember?.username || "";
+        }
 
         const detail = {
             id: prodMaster.id,
@@ -1575,8 +1686,15 @@ export const fetchProductionEntryDetail = async (req) => {
             entry_date: prodMaster.date,
             remark: prodMaster.remark || "",
             team_member_id: prodMaster.team_member || null,
+            team_member_name,
             consumption_items,
-            rejection_items
+            rejection_items,
+            total_actual_time: prodMaster.total_actual_time || 0,
+            process_times: prodProcessTimes.map(pt => ({
+                process_id: pt.process_id,
+                actual_time: Number(pt.actual_time) || 0
+            })),
+            processes
         };
 
         return resSuccess({

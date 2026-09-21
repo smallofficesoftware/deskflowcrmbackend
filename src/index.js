@@ -16,6 +16,16 @@ import { baseURL, ENCRYPT_SMALL_OFFICE_CRM_RESPONSE, NODE_ENV, PORT } from "./ut
 import logger from "./utils/logger.js";
 import { parseSession, resError } from "./utils/sharedFunctions.js";
 
+// Hundreds of stray console.log/debug calls are scattered across the
+// codebase (debug leftovers, never migrated to the pino logger above).
+// Rather than hunt each one down, silence them in production only —
+// console.error/warn stay intact so real failures are still visible in
+// prod logs (e.g. PM2's captured stdout/stderr).
+if (NODE_ENV === "production") {
+    console.log = () => { };
+    console.debug = () => { };
+}
+
 const allowedOrigins = [
     "http://192.168.1.223:3000",
     "http://192.168.1.223:3001",

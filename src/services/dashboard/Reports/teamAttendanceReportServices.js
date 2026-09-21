@@ -163,12 +163,49 @@ export const getTeamAttendanceReport = async (req) => {
     }
   }
 
-  const companyVsApplicationLoginResultRaw =
-    await companyVsApplicationLoginModel.findAll({
-      where: whereClause,
-      offset: (offset !== undefined && limit !== undefined && Number(limit) > 0) ? Number(offset) : undefined,
-      limit: (limit !== undefined && Number(limit) > 0) ? Number(limit) : undefined,
-    });
+  // Page over DISTINCT, valid (not deleted, matching the search) login ids
+  // BEFORE fetching membership rows. The old code applied offset/limit to
+  // raw membership rows and then dropped duplicates / deleted / non-matching
+  // logins afterwards, so pages came back short and no total existed.
+  const membershipIdRows = await companyVsApplicationLoginModel.findAll({
+    where: whereClause,
+    attributes: ["a_application_login_id"],
+    order: [["a_application_login_id", "ASC"]],
+    raw: true,
+  });
+  const candidateLoginIds = [
+    ...new Set(membershipIdRows.map((r) => r.a_application_login_id)),
+  ];
+  const validLoginRows = candidateLoginIds.length
+    ? await loginModel.findAll({
+        where: {
+          isDelete: 0,
+          id: { [Op.in]: candidateLoginIds },
+          ...fullTextSearchCondition,
+        },
+        attributes: ["id"],
+        raw: true,
+      })
+    : [];
+  const validLoginIdSet = new Set(validLoginRows.map((r) => r.id));
+  const validLoginIds = candidateLoginIds.filter((id) => validLoginIdSet.has(id));
+  const totalRecords = validLoginIds.length;
+  const pagingActive =
+    offset !== undefined && limit !== undefined && Number(limit) > 0;
+  const pageLoginIds = pagingActive
+    ? validLoginIds.slice(Number(offset), Number(offset) + Number(limit))
+    : validLoginIds;
+
+  const companyVsApplicationLoginResultRaw = pageLoginIds.length
+    ? await companyVsApplicationLoginModel.findAll({
+        where: {
+          [Op.and]: [
+            whereClause,
+            { a_application_login_id: { [Op.in]: pageLoginIds } },
+          ],
+        },
+      })
+    : [];
 
   // Attendance/leave lookups below are scoped only by a_application_login_id
   // (not company_masters_id), so a user with memberships in multiple
@@ -608,7 +645,7 @@ export const getTeamAttendanceReport = async (req) => {
   );
   const finalTeamData = teamData.filter((e) => e !== null);
   return resSuccess({
-    data: { item: finalTeamData },
+    data: { item: finalTeamData, total: totalRecords },
     ack_msg: "Team Attendance report fetched successfully",
   });
 };

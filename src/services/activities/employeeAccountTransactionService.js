@@ -1,3 +1,4 @@
+import logger from "../../utils/logger.js";
 import Sequelize from "sequelize";
 import {
     formatDateAndTimeCreateDateTime,
@@ -908,7 +909,7 @@ export const allAccountTransactionOfEmployeePDF = async (req, res) => {
         // §5 cart-doc path. Uses Team's OWN "employeeAccountStatement" doc
         // type/template slot, resolved via document_template_id (picker) or
         // the company's default, falling back to the built-in layout.
-        const documentDesignerEnabled = await isFeatureEnabled(companyData.id, "document_designer");
+        const documentDesignerEnabled = await isFeatureEnabled(companyData.id, "employeeAccountStatement_document_designer");
 
         if (documentDesignerEnabled) {
             const templateOverride = await resolveEmployeeAccountTemplate(
@@ -1162,7 +1163,7 @@ export const employeePDFaccountv1 = async (req, res) => {
         // §5 cart-doc path. Uses Team's OWN "employeeAccountTransaction" doc
         // type/template slot, resolved via document_template_id (picker) or
         // the company's default, falling back to the built-in layout.
-        const documentDesignerEnabled = await isFeatureEnabled(companyDetail.id, "document_designer");
+        const documentDesignerEnabled = await isFeatureEnabled(companyDetail.id, "employeeAccountTransaction_document_designer");
 
         if (documentDesignerEnabled) {
             if (!fs.existsSync(uploadDir)) {

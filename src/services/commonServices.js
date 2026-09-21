@@ -87,6 +87,18 @@ import {
 } from "../utils/sharedFunctions.js";
 
 
+// Contacts are stored with the canonical mobile (91 + 10 digits, see the write path in
+// createCommon), so an exact match on the typed number missed existing contacts and callers
+// then created a duplicate. Match the canonical form as well as the typed value.
+const withCanonicalContactMobile = (table, whereObj) => {
+  if (table !== "contact_masters" || !whereObj) return whereObj;
+  const typedMobile = whereObj.mobile_number;
+  if (typeof typedMobile !== "string" && typeof typedMobile !== "number") return whereObj;
+  const canonicalMobile = normalizeToTenDigit(typedMobile);
+  if (!canonicalMobile || String(canonicalMobile) === String(typedMobile)) return whereObj;
+  return { ...whereObj, mobile_number: { [Op.in]: [String(canonicalMobile), String(typedMobile)] } };
+};
+
 export const getAllCommon = async (req) => {
   let table, columns, where, order, request_flag, personal_flag;
   if (req.body) {
@@ -189,7 +201,7 @@ export const getAllCommon = async (req) => {
       };
     } else {
       if (where) {
-        const whereObj = JSON.parse(where);
+        const whereObj = withCanonicalContactMobile(table, JSON.parse(where));
         if (request_flag === 2) {
           queryOptions.where = {
             ...whereObj,

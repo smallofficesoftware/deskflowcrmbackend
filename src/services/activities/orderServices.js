@@ -34,6 +34,7 @@ import companyModel from "../../models/company_setup/companyModel.js";
 import companyVsApplicationLoginModel from "../../models/company_setup/companyVsApplicationLoginModel.js";
 import { printSettingModel } from "../../models/company_setup/printSettingModel.js";
 import currencyModel from "../../models/configuration/currencyModel.js";
+import { areaModel } from "../../models/masters/areaModel.js";
 import { cityModel } from "../../models/masters/cityModel.js";
 import { stateModel } from "../../models/masters/stateModel.js";
 import { customFieldFormModel } from "../../models/other_settings/customFieldFormModel.js";
@@ -756,7 +757,7 @@ export const orderCreate = async (req, res) => {
     });
 
     const selectedCurrency = currencyDetails[0]?.short_name || "INR";
-    const finalCurrency = selectedCurrency === "INR" ? "INR" : "USD";
+    const finalCurrency = String(selectedCurrency).trim().toUpperCase();
 
 
     // Handle notifications and messages for approved orders
@@ -1475,6 +1476,23 @@ export const orderById = async (req, res) => {
       }
 
       resultCartById.dataValues.city_name = city_name;
+
+      let area_name = null;
+      let cart_area_id = resultCartById.dataValues.area_id;
+
+      if (cart_area_id > 0) {
+        const area = await areaModel(req.tenantDB).findOne({
+          where: {
+            id: cart_area_id,
+            isDelete: 0,
+          },
+          attributes: ["area_name"],
+        });
+
+        area_name = area ? area.dataValues.area_name : null;
+      }
+
+      resultCartById.dataValues.area_name = area_name;
 
       const cartData = {
         ...resultCartById.dataValues,
@@ -2525,7 +2543,9 @@ export const orderUpdate = async (req, res) => {
         const invoiceNum = findCartData.dataValues.cart_number;
         const invoiceDate = findCartData.dataValues.cart_date;
         const customerName = findCartData.dataValues.to_customer_name;
-        const createDateTime = findCartData.dataValues.created_date_time.toISOString();
+        const createDateTime = new Date(
+          findCartData.dataValues.update_Date_time || findCartData.dataValues.cart_date || findCartData.dataValues.created_date_time
+        ).toISOString();
 
         await createAccountTransaction({
           mode: update_cart.payment_type ? update_cart.payment_type : -1,
@@ -2554,8 +2574,18 @@ export const orderUpdate = async (req, res) => {
         });
 
         if (findAccountTr) {
+          const updatedInvoiceNum = findCartData.dataValues.cart_number;
+          const updatedResolvedDate =
+            findCartData.dataValues.update_Date_time || findCartData.dataValues.cart_date || findCartData.dataValues.created_date_time;
+          const updatedInvoiceDate = moment(updatedResolvedDate).format("YYYY-MM-DD");
+          const updatedCustomerName = findCartData.dataValues.to_customer_name;
+
           await ATModel.update(
-            { amount: update_cart.grand_total },
+            {
+              amount: update_cart.grand_total,
+              payment_date_time: new Date(updatedResolvedDate).toISOString(),
+              remark: `<p>Inv No.: ${updatedInvoiceNum}<br>Inv Date : ${updatedInvoiceDate || ""}<br>Contact Name : ${updatedCustomerName}</p>`,
+            },
             {
               where: {
                 id: findAccountTr.dataValues.id,
@@ -2584,8 +2614,9 @@ export const orderUpdate = async (req, res) => {
           const invoiceDate = findCartData.dataValues.cart_date;
           const customerName = findCartData.dataValues.to_customer_name;
           const customerEmail = findCartData.dataValues.to_customer_email;
-          const createDateTime = findCartData.dataValues.created_date_time;
-          const convertDateTimeString = createDateTime.toISOString();
+          const createDateTime =
+            findCartData.dataValues.update_Date_time || findCartData.dataValues.cart_date || findCartData.dataValues.created_date_time;
+          const convertDateTimeString = new Date(createDateTime).toISOString();
 
           await createAccountTransaction({
             mode: update_cart.payment_type ? update_cart.payment_type : -1,
@@ -2631,7 +2662,9 @@ export const orderUpdate = async (req, res) => {
         const invoiceNum = findCartData.dataValues.cart_number;
         const invoiceDate = findCartData.dataValues.cart_date;
         const customerName = findCartData.dataValues.to_customer_name;
-        const createDateTime = findCartData.dataValues.created_date_time.toISOString();
+        const createDateTime = new Date(
+          findCartData.dataValues.update_Date_time || findCartData.dataValues.cart_date || findCartData.dataValues.created_date_time
+        ).toISOString();
 
         await createAccountTransaction({
           mode: update_cart.payment_type ? update_cart.payment_type : -1,
@@ -2669,8 +2702,9 @@ export const orderUpdate = async (req, res) => {
         const invoiceDate = findCartData.dataValues.cart_date;
         const customerName = findCartData.dataValues.to_customer_name;
         const customerEmail = findCartData.dataValues.to_customer_email;
-        const createDateTime = findCartData.dataValues.created_date_time;
-        const convertDateTimeString = createDateTime.toISOString();
+        const createDateTime =
+          findCartData.dataValues.update_Date_time || findCartData.dataValues.cart_date || findCartData.dataValues.created_date_time;
+        const convertDateTimeString = new Date(createDateTime).toISOString();
 
         await createAccountTransaction({
           mode: update_cart.payment_type ? update_cart.payment_type : -1,
@@ -2873,7 +2907,7 @@ export const orderUpdate = async (req, res) => {
           {
             amount: update_cart.advance_payment,
             mode: update_cart.payment_type,
-            miracle_account_legder: update_cart.miracle_account_ledger_adv ? update_cart.miracle_account_ledger_adv : "",
+            miracle_account_ledger: update_cart.miracle_account_ledger_adv ? update_cart.miracle_account_ledger_adv : "",
           },
           {
             where: {
@@ -4416,6 +4450,27 @@ const generateSingleOrderPdf = async (req, res) => {
         : "";
     }
 
+    // Only use cart area_id
+    const areaIdToUse = resultCartById.dataValues.area_id;
+
+    // Get Area Name
+    let customerAreaName = "";
+
+    if (areaIdToUse > 0) {
+      const areaModels = areaModel(req.tenantDB);
+      const areaNameCustomer = await areaModels.findOne({
+        where: {
+          isDelete: 0,
+          id: areaIdToUse,
+        },
+        attributes: ["area_name"],
+      });
+
+      customerAreaName = areaNameCustomer
+        ? areaNameCustomer.area_name
+        : "";
+    }
+
 
     // State_id to name for company
     const stateNameCompany = await stateModels.findAll({
@@ -4519,15 +4574,16 @@ const generateSingleOrderPdf = async (req, res) => {
       ];
 
       const selectedCurrency = currencyDetails[0]?.short_name || "INR";
-      const finalCurrency = selectedCurrency === "INR" ? "INR" : "USD";
+      // words follow the cart's own currency (unknown codes fall back safely in the util)
+      const wordsCurrency = String(selectedCurrency).trim().toUpperCase();
 
       const numberTowords = numberToWordsCurrency(
         resultCartById.dataValues.grand_total ?? 0,
-        finalCurrency
+        wordsCurrency
       );
       const gstnumberTowords = numberToWordsCurrency(
         resultCartById.dataValues.gst_amt ?? 0,
-        finalCurrency
+        wordsCurrency
       );
 
       const currencySymbol = currencyDetails[0]?.symbol || "₹";
@@ -4635,6 +4691,7 @@ const generateSingleOrderPdf = async (req, res) => {
         company_logo: logoImage,
         cart_state_name: customerStateName,
         cart_city_name: customerCityName,
+        cart_area_name: customerAreaName,
         company_state_name: companyStateName,
         formatNum: formatNumber,
         orderTypesList: orderTypesListPdf,
@@ -4821,8 +4878,18 @@ const generateSingleOrderPdf = async (req, res) => {
       };
       // Generate temporary PDF name
       const tempFilePath = path.join(uploadDir, `cart_temp_${Date.now()}.pdf`);
-      const finalFilePath = path.join(uploadDir, `cart_${Date.now()}.pdf`);
-      const pdfPath = `${companyDetail.id.toString()}/cart_${Date.now()}.pdf`;
+      // Customer-facing name (same format used for the download's suggested
+      // filename below) - the actual stored file, not just a browser-side
+      // override, since WhatsApp providers that ignore the fileName metadata
+      // field fall back to this URL's basename instead. Regenerating the
+      // same order's PDF overwrites the previous file at this same name.
+      const pdfFrontName =
+        resultCartById.dataValues.to_customer_company_name?.trim()
+          ? resultCartById.dataValues.to_customer_company_name
+          : resultCartById.dataValues.to_customer_name;
+      const sanitizedTitle = sanitizeFileName(pdfFrontName + "_" + viewTitle + "_" + resultCartById.dataValues.sr_by_number + "_" + formatDateWithoutDash(resultCartById.dataValues.update_Date_time));
+      const finalFilePath = path.join(uploadDir, `${sanitizedTitle}.pdf`);
+      const pdfPath = `${companyDetail.id.toString()}/${sanitizedTitle}.pdf`;
 
       const document = {
         html: renderedHtml,
@@ -4864,7 +4931,7 @@ const generateSingleOrderPdf = async (req, res) => {
         : PDFME_DOC_TYPE_BY_CART_TYPE[resultCartById.dataValues.type];
       const documentDesignerEnabled =
         !!pdfmeDocType &&
-        (await isFeatureEnabled(companyDetail.id, "document_designer"));
+        (await isFeatureEnabled(companyDetail.id, `${pdfmeDocType}_document_designer`));
 
       // The legacy fallback below (pdf.create with the EJS-rendered regular
       // order document) is the WRONG document for a pending-print request —
@@ -5026,7 +5093,7 @@ const generateSingleOrderPdf = async (req, res) => {
             billingAddress: cartData.Address,
             shippingAddress: cartData.shipping_address,
             gstin: cartData.to_customer_gst_number,
-            supplyTo: [customerStateName, customerCityName].filter(Boolean).join(" - "),
+            supplyTo: [customerStateName, customerCityName, settingDetails.supplyToArea ? customerAreaName : ""].filter(Boolean).join(" - "),
           },
           order: {
             number: cartData.cart_number,
@@ -5268,16 +5335,10 @@ const generateSingleOrderPdf = async (req, res) => {
 
       const fileLinkPath = PDF_LINK_EXTENDED + pdfPath;
 
-      const pdfFrontName =
-        resultCartById.dataValues.to_customer_company_name?.trim()
-          ? resultCartById.dataValues.to_customer_company_name
-          : resultCartById.dataValues.to_customer_name;
-
-
       return resSuccess({
         ack_msg: "Pdf generated",
         data: {
-          title: sanitizeFileName(pdfFrontName + "_" + viewTitle + "_" + resultCartById.dataValues.sr_by_number + "_" + formatDateWithoutDash(resultCartById.dataValues.update_Date_time)),
+          title: sanitizedTitle,
           path: fileLinkPath,
           customer_phone: resultCartById.dataValues.to_customer_phone,
           sessionName: `a${req.headers?.["x-tenant-id"]}_c${companyDetail.id.toString()}`
@@ -6148,7 +6209,7 @@ export const fetchShippingLabelPrint = async (req, res) => {
     // frontend's picker, when the company has 2+ shippingLabel templates)
     // selects a company-customized template; otherwise the company's
     // default row (if any) or the built-in fixed layout is used.
-    const documentDesignerEnabled = await isFeatureEnabled(company.id, "document_designer");
+    const documentDesignerEnabled = await isFeatureEnabled(company.id, "shippingLabel_document_designer");
 
     if (documentDesignerEnabled) {
       let qrDataUri = "";

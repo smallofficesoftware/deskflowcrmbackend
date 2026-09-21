@@ -6,8 +6,6 @@ import tenantMasterModel from "../../models/configuration/tenantMasterModel.js";
 import { dashboardWidgetModel } from "../../models/report_builder/dashboardWidgetModel.js";
 import { reportDefinitionModel } from "../../models/report_builder/reportDefinitionModel.js";
 import { reportDefinitionTeamRightModel } from "../../models/report_builder/reportDefinitionTeamRightModel.js";
-import { reportGroupModel } from "../../models/report_builder/reportGroupModel.js";
-import { reportRunModel } from "../../models/report_builder/reportRunModel.js";
 import systemReportDefinitionModel from "../../models/report_builder/systemReportDefinitionModel.js";
 import { PAGE_ID } from "../../utils/AppEnumeration.js";
 import { WEBSITE_LEAD_HANDLE_DB_NAME } from "../../utils/appConstants.js";
@@ -25,6 +23,26 @@ import { resolveReportBuilderRights } from "./reportBuilderRights.js";
 const now = () => moment(new Date()).format("YYYY-MM-DD HH:mm:ss");
 
 const asJsonString = (value) => (typeof value === "string" ? value : JSON.stringify(value));
+
+// Same fixed taxonomy SideBarView.tsx's openMenu keys already group every
+// built-in report by — replaces the old tenant-created report_groups.
+export const REPORT_CATEGORIES = [
+  "CompanySetup",
+  "HR",
+  "Activities",
+  "CRM",
+  "HRMS",
+  "Production",
+  "Account",
+  "Automation",
+  "Settings",
+  "Masters",
+  "Product Settings",
+  "Others",
+  "new reports",
+  "Inventory",
+  "CS",
+];
 
 // requirePermission: "view" (default, every caller needs this) | "edit" | "delete".
 // Personal (non-all-data) scope is enforced as a 404, not a 403 — a report
@@ -188,7 +206,7 @@ export const duplicateReportDefinition = async (req) => {
     req.body.filters_json = source.filters_json;
     req.body.group_by_json = source.group_by_json;
     req.body.filters_to_show = source.filters_to_show;
-    req.body.report_group_id = source.report_group_id;
+    req.body.category = source.category;
     req.body.description = source.description;
     req.body.icon = source.icon;
     req.body.source_system_report_definition_id = source.source_system_report_definition_id;
@@ -217,9 +235,9 @@ export const duplicateReportDefinition = async (req) => {
 // definitions — mirrors Document Designer's own exportDocumentTemplate
 // (documentPrintTemplateServices.js:585). Real JSON values, not
 // double-stringified — a human can open the downloaded file and read it.
-// report_group_id / source_system_report_definition_id are deliberately
-// excluded: both are ids meaningful only inside THIS tenant, dangling or
-// wrong once imported elsewhere.
+// source_system_report_definition_id is deliberately excluded — it's an
+// id meaningful only inside THIS tenant, dangling or wrong once imported
+// elsewhere.
 export const exportReportDefinition = async (req) => {
   try {
     const { id } = req.params || {};
@@ -430,155 +448,9 @@ export const testRunReportDefinition = async (req) => {
   }
 };
 
-// Step 10 — Report groups. Tenant-defined organization for their own
-// report_definitions (e.g. "CRM", "HRMS") — distinct from Step 1's
-// admin-fixed system-gallery `category`. Flat, single-level, gated at
-// add/edit/delete tier via resolveReportBuilderRights, same as everything
-// else that configures reports. No personal-data scope here (unlike
-// report definitions) — groups are company-wide organizational labels
-// with no owner column, so listReportGroups stays open to every viewer
-// (see its own comment below).
-export const listReportGroups = async (req) => {
-  try {
-    const { a_application_login_id } = req.body || {};
-    if (!a_application_login_id) {
-      return resError({ developer_msg: "a_application_login_id is required" });
-    }
-    const findCompanyId = await getCompanyByLoginId(a_application_login_id);
-    if (!findCompanyId) {
-      return resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" });
-    }
-    const ReportGroup = reportGroupModel(req.tenantDB);
-    const rows = await ReportGroup.findAll({
-      where: { company_masters_id: findCompanyId.company_masters_id, isDelete: 0 },
-      order: [["display_order", "ASC"], ["id", "ASC"]],
-    });
-    return resSuccess({ data: { item: rows } });
-  } catch (e) {
-    console.error("listReportGroups error:", e);
-    return resError({ developer_msg: `Failed to Catch ${e}` });
-  }
-};
-
-export const createReportGroup = async (req) => {
-  try {
-    const { a_application_login_id, group_name, display_order } = req.body || {};
-    if (!a_application_login_id || !group_name || !group_name.trim()) {
-      return resError({ developer_msg: "a_application_login_id and group_name are required" });
-    }
-    const findCompanyId = await getCompanyByLoginId(a_application_login_id);
-    if (!findCompanyId) {
-      return resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" });
-    }
-    const company_masters_id = findCompanyId.company_masters_id;
-
-    const rights = await resolveReportBuilderRights({ company_masters_id, a_application_login_id, tenantDB: req.tenantDB });
-    if (!rights.canAdd) {
-      return resError({ code: 403, ack_msg: "You don't have permission to create report groups", developer_msg: "No Report Builder add rights for this login" });
-    }
-
-    const ReportGroup = reportGroupModel(req.tenantDB);
-    const created = await ReportGroup.create({
-      company_masters_id,
-      group_name: group_name.trim(),
-      display_order: display_order || 0,
-      created_date_time: now(),
-    });
-    return resSuccess({ data: { item: created }, ack_msg: "Report group created successfully" });
-  } catch (e) {
-    console.error("createReportGroup error:", e);
-    return resError({ developer_msg: `Failed to Catch ${e}` });
-  }
-};
-
-export const updateReportGroup = async (req) => {
-  try {
-    const { id } = req.params || {};
-    const { a_application_login_id, group_name, display_order } = req.body || {};
-    if (!id || !a_application_login_id) {
-      return resError({ developer_msg: "id (param) and a_application_login_id are required" });
-    }
-    const findCompanyId = await getCompanyByLoginId(a_application_login_id);
-    if (!findCompanyId) {
-      return resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" });
-    }
-    const company_masters_id = findCompanyId.company_masters_id;
-
-    const rights = await resolveReportBuilderRights({ company_masters_id, a_application_login_id, tenantDB: req.tenantDB });
-    if (!rights.canEdit) {
-      return resError({ code: 403, ack_msg: "You don't have permission to edit report groups", developer_msg: "No Report Builder edit rights for this login" });
-    }
-
-    const ReportGroup = reportGroupModel(req.tenantDB);
-    const group = await ReportGroup.findOne({
-      where: { id, company_masters_id, isDelete: 0 },
-    });
-    if (!group) {
-      return resError({ code: 404, ack_msg: "Report group not found", developer_msg: "No matching report group for this company" });
-    }
-    const patch = {};
-    if (group_name !== undefined && group_name.trim()) patch.group_name = group_name.trim();
-    if (display_order !== undefined) patch.display_order = display_order;
-    await group.update(patch);
-    return resSuccess({ data: { item: group }, ack_msg: "Report group updated successfully" });
-  } catch (e) {
-    console.error("updateReportGroup error:", e);
-    return resError({ developer_msg: `Failed to Catch ${e}` });
-  }
-};
-
-// Deleting a group doesn't cascade-delete or block on its reports — they
-// simply fall back to "Ungrouped" (report_group_id is a soft reference,
-// no FK constraint to violate), same as a report whose group was never
-// set in the first place.
-export const deleteReportGroup = async (req) => {
-  try {
-    const { id } = req.params || {};
-    const { a_application_login_id } = req.body || {};
-    if (!id || !a_application_login_id) {
-      return resError({ developer_msg: "id (param) and a_application_login_id are required" });
-    }
-    const findCompanyId = await getCompanyByLoginId(a_application_login_id);
-    if (!findCompanyId) {
-      return resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" });
-    }
-    const company_masters_id = findCompanyId.company_masters_id;
-
-    const rights = await resolveReportBuilderRights({ company_masters_id, a_application_login_id, tenantDB: req.tenantDB });
-    if (!rights.canDelete) {
-      return resError({ code: 403, ack_msg: "You don't have permission to delete report groups", developer_msg: "No Report Builder delete rights for this login" });
-    }
-
-    const ReportGroup = reportGroupModel(req.tenantDB);
-    const group = await ReportGroup.findOne({
-      where: { id, company_masters_id, isDelete: 0 },
-    });
-    if (!group) {
-      return resError({ code: 404, ack_msg: "Report group not found", developer_msg: "No matching report group for this company" });
-    }
-    await group.update({ isDelete: 1 });
-
-    // Clear the dangling reference on this group's own reports — they
-    // aren't deleted, but left pointing at report_group_id would keep a
-    // stale id around forever (invisible everywhere since the group no
-    // longer lists, but never actually cleared). Ungrouped is the correct
-    // resting state for a report whose group just disappeared.
-    const ReportDefinition = reportDefinitionModel(req.tenantDB);
-    await ReportDefinition.update(
-      { report_group_id: null },
-      { where: { report_group_id: id, company_masters_id } },
-    );
-
-    return resSuccess({ ack_msg: "Report group deleted successfully" });
-  } catch (e) {
-    console.error("deleteReportGroup error:", e);
-    return resError({ developer_msg: `Failed to Catch ${e}` });
-  }
-};
-
 export const createReportDefinition = async (req) => {
   try {
-    const { a_application_login_id, name, type = "query", model_key, plugin_key, columns_json, filters_json, group_by_json, source_system_report_definition_id, filters_to_show, report_group_id, description, icon } = req.body || {};
+    const { a_application_login_id, name, type = "query", model_key, plugin_key, columns_json, filters_json, group_by_json, source_system_report_definition_id, filters_to_show, category, description, icon } = req.body || {};
     if (!a_application_login_id || !name || !columns_json) {
       return resError({ developer_msg: "a_application_login_id, name and columns_json are required" });
     }
@@ -664,7 +536,7 @@ export const createReportDefinition = async (req) => {
       group_by_json: group_by_json ? asJsonString(group_by_json) : null,
       source_system_report_definition_id: source_system_report_definition_id || null,
       filters_to_show: filters_to_show ? asJsonString(filters_to_show) : null,
-      report_group_id: report_group_id || null,
+      category: REPORT_CATEGORIES.includes(category) ? category : "Others",
       description: description || null,
       icon: icon || null,
       created_date_time: now(),
@@ -700,7 +572,7 @@ export const updateReportDefinition = async (req) => {
     const { definition, company_masters_id, error } = await loadOwnedReportDefinition(req, "edit");
     if (error) return error;
     req.body.company_masters_id = company_masters_id; // for logAuditEvent below
-    const { name, columns_json, filters_json, group_by_json, filters_to_show, report_group_id, description, icon } = req.body || {};
+    const { name, columns_json, filters_json, group_by_json, filters_to_show, category, description, icon } = req.body || {};
 
     const patch = { modified_date: now() };
     if (name !== undefined) patch.name = name;
@@ -708,7 +580,7 @@ export const updateReportDefinition = async (req) => {
     if (filters_json !== undefined) patch.filters_json = filters_json ? asJsonString(filters_json) : null;
     if (group_by_json !== undefined) patch.group_by_json = group_by_json ? asJsonString(group_by_json) : null;
     if (filters_to_show !== undefined) patch.filters_to_show = filters_to_show ? asJsonString(filters_to_show) : null;
-    if (report_group_id !== undefined) patch.report_group_id = report_group_id || null;
+    if (category !== undefined) patch.category = REPORT_CATEGORIES.includes(category) ? category : "Others";
     if (description !== undefined) patch.description = description || null;
     if (icon !== undefined) patch.icon = icon || null;
 
@@ -839,14 +711,7 @@ export const listRunnableReportDefinitions = async (req) => {
     // stripped back out — the raw column list itself stays build-internal
     // (owner+PIN listReportDefinitions only), same boundary the comment
     // above already draws for columns_json/filters_json.
-    // No "category" here — that column only ever existed on the master-DB
-    // system gallery (system_report_definitions); a tenant's own reports
-    // are organized via report_group_id instead (Step 10). Was
-    // incorrectly requested here for a real tenant column that was never
-    // migrated onto this table, surfacing as "Unknown column 'category'"
-    // the first time a real tenant hit this endpoint — see the
-    // add-description-to-report-definitions migration's own comment.
-    const attributes = ["id", "name", "type", "description", "icon", "page_id", "model_key", "plugin_key", "filters_to_show", "group_by_json", "columns_json", "report_group_id", "created_date_time"];
+    const attributes = ["id", "name", "type", "description", "icon", "page_id", "model_key", "plugin_key", "filters_to_show", "group_by_json", "columns_json", "category", "created_date_time"];
     // Step 9's Compare Period is only offered for aggregated results
     // (composite is always per-team-member aggregates; a query-type report
     // is aggregated iff it has a non-empty group_by_json) — comparing a
@@ -890,6 +755,12 @@ export const listRunnableReportDefinitions = async (req) => {
       // outputKeyForColumn exactly, so a key here always matches the same
       // key runQueryReport's own row-reassembly pass produces.
       let column_formats = {};
+      // column_display_labels: bare display-key -> the author's typed
+      // header rename (Step 4's "Type in a field to rename its header"),
+      // same "just the bare keys ReportRunnerView.tsx needs" boundary as
+      // hidden_grid_columns/column_formats above. Distinct from `alias`,
+      // which names the output ROW KEY, not what a viewer sees.
+      let column_display_labels = {};
       const resolveDisplayKey = (c) => {
         if (c.compute || c.case) return c.alias;
         if (c.column && c.column.includes(".")) return c.column;
@@ -908,16 +779,20 @@ export const listRunnableReportDefinitions = async (req) => {
               if (c && typeof c === "object" && c.format && Object.keys(c.format).length > 0) {
                 column_formats[resolveDisplayKey(c)] = c.format;
               }
+              if (c && typeof c === "object" && c.displayLabel) {
+                column_display_labels[resolveDisplayKey(c)] = c.displayLabel;
+              }
             });
           }
         } catch {
           hidden_grid_columns = [];
           column_formats = {};
+          column_display_labels = {};
         }
       }
       delete plain.columns_json;
 
-      return { ...plain, is_aggregated, group_by_columns, hidden_grid_columns, column_formats };
+      return { ...plain, is_aggregated, group_by_columns, hidden_grid_columns, column_formats, column_display_labels };
     };
 
     const owner = await isCompanyOwner(a_application_login_id, company_masters_id);
@@ -1130,7 +1005,6 @@ export const fetchReportBuilderExportPage = async (req) => {
 };
 
 export const runReportDefinition = async (req, res) => {
-  const startedAt = Date.now();
   try {
     const { id } = req.params || {};
     const { a_application_login_id } = req.body || {};
@@ -1152,22 +1026,7 @@ export const runReportDefinition = async (req, res) => {
       return resError({ code: 404, ack_msg: "Report not found", developer_msg: "No matching report definition for this company" });
     }
 
-    const result = await runDefinitionByType(definition, req, res);
-
-    const ReportRun = reportRunModel(req.tenantDB);
-    await ReportRun.create({
-      company_masters_id: findCompanyId.company_masters_id,
-      report_definition_id: definition.id,
-      executed_by: a_application_login_id,
-      executed_at: now(),
-      filters_snapshot_json: definition.filters_json,
-      row_count: result?.data?.row_count ?? null,
-      duration_ms: Date.now() - startedAt,
-      success: result?.ack === 1 ? 1 : 0,
-      error_message: result?.ack === 1 ? null : String(result?.developer_msg || "").slice(0, 500),
-    });
-
-    return result;
+    return await runDefinitionByType(definition, req, res);
   } catch (e) {
     console.error("runReportDefinition error:", e);
     return resError({ developer_msg: `Failed to Catch ${e}` });
@@ -1192,11 +1051,9 @@ export const runBatchReportDefinitions = async (req, res) => {
     }
 
     const ReportDefinition = reportDefinitionModel(req.tenantDB);
-    const ReportRun = reportRunModel(req.tenantDB);
     const results = [];
 
     for (const item of items) {
-      const startedAt = Date.now();
       const definition = await ReportDefinition.findOne({
         where: { id: item.report_definition_id, company_masters_id: findCompanyId.company_masters_id, isDelete: 0 },
       });
@@ -1207,18 +1064,6 @@ export const runBatchReportDefinitions = async (req, res) => {
 
       const runReq = { ...req, body: { ...req.body, ...item.filters, a_application_login_id } };
       const result = await runDefinitionByType(definition, runReq, res);
-
-      await ReportRun.create({
-        company_masters_id: findCompanyId.company_masters_id,
-        report_definition_id: definition.id,
-        executed_by: a_application_login_id,
-        executed_at: now(),
-        filters_snapshot_json: definition.filters_json,
-        row_count: result?.data?.row_count ?? null,
-        duration_ms: Date.now() - startedAt,
-        success: result?.ack === 1 ? 1 : 0,
-        error_message: result?.ack === 1 ? null : String(result?.developer_msg || "").slice(0, 500),
-      });
 
       results.push({ report_definition_id: definition.id, ...result });
     }

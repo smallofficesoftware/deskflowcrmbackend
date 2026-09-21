@@ -12,6 +12,7 @@ import { employeeAccountTransactionsModel } from "../../models/activities/employ
 import { paymentTypeModel } from "../../models/activities/paymentTypeModel.js";
 import loginModel from "../../models/application_login/loginModel.js";
 import companyModel from "../../models/company_setup/companyModel.js";
+import currencyModel from "../../models/configuration/currencyModel.js";
 import { documentPrintTemplateModel } from "../../models/company_setup/documentPrintTemplateModel.js";
 import { documentPrintTemplateVersionModel } from "../../models/company_setup/documentPrintTemplateVersionModel.js";
 import { printSettingModel } from "../../models/company_setup/printSettingModel.js";
@@ -1379,7 +1380,12 @@ const renderTemplateAsPdf = async ({ req, company_masters_id, draftTemplate, car
         hsn: item.item_hsn_code,
         qty: item.item_unit_name ? `${item.item_qty} / ${item.item_unit_name}` : item.item_qty,
         rate: item.item_rate,
-        discount: item.item_discount_pct,
+        // item_discount_type (cart-level): 2 = flat amount per unit, else
+        // percentage (NULL on older carts) - same rule the order PDF uses.
+        discount:
+          Number(cartRow.item_discount_type) === 2
+            ? Number(item.item_discount_pr || 0).toFixed(2)
+            : item.item_discount_pct,
         total: item.item_total,
         item_hsn_code: item.item_hsn_code,
         item_total: item.item_total,
@@ -1406,7 +1412,10 @@ const renderTemplateAsPdf = async ({ req, company_masters_id, draftTemplate, car
         dateTime: cart.update_Date_time ? moment(cart.update_Date_time).format("DD-MM-YYYY hh:mm A") : "",
         contactPerson: "",
       };
-      numberTowords = numberToWordsCurrency(cart.grand_total ?? 0, "INR");
+      const cartCurrency = cart.currency_id
+        ? await currencyModel.findOne({ where: { id: cart.currency_id, isDelete: 0 }, attributes: ["short_name"] })
+        : null;
+      numberTowords = numberToWordsCurrency(cart.grand_total ?? 0, String(cartCurrency?.short_name || "INR").trim().toUpperCase());
     } else {
       const sample = getSampleDataForPreview();
       buyer = sample.buyer;
