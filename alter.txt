@@ -3550,3 +3550,11 @@ WHERE t.isDelete = 0
       AND x.isDelete = 0
   );
 
+
+19-09-2026 Dhaval
+-- demo master DB only: Find/Merge Duplicate Contacts was inserted as id 179 by the first version of the migration;
+-- the code (CONTACT_MERGE) checks 184, which is what local/dev use. Ids 180-184 are unused on demo.
+UPDATE `a_application_pages` SET `id` = 184 WHERE `id` = 179 AND `page_slug` = 'contact_merge';
+UPDATE `plan_vs_pages` SET `page_id` = 184 WHERE `page_id` = 179;
+-- run in every demo tenant DB (not the master DB): move the existing rights rows to the corrected page id
+UPDATE `a_application_login_type_rights` SET `page_id` = 184 WHERE `page_id` = 179 AND `page_name` = 'Find/Merge Duplicate Contacts';
