@@ -41,7 +41,8 @@ export const getValidAccessToken = async ({
             const token = response?.DataModel?.token;
 
             if (!token) {
-                throw new Error("Token not received");
+                const reason = response?.Message || response?.ErrorCode;
+                throw new Error(reason ? `Token not received: ${reason}` : "Token not received");
             }
 
             const now = moment().format("YYYY-MM-DD HH:mm:ss");
