@@ -161,9 +161,33 @@ export const getProductSalesPurchase = async (req) => {
         ...andConditions   // ← Product & Category conditions added here
       ]
     };
+    // ---------------- Pagination is by DISTINCT PRODUCT, not by
+    // (product, cart_type) row - the old offset/limit was applied to the
+    // grouped (product × cart_type) result directly, so a page boundary
+    // could split a single product's cart_type rows across two pages,
+    // silently dropping columns for products caught on the edge. Page the
+    // distinct product list first, then fetch every cart_type row for
+    // just that page's products (unbounded, since it's already limited to
+    // `limit` products worth of rows). ----------------
+    const distinctProducts = await cartItem.findAll({
+      where: finalWhere,
+      attributes: ["item_product_id", "item_product_name"],
+      group: ["item_product_id", "item_product_name"],
+      raw: true,
+      order: [["item_product_name", "ASC"]],
+    });
+
+    const totalRecords = distinctProducts.length;
+    const pageProductIds = distinctProducts
+      .slice(offset, offset + limit)
+      .map((p) => p.item_product_id);
+
     // ---------------- Final Query ----------------
     const productData = await cartItem.findAll({
-      where: finalWhere,
+      where: {
+        ...finalWhere,
+        item_product_id: { [Op.in]: pageProductIds.length ? pageProductIds : [0] },
+      },
       attributes: [
         "item_product_id",
         "item_product_name",
@@ -177,8 +201,6 @@ export const getProductSalesPurchase = async (req) => {
       ],
       group: ["item_product_id", "item_product_name", "cart_type"],
       raw: true,
-      offset,
-      limit
     });
 
 
@@ -201,6 +223,7 @@ export const getProductSalesPurchase = async (req) => {
         salesInvoice,
         purchaseInvoice,
         purchaseOrder,
+        total: totalRecords,
       },
       ack_msg:
         productData.length > 0

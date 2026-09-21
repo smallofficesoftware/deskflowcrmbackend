@@ -1,10 +1,8 @@
 import {
   copyFromSystemReportDefinitionController,
   createReportDefinitionController,
-  createReportGroupController,
   createReportScheduleController,
   deleteReportDefinitionController,
-  deleteReportGroupController,
   deleteReportScheduleController,
   duplicateReportDefinitionController,
   exportReportDefinitionController,
@@ -17,7 +15,6 @@ import {
   getReportTeamRightsController,
   importReportDefinitionController,
   listReportDefinitionsController,
-  listReportGroupsController,
   listReportSchedulesController,
   listRunnableReportDefinitionsController,
   listSystemReportDefinitionsController,
@@ -29,7 +26,6 @@ import {
   saveReportTeamRightsController,
   testRunReportDefinitionController,
   updateReportDefinitionController,
-  updateReportGroupController,
   updateReportScheduleController,
 } from "../../controllers/report_builder/reportDefinitionController.js";
 import { authenticateToken } from "../../middlewares/auth.js";
@@ -102,14 +98,6 @@ export default (app) => {
   // itself) and is gated only by requireServiceSecret, which fails closed
   // whenever REPORT_BUILDER_TEST_SECRET isn't configured.
   app.post("/report-definitions/test-run", requireServiceSecret, testRunReportDefinitionController);
-
-  // Report groups (Step 10) — group names are organizational labels
-  // (the "Custom Reports" tile section renders bucket headers from these
-  // for every viewer, not just the owner).
-  app.post("/report-groups/list", authenticateToken, tenantMiddleware, listReportGroupsController);
-  app.post("/report-groups/create", authenticateToken, tenantMiddleware, createReportGroupController);
-  app.post("/report-groups/:id/update", authenticateToken, tenantMiddleware, updateReportGroupController);
-  app.post("/report-groups/:id/delete", authenticateToken, tenantMiddleware, deleteReportGroupController);
 
   // Schedules (Step 8a) — :id below is report_definition_id (list/
   // create scoped to one report); :scheduleId (update/delete) is the

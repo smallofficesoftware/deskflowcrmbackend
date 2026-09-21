@@ -211,16 +211,21 @@ export const getTeamReminderReport = async (req) => {
         // Fetch reminders
         // ────────────────────────────────────────────────
 
-        const remindersRaw = await reminderModel.findAll({
-            where: {
-                ...whereClause,
-                ...fullTextSearchCondition,
-            },
-            order: orderClause,
-            limit,
-            offset,
-            raw: true,   // we'll enrich manually
-        });
+        const reminderQueryWhere = {
+            ...whereClause,
+            ...fullTextSearchCondition,
+        };
+
+        const [remindersRaw, totalMatchingCount] = await Promise.all([
+            reminderModel.findAll({
+                where: reminderQueryWhere,
+                order: orderClause,
+                limit,
+                offset,
+                raw: true,   // we'll enrich manually
+            }),
+            reminderModel.count({ where: reminderQueryWhere }),
+        ]);
 
         // ────────────────────────────────────────────────
         // Enrich data: contact name, username, status text
@@ -273,7 +278,7 @@ export const getTeamReminderReport = async (req) => {
         return resSuccess({
             data: {
                 data: enrichedReminders,
-                total: enrichedReminders.length,   // or run separate count query if needed
+                total: totalMatchingCount,
                 counts: {
                     due: dueCount,
                     future: futureCount,

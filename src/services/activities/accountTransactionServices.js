@@ -36,6 +36,7 @@ import { stateModel } from "../../models/masters/stateModel.js";
 import { __dirnameConstant, EXPORTS_LINK_EXTENDED, PDF_LINK_EXTENDED_Account_TRANSACTION } from '../../utils/appConstants.js';
 import { PAGE_ID } from "../../utils/AppEnumeration.js";
 import { exportData } from "../../utils/exporter.js";
+import logger from "../../utils/logger.js";
 import { getCompanyByLoginId, getCompanyDetailByLoginId } from "../commonServices.js";
 import { documentPrintTemplateModel } from "../../models/company_setup/documentPrintTemplateModel.js";
 import { isFeatureEnabled } from "../company_setup/featureFlagServices.js";
@@ -321,7 +322,7 @@ export const getAllAccountTransactions = async (req, res) => {
 
     const queryOptions = {
       where: whereClause,
-      order: [["created_date_time", sortDir]],
+      order: [["payment_date_time", sortDir]],
     };
 
     if (ll !== undefined && ul !== undefined) {
@@ -552,7 +553,7 @@ export const getAllAccountTransactionsForOnlineStore = async (req, res) => {
       String("DESC").toUpperCase() === "ASC" ? "ASC" : "DESC";
     const queryOptions = {
       where: whereClause,
-      order: [["created_date_time", sortDir]],
+      order: [["payment_date_time", sortDir]],
     };
     const accountTransactionResult = await tenantDBInfo.models.account_transactions.findAll(queryOptions);
 
@@ -670,7 +671,7 @@ export const accountTransactionById = async (req) => {
 
     const accountTransactionResult = await aTModel.findAll({
       where: whereClause,
-      order: [["created_date_time", "DESC"]],
+      order: [["payment_date_time", "DESC"]],
     });
 
     const companyModels = companyModel;
@@ -1260,7 +1261,7 @@ export const getAccountStatementOfContact = async (req, res) => {
         company_masters_id: findCompanyId.company_masters_id,
         contact_masters_id: contact_master_id,
       },
-      order: [["created_date_time", "DESC"]],
+      order: [["payment_date_time", "DESC"]],
       raw: true,
     });
 
@@ -1409,7 +1410,7 @@ export const accountPDFv1 = async (req, res) => {
     // (orderServices.js:4810). document_template_id (from the frontend's
     // picker, when the company has 2+ accountTransaction templates) selects
     // a company-customized template instead of the default dynamic layout.
-    const documentDesignerEnabled = await isFeatureEnabled(companyDetail.id, "document_designer");
+    const documentDesignerEnabled = await isFeatureEnabled(companyDetail.id, "accountTransaction_document_designer");
 
     if (documentDesignerEnabled) {
       const templateOverride = await loadAccountTemplateOverride(
@@ -1657,7 +1658,7 @@ export const allAccountTransactionOfContactPDF = async (req, res) => {
     // (orderServices.js:4810). document_template_id (from the frontend's
     // picker, when the company has 2+ accountStatement templates) selects
     // a company-customized template instead of the default dynamic layout.
-    const documentDesignerEnabled = await isFeatureEnabled(companyData.id, "document_designer");
+    const documentDesignerEnabled = await isFeatureEnabled(companyData.id, "accountStatement_document_designer");
 
     if (documentDesignerEnabled) {
       const templateOverride = await loadAccountTemplateOverride(

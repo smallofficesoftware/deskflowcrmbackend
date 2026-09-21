@@ -1,6 +1,13 @@
+import ejs from "ejs";
 import ExcelJS from "exceljs";
+import fs from "fs";
 import moment from "moment";
 import path from "path";
+import pdf from "pdf-creator-node";
+import { fileURLToPath } from "url";
+
+const __dirnameConstant = path.dirname(fileURLToPath(import.meta.url));
+const REPORT_PDF_TEMPLATE_PATH = path.join(__dirnameConstant, "../views/reports/genericReportExport.ejs");
 
 function getNested(obj, key) {
     if (!key) return undefined;
@@ -32,15 +39,32 @@ export async function exportData(data, options = {}) {
             // once by the caller (one company lookup per export, not per
             // cell) and only matters for a "currency"-formatted column.
             columnFormats = null,
-            currencySymbol = ""
+            currencySymbol = "",
+
+            // format: "badge" columns only (PDF) — { key: [candidate row
+            // field names holding that column's pill color, checked in
+            // order] }. Ignored entirely by the xlsx branch.
+            badgeColorKeys = null,
+
+            // format: "nested-table" columns only (PDF) — { key: [{key,
+            // label}] } describing the inner table's own columns. Ignored
+            // entirely by the xlsx branch.
+            columnSubColumns = null
         } = options || {};
 
-        if (!Array.isArray(data) || data.length === 0) {
+        if (!Array.isArray(data)) {
+            throw new Error("Data must be an array of objects.");
+        }
+
+        // xlsx has no "no data" placeholder row to fall back on, so it keeps
+        // requiring a non-empty array; pdf renders its own "No data
+        // available to export" row instead (see genericReportExport.ejs).
+        if (data.length === 0 && fileFormat !== 'pdf') {
             throw new Error("Data must be a non-empty array of objects.");
         }
 
-        if (!['xlsx'].includes(fileFormat)) {
-            throw new Error('Invalid format. Only "xlsx" supported.');
+        if (!['xlsx', 'pdf'].includes(fileFormat)) {
+            throw new Error('Invalid format. Only "xlsx" or "pdf" supported.');
         }
 
         const timestamp = moment().format('YYYYMMDD_HHmmss');
@@ -50,6 +74,21 @@ export async function exportData(data, options = {}) {
         const sample = data[0];
         const keys = Array.isArray(columns) && columns.length > 0 ? columns : Object.keys(sample);
         const headerMap = headers || Object.fromEntries(keys.map(k => [k, k]));
+
+        if (fileFormat === 'pdf') {
+            return await exportPdf(data, {
+                keys,
+                headerMap,
+                fileName,
+                outputPath,
+                file_name,
+                autoDownload,
+                columnFormats,
+                currencySymbol,
+                badgeColorKeys,
+                columnSubColumns,
+            });
+        }
 
         // Create workbook
         const workbook = new ExcelJS.Workbook();
@@ -141,4 +180,143 @@ export async function exportData(data, options = {}) {
     } catch (error) {
         console.log("exportData error", error)
     }
+}
+
+// Mirrors the xlsx branch's date/number/currency handling above, but
+// produces a display string (there's no cell-level numFmt in an HTML
+// table) instead of a typed cell value.
+function escapeHtml(value) {
+    return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+}
+
+// Mirrors the on-screen grid's own badge styling exactly (white text,
+// rounded pill, "#eeeeee" default) rather than the old per-report jsPDF
+// exports' brightness-based auto-contrast text color — one less thing to
+// keep in sync with the grid, and what users already see on screen.
+function renderBadgeHtml(row, key, colorKeys) {
+    const color = (colorKeys || []).map((k) => getNested(row, k)).find(Boolean) || "#eeeeee";
+    const label = escapeHtml(getNested(row, key) ?? "-");
+    return `<span style="background-color:${color};color:#fff;padding:2px 8px;border-radius:12px;display:inline-block;">${label}</span>`;
+}
+
+// format: "multiline" - a plain string containing literal "\n"s (e.g. a
+// pre-joined "Name: X\nPhone: Y" block) that needs those breaks preserved
+// in the rendered HTML, which collapses raw newlines otherwise.
+function renderMultilineHtml(raw) {
+    return escapeHtml(raw ?? "").replace(/\n/g, "<br/>");
+}
+
+// format: "nested-table" - the column's value is an array of row objects
+// (e.g. one invoice's product line items) rendered as its own small HTML
+// table inside the cell, per `subColumns` ({key,label}[], set on the
+// column same as badge's colorKeys). Mirrors the old per-report jsPDF
+// exports that drew a nested autoTable inside a cell for this exact case.
+function renderNestedTableHtml(value, subColumns) {
+    const items = Array.isArray(value) ? value : [];
+    if (!Array.isArray(subColumns) || subColumns.length === 0 || items.length === 0) return "";
+
+    const head = subColumns.map((c) => `<th>${escapeHtml(c.label)}</th>`).join("");
+    const body = items
+        .map(
+            (item) =>
+                `<tr>${subColumns.map((c) => `<td>${escapeHtml(getNested(item, c.key) ?? "-")}</td>`).join("")}</tr>`,
+        )
+        .join("");
+
+    return `<table class="nested-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+}
+
+function formatCellForDisplay(raw, format, currencySymbol) {
+    if (raw === null || raw === undefined || raw === "") return "";
+    if (format === "date") {
+        const parsed = moment(raw);
+        return parsed.isValid() ? parsed.format("DD-MM-YYYY") : String(raw);
+    }
+    if (format === "number" || format === "currency") {
+        const num = Number(raw);
+        if (isNaN(num)) return String(raw);
+        const formatted = num.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        return format === "currency" ? `${currencySymbol}${formatted}` : formatted;
+    }
+    return String(raw);
+}
+
+// Same-shaped counterpart to the xlsx branch above — renders `data` as an
+// HTML table (genericReportExport.ejs) via the same pdf-creator-node
+// pipeline every document-print template in this codebase already uses,
+// then converts to PDF. Returns { outputPath, file_name } to match xlsx's
+// return shape so callers (genericReportExportService.js) don't need to
+// branch on format.
+async function exportPdf(data, { keys, headerMap, fileName, outputPath, file_name, autoDownload, columnFormats, currencySymbol, badgeColorKeys, columnSubColumns }) {
+    const HTML_FORMATS = ["badge", "multiline", "nested-table"];
+    const columns = keys.map((key) => ({
+        key,
+        label: headerMap[key] || key,
+        numeric: columnFormats?.[key] === "number" || columnFormats?.[key] === "currency",
+        html: HTML_FORMATS.includes(columnFormats?.[key]),
+    }));
+
+    const rows = data.map((row) => {
+        const formatted = { __isFooter: Boolean(row.__isFooter) };
+        keys.forEach((key) => {
+            const format = columnFormats?.[key];
+            if (format === "badge") {
+                formatted[key] = renderBadgeHtml(row, key, badgeColorKeys?.[key]);
+                return;
+            }
+            if (format === "multiline") {
+                formatted[key] = renderMultilineHtml(getNested(row, key));
+                return;
+            }
+            if (format === "nested-table") {
+                formatted[key] = renderNestedTableHtml(getNested(row, key), columnSubColumns?.[key]);
+                return;
+            }
+            const raw = getNested(row, key);
+            formatted[key] = format
+                ? formatCellForDisplay(raw, format, currencySymbol)
+                : (raw ?? "");
+        });
+        return formatted;
+    });
+
+    // Old per-report jsPDF exports picked a4/a3/a2 by hand to fit however
+    // many columns that report had; this mirrors that by column count so
+    // wide reports (e.g. Attendance's one column per date) still get a
+    // bigger page instead of every column being squeezed onto a fixed A4.
+    const pageFormat = columns.length <= 10 ? "A4" : columns.length <= 16 ? "A3" : "A2";
+
+    const templateHtml = fs.readFileSync(REPORT_PDF_TEMPLATE_PATH, "utf-8");
+    const renderedHtml = ejs.render(templateHtml, { title: fileName, columns, rows, pageFormat });
+
+    const document = {
+        html: renderedHtml,
+        data: {},
+        path: outputPath,
+        type: autoDownload ? "buffer" : "",
+    };
+
+    const options = {
+        format: pageFormat,
+        orientation: "landscape",
+        border: "10mm",
+        footer: {
+            height: "5mm",
+            contents: {
+                default: `<span style="color: #444;">{{page}}</span>/<span>{{pages}}</span>`,
+            },
+        },
+    };
+
+    const result = await pdf.create(document, options);
+
+    if (autoDownload) {
+        return result;
+    }
+
+    return { outputPath, file_name };
 }

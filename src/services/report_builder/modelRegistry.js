@@ -56,6 +56,8 @@ import { categoryModel } from "../../models/product_settings/categoryModel.js";
 import { bomVsProcessVsConsAndRejctsModel } from "../../models/product_settings/bomProcessVsConsAndRejctsModel.js";
 import { bomVsProcessListsModel } from "../../models/product_settings/bomVsProcessListsModel.js";
 import { productModel } from "../../models/product_settings/productModel.js";
+import { cartSerialNumberModel } from "../../models/activities/cartSerialNumberModel.js";
+import { serialStockLedgerViewModel } from "../../models/report_builder/serialStockLedgerViewModel.js";
 
 // COUNT needs a real column to wrap (fn("COUNT", col("id"))) — every table
 // that supports a group+count report gets this, not a new engine concept.
@@ -90,6 +92,17 @@ export const MODEL_REGISTRY = {
     generalFilters: {
       1: "created_date_time",
       7: "category_id",
+    },
+    relations: {
+      category: {
+        label: "Category",
+        foreignKey: "category_id",
+        getModel: (tenantDB) => categoryModel(tenantDB),
+        targetKey: "id",
+        columns: {
+          category_name: { label: "Category Name", type: "string" },
+        },
+      },
     },
   },
 
@@ -347,7 +360,10 @@ export const MODEL_REGISTRY = {
         getModel: (tenantDB) => productModel(tenantDB),
         targetKey: "id",
         // Reuses products' own column defs — not a duplicate definition.
-        columns: { product_name: PRODUCT_COLUMNS.product_name },
+        // Borrows products' own full whitelist + relations (category
+        // included) via modelKey — same pattern stock_ledger's product
+        // relation uses, instead of a product_name-only subset.
+        modelKey: "products",
       },
       category: {
         label: "Category",
@@ -586,7 +602,10 @@ export const MODEL_REGISTRY = {
         getModel: (tenantDB) => productModel(tenantDB),
         targetKey: "id",
         // Reuses products' own column defs — not a duplicate definition.
-        columns: { product_name: PRODUCT_COLUMNS.product_name },
+        // Borrows products' own full whitelist + relations (category
+        // included) via modelKey — same pattern stock_ledger's product
+        // relation uses, instead of a product_name-only subset.
+        modelKey: "products",
       },
       sourceType: {
         label: "Source Type",
@@ -959,9 +978,10 @@ export const MODEL_REGISTRY = {
         foreignKey: "task_id",
         getModel: (tenantDB) => taskManagementModel(tenantDB),
         targetKey: "id",
-        columns: {
-          task_title: { label: "Task Title", type: "string" },
-        },
+        // Borrows task_managements' own full whitelist + relations via
+        // modelKey, same pattern as products/contacts elsewhere in this
+        // registry — was task_title only.
+        modelKey: "task_managements",
       },
     },
   },
@@ -1139,13 +1159,103 @@ export const MODEL_REGISTRY = {
         foreignKey: "item_product_id",
         getModel: (tenantDB) => productModel(tenantDB),
         targetKey: "id",
-        columns: {
-          product_name: PRODUCT_COLUMNS.product_name,
-          min_stock_quantity: PRODUCT_COLUMNS.min_stock_quantity,
-          max_stock_quantity: PRODUCT_COLUMNS.max_stock_quantity,
-          purchase_rate: PRODUCT_COLUMNS.purchase_rate,
-          purchase_net_rate: PRODUCT_COLUMNS.purchase_net_rate,
-        },
+        // Borrows products' own full whitelist + relations (its new
+        // "category" sub-relation included) via modelKey — same "contacts"
+        // pattern used everywhere else, instead of a hand-curated 5-column
+        // subset that silently drifted out of sync with PRODUCT_COLUMNS.
+        modelKey: "products",
+      },
+    },
+  },
+
+  // cart_vs_serial_numbers — one row per (serial number, cart) pairing.
+  // A serial carried forward across a chain (e.g. sales order -> dispatch ->
+  // invoice) gets one row per hop, each copying the same serial_numbers
+  // value (see orderServices.js's forwarding logic around line 3830) and
+  // stamping sn_reference_type/sn_reference_cart_id with the cart it was
+  // carried over FROM. Filtering this table by a single serial number is
+  // what surfaces every cart (any cart_type) that ever touched it — no
+  // group-by needed, the raw rows already are the linked history.
+  cart_vs_serial_numbers: {
+    label: "Serial Number History",
+    getModel: (tenantDB) => cartSerialNumberModel(tenantDB),
+    columns: {
+      serial_numbers: { label: "Serial Number", type: "string", filterable: true, sortable: true, groupable: true },
+      cart_type: { label: "Order Type", type: "lookup", filterable: true, sortable: false, groupable: true },
+      sn_reference_type: { label: "Carried From (Order Type)", type: "lookup", filterable: true, sortable: false, groupable: true },
+      product_id: { label: "Product", type: "lookup", filterable: true, sortable: false, groupable: true },
+      created_date_time: { label: "Created Date", type: "date", filterable: true, sortable: true, groupable: false },
+      ...COUNT_COLUMN,
+    },
+    generalFilters: {
+      1: "created_date_time",
+      7: "product_id",
+    },
+    relations: {
+      cart: {
+        label: "Order",
+        foreignKey: "cart_id",
+        getModel: (tenantDB) => cartModel(tenantDB),
+        targetKey: "id",
+        // Borrows carts' own full whitelist + relations (customer included)
+        // via modelKey — same pattern used everywhere else, so
+        // "cart.cart_number"/"cart.cart_date"/"cart.customer.person_name"
+        // are all reachable without a second column list to maintain.
+        modelKey: "carts",
+      },
+      product: {
+        label: "Product",
+        foreignKey: "product_id",
+        getModel: (tenantDB) => productModel(tenantDB),
+        targetKey: "id",
+        modelKey: "products",
+      },
+    },
+  },
+
+  // serial_stock_ledger_view — same in/out CASE logic as stock_ledger above,
+  // applied per serial number instead of per cart_item quantity (see
+  // alter.txt, 17-09-2026). runningTotal on stock_delta gives a per-serial
+  // balance: 1 = currently in stock, 0 = sold/returned out — the answer to
+  // "which serials are still on hand" that plain cart_vs_serial_numbers
+  // filtering above can't derive on its own.
+  serial_stock_ledger: {
+    label: "Serial Number Stock Status",
+    getModel: (tenantDB) => serialStockLedgerViewModel(tenantDB),
+    columns: {
+      serial_numbers: { label: "Serial Number", type: "string", filterable: true, sortable: true, groupable: true },
+      product_id: { label: "Product", type: "lookup", filterable: true, sortable: false, groupable: true },
+      cart_type: { label: "Movement Type", type: "lookup", filterable: true, sortable: false, groupable: true },
+      created_date_time: { label: "Movement Date", type: "date", filterable: true, sortable: true, groupable: false },
+      stock_delta: {
+        label: "Stock Status (in=1/out=-1)",
+        type: "number",
+        filterable: false,
+        sortable: false,
+        groupable: false,
+        aggregatable: ["sum"],
+        runningTotal: { partitionBy: "serial_numbers", orderBy: "created_date_time" },
+      },
+      ...COUNT_COLUMN,
+    },
+    generalFilters: {
+      1: "created_date_time",
+      7: "product_id",
+    },
+    relations: {
+      cart: {
+        label: "Order",
+        foreignKey: "cart_id",
+        getModel: (tenantDB) => cartModel(tenantDB),
+        targetKey: "id",
+        modelKey: "carts",
+      },
+      product: {
+        label: "Product",
+        foreignKey: "product_id",
+        getModel: (tenantDB) => productModel(tenantDB),
+        targetKey: "id",
+        modelKey: "products",
       },
     },
   },
@@ -1233,9 +1343,9 @@ export const MODEL_REGISTRY = {
         foreignKey: "product_id",
         getModel: (tenantDB) => productModel(tenantDB),
         targetKey: "id",
-        columns: {
-          product_name: PRODUCT_COLUMNS.product_name,
-        },
+        // Borrows products' own full whitelist + relations (category
+        // included) via modelKey, same pattern used everywhere else.
+        modelKey: "products",
       },
     },
   },
@@ -1276,7 +1386,10 @@ export const MODEL_REGISTRY = {
         foreignKey: "item_id",
         getModel: (tenantDB) => productModel(tenantDB),
         targetKey: "id",
-        columns: { product_name: PRODUCT_COLUMNS.product_name },
+        // Borrows products' own full whitelist + relations (category
+        // included) via modelKey — same pattern stock_ledger's product
+        // relation uses, instead of a product_name-only subset.
+        modelKey: "products",
       },
       contact: {
         label: "Contact",
@@ -1343,7 +1456,10 @@ export const MODEL_REGISTRY = {
         foreignKey: "production_item_id",
         getModel: (tenantDB) => productModel(tenantDB),
         targetKey: "id",
-        columns: { product_name: PRODUCT_COLUMNS.product_name },
+        // Borrows products' own full whitelist + relations (category
+        // included) via modelKey — same pattern stock_ledger's product
+        // relation uses, instead of a product_name-only subset.
+        modelKey: "products",
       },
       employee: {
         label: "Team Member",
@@ -1383,7 +1499,10 @@ export const MODEL_REGISTRY = {
         foreignKey: "item_id",
         getModel: (tenantDB) => productModel(tenantDB),
         targetKey: "id",
-        columns: { product_name: PRODUCT_COLUMNS.product_name },
+        // Borrows products' own full whitelist + relations (category
+        // included) via modelKey — same pattern stock_ledger's product
+        // relation uses, instead of a product_name-only subset.
+        modelKey: "products",
       },
     },
   },
@@ -1411,7 +1530,10 @@ export const MODEL_REGISTRY = {
         foreignKey: "product_id",
         getModel: (tenantDB) => productModel(tenantDB),
         targetKey: "id",
-        columns: { product_name: PRODUCT_COLUMNS.product_name },
+        // Borrows products' own full whitelist + relations (category
+        // included) via modelKey — same pattern stock_ledger's product
+        // relation uses, instead of a product_name-only subset.
+        modelKey: "products",
       },
     },
   },
@@ -1442,14 +1564,20 @@ export const MODEL_REGISTRY = {
         foreignKey: "item_id",
         getModel: (tenantDB) => productModel(tenantDB),
         targetKey: "id",
-        columns: { product_name: PRODUCT_COLUMNS.product_name },
+        // Borrows products' own full whitelist + relations (category
+        // included) via modelKey — same pattern stock_ledger's product
+        // relation uses, instead of a product_name-only subset.
+        modelKey: "products",
       },
       finishedProduct: {
         label: "Finished Product",
         foreignKey: "master_product_id",
         getModel: (tenantDB) => productModel(tenantDB),
         targetKey: "id",
-        columns: { product_name: PRODUCT_COLUMNS.product_name },
+        // Borrows products' own full whitelist + relations (category
+        // included) via modelKey — same pattern stock_ledger's product
+        // relation uses, instead of a product_name-only subset.
+        modelKey: "products",
       },
     },
   },

@@ -17,6 +17,7 @@ import { productModel } from "../../models/product_settings/productModel.js";
 import { generateNumber, isValid, normalizeToTenDigit, resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { getCompanyByLoginId, insertStagesAndStatusLogs } from "../commonServices.js";
 import { autoAssignmentContactIdsGet, prepareMailAndWhatsappSenderToTheContact } from "../other_settings/wrkflwAutoAssignmentContactService.js";
+import logger from "../../utils/logger.js";
 
 export const addContactByIndiaMart = async (req) => {
     try {
@@ -85,9 +86,7 @@ export const addContactByIndiaMart = async (req) => {
         const contactBody = (responseBody ?? [])
             .filter((entry) => {
                 if (seen.has(entry.UNIQUE_QUERY_ID)) {
-                    console.log(
-                        `Skipping duplicate entry with UNIQUE_QUERY_ID: ${entry.UNIQUE_QUERY_ID}`
-                    );
+                    logger.debug(`Skipping duplicate entry with UNIQUE_QUERY_ID: ${entry.UNIQUE_QUERY_ID}`);
                     return false;
                 }
                 seen.add(entry.UNIQUE_QUERY_ID);
@@ -309,11 +308,10 @@ export const addContactByIndiaMart = async (req) => {
                     }
                 }
             } catch (err) {
-                console.error(
-                    "Error parsing JSON for a_application_login_id:",
-                    userRight.a_application_login_id,
+                logger.error("Error parsing JSON for a_application_login_id:", {
+                    a_application_login_id: userRight.a_application_login_id,
                     err
-                );
+                });
             }
         }
 
@@ -474,19 +472,12 @@ export const addContactByIndiaMart = async (req) => {
                             title: `New IndiaMART Lead Assigned to You`,
                             body: notificationBody,
                         });
-                        console.log(
-                            "Notifications sent to",
-                            uniqueTokens.length,
-                            "devices"
-                        );
+                        logger.info(`Notifications sent to ${uniqueTokens.length} devices`);
                     } else {
-                        console.log("No device tokens found for notification.");
+                        logger.debug("No device tokens found for notification.");
                     }
                 } catch (notificationError) {
-                    console.error(
-                        "Notification failed (non-critical):",
-                        notificationError.message
-                    );
+                    logger.warn("Notification failed (non-critical):", notificationError.message);
                 }
                 /* notification code */
             }
@@ -564,7 +555,7 @@ export const addContactByIndiaMart = async (req) => {
             data: response?.data
         });
     } catch (error) {
-        console.error("Error in addContactByIndiaMart:", error);
+        logger.error("Error in addContactByIndiaMart:", error);
         return resBadRequest({
             ack_msg: "Something went wrong",
             developer_msg: `Error: ${error.message}`,
@@ -641,9 +632,7 @@ export const addContactByIndiaMartPushApi = async (req, res) => {
         const contactBody = (responseBody ?? [])
             .filter((entry) => {
                 if (seen.has(entry.UNIQUE_QUERY_ID)) {
-                    console.log(
-                        `Skipping duplicate entry with UNIQUE_QUERY_ID: ${entry.UNIQUE_QUERY_ID}`
-                    );
+                    logger.debug(`Skipping duplicate entry with UNIQUE_QUERY_ID: ${entry.UNIQUE_QUERY_ID}`);
                     return false;
                 }
                 seen.add(entry.UNIQUE_QUERY_ID);
@@ -843,11 +832,10 @@ export const addContactByIndiaMartPushApi = async (req, res) => {
                     }
                 }
             } catch (err) {
-                console.error(
-                    "Error parsing JSON for a_application_login_id:",
-                    userRight.a_application_login_id,
+                logger.error("Error parsing JSON for a_application_login_id:", {
+                    a_application_login_id: userRight.a_application_login_id,
                     err
-                );
+                });
             }
         }
 
@@ -1009,19 +997,12 @@ export const addContactByIndiaMartPushApi = async (req, res) => {
                             title: `New IndiaMART Lead Assigned to You`,
                             body: notificationBody,
                         });
-                        console.log(
-                            "Notifications sent to",
-                            uniqueTokens.length,
-                            "devices"
-                        );
+                        logger.info(`Notifications sent to ${uniqueTokens.length} devices`);
                     } else {
-                        console.log("No device tokens found for notification.");
+                        logger.debug("No device tokens found for notification.");
                     }
                 } catch (notificationError) {
-                    console.error(
-                        "Notification failed (non-critical):",
-                        notificationError.message
-                    );
+                    logger.warn("Notification failed (non-critical):", notificationError.message);
                 }
                 /* notification code */
             }
@@ -1100,7 +1081,7 @@ export const addContactByIndiaMartPushApi = async (req, res) => {
             data: null
         });
     } catch (error) {
-        console.error("Error in addContactByIndiaMartPushApi:", error);
+        logger.error("Error in addContactByIndiaMartPushApi:", error);
         return resBadRequest(res, {
             ack_msg: "Something went wrong",
             developer_msg: `Error: ${error.message}`,

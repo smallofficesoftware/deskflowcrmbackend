@@ -59,7 +59,14 @@ export function applyTemplateOptions(id, loadedTemplate, { header = null, column
   let cloned = structuredClone(loadedTemplate);
 
   if (header) {
-    const fresh = getTemplate(id, header);
+    // getTemplate() always rebuilds at buildTemplate.js's native A4
+    // dimensions (buildHeaderFields hardcodes width: A4.width) - if this
+    // template has since been resized to a different page size (pageSize
+    // branch below, e.g. A4->A5), scale the fresh rebuild to the CURRENT
+    // page dimensions before merging. Without this, any header/footer/
+    // border edit after a page-size change snapped the banner back to full
+    // A4 width, overflowing a narrower page.
+    const fresh = scaleTemplate(getTemplate(id, header), cloned.basePdf.width, cloned.basePdf.height);
     // A taller header banner needs docTitle/buyer-info/order-info/itemsTable
     // shifted down to clear it.
     const deltaY = fresh.basePdf.padding[0] - cloned.basePdf.padding[0];

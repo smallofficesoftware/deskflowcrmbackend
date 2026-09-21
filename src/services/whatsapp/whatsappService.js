@@ -84,7 +84,7 @@ export const sendSalesPdfWhatsapp = async (req) => {
             title,
             phone_number: normalizeToTenDigit(customer_phone),
             mediaUrl: fileUrl,
-            fileName: `${customer_phone}.pdf`,
+            fileName: `${title}.pdf`,
             // messageText: `Please find attached the invoice.`,
             messageType: 'document',
             whatsapp_phone_number_id,
@@ -997,7 +997,9 @@ export const waCloudHook = async (req, res) => {
             })
             : null;
 
-        if (createdInquiry || messageEntry) {
+        // Only a payload that actually carried message text marks the contact
+        // unread (messageEntry is only created when hasMessageText is true).
+        if (messageEntry) {
             await CTContactModel.update(
                 {
                     is_read_by_a_application_login_id: '',

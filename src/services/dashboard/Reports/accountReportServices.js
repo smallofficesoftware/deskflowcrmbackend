@@ -158,7 +158,7 @@ export const getAccountOutstandingReport = async (req, res) => {
 
         if (contactIds.length === 0) {
             return resSuccess({
-                data: [],
+                data: { data: [], total: 0 },
                 ack_msg: "No data found",
             });
         }
@@ -231,11 +231,8 @@ export const getAccountOutstandingReport = async (req, res) => {
         const paginatedResults = results.slice(offset, offset + limit);
 
         return resSuccess({
-            data: paginatedResults,
+            data: { data: paginatedResults, total: totalRecords, offset, limit },
             ack_msg: "Data fetched successfully",
-            total: totalRecords,
-            offset,
-            limit,
         });
     } catch (error) {
         console.error("Outstanding Report Error:", error);
@@ -455,13 +452,13 @@ export const getAllAccountTranstionsReport = async (req, res) => {
         };
 
         // ────────────────────────────────────────────────
-        // Fetch transactions
+        // Fetch ALL matching transactions (paginate after
+        // enrichment/contact-existence/search filtering below,
+        // so offset/limit and the total reflect the real result set)
         // ────────────────────────────────────────────────
         const accountModel = accountTransactionsModel(req.tenantDB);
         let accountData = await accountModel.findAll({
             where: whereClause,
-            offset,
-            limit,
             raw: true,
             order: [['created_date_time', 'DESC']] // ← added common default sort
         });
@@ -548,10 +545,19 @@ export const getAllAccountTranstionsReport = async (req, res) => {
             });
         }
 
+        // ────────────────────────────────────────────────
+        // APPLY PAGINATION on the fully filtered/enriched result
+        // ────────────────────────────────────────────────
+        const totalRecords = finalAccounts.length;
+        const paginatedAccounts = limit
+            ? finalAccounts.slice(offset, offset + limit)
+            : finalAccounts.slice(offset);
+
         return resSuccess({
             data: {
-                data: finalAccounts,
-                currency_name: currency?.short_name || ""
+                data: paginatedAccounts,
+                currency_name: currency?.short_name || "",
+                total: totalRecords
             },
             ack_msg: "All Account transactions fetched successfully",
             developer_msg: "success",

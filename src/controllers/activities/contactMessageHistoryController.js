@@ -1,3 +1,4 @@
+import logger from "../../utils/logger.js";
 import { decryptRequestForMultipart } from "../../middlewares/payloadSecurity.js";
 import {
   contactMessagePinUpin,

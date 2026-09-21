@@ -885,6 +885,42 @@ export const runQueryReport = async (definition, req) => {
       }
     }
 
+    // ---- True row count over the WHOLE filtered result set, not just this
+    // page — same "one more query against the same `where`, can't be done
+    // client-side" reasoning the grand-totals aggregate below already uses.
+    // Without this, the paginator has nothing but this page's own length to
+    // show, which is exactly why the frontend used to render it as "12+"
+    // instead of a real count. Mirrors whichever of the three branches above
+    // produced `rows`, since a plain COUNT(*) is only correct when there's
+    // no grouping — grouped/CSV-grouped reports need the distinct group
+    // count instead, not the underlying raw row count.
+    let totalRowCount;
+    if (csvGroupColumn) {
+      const allRawRows = await Model.findAll({
+        attributes: [...rawFetchColumns],
+        where,
+        raw: true,
+      });
+      const totalGroupsSeen = new Set();
+      for (const row of allRawRows) {
+        for (const id of splitCsv(row[csvGroupColumn])) {
+          const dims = Object.fromEntries(sqlGroupColumns.map((g) => [g, row[g]]));
+          totalGroupsSeen.add(JSON.stringify([id, dims]));
+        }
+      }
+      totalRowCount = totalGroupsSeen.size;
+    } else if (sqlGroupColumns.length > 0) {
+      const allGroups = await Model.findAll({
+        attributes: sqlGroupColumns,
+        where,
+        group: sqlGroupColumns,
+        raw: true,
+      });
+      totalRowCount = allGroups.length;
+    } else {
+      totalRowCount = await Model.count({ where });
+    }
+
     // ---- Having filters — applied here, uniformly, regardless of which
     // branch above produced `rows` (SQL group, CSV group, or running
     // total) since all three already end up as a plain JS array by this
@@ -1144,7 +1180,7 @@ export const runQueryReport = async (definition, req) => {
     }
 
     return resSuccess({
-      data: { rows, row_count: rows.length, duration_ms: Date.now() - startedAt, totals },
+      data: { rows, row_count: totalRowCount, duration_ms: Date.now() - startedAt, totals },
       ack_msg: rows.length > 0 ? "Report data retrieved successfully" : "No data found",
     });
   } catch (error) {

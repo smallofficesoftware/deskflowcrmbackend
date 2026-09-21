@@ -42,8 +42,24 @@ const currencyConfigs = {
     USD: { scales: ["", "Thousand", "Million", "Billion"], suffix: "Dollars" },
     EUR: { scales: ["", "Thousand", "Million", "Billion"], suffix: "Euros" },
     GBP: { scales: ["", "Thousand", "Million", "Billion"], suffix: "Pounds" },
-    JPY: { scales: ["", "Thousand", "Million", "Billion"], suffix: "Yen" },
+    JPY: { scales: ["", "Thousand", "Million", "Billion"], suffix: "Yen", minor: null },
+    AED: { scales: ["", "Thousand", "Million", "Billion"], suffix: "Dirhams", minor: "Fils" },
+    SAR: { scales: ["", "Thousand", "Million", "Billion"], suffix: "Riyals", minor: "Halalas" },
+    AUD: { scales: ["", "Thousand", "Million", "Billion"], suffix: "Australian Dollars" },
+    CAD: { scales: ["", "Thousand", "Million", "Billion"], suffix: "Canadian Dollars" },
+    SGD: { scales: ["", "Thousand", "Million", "Billion"], suffix: "Singapore Dollars" },
+    NZD: { scales: ["", "Thousand", "Million", "Billion"], suffix: "New Zealand Dollars" },
+    CHF: { scales: ["", "Thousand", "Million", "Billion"], suffix: "Francs", minor: "Rappen" },
+    CNY: { scales: ["", "Thousand", "Million", "Billion"], suffix: "Yuan", minor: "Fen" },
 };
+
+// Unknown codes must not throw (a company can use any currency): international
+// scales, the code itself as the unit name, generic "Cents" for the fraction.
+const resolveConfig = (currency) =>
+    currencyConfigs[currency] || {
+        scales: ["", "Thousand", "Million", "Billion"],
+        suffix: currency || "Currency",
+    };
 
 const numberToWords = (n) => {
     if (n === 0) return "";
@@ -98,9 +114,9 @@ export const numberToWordsCurrency = (
     num,
     currency,
 ) => {
-    if (num === 0) return `Zero ${currencyConfigs[currency].suffix} Only`;
+    const { scales, suffix, minor } = resolveConfig(currency);
+    if (num === 0) return `Zero ${suffix} Only`;
 
-    const { scales, suffix } = currencyConfigs[currency];
     const isIndian = currency === "INR";
 
     const rupees = Math.floor(num);
@@ -119,8 +135,9 @@ export const numberToWordsCurrency = (
 
     let finalWords = words.trim() + ` ${suffix} Only`;
 
-    if (paise > 0) {
-        finalWords += ` and ${numberToWords(paise)} ${currency === "INR" ? "Paise" : "Cents"}`;
+    const minorName = minor === undefined ? (currency === "INR" ? "Paise" : "Cents") : minor;
+    if (paise > 0 && minorName) {
+        finalWords += ` and ${numberToWords(paise)} ${minorName}`;
     }
 
     return finalWords.trim();

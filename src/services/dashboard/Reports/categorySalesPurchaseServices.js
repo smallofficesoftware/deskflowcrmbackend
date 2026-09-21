@@ -6,7 +6,7 @@ import companyModel from "../../../models/company_setup/companyModel.js";
 import currencyModel from "../../../models/configuration/currencyModel.js";
 import { categoryModel } from "../../../models/product_settings/categoryModel.js";
 import { PAGE_ID } from "../../../utils/AppEnumeration.js";
-import { resSuccess } from "../../../utils/sharedFunctions.js";
+import { resError, resSuccess } from "../../../utils/sharedFunctions.js";
 import { getCompanyByLoginId } from "../../commonServices.js";
 // If needed at top of file:
 // const { Op, fn, col, Sequelize } = require('sequelize');
@@ -146,6 +146,25 @@ export const getCategorySalesPurchase = async (req) => {
       ];
     }
 
+    // Pagination is by DISTINCT CATEGORY, not by (category × cart_type)
+    // row - applying offset/limit to the grouped result directly could
+    // split a single category's cart_type rows across two pages, silently
+    // dropping columns for categories caught on the page boundary. Page
+    // the distinct category list first, then fetch every cart_type row
+    // for just that page's categories (unbounded).
+    const distinctCategories = await cartItem.findAll({
+      attributes: ["item_category_id", "item_category_name"],
+      where,
+      group: ["item_category_id", "item_category_name"],
+      order: [["item_category_name", "ASC"]],
+      raw: true,
+    });
+
+    const totalRecords = distinctCategories.length;
+    const pageCategoryIds = distinctCategories
+      .slice(offset, offset + limit)
+      .map((c) => c.item_category_id);
+
     const productData = await cartItem.findAll({
       attributes: [
         "item_category_id",
@@ -155,10 +174,11 @@ export const getCategorySalesPurchase = async (req) => {
         [fn("SUM", col("item_qty")), "total_quantity"],
         [fn("SUM", col("item_total")), "total_amount"],
       ],
-      where,
+      where: {
+        ...where,
+        item_category_id: { [Op.in]: pageCategoryIds.length ? pageCategoryIds : [0] },
+      },
       group: ["item_category_id", "item_category_name", "cart_type"],
-      offset,
-      limit,
       raw: true,
     });
 
@@ -185,6 +205,7 @@ export const getCategorySalesPurchase = async (req) => {
         salesInvoice,
         purchaseInvoice,
         purchaseOrder,
+        total: totalRecords,
       },
       ack_msg:
         productData.length > 0

@@ -231,7 +231,7 @@ export const statusWiseContactCountReportGet = async (req) => {
         const paginatedResult = result.slice(ul, ul + ll);
 
         return resSuccess({
-            data: { item: paginatedResult },
+            data: { item: paginatedResult, total: result.length },
             ack_msg: "Status-wise report retrieved successfully",
         });
 
