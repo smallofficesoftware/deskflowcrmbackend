@@ -1,3 +1,4 @@
+import logger from "../../utils/logger.js";
 import Sequelize from "sequelize";
 import {
     formatDateAndTimeCreateDateTime,
