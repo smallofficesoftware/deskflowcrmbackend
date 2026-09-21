@@ -36,6 +36,7 @@ import { stateModel } from "../../models/masters/stateModel.js";
 import { __dirnameConstant, EXPORTS_LINK_EXTENDED, PDF_LINK_EXTENDED_Account_TRANSACTION } from '../../utils/appConstants.js';
 import { PAGE_ID } from "../../utils/AppEnumeration.js";
 import { exportData } from "../../utils/exporter.js";
+import logger from "../../utils/logger.js";
 import { getCompanyByLoginId, getCompanyDetailByLoginId } from "../commonServices.js";
 import { documentPrintTemplateModel } from "../../models/company_setup/documentPrintTemplateModel.js";
 import { isFeatureEnabled } from "../company_setup/featureFlagServices.js";
