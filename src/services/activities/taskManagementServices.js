@@ -2315,35 +2315,41 @@ export const assignTaskTeamMembersToTasks = async (req) => {
 };
 
 export const AllTaskDelete = async (req) => {
+  const { a_application_login_id } = req.body;
   const TaskInput = req.body.TaskId;
   const taskIds = Array.isArray(TaskInput) ? TaskInput : [TaskInput];
 
   try {
+    const findCompanyId = await getCompanyByLoginId(a_application_login_id);
     const TaskModel = taskManagementModel(req.tenantDB);
     const TaskDataSourceModel = taskTemplateDatasource(req.tenantDB);
 
-    const taskHaveTaskTemplateCheck = await TaskModel.findOne({
+    // Only delete tasks that belong to this company - taskIds from the
+    // client can't be trusted to already be scoped to the caller's tenant.
+    const scopedTasks = await TaskModel.findAll({
       where: {
-        id: taskIds,
-        isDelete: 0
+        id: { [Sequelize.Op.in]: taskIds },
+        isDelete: 0,
+        company_masters_id: findCompanyId.company_masters_id,
       },
-      attributes: ["id", "task_template"],
-      raw: true
+      attributes: ["id"],
+      raw: true,
     });
+    const scopedIds = scopedTasks.map((task) => task.id);
 
-    // if (taskHaveTaskTemplateCheck && taskHaveTaskTemplateCheck.task_template > 0) {
-    //   return resError({
-    //     ack_msg: "This task is linked to a task template. Please remove the template first",
-    //     developer_msg: "This task added in task template so first remove it."
-    //   });
-    // }
+    if (scopedIds.length === 0) {
+      return resSuccess({
+        ack_msg: "No Task deleted.",
+        developer_msg: "No matching tasks found for this company.",
+      });
+    }
 
     // Soft delete tasks (TaskModel)
     const [affectedCount] = await TaskModel.update(
       { isDelete: 1 },
       {
         where: {
-          id: { [Sequelize.Op.in]: taskIds },
+          id: { [Sequelize.Op.in]: scopedIds },
           isDelete: 0,
         },
       }
@@ -2354,7 +2360,7 @@ export const AllTaskDelete = async (req) => {
       { isDelete: 1 },
       {
         where: {
-          task_id: { [Sequelize.Op.in]: taskIds },
+          task_id: { [Sequelize.Op.in]: scopedIds },
           isDelete: 0,
         },
       }
@@ -2366,7 +2372,7 @@ export const AllTaskDelete = async (req) => {
       { isDelete: 1 },
       {
         where: {
-          task_id: { [Sequelize.Op.in]: taskIds },
+          task_id: { [Sequelize.Op.in]: scopedIds },
           isDelete: 0,
         },
       }
@@ -3271,10 +3277,12 @@ export const unarchiveTasks = async (req) => {
 };
 
 export const convertSupportTicketToTasks = async (req) => {
+  const { a_application_login_id } = req.body;
   const TaskInput = req.body.TaskId;
   const taskIds = Array.isArray(TaskInput) ? TaskInput : [TaskInput];
 
   try {
+    const findCompanyId = await getCompanyByLoginId(a_application_login_id);
     const TaskModel = taskManagementModel(req.tenantDB);
 
     // update tasks
@@ -3284,6 +3292,7 @@ export const convertSupportTicketToTasks = async (req) => {
         where: {
           id: { [Sequelize.Op.in]: taskIds },
           isDelete: 0,
+          company_masters_id: findCompanyId.company_masters_id,
         },
       }
     );
