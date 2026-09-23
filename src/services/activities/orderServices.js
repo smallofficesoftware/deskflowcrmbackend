@@ -2120,7 +2120,12 @@ export const orderUpdate = async (req, res) => {
 
 
 
-    if (cart_id && update_cart == undefined && update_cart_items == undefined) {
+    // Approve-only call (e.g. multi-approve from the order lists): no cart data
+    // is sent and a_application_login_id is the approver, not the order's owner.
+    const isApproveOnlyUpdate =
+      cart_id && update_cart == undefined && update_cart_items == undefined;
+
+    if (isApproveOnlyUpdate) {
 
       const updateCartData = await CATModel.findOne({
         where: {
@@ -2458,6 +2463,13 @@ export const orderUpdate = async (req, res) => {
           ...cartItemCustom,
         };
         break;
+    }
+    if (isApproveOnlyUpdate) {
+      // Keep the order's owner (credited in reports / target vs incentive);
+      // the caller is only the approver. Sequelize skips undefined on update.
+      cartBody.approve_a_application_login_id =
+        Approve_application_login_id ?? a_application_login_id;
+      cartBody.a_application_login_id = undefined;
     }
     const updateCartResult = await CATModel.update(cartBody, {
       where: { id: cart_id, isDelete: 0 },
