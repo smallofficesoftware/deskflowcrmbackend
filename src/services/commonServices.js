@@ -2115,13 +2115,35 @@ export const updateCommon = async (req) => {
 
     if (table === "a_application_logins") {
       if (updateData.employee_id) {
-        const employeeIDDuplication =
-          await loginModel.findOne({
+        // a_application_logins is shared by every company, so only compare
+        // against members of the current company — each company numbers its
+        // own employees. Falls back to the global check if the company can't
+        // be resolved.
+        const duplicateWhere = {
+          id: { [Op.ne]: whereObj.id },
+          employee_id: updateData.employee_id,
+          isDelete: 0,
+        };
+        const currentCompany = await getCompanyByLoginId(
+          req.body.a_application_login_id
+        );
+        if (currentCompany?.company_masters_id) {
+          const companyMembers = await companyVsApplicationLoginModel.findAll({
             where: {
-              id: { [Op.ne]: whereObj.id },
-              employee_id: updateData.employee_id,
+              company_masters_id: currentCompany.company_masters_id,
               isDelete: 0,
             },
+            attributes: ["a_application_login_id"],
+            raw: true,
+          });
+          duplicateWhere.id = {
+            [Op.ne]: whereObj.id,
+            [Op.in]: companyMembers.map((m) => m.a_application_login_id),
+          };
+        }
+        const employeeIDDuplication =
+          await loginModel.findOne({
+            where: duplicateWhere,
             attributes: ["employee_id"],
           });
         if (employeeIDDuplication != null) {
