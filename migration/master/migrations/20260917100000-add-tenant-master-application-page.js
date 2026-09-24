@@ -10,11 +10,11 @@
  * so a role's Tenant Master access can be granted independently of
  * Companies.
  *
- * id 186 — next after SERIAL_NUMBER_STOCK_CHECK (185). Verified against
- * live a_application_pages (2026-09-17, dev): MAX(id) was 185. Re-verify
- * (SELECT MAX(id) FROM a_application_pages) before running this in an
- * environment that may have diverged, since adminpanel shares this same
- * table with rows not visible from the CRM codebase.
+ * Preferred id 186 — next after SERIAL_NUMBER_STOCK_CHECK (185), and what
+ * dev/prod use. Demo's a_application_pages ids diverged (admin-panel pages
+ * were inserted in a different order), so 186 is already taken there; when
+ * the preferred id is taken, fall back to MAX(id)+1. Safe because the page
+ * is only ever looked up by page_slug ('tenant-master'), never by id.
  *
  * Unlike other recent additions to this table, this page is adminpanel-only
  * (superadmin RBAC), not a tenant-facing CRM feature, so no `plan_vs_pages`
@@ -28,14 +28,25 @@ export const up = async (queryInterface, Sequelize) => {
     "SELECT id FROM `a_application_pages` WHERE `page_slug` = 'tenant-master' LIMIT 1"
   );
   if (existingPage.length === 0) {
+    const [idTaken] = await queryInterface.sequelize.query(
+      `SELECT id FROM \`a_application_pages\` WHERE \`id\` = ${TENANT_MASTER_PAGE_ID} LIMIT 1`
+    );
+    let pageId = TENANT_MASTER_PAGE_ID;
+    if (idTaken.length > 0) {
+      const [[{ maxId }]] = await queryInterface.sequelize.query(
+        "SELECT MAX(id) AS maxId FROM `a_application_pages`"
+      );
+      pageId = Number(maxId) + 1;
+    }
     await queryInterface.sequelize.query(
-      `INSERT INTO \`a_application_pages\` (\`id\`, \`page_name\`, \`modual_name\`, \`page_slug\`, \`description\`, \`type\`, \`display_order\`, \`isPublic\`, \`isRights\`, \`created_date_time\`, \`s_timestemp\`, \`isDelete\`, \`isActive\`) VALUES (${TENANT_MASTER_PAGE_ID}, 'Tenant Master', 'Tenants', 'tenant-master', 'Admin panel Tenant Master listing', '1', '0', '0', '1', NOW(), UNIX_TIMESTAMP(), '0', '1');`
+      `INSERT INTO \`a_application_pages\` (\`id\`, \`page_name\`, \`modual_name\`, \`page_slug\`, \`description\`, \`type\`, \`display_order\`, \`isPublic\`, \`isRights\`, \`created_date_time\`, \`s_timestemp\`, \`isDelete\`, \`isActive\`) VALUES (${pageId}, 'Tenant Master', 'Tenants', 'tenant-master', 'Admin panel Tenant Master listing', '1', '0', '0', '1', NOW(), UNIX_TIMESTAMP(), '0', '1');`
     );
   }
 };
 
 export const down = async (queryInterface) => {
+  // Id varies per environment (see header), so match on slug only.
   await queryInterface.sequelize.query(
-    `DELETE FROM \`a_application_pages\` WHERE \`id\` = ${TENANT_MASTER_PAGE_ID} AND \`page_slug\` = 'tenant-master'`
+    "DELETE FROM `a_application_pages` WHERE `page_slug` = 'tenant-master'"
   );
 };
