@@ -3575,3 +3575,8 @@ CREATE TABLE `application_sessions` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_application_sessions_login_platform` (`a_application_login_id`, `platform`)
 );
+
+24-09-2026 Dhaval
+-- every tenant DB + smalloffice_sample_tenant. Formula for calculated product custom fields on order lines
+-- (JSON: {"expr":"{products_column_number_1}*{products_column_number_2}","drives":"qty"|"amount"|null}).
+ALTER TABLE `custom_field_form_masters` ADD `calc_config` TEXT NULL DEFAULT NULL AFTER `applicable_modules`;

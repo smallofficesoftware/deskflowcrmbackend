@@ -85,6 +85,7 @@ export const addCustomFieldFrom = async (req) => {
       reference_column_name: validColumn,
       third_party_field_name: req.body.third_party_field_name ? String(req.body.third_party_field_name).trim() : null,
       applicable_modules: req.body.applicable_modules ? String(req.body.applicable_modules).trim() : null,
+      calc_config: req.body.calc_config ? String(req.body.calc_config).trim() : null,
       created_date_time: formattedDate,
     };
 
@@ -142,6 +143,7 @@ export const getAllCustomFieldFrom = async (req) => {
         "data_sorce",
         "third_party_field_name",
         "applicable_modules",
+        "calc_config",
         "form_type"
       ],
       order: [["display_order", "ASC"]],

@@ -67,6 +67,10 @@ export const customFieldFormModel = (sequelize) => {
       type: STRING,
       defaultValue: null
     },
+    calc_config: {
+      type: TEXT,
+      defaultValue: null
+    },
     isDelete: {
       type: TINYINT,
       defaultValue: "0",
