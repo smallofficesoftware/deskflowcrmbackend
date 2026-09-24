@@ -3580,3 +3580,9 @@ CREATE TABLE `application_sessions` (
 -- every tenant DB + smalloffice_sample_tenant. Formula for calculated product custom fields on order lines
 -- (JSON: {"expr":"{products_column_number_1}*{products_column_number_2}","drives":"qty"|"amount"|null}).
 ALTER TABLE `custom_field_form_masters` ADD `calc_config` TEXT NULL DEFAULT NULL AFTER `applicable_modules`;
+
+24-09-2026 Dhaval
+-- demo master DB only: admin-panel pages on demo were inserted in a different order than dev/prod, so id 186
+-- (used by migration 20260917100000-add-tenant-master-application-page for Tenant Master) is already taken there.
+-- Tenant Master is resolved by page_slug, not id, so demo uses the next free id (197) instead. Dev/prod keep 186.
+INSERT INTO `a_application_pages` (`id`, `page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (197, 'Tenant Master', 'Tenants', 'tenant-master', 'Admin panel Tenant Master listing', '1', '0', '0', '1', NOW(), UNIX_TIMESTAMP(), '0', '1');
