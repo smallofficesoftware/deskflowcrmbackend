@@ -1,4 +1,5 @@
 import jwt from "jsonwebtoken";
+import applicationSessionModel from "../models/application_login/applicationSessionModel.js";
 import { ANDROID_APPLICATION_VERSION, ANDROID_UPDATE_VERSION_MSG, APPLICATION_APK_URL, APPLICATION_APK_URL_ANDROID, APPLICATION_APK_URL_IOS, APPLICATION_VERSION, CALL_HELPER_APP_VERSION, CALL_TRACKER_APP_URL, HARDCODED_TOKEN, JWT_TOKEN_SIGNATURE, LOCATIONS_TIME_FOR_MOBILE, LOCATIONS_UPDATE_ON_SERVER, UPDATE_VERSION_MSG } from "../utils/appConstants.js";
 
 export const authenticateToken = async (req, res, next) => {
@@ -32,6 +33,22 @@ export const authenticateToken = async (req, res, next) => {
 
     if (decoded) {
       req.user = decoded;
+
+      // jti present (token issued via issueSessionToken) → application_sessions is the
+      // authoritative source for the login's CURRENT active company, since another
+      // device may have switched workspace after this token was issued. Older tokens
+      // without a jti (pre-existing, not yet expired) fall back to their own claim.
+      if (decoded.jti) {
+        const session = await applicationSessionModel.findOne({
+          where: { jwt_jti: decoded.jti, isDelete: 0 },
+          attributes: ["company_masters_id"],
+          raw: true,
+        });
+        if (session) {
+          req.user.companyId = session.company_masters_id;
+        }
+      }
+
       next(); // Call next middleware or route handler
     } else {
       return res.json({

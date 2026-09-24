@@ -3558,3 +3558,20 @@ UPDATE `a_application_pages` SET `id` = 184 WHERE `id` = 179 AND `page_slug` = '
 UPDATE `plan_vs_pages` SET `page_id` = 184 WHERE `page_id` = 179;
 -- run in every demo tenant DB (not the master DB): move the existing rights rows to the corrected page id
 UPDATE `a_application_login_type_rights` SET `page_id` = 184 WHERE `page_id` = 179 AND `page_name` = 'Find/Merge Duplicate Contacts';
+
+23-09-2026 Dhaval
+-- master DB only. Server-side session record per (login, platform) so the active
+-- company_masters_id for a login is resolved here instead of trusting each device's
+-- own JWT claim (fixes cross-device company drift, ticket #2559).
+CREATE TABLE `application_sessions` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `a_application_login_id` INT NOT NULL,
+  `company_masters_id` INT NOT NULL,
+  `platform` VARCHAR(20) NOT NULL COMMENT 'web|ios|android',
+  `jwt_jti` VARCHAR(100) NOT NULL,
+  `issued_at` DATETIME NOT NULL,
+  `expires_at` DATETIME NOT NULL,
+  `isDelete` TINYINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_application_sessions_login_platform` (`a_application_login_id`, `platform`)
+);
