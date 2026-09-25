@@ -476,6 +476,16 @@ export const getTeamAllCarts = async (req) => {
     const total = allCartsWithUser.length;
     const paginatedData = allCartsWithUser.slice(ul, ul + ll);
 
+    // Grand totals over the whole filtered set (not just this page), for
+    // the grids' "Grand Total" footer row - summed from the same
+    // currency-free *_wo_c fields the page totals and exports use.
+    const grand_totals = Object.fromEntries(
+      ["taxable_amt", "gst_amt", "tcs_amt", "round_off", "grand_total"].map((key) => [
+        key,
+        Number(allCartsWithUser.reduce((sum, cart) => sum + (Number(cart[`${key}_wo_c`]) || 0), 0).toFixed(2)),
+      ]),
+    );
+
     // Type names
     const types = {
       "1": "Quotation",
@@ -494,6 +504,7 @@ export const getTeamAllCarts = async (req) => {
       data: {
         item: paginatedData,
         total: total,
+        grand_totals,
         currency_name: currency?.short_name || ""
       },
       ack_msg: `Team ${types[type] || "Report"} fetched successfully`,
