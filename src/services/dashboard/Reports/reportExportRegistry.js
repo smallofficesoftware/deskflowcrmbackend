@@ -101,12 +101,296 @@ const formatCallDuration = (input) => {
   }
   return "-";
 };
-// Same "DD/MM/YYYY - hh:mm A" shape as formatDateTime in AllCallReportView.tsx.
-const formatCallDateTime = (value) => {
-  if (!value) return "-";
+// ─── Grid display derivations ───────────────────────────────────────────
+// Export columns reuse each grid's own column keys, but many grid cells
+// render a value derived from other row fields (the view's
+// getExportCellValue / column `body`). The raw service row has nothing at
+// those keys, so the export came out blank, a raw id, or "[object Object]".
+// The helpers below port those derivations so a server-side full export
+// matches what the grid (and Print) shows.
+
+// Same "DD/MM/YYYY - hh:mm A" shape as the grids' formatDateTime.
+const formatGridDateTime = (value) => {
+  if (!value || value === "0000-00-00") return "-";
   const parsed = moment(value);
   return parsed.isValid() ? parsed.format("DD/MM/YYYY - hh:mm A") : "-";
 };
+
+const stripHtml = (value) =>
+  value ? String(value).replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, "").trim() || "-" : "-";
+
+const toPlain = (row) => (row?.toJSON ? row.toJSON() : row);
+
+// "Company (Name) - Mobile" - Account Credit/Debit/All Account grids.
+const composeAccountContact = (txn) => {
+  const company = txn.contact_companyName || "";
+  const contact = txn.contact_name || "";
+  const mobile = txn.contact_mobileNumber || "";
+  const parts = [];
+  if (company || contact) parts.push(company && contact ? `${company} (${contact})` : company || contact);
+  if (mobile) parts.push(mobile);
+  return parts.length ? parts.join(" - ") : "-";
+};
+const deriveAccountTxnRows = (typeLabel) => (result) =>
+  nestedDataArray(result).map((raw) => {
+    const txn = toPlain(raw);
+    return {
+      ...txn,
+      contact_masters_id: composeAccountContact(txn),
+      ...(typeLabel ? { typeItem: typeLabel } : {}),
+      amount: txn.amountwithcurrency || txn.amount,
+      remark: stripHtml(txn.remark),
+    };
+  });
+
+const deriveEmployeeTxnRow = (raw) => {
+  const txn = toPlain(raw);
+  return {
+    ...txn,
+    contact_masters_id: [txn.username, txn.recovery_mobile].filter(Boolean).join(" - ") || "-",
+    amount: txn.amountwithoutcurrency || txn.amount,
+    remark: stripHtml(txn.remark),
+  };
+};
+
+const deriveInquiryRow = (raw) => {
+  const row = toPlain(raw);
+  const labels = Array.isArray(row.label_name) ? row.label_name : [];
+  const labelText = labels.length ? labels.map((l) => l.name).join(", ") : "-";
+  return {
+    ...row,
+    customerName: row.person_name || "-",
+    customerNumber: row.mobile_number || "-",
+    lable: labelText,
+    label_name: labelText,
+  };
+};
+
+const EXPENSE_STATUS_LABELS = { 1: "Pending", 2: "Approved", 3: "Rejected" };
+const deriveExpenseRow = (raw) => {
+  const row = toPlain(raw);
+  return {
+    ...row,
+    employee: row.created_by_username ?? "-",
+    status: EXPENSE_STATUS_LABELS[row.expense_status] || "-",
+  };
+};
+
+const deriveReminderRow = (raw) => {
+  const row = toPlain(raw);
+  return {
+    ...row,
+    reminder_data_time: formatGridDateTime(row.reminder_data_time),
+    completed_date_time: formatGridDateTime(row.completed_date_time),
+    remark: stripHtml(row.remark),
+  };
+};
+
+const joinIfArray = (value) => (Array.isArray(value) ? value.join(", ") : value || "-");
+const deriveTaskRow = (raw) => {
+  const row = toPlain(raw);
+  const derived = {
+    ...row,
+    id: row.id ? String(row.id) : "XXXXXXX",
+    status_name: row.stage_status_name || row.status_name || "-",
+    task_remark: stripHtml(row.task_remark),
+    selected_days_names: joinIfArray(row.selected_days_names),
+    assigned_team_member_names: joinIfArray(row.assigned_team_member_names),
+    task_fromdate: formatGridDateTime(row.task_fromdate),
+    task_enddate: formatGridDateTime(row.task_enddate),
+  };
+  // Custom-form columns are keyed customForm_<field id> on the grid.
+  for (const cf of row.customForm || []) derived[`customForm_${cf.id}`] = cf.value || "-";
+  return derived;
+};
+
+const deriveContactDateRow = (raw) => {
+  const row = toPlain(raw);
+  return { ...row, created_date_time: formatGridDateTime(row.created_date_time) };
+};
+
+// Cart family: line items as "Product (code) | qty | rate" lines, amount
+// columns without the currency prefix (the *_wo_c twins the grid exports),
+// formatted dates. `withRate: false` for Pending Order/Purchase, whose
+// grids show qty only.
+const formatCartItems = (items, withRate = true) =>
+  (Array.isArray(items) ? items : [])
+    .map((i) => {
+      const name = i.item_product_name || "";
+      const code = i.item_product_code || "";
+      const product = code ? `${name} (${code})` : name;
+      return withRate ? `${product} | ${i.item_qty} | ${i.item_rate}` : `${product} | ${i.item_qty}`;
+    })
+    .join("\n") || "-";
+const CART_AMOUNT_KEYS = ["taxable_amt", "gst_amt", "tcs_amt", "round_off", "grand_total"];
+const TRANSACTION_MODE_LABELS = { 1: "Cash Memo", 2: "Debit Memo" };
+const deriveCartRow = (row, { withRate = true, transactionMode = false } = {}) => {
+  const derived = {
+    ...row,
+    items: formatCartItems(row.items, withRate),
+    created_date_time: formatGridDateTime(row.created_date_time),
+    update_Date_time: formatGridDateTime(row.update_Date_time),
+  };
+  for (const key of CART_AMOUNT_KEYS) {
+    if (row[`${key}_wo_c`] !== undefined) derived[key] = `${row[`${key}_wo_c`]}`;
+  }
+  if (transactionMode) derived.transaction_mode = TRANSACTION_MODE_LABELS[row.transaction_mode] || "-";
+  return derived;
+};
+// compose: the existing per-report cart_number/to_customer_name
+// composition (composeCartDisplayFields etc.), applied first.
+const cartRows = (compose, opts) => (result) =>
+  itemArray(result).map((raw) => {
+    const row = toPlain(raw);
+    return deriveCartRow(compose ? compose(row) : row, opts);
+  });
+
+const withProductCode = (row) => ({
+  ...row,
+  item_product_name: `${row.item_product_name ?? "-"}${row.item_product_code ? ` - ${row.item_product_code}` : ""}`,
+});
+
+const SALARY_MONTHS = [
+  "", "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+const deriveSalaryRow = (raw) => {
+  const row = toPlain(raw);
+  return {
+    ...row,
+    year: `${SALARY_MONTHS[row.month] || row.month || ""} - ${row.year ?? ""}`,
+    added_date: row.added_date ? moment(row.added_date).format("DD/MM/YYYY") : "00/00/0000",
+  };
+};
+
+// Process Attendance: status counts keyed by grid column, plus one column
+// per date (keyed YYYY-MM-DD) showing that day's status code.
+const PROCESS_DAY_STATUS = { 1: "P", 2: "HD", 3: "A", 4: "L", 5: "WO", 6: "PH", 7: "WOWO", 8: "WOPH" };
+const PROCESS_STATUS_COLUMNS = {
+  present: "P", half_day: "HD", absent: "A", leave: "L", week_off: "WO",
+  holiday: "PH", work_on_week_off: "WOWO", work_on_public_holiday: "WOPH",
+};
+const deriveProcessAttendanceRow = (raw) => {
+  const row = toPlain(raw);
+  const derived = { ...row };
+  for (const [key, code] of Object.entries(PROCESS_STATUS_COLUMNS)) {
+    derived[key] = String(row.status_count?.[code] ?? "-");
+  }
+  for (const rawDay of row.presentDates || []) {
+    const day = toPlain(rawDay);
+    derived[moment(day.date).format("YYYY-MM-DD")] = PROCESS_DAY_STATUS[day.day_status] ?? "-";
+  }
+  return derived;
+};
+
+const formatInr = (n) => Number(n || 0).toLocaleString("en-IN");
+const deriveTargetIncentiveRow = (raw) => {
+  const item = toPlain(raw);
+  const sym = item.currency_symbol || "₹";
+  return {
+    ...item,
+    target_type_label: item.target_type_label || "Invoice",
+    target_achieved_count: item.target_count > 0 ? `${item.target_count} / ${item.achieved_count || 0}` : "-",
+    target_achieved_value:
+      item.target_value > 0 ? `${sym}${formatInr(item.target_value)} / ${sym}${formatInr(item.achieved_value)}` : "-",
+    achievement_percentage: `${item.achievement_percentage ?? item.achievement_pct ?? 0}%`,
+    incentive_rule:
+      item.incentive_type === 1
+        ? `${item.incentive_value}%`
+        : item.incentive_type === 2
+          ? `${sym}${item.incentive_value} (Flat)`
+          : "None",
+    earned_incentive: `${sym}${formatInr(item.incentive_amount ?? item.earned_incentive)}`,
+  };
+};
+
+// Customer Sales Purchase: s_no is the running row number across pages.
+const formatMoney2 = (n) =>
+  Math.abs(Number(n || 0)).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const customerSalesPurchaseRows = (result, page) => {
+  const sym = result?.data?.summary?.currency_symbol || "₹";
+  const offset = Number(page?.body?.ul) || 0;
+  return itemArray(result).map((raw, idx) => {
+    const item = toPlain(raw);
+    const net = Number(item.net_balance || 0);
+    return {
+      ...item,
+      s_no: offset + idx + 1,
+      total_sales: `${sym}${formatMoney2(item.total_sales)}`,
+      total_purchase: `${sym}${formatMoney2(item.total_purchase)}`,
+      net_balance: net < 0 ? `(${sym}${formatMoney2(net)})` : `${sym}${formatMoney2(net)}`,
+    };
+  });
+};
+
+// "count (amount)" pairs - Team Pending Work / Team Performance grids.
+const deriveTeamPendingRow = (raw) => {
+  const r = toPlain(raw);
+  const pair = (o) => `${o?.count ?? "-"} ( ${o?.amount ?? "-"})`;
+  return {
+    ...r,
+    quotation_total: pair(r.quotation),
+    salesOrder_total: pair(r.order),
+    salesInvoice_total: pair(r.sell_invoice),
+    purchaseInvoice_total: pair(r.purchase_invoice),
+    purchaseOrder_total: pair(r.purchase_order),
+    pendingReminder_total: `${r.pendingReminder ?? "-"}`,
+    reqExpenseAmount: `${r.reqExpenseAmount ?? "-"}`,
+  };
+};
+const deriveTeamPerformanceRow = (raw) => {
+  const r = toPlain(raw);
+  const pair = (o) => `${o?.count ?? "-"} (${o?.amount ?? "-"})`;
+  return {
+    ...r,
+    quotation: pair(r.quotation),
+    order: pair(r.order),
+    sell_invoice: pair(r.sell_invoice),
+    purchase_order: pair(r.purchase_order),
+    purchase_invoice: pair(r.purchase_invoice),
+    expense: String(r.expense?.PassedAmount ?? "-"),
+    account_credit: pair(r.account?.credit),
+    account_debit: pair(r.account?.debit),
+  };
+};
+
+// Team Day Wise Expense: one row per member, one column per date keyed
+// combined_amount_YYYY-MM-DD = "₹requested(₹passed)", plus a total -
+// ported from the grid's own grouping in teamDayExpenseView.tsx.
+const parseAmount = (amount) => {
+  if (amount == null) return { value: 0, symbol: "₹" };
+  const str = String(amount);
+  const match = str.match(/[^0-9.-]+/);
+  const symbol = match ? match[0].trim() || "₹" : "₹";
+  return { value: Number(str.replace(/[^0-9.-]+/g, "")) || 0, symbol };
+};
+const teamDayExpenseRows = (result) =>
+  itemArray(result).map((raw) => {
+    const member = toPlain(raw);
+    let symbol = "₹";
+    let totalRequested = 0;
+    let totalPassed = 0;
+    const byDate = {};
+    for (const exp of member.result || []) {
+      const key = `combined_amount_${moment(exp.expense_date).format("YYYY-MM-DD")}`;
+      const requested = parseAmount(exp.requested_amount);
+      const passed = parseAmount(exp.pass_amount);
+      if (requested.symbol !== "₹" && symbol === "₹") symbol = requested.symbol;
+      if (passed.symbol !== "₹" && symbol === "₹") symbol = passed.symbol;
+      byDate[key] = byDate[key] || { requested: 0, passed: 0 };
+      byDate[key].requested += requested.value;
+      byDate[key].passed += passed.value;
+      totalRequested += requested.value;
+      totalPassed += passed.value;
+    }
+    const row = {
+      username: member.username || "-",
+      total_combined_amount: `${symbol}${totalRequested}(${symbol}${totalPassed})`,
+    };
+    for (const [key, v] of Object.entries(byDate)) row[key] = `${symbol}${v.requested}(${symbol}${v.passed})`;
+    return row;
+  });
+
 const flattenCallReportRows = (result) => {
   const groups = flatArray(result);
   const rows = [];
@@ -132,7 +416,7 @@ const flattenCallReportRows = (result) => {
         call_name: call.call_name,
         username: user?.username || "",
         person_name: call.call_name || call.person_name,
-        start_date: formatCallDateTime(call.call_date_time),
+        start_date: formatGridDateTime(call.call_date_time),
         s_timestemp: call.s_timestemp,
         source_name: call.contactDetails?.source_name || "",
         source_colour: call.contactDetails?.source_colour || "",
@@ -191,6 +475,10 @@ const flattenVisitReportRows = (result) => {
         duration: calculateDuration(item.start_date, item.end_date),
         start_day: getDayName(item.start_date),
         end_day: getDayName(item.end_date),
+        start_date: formatGridDateTime(item.start_date),
+        end_date: formatGridDateTime(item.end_date),
+        visit_image: "-",
+        location: "-",
       });
     }
   }
@@ -470,11 +758,11 @@ export const reportExportRegistry = {
   },
   all_deleted_contact_report: {
     fetchPage: (req) => getAllContactReport({ ...req, body: { ...req.body, deleted_flag: 1 } }),
-    extractRows: itemArray,
+    extractRows: (result) => itemArray(result).map(deriveContactDateRow),
   },
   chain_wise_contact_report: {
     fetchPage: (req) => getAllContactChainWise(req),
-    extractRows: itemArray,
+    extractRows: (result) => itemArray(result).map(deriveContactDateRow),
   },
   all_call_report: {
     fetchPage: (req) => getCallReport(req),
@@ -486,70 +774,70 @@ export const reportExportRegistry = {
   },
   all_reminder_report: {
     fetchPage: (req) => getTeamReminderReport(req),
-    extractRows: nestedDataArray,
+    extractRows: (result) => nestedDataArray(result).map(deriveReminderRow),
     postProcess: appendReminderTotalRow,
   },
   all_inquiry_report: {
     fetchPage: (req) => inquiryReport(req),
-    extractRows: itemsArray,
+    extractRows: (result) => itemsArray(result).map(deriveInquiryRow),
   },
 
   // Cart family - all backed by getTeamAllCarts, dispatched by `type`
   // (pageIdMap confirmed in teamAllCartsReportServices.js:54-65).
   quotation_report: {
     fetchPage: (req) => getTeamAllCarts({ ...req, body: { ...req.body, type: 1 } }),
-    extractRows: (result) => itemArray(result).map(composeCartDisplayFieldsWithPhone),
+    extractRows: cartRows(composeCartDisplayFieldsWithPhone),
   },
   sales_order_report: {
     fetchPage: (req) => getTeamAllCarts({ ...req, body: { ...req.body, type: 2 } }),
-    extractRows: (result) => itemArray(result).map(composeCartDisplayFieldsWithPhone),
+    extractRows: cartRows(composeCartDisplayFieldsWithPhone),
   },
   sales_invoice_report: {
     fetchPage: (req) => getTeamAllCarts({ ...req, body: { ...req.body, type: 3 } }),
-    extractRows: (result) => itemArray(result).map(composeCartDisplayFieldsWithPhone),
+    extractRows: cartRows(composeCartDisplayFieldsWithPhone),
   },
   purchase_order_report: {
     fetchPage: (req) => getTeamAllCarts({ ...req, body: { ...req.body, type: 4 } }),
-    extractRows: (result) => itemArray(result).map(composeCartDisplayFields),
+    extractRows: cartRows(composeCartDisplayFields),
   },
   purchase_invoice_report: {
     fetchPage: (req) => getTeamAllCarts({ ...req, body: { ...req.body, type: 5 } }),
-    extractRows: itemArray,
+    extractRows: cartRows(composeCartDisplayFields, { transactionMode: true }),
   },
   return_sales_invoice_report: {
     fetchPage: (req) => getTeamAllCarts({ ...req, body: { ...req.body, type: 6 } }),
-    extractRows: itemArray,
+    extractRows: cartRows(composeCartDisplayFields, { transactionMode: true }),
   },
   return_purchase_invoice_report: {
     fetchPage: (req) => getTeamAllCarts({ ...req, body: { ...req.body, type: 7 } }),
-    extractRows: itemArray,
+    extractRows: cartRows(composeCartDisplayFields, { transactionMode: true }),
   },
   inward_report: {
     fetchPage: (req) => getTeamAllCarts({ ...req, body: { ...req.body, type: 8 } }),
-    extractRows: itemArray,
+    extractRows: cartRows(composeCartDisplayFields),
   },
   dispatch_report: {
     fetchPage: (req) => getTeamAllCarts({ ...req, body: { ...req.body, type: 9 } }),
-    extractRows: (result) => itemArray(result).map(composeCartDisplayFields),
+    extractRows: cartRows(composeCartDisplayFields),
   },
   proforma_invoice_report: {
     fetchPage: (req) => getTeamAllCarts({ ...req, body: { ...req.body, type: 12 } }),
-    extractRows: (result) => itemArray(result).map(composeCartDisplayFields),
+    extractRows: cartRows(composeCartDisplayFields),
   },
   // Unreachable in the current UI (ReportsModel.tsx's entry is commented
   // out) - registered anyway since it costs nothing and the view already
   // wires the shared export service directly.
   detailed_order_report: {
     fetchPage: (req) => getTeamAllCarts(req),
-    extractRows: (result) => itemArray(result).map(composeCartDisplayFields),
+    extractRows: cartRows(composeCartDisplayFields),
   },
   pending_order_report: {
     fetchPage: (req) => getTeamAllCarts({ ...req, body: { ...req.body, type: 2 } }),
-    extractRows: (result) => itemArray(result).map(flattenCart),
+    extractRows: cartRows(flattenCart, { withRate: false }),
   },
   pending_purchase_report: {
     fetchPage: (req) => getTeamAllCarts({ ...req, body: { ...req.body, type: 5 } }),
-    extractRows: (result) => itemArray(result).map(flattenCart),
+    extractRows: cartRows(flattenCart, { withRate: false }),
   },
 
   account_outstanding_report: {
@@ -558,15 +846,15 @@ export const reportExportRegistry = {
   },
   account_credit_report: {
     fetchPage: (req) => getAllAccountTranstionsReport({ ...req, body: { ...req.body, credit_debit_flag: 1 } }),
-    extractRows: nestedDataArray,
+    extractRows: deriveAccountTxnRows("Credit"),
   },
   account_debit_report: {
     fetchPage: (req) => getAllAccountTranstionsReport({ ...req, body: { ...req.body, credit_debit_flag: 2 } }),
-    extractRows: nestedDataArray,
+    extractRows: deriveAccountTxnRows("Debit"),
   },
   all_account_report: {
     fetchPage: (req) => getAllAccountTranstionsReport(req),
-    extractRows: nestedDataArray,
+    extractRows: deriveAccountTxnRows(null),
   },
   employee_account_outstanding_report: {
     fetchPage: (req) => getEmployeeAccountOutstandingReport(req),
@@ -574,19 +862,19 @@ export const reportExportRegistry = {
   },
   employee_account_transaction_report: {
     fetchPage: (req) => getEmployeeAccountTranctionReport(req),
-    extractRows: nestedDataArray,
+    extractRows: (result) => nestedDataArray(result).map(deriveEmployeeTxnRow),
   },
   expense_detailed_report: {
     fetchPage: (req) => detailedExpenseGet(req),
-    extractRows: itemArray,
+    extractRows: (result) => itemArray(result).map(deriveExpenseRow),
   },
   team_day_wise_expense_report: {
     fetchPage: (req) => teamDayExpense(req),
-    extractRows: itemArray,
+    extractRows: teamDayExpenseRows,
   },
   salary_register_report: {
     fetchPage: (req) => salaryRegistrationGet(req),
-    extractRows: itemArray,
+    extractRows: (result) => itemArray(result).map(deriveSalaryRow),
   },
 
   label_wise_report: {
@@ -595,17 +883,21 @@ export const reportExportRegistry = {
   },
   product_inventory_report: {
     fetchPage: (req) => productInventoryReport(req),
-    extractRows: itemsArray,
+    extractRows: (result) =>
+      itemsArray(result).map((raw) => {
+        const row = toPlain(raw);
+        return { ...row, name: `${row.name ?? "-"}${row.code ? ` - ${row.code}` : ""}` };
+      }),
   },
   product_sales_purchase_report: {
     fetchPage: (req) => getProductSalesPurchase(req),
     extractRows: flattenCartSourcePages,
-    postProcess: postProcessProductSalesPurchase,
+    postProcess: (rows) => postProcessProductSalesPurchase(rows).map(withProductCode),
   },
   product_pending_report: {
     fetchPage: (req) => getProductSalesPurchase(req),
     extractRows: flattenCartSourcePages,
-    postProcess: postProcessProductPending,
+    postProcess: (rows) => postProcessProductPending(rows).map(withProductCode),
   },
   category_sales_purchase_report: {
     fetchPage: (req) => getCategorySalesPurchase(req),
@@ -631,20 +923,20 @@ export const reportExportRegistry = {
   },
   target_incentive_report: {
     fetchPage: (req) => getTargetIncentiveReport(req),
-    extractRows: itemArray,
+    extractRows: (result) => itemArray(result).map(deriveTargetIncentiveRow),
   },
   team_pending_work_report: {
     fetchPage: (req) => getTeamPendingWorkReport(req),
-    extractRows: itemArray,
+    extractRows: (result) => itemArray(result).map(deriveTeamPendingRow),
   },
   process_attendance_report: {
     fetchPage: (req) => processAttendanceGet(req),
-    extractRows: itemArray,
+    extractRows: (result) => itemArray(result).map(deriveProcessAttendanceRow),
   },
 
   team_performance_report: {
     fetchPage: (req) => getTeamPerformanceReport(req),
-    extractRows: itemArray,
+    extractRows: (result) => itemArray(result).map(deriveTeamPerformanceRow),
   },
   attendance_report: {
     fetchPage: (req) => getTeamAttendanceReport(req),
@@ -652,10 +944,10 @@ export const reportExportRegistry = {
   },
   all_task_report: {
     fetchPage: (req) => getTeamTaskReport(req),
-    extractRows: nestedDataArray,
+    extractRows: (result) => nestedDataArray(result).map(deriveTaskRow),
   },
   customer_sales_purchase_report: {
     fetchPage: (req) => getCustomerSalesPurchaseReport(req),
-    extractRows: itemArray,
+    extractRows: customerSalesPurchaseRows,
   },
 };
