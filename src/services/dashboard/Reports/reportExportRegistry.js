@@ -7,6 +7,7 @@
 // A report whose frontend always supplies `rows` directly (grid selection)
 // needs no entry at all - the generic export service skips the registry
 // whenever `rows` is provided.
+import moment from "moment";
 import { getAllContactReport } from "./allContactReportServices.js";
 import { getAccountOutstandingReport, getAllAccountTranstionsReport } from "./accountReportServices.js";
 import { getTeamPerformanceReport } from "./teamPerformanceReportServices.js";
@@ -44,8 +45,10 @@ import { fetchReportBuilderExportPage } from "../../report_builder/reportDefinit
 // - some return { data: { data: [...] } } (double-nested)
 const itemArray = (result) => result?.data?.item || [];
 const itemsArray = (result) => result?.data?.items || [];
-const flatArray = (result) => (Array.isArray(result?.data) ? result.data : []);
 const nestedDataArray = (result) => result?.data?.data || [];
+// Call/Visit/Account Outstanding/Employee Account Outstanding moved from a
+// flat { data: [...] } to { data: { data: [...], total } } - accept both.
+const flatArray = (result) => (Array.isArray(result?.data) ? result.data : nestedDataArray(result));
 
 // All Reminder Report always appended a "Total Reminders: N" summary row
 // after the data - ported from the old client-side exportExcel.
@@ -98,6 +101,12 @@ const formatCallDuration = (input) => {
   }
   return "-";
 };
+// Same "DD/MM/YYYY - hh:mm A" shape as formatDateTime in AllCallReportView.tsx.
+const formatCallDateTime = (value) => {
+  if (!value) return "-";
+  const parsed = moment(value);
+  return parsed.isValid() ? parsed.format("DD/MM/YYYY - hh:mm A") : "-";
+};
 const flattenCallReportRows = (result) => {
   const groups = flatArray(result);
   const rows = [];
@@ -107,18 +116,23 @@ const flattenCallReportRows = (result) => {
       const call = raw?.toJSON ? raw.toJSON() : raw;
       const callType =
         typeof call.call_type === "number" ? call.call_type : parseInt(call.call_type || "0", 10);
+      const callStatus = CALL_TYPE_LABELS[callType] || "Unknown";
       rows.push({
         id: call.id,
         call_type: call.call_type,
-        call_status: CALL_TYPE_LABELS[callType] || "Unknown",
+        call_status: callStatus,
+        // Export columns reuse the grid's keys: "status" / "start_date" /
+        // "person_name" render call_status / call_date_time / call_name on
+        // screen (getExportCellValue in AllCallReportView.tsx).
+        status: callStatus,
         call_date_time: call.call_date_time,
         duration: formatCallDuration(call.duration),
         mobile_number: call.mobile_number,
         remark: call.remark,
         call_name: call.call_name,
         username: user?.username || "",
-        person_name: call.person_name,
-        start_date: call.start_date,
+        person_name: call.call_name || call.person_name,
+        start_date: formatCallDateTime(call.call_date_time),
         s_timestemp: call.s_timestemp,
         source_name: call.contactDetails?.source_name || "",
         source_colour: call.contactDetails?.source_colour || "",
