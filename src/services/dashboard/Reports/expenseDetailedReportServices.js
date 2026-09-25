@@ -123,6 +123,21 @@ export const detailedExpenseGet = async (req) => {
 
         const totalRecords = await expenseModels.count({ where: expenseWhere });
 
+        // Grand totals over the whole filtered set (not just this page), for
+        // the grid's "Grand Total" footer row.
+        const sums = await expenseModels.findOne({
+            where: expenseWhere,
+            attributes: [
+                [Sequelize.fn("COALESCE", Sequelize.fn("SUM", Sequelize.col("amount")), 0), "amount"],
+                [Sequelize.fn("COALESCE", Sequelize.fn("SUM", Sequelize.col("pass_amount")), 0), "pass_amount"],
+            ],
+            raw: true,
+        });
+        const grand_totals = {
+            amount: Number(Number(sums?.amount || 0).toFixed(2)),
+            pass_amount: Number(Number(sums?.pass_amount || 0).toFixed(2)),
+        };
+
         const expenseData = await expenseModels.findAll({
             where: expenseWhere,
             attributes: [
@@ -202,7 +217,7 @@ export const detailedExpenseGet = async (req) => {
         })
 
         return resSuccess({
-            data: { item: expenseData, total: totalRecords },
+            data: { item: expenseData, total: totalRecords, grand_totals },
             ack_msg: "Successfully get Data",
         });
     } catch (e) {
