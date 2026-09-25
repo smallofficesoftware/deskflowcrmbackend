@@ -333,6 +333,10 @@ export const getAllContactReport = async (req) => {
     }
 
     let cartItemContactIds = [];
+    // When the product filter is used, the date range applies to the
+    // document / inquiry date instead of the contact's created date.
+    let productFilterApplied = false;
+    const hasDateRange = selected_dates?.length === 2;
 
     if (
       selectedProductSearchId &&
@@ -344,20 +348,39 @@ export const getAllContactReport = async (req) => {
           ? setSelectOrderType?.value
           : setSelectOrderType;
 
+      productFilterApplied = true;
       let itemsInCart = [];
       if (orderType === "inquiry") {
+        // inquiry_date_time can be '0000-00-00 00:00:00'; fall back to
+        // create_date_time for those rows.
+        const inquiryDate = Sequelize.fn(
+          "DATE",
+          Sequelize.literal(
+            "IF(inquiry_date_time > '1971-01-01', inquiry_date_time, create_date_time)"
+          )
+        );
         // inquiries.product_id is a comma-separated list of product ids.
+        const inquiryConditions = [
+          Sequelize.where(
+            Sequelize.fn(
+              "FIND_IN_SET",
+              String(selectedProductSearchId),
+              Sequelize.col("product_id")
+            ),
+            { [Op.gt]: 0 }
+          ),
+        ];
+        if (hasDateRange) {
+          inquiryConditions.push(
+            Sequelize.where(inquiryDate, {
+              [Op.between]: [startDate, endDate],
+            })
+          );
+        }
         itemsInCart = await inquiryModel(req.tenantDB).findAll({
           where: {
             isDelete: 0,
-            [Op.and]: Sequelize.where(
-              Sequelize.fn(
-                "FIND_IN_SET",
-                String(selectedProductSearchId),
-                Sequelize.col("product_id")
-              ),
-              { [Op.gt]: 0 }
-            ),
+            [Op.and]: inquiryConditions,
           },
           attributes: ["contact_master_id"],
           group: ["contact_master_id"],
@@ -370,6 +393,9 @@ export const getAllContactReport = async (req) => {
             item_product_id:
               selectedProductSearchId,
             isDelete: 0,
+            ...(hasDateRange && {
+              cart_date: { [Op.between]: [startDate, endDate] },
+            }),
           },
           attributes: ["contact_master_id"],
           group: ["contact_master_id"],
@@ -533,7 +559,7 @@ export const getAllContactReport = async (req) => {
 
     let dateFilter = {};
 
-    if (selected_dates.length === 2) {
+    if (selected_dates.length === 2 && !productFilterApplied) {
       dateFilter = {
         [Op.and]: Sequelize.where(
           Sequelize.fn(
