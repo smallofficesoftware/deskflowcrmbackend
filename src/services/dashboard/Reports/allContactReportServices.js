@@ -4,6 +4,7 @@ import { getUserRights } from "../../../helpers/rightsHelper.js";
 import { cartItemModel } from "../../../models/activities/cartItemsModel.js";
 import { cartModel } from "../../../models/activities/cartsModel.js";
 import { contactModel } from "../../../models/activities/contactModel.js";
+import { inquiryModel } from "../../../models/activities/inquiryModel.js";
 import loginModel from "../../../models/application_login/loginModel.js";
 import { areaModel } from "../../../models/masters/areaModel.js";
 import { cityModel } from "../../../models/masters/cityModel.js";
@@ -337,10 +338,35 @@ export const getAllContactReport = async (req) => {
       selectedProductSearchId &&
       setSelectOrderType
     ) {
-      const itemsInCart =
-        await CartItem.findAll({
+      // Older clients sent the whole dropdown option instead of its id.
+      const orderType =
+        typeof setSelectOrderType === "object"
+          ? setSelectOrderType?.value
+          : setSelectOrderType;
+
+      let itemsInCart = [];
+      if (orderType === "inquiry") {
+        // inquiries.product_id is a comma-separated list of product ids.
+        itemsInCart = await inquiryModel(req.tenantDB).findAll({
           where: {
-            cart_type: setSelectOrderType,
+            isDelete: 0,
+            [Op.and]: Sequelize.where(
+              Sequelize.fn(
+                "FIND_IN_SET",
+                String(selectedProductSearchId),
+                Sequelize.col("product_id")
+              ),
+              { [Op.gt]: 0 }
+            ),
+          },
+          attributes: ["contact_master_id"],
+          group: ["contact_master_id"],
+          raw: true,
+        });
+      } else if (orderType) {
+        itemsInCart = await CartItem.findAll({
+          where: {
+            cart_type: orderType,
             item_product_id:
               selectedProductSearchId,
             isDelete: 0,
@@ -349,6 +375,7 @@ export const getAllContactReport = async (req) => {
           group: ["contact_master_id"],
           raw: true,
         });
+      }
 
       cartItemContactIds = itemsInCart.map(
         (item) => item.contact_master_id
