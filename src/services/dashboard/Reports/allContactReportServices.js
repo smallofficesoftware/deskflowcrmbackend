@@ -37,6 +37,8 @@ export const getAllContactReport = async (req) => {
       selectedProductSearchId,
       setSelectOrderType,
       labelwiseContactShowAndOrNot,
+      assignedByMultiTeamMember,
+      createdByMultiTeamMember,
       ul,
       ll,
       is_archive,
@@ -269,6 +271,29 @@ export const getAllContactReport = async (req) => {
       whereClause["a_application_login_id"] = {
         [Op.in]: selectedTeamMembers,
       };
+    }
+
+    // MULTI TEAM MEMBER FILTER - created by OR assigned to any selected
+    // member, same as buildContactWhereClause in contactService.js.
+    const toIds = (list) =>
+      (Array.isArray(list) ? list : [])
+        .map((id) => parseInt(id, 10))
+        .filter((id) => !isNaN(id));
+    const createdByIds = toIds(createdByMultiTeamMember);
+    const assignedToIds = toIds(assignedByMultiTeamMember);
+    const multiMemberParts = [
+      ...createdByIds.map(
+        (id) => `FIND_IN_SET(${id}, a_application_login_id) > 0`
+      ),
+      ...assignedToIds.map(
+        (id) => `FIND_IN_SET(${id}, assinged_to_work_a_application_id) > 0`
+      ),
+    ];
+    if (multiMemberParts.length > 0) {
+      whereClause[Op.and] = [
+        ...(whereClause[Op.and] || []),
+        Sequelize.literal(`(${multiMemberParts.join(" OR ")})`),
+      ];
     }
 
     // DEMOGRAPHY
