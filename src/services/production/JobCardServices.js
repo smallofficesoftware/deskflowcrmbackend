@@ -511,6 +511,19 @@ export const jobCardsDetails = async (req) => {
                     const stockBatchResult = await fetchItemStockBatch(req, itemIds);
                     const stockMap = stockBatchResult?.stockMap || {};
                     const unitMap = stockBatchResult?.unitMap || {};
+                    const reservedMap = await fetchReservedStockByOpenJobCards(req, jobCard, itemIds);
+
+                    // What THIS job card's production entries already used, per
+                    // BOM process row (production_transactions_items.process_id is
+                    // bom_vs_process_lists.id) and material: entry_type 2 =
+                    // consumption, 1 = rejection.
+                    const doneRows = itemIds.length > 0 ? await productionTransactionsItemsModel(req.tenantDB).findAll({
+                        where: { isDelete: 0, job_id: jobCard.id, item_id: { [Op.in]: itemIds } },
+                        attributes: ["process_id", "item_id", "entry_type", [Sequelize.fn("SUM", Sequelize.col("qty")), "done"]],
+                        group: ["process_id", "item_id", "entry_type"],
+                        raw: true,
+                    }) : [];
+                    const doneMap = new Map(doneRows.map(r => [`${r.process_id}:${r.item_id}:${r.entry_type}`, Number(r.done) || 0]));
 
                     // Group materials by process_id
                     const materialsByProcess = new Map();
@@ -523,7 +536,7 @@ export const jobCardsDetails = async (req) => {
                     });
 
                     // Material Formatter
-                    const formatMaterial = (m) => {
+                    const formatMaterial = (m, processRowId, entryType) => {
                         const mId = Number(m.item_id || m.material_id);
                         const productInfo = productMap.get(mId);
 
@@ -539,7 +552,14 @@ export const jobCardsDetails = async (req) => {
                             unit: unit,
                             required_qty: requiredQty,
                             available_qty: availableQty,
-                            qty_diff: availableQty - requiredQty
+                            qty_diff: availableQty - requiredQty,
+                            // Pending need of OTHER open job cards for this
+                            // material; the UI can optionally deduct it
+                            // (free stock = available_qty - reserved_qty).
+                            reserved_qty: Number(reservedMap[mId]) || 0,
+                            // Consumed (consumption rows) / rejected (rejection
+                            // rows) so far by this job card in this process.
+                            consumed_qty: doneMap.get(`${processRowId}:${mId}:${entryType}`) || 0,
                         };
                     };
 
@@ -554,10 +574,10 @@ export const jobCardsDetails = async (req) => {
                             process_name: processMaster?.process_name || proc.process_name || "Unknown Process",
                             consumption: materials
                                 .filter(m => Number(m.type) === 1 || !m.type)
-                                .map(formatMaterial),
+                                .map(m => formatMaterial(m, pId, 2)),
                             rejection: materials
                                 .filter(m => Number(m.type) === 2)
-                                .map(formatMaterial)
+                                .map(m => formatMaterial(m, pId, 1))
                         };
                     });
                 }
@@ -583,6 +603,141 @@ export const jobCardsDetails = async (req) => {
             ack_msg: "UNKNOWN_ERROR_TRY_AGAIN",
             developer_msg: `error ${error.message || error}`,
         });
+    }
+};
+
+// Stock reserved by OTHER open job cards, per material id.
+// "Open" = not fully produced yet (sum of its production entries'
+// production_qty < its production qty) - job card statuses are
+// company-defined with no "completed" flag, so progress is the reliable
+// signal. For each open card: pending need of a material = its BOM
+// consumption requirement for the card's qty minus what production entries
+// already consumed for it (that part is already out of physical stock via
+// the consumption stock adjustment), floored at 0. Returns {} on failure
+// so the job card still loads.
+const fetchReservedStockByOpenJobCards = async (req, currentJobCard, materialIds) => {
+    if (!materialIds.length) return {};
+
+    try {
+        const JobCards = JobCardsModel(req.tenantDB);
+        const CartItems = cartItemModel(req.tenantDB);
+        const BOMs = productBillOfMaterialModel(req.tenantDB);
+        const BOMMaterials = bomVsProcessVsConsAndRejctsModel(req.tenantDB);
+        const Productions = productionTransactionModel(req.tenantDB);
+        const ProductionItems = productionTransactionsItemsModel(req.tenantDB);
+
+        const otherCards = await JobCards.findAll({
+            where: {
+                isDelete: 0,
+                id: { [Op.ne]: currentJobCard.id },
+                ...(currentJobCard.company_masters_id ? { company_masters_id: currentJobCard.company_masters_id } : {}),
+            },
+            attributes: ["id", "job_card_type", "item_id", "production_qty"],
+            raw: true,
+        });
+        if (!otherCards.length) return {};
+
+        // Type 1 cards point at a cart item (product + qty fallback);
+        // types 2/3 point straight at the product.
+        const cartItemIds = otherCards
+            .filter((c) => ![2, 3].includes(Number(c.job_card_type) || 1))
+            .map((c) => c.item_id)
+            .filter(Boolean);
+        const cartItems = cartItemIds.length
+            ? await CartItems.findAll({
+                where: { id: { [Op.in]: cartItemIds }, isDelete: 0 },
+                attributes: ["id", "item_product_id", "item_qty"],
+                raw: true,
+            })
+            : [];
+        const cartItemMap = new Map(cartItems.map((ci) => [Number(ci.id), ci]));
+
+        const cards = otherCards
+            .map((c) => {
+                const direct = [2, 3].includes(Number(c.job_card_type) || 1);
+                const ci = direct ? null : cartItemMap.get(Number(c.item_id));
+                return {
+                    id: Number(c.id),
+                    productId: Number(direct ? c.item_id : ci?.item_product_id) || null,
+                    qty: Number(c.production_qty) || Number(ci?.item_qty) || 1,
+                };
+            })
+            .filter((c) => c.productId);
+        if (!cards.length) return {};
+
+        const cardIds = cards.map((c) => c.id);
+        const produced = await Productions.findAll({
+            where: { isDelete: 0, job_id: { [Op.in]: cardIds } },
+            attributes: ["job_id", [Sequelize.fn("SUM", Sequelize.col("production_qty")), "produced"]],
+            group: ["job_id"],
+            raw: true,
+        });
+        const producedMap = new Map(produced.map((p) => [Number(p.job_id), Number(p.produced) || 0]));
+        const openCards = cards.filter((c) => (producedMap.get(c.id) || 0) < c.qty);
+        if (!openCards.length) return {};
+
+        // Same BOM pick as jobCardsDetails (first live BOM per product).
+        const productIds = [...new Set(openCards.map((c) => c.productId))];
+        const boms = await BOMs.findAll({
+            where: { product_id: { [Op.in]: productIds }, isDelete: 0 },
+            attributes: ["id", "product_id", "qty"],
+            order: [["id", "ASC"]],
+            raw: true,
+        });
+        const bomByProduct = new Map();
+        boms.forEach((b) => {
+            if (!bomByProduct.has(Number(b.product_id))) bomByProduct.set(Number(b.product_id), b);
+        });
+        const bomIds = [...bomByProduct.values()].map((b) => b.id);
+        if (!bomIds.length) return {};
+
+        // Consumption materials only (type 1 / unset), limited to the
+        // materials shown on this job card.
+        const materials = await BOMMaterials.findAll({
+            where: { bom_id: { [Op.in]: bomIds }, isDelete: 0 },
+            raw: true,
+        });
+        const wanted = new Set(materialIds.map(Number));
+        const materialsByBom = new Map();
+        materials.forEach((m) => {
+            const mId = Number(m.item_id || m.material_id);
+            if (!wanted.has(mId) || (m.type && Number(m.type) !== 1)) return;
+            if (!materialsByBom.has(Number(m.bom_id))) materialsByBom.set(Number(m.bom_id), []);
+            materialsByBom.get(Number(m.bom_id)).push({ mId, qty: Number(m.qty) || 0 });
+        });
+
+        const openIds = openCards.map((c) => c.id);
+        const consumedRows = await ProductionItems.findAll({
+            where: {
+                isDelete: 0,
+                entry_type: 2, // 2 = consumption
+                job_id: { [Op.in]: openIds },
+                item_id: { [Op.in]: [...wanted] },
+            },
+            attributes: ["job_id", "item_id", [Sequelize.fn("SUM", Sequelize.col("qty")), "consumed"]],
+            group: ["job_id", "item_id"],
+            raw: true,
+        });
+        const consumedMap = new Map(consumedRows.map((r) => [`${r.job_id}:${r.item_id}`, Number(r.consumed) || 0]));
+
+        const reserved = {};
+        for (const card of openCards) {
+            const bom = bomByProduct.get(card.productId);
+            const bomQty = Number(bom?.qty) || 1;
+            // A material can appear in several processes - total its need per card first.
+            const needByMaterial = {};
+            for (const m of materialsByBom.get(Number(bom?.id)) || []) {
+                needByMaterial[m.mId] = (needByMaterial[m.mId] || 0) + (m.qty / bomQty) * card.qty;
+            }
+            for (const [mId, need] of Object.entries(needByMaterial)) {
+                const pending = need - (consumedMap.get(`${card.id}:${mId}`) || 0);
+                if (pending > 0) reserved[mId] = (reserved[mId] || 0) + pending;
+            }
+        }
+        return reserved;
+    } catch (error) {
+        console.log("fetchReservedStockByOpenJobCards Error", error);
+        return {};
     }
 };
 
