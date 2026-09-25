@@ -511,7 +511,8 @@ export const jobCardsDetails = async (req) => {
                     const stockBatchResult = await fetchItemStockBatch(req, itemIds);
                     const stockMap = stockBatchResult?.stockMap || {};
                     const unitMap = stockBatchResult?.unitMap || {};
-                    const reservedMap = await fetchReservedStockByOpenJobCards(req, jobCard, itemIds);
+                    const { reserved: reservedMap = {}, reservedBy = {}, incoming: incomingMap = {}, incomingBy = {} } =
+                        await fetchOtherOpenJobCardStock(req, jobCard, itemIds);
 
                     // What THIS job card's production entries already used, per
                     // BOM process row (production_transactions_items.process_id is
@@ -557,6 +558,14 @@ export const jobCardsDetails = async (req) => {
                             // material; the UI can optionally deduct it
                             // (free stock = available_qty - reserved_qty).
                             reserved_qty: Number(reservedMap[mId]) || 0,
+                            // Which other open job cards reserve it:
+                            // [{ job_id, item_name, pending_qty }]
+                            reserved_by: reservedBy[mId] || [],
+                            // Other open job cards PRODUCING this material
+                            // (semi-finished item) - qty still to come:
+                            incoming_qty: Number(incomingMap[mId]) || 0,
+                            // [{ job_id, production_qty, produced_qty, pending_qty }]
+                            incoming_by: incomingBy[mId] || [],
                             // Consumed (consumption rows) / rejected (rejection
                             // rows) so far by this job card in this process.
                             consumed_qty: doneMap.get(`${processRowId}:${mId}:${entryType}`) || 0,
@@ -606,7 +615,10 @@ export const jobCardsDetails = async (req) => {
     }
 };
 
-// Stock reserved by OTHER open job cards, per material id.
+// What OTHER open job cards mean for each material's stock:
+// - reserved: their pending consumption need (reservedBy lists each card)
+// - incoming: cards that PRODUCE this material (a semi-finished item) and
+//   still have qty to produce (incomingBy lists each card).
 // "Open" = not fully produced yet (sum of its production entries'
 // production_qty < its production qty) - job card statuses are
 // company-defined with no "completed" flag, so progress is the reliable
@@ -615,7 +627,7 @@ export const jobCardsDetails = async (req) => {
 // already consumed for it (that part is already out of physical stock via
 // the consumption stock adjustment), floored at 0. Returns {} on failure
 // so the job card still loads.
-const fetchReservedStockByOpenJobCards = async (req, currentJobCard, materialIds) => {
+const fetchOtherOpenJobCardStock = async (req, currentJobCard, materialIds) => {
     if (!materialIds.length) return {};
 
     try {
@@ -676,6 +688,31 @@ const fetchReservedStockByOpenJobCards = async (req, currentJobCard, materialIds
         const openCards = cards.filter((c) => (producedMap.get(c.id) || 0) < c.qty);
         if (!openCards.length) return {};
 
+        const wanted = new Set(materialIds.map(Number));
+
+        // Incoming: open cards whose finished product IS one of these materials.
+        const incoming = {};
+        const incomingBy = {};
+        for (const card of openCards) {
+            if (!wanted.has(card.productId)) continue;
+            const producedQty = producedMap.get(card.id) || 0;
+            const pendingQty = card.qty - producedQty;
+            incoming[card.productId] = (incoming[card.productId] || 0) + pendingQty;
+            (incomingBy[card.productId] = incomingBy[card.productId] || []).push({
+                job_id: card.id,
+                production_qty: card.qty,
+                produced_qty: producedQty,
+                pending_qty: pendingQty,
+            });
+        }
+
+        const productNames = await productModel(req.tenantDB).findAll({
+            where: { id: { [Op.in]: [...new Set(openCards.map((c) => c.productId))] } },
+            attributes: ["id", "product_name"],
+            raw: true,
+        });
+        const productNameMap = new Map(productNames.map((p) => [Number(p.id), p.product_name]));
+
         // Same BOM pick as jobCardsDetails (first live BOM per product).
         const productIds = [...new Set(openCards.map((c) => c.productId))];
         const boms = await BOMs.findAll({
@@ -689,7 +726,7 @@ const fetchReservedStockByOpenJobCards = async (req, currentJobCard, materialIds
             if (!bomByProduct.has(Number(b.product_id))) bomByProduct.set(Number(b.product_id), b);
         });
         const bomIds = [...bomByProduct.values()].map((b) => b.id);
-        if (!bomIds.length) return {};
+        if (!bomIds.length) return { incoming, incomingBy };
 
         // Consumption materials only (type 1 / unset), limited to the
         // materials shown on this job card.
@@ -697,7 +734,6 @@ const fetchReservedStockByOpenJobCards = async (req, currentJobCard, materialIds
             where: { bom_id: { [Op.in]: bomIds }, isDelete: 0 },
             raw: true,
         });
-        const wanted = new Set(materialIds.map(Number));
         const materialsByBom = new Map();
         materials.forEach((m) => {
             const mId = Number(m.item_id || m.material_id);
@@ -721,6 +757,7 @@ const fetchReservedStockByOpenJobCards = async (req, currentJobCard, materialIds
         const consumedMap = new Map(consumedRows.map((r) => [`${r.job_id}:${r.item_id}`, Number(r.consumed) || 0]));
 
         const reserved = {};
+        const reservedBy = {};
         for (const card of openCards) {
             const bom = bomByProduct.get(card.productId);
             const bomQty = Number(bom?.qty) || 1;
@@ -731,12 +768,19 @@ const fetchReservedStockByOpenJobCards = async (req, currentJobCard, materialIds
             }
             for (const [mId, need] of Object.entries(needByMaterial)) {
                 const pending = need - (consumedMap.get(`${card.id}:${mId}`) || 0);
-                if (pending > 0) reserved[mId] = (reserved[mId] || 0) + pending;
+                if (pending > 0) {
+                    reserved[mId] = (reserved[mId] || 0) + pending;
+                    (reservedBy[mId] = reservedBy[mId] || []).push({
+                        job_id: card.id,
+                        item_name: productNameMap.get(card.productId) || "",
+                        pending_qty: pending,
+                    });
+                }
             }
         }
-        return reserved;
+        return { reserved, reservedBy, incoming, incomingBy };
     } catch (error) {
-        console.log("fetchReservedStockByOpenJobCards Error", error);
+        console.log("fetchOtherOpenJobCardStock Error", error);
         return {};
     }
 };
