@@ -13,6 +13,7 @@ import {
 import { getCompanyByLoginId, getLoginDetailById, insertStagesAndStatusLogs } from "../commonServices.js";
 import { autoAssignmentContactIdsGet, prepareMailAndWhatsappSenderToTheContact } from "../other_settings/wrkflwAutoAssignmentContactService.js";
 import logger from "../../utils/logger.js";
+import { emitAutomationEvent } from "../automation/emit.js";
 
 export const addContactMessageFromWhatsApp = async (req, res) => {
     const payload = req.body;
@@ -103,6 +104,7 @@ export const addContactMessageFromWhatsApp = async (req, res) => {
                     application_login_name: application_login_name.username
                 };
                 createdItem = await CTContactMessageHistoryModel.create(parsedData);
+                if (parsedData.message_side === "2") emitAutomationEvent(req, "whatsapp.received", { id: createdItem.id, company_masters_id: sessionCompanyMastersId });
                 const ContactMaster = contactModel(req.tenantDB);
                 const updateUnread = await ContactMaster.update(
                     {
@@ -201,6 +203,7 @@ export const addContactMessageFromWhatsApp = async (req, res) => {
             }
             const newContact = await CTContactModelModel.create(contactBody);
             if (isValid(newContact.dataValues.id)) {
+                emitAutomationEvent(req, "contact.created", { id: newContact.dataValues.id, company_masters_id: sessionCompanyMastersId });
                 const contactEmailSendList = [];
                 const contactWhatsappSendList = [];
                 if (isValid(whatsappEmailSendTeamPersonList) && isValid(normalizedSenderLast10)) {
@@ -245,6 +248,7 @@ export const addContactMessageFromWhatsApp = async (req, res) => {
                 application_login_name: application_login_name.username
             };
             createdItem = await CTContactMessageHistoryModel.create(parsedData);
+            if (parsedData.message_side === "2") emitAutomationEvent(req, "whatsapp.received", { id: createdItem.id, company_masters_id: sessionCompanyMastersId });
             const ContactMaster = contactModel(req.tenantDB);
             const updateUnread = await ContactMaster.update(
                 {

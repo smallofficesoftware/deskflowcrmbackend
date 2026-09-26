@@ -12,6 +12,7 @@ import {
     resSuccess
 } from "../../utils/sharedFunctions.js";
 import { getCompanyByLoginId } from "../commonServices.js";
+import { emitAutomationEvent } from "../automation/emit.js";
 
 const parseExcelDateTime = (value) => {
 
@@ -785,6 +786,7 @@ export const addTaskByExcelSheet = async (req) => {
             validate: true,
             returning: true
         });
+        emitAutomationEvent(req, "task.created", { ids: createdTasks.map((t) => t.id), origin: "import", company_masters_id: createdTasks[0]?.company_masters_id });
         let messageHistoryData = [];
 
         for (const task of createdTasks) {

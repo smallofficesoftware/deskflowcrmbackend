@@ -85,6 +85,7 @@ import {
   resError,
   resSuccess
 } from "../utils/sharedFunctions.js";
+import { emitAutomationEvent, automationBefore } from "./automation/emit.js";
 
 
 // Contacts are stored with the canonical mobile (91 + 10 digits, see the write path in
@@ -710,6 +711,7 @@ export const createCommon = async (req) => {
           developer_msg: "Database error occurred.",
         });
       }
+      emitAutomationEvent(req, "record.created", { table, id: createdItem.dataValues.id, data: parsedData });
 
       if (req.body.request_flag === "CreateCompanyNotExists") {
         const token = jwt.sign(
@@ -2202,6 +2204,7 @@ export const updateCommon = async (req) => {
       }
     }
 
+    const __automationBefore = await automationBefore(req, table, whereObj);
     const [rowsUpdated, updatedRows] = await sequelize.models[table].update(
       updateData,
       {
@@ -2209,6 +2212,7 @@ export const updateCommon = async (req) => {
         returning: true,
       }
     );
+    emitAutomationEvent(req, "record.updated", { table, where: whereObj, before: __automationBefore, data: parsedData });
     if (table === "contact_masters" && parsedData.contact_status) {
       /* Status Log Entry Added BY Dinesh -> 20-11-2025 */
       await insertStagesAndStatusLogs(req,
@@ -3463,6 +3467,7 @@ export const insertStagesAndStatusLogs = async (req, detail) => {
       updated_by: a_application_login_id,
       updated_date_time: moment().format("YYYY-MM-DD HH:mm:ss"),
     });
+    if (lastEntry) emitAutomationEvent(req, "status.changed", { reference_table, reference_id, status_id, previous_status_id: lastEntry.status_id });
 
   } catch (error) {
     console.error("insertStagesAndStatusLogs error", error);

@@ -59,6 +59,7 @@ import dashboardRouter from './report_builder/dashboardRouter.js';
 import reportDefinitionRouter from './report_builder/reportDefinitionRouter.js';
 import formBuilderRouter from './form_builder/formBuilderRouter.js';
 import formBuilderPublicRouter from './form_builder/formBuilderPublicRouter.js';
+import automationRouter from './automation/automationRouter.js';
 import reviewRouter from './company_setup/reviewRouter.js';
 import currencyRouter from "./configuration/currencyRouter.js";
 import updateTenent from "./configuration/updateTenentRouter.js";
@@ -171,6 +172,7 @@ export default () => {
   reportDefinitionRouter(app);
   formBuilderRouter(app);
   formBuilderPublicRouter(app);
+  automationRouter(app);
   dashboardRouter(app);
   reviewRouter(app);
   TaskManagement(app);

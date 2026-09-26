@@ -19,6 +19,7 @@ import { taskTemplateModel } from "../../models/masters/taskTemplateModel.js";
 import { taskTemplateDatasource } from "../../models/masters/taslTemplateDatasources.js";
 import { sendMultipleNotification } from "../../services/company_setup/thirdPartyIntegrationService.js";
 import { addWhatsappDispatchJobs } from "../whatsapp/whatsappService.js";
+import { emitAutomationEvent } from "../automation/emit.js";
 export const AllTaskDatasource = async (req, res) => {
     try {
         const { task_template_master_id } = req.body;
@@ -707,6 +708,7 @@ export const StartAllWorkflow = async (req) => {
         )
 
         const insertedTask = await taskManagementModels.bulkCreate(insertTaskArray);
+        emitAutomationEvent(req, "task.created", { ids: insertedTask.map((v) => v.id), company_masters_id: insertedTask[0]?.company_masters_id });
         const taskIdMap = insertedTask.map(v => v.id);
         /* Get templace task detail */
 

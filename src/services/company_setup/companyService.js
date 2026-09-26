@@ -71,6 +71,7 @@ import {
 import { toSendMail } from "../company_setup/thirdPartyIntegrationService.js";
 import { activationCodeVerifyFromCompany } from "../configuration/activationCodeMasterServices.js";
 import { referralCodeVerifyFromCompany } from "../configuration/refferralCodeMasterService.js";
+import { emitAutomationEvent } from "../automation/emit.js";
 
 
 export const getAllCompany = async (req) => {
@@ -762,6 +763,7 @@ export const companyCreate = async (req, res) => {
                 is_read_by_a_application_login_id: "",
                 is_unread: 1,
               });
+              emitAutomationEvent({ company_masters_id: tenantDBFind.company_masters_id }, "contact.created", { id: contactCreate.id });
             }
             const formatted = moment().format("YYYY-MM-DD HH:mm:ss");
             const messageBody = {
@@ -2322,6 +2324,8 @@ export const demoBook = async (req, res) => {
       });
 
     }
+    if (isNewContact) emitAutomationEvent({ company_masters_id: tenantDBFind.company_masters_id }, "contact.created", { id: contactCreate.dataValues.id });
+    emitAutomationEvent({ company_masters_id: tenantDBFind.company_masters_id }, "website.book_demo", { standalone: true, data: bookDemoBody, contact_id: contactCreate.dataValues.id });
     // return
 
     const messageBody = {
@@ -2447,6 +2451,8 @@ export const addContactUsData = async (req) => {
       });
 
     }
+    if (isNewContact) emitAutomationEvent({ company_masters_id: tenantDBFind.company_masters_id }, "contact.created", { id: contactCreate.dataValues.id });
+    emitAutomationEvent({ company_masters_id: tenantDBFind.company_masters_id }, "website.contact_us", { standalone: true, data: contactUsBody, contact_id: contactCreate.dataValues.id });
     // return
 
     const messageBody = {

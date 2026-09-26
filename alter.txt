@@ -3586,3 +3586,311 @@ ALTER TABLE `custom_field_form_masters` ADD `calc_config` TEXT NULL DEFAULT NULL
 -- (used by migration 20260917100000-add-tenant-master-application-page for Tenant Master) is already taken there.
 -- Tenant Master is resolved by page_slug, not id, so demo uses the next free id (197) instead. Dev/prod keep 186.
 INSERT INTO `a_application_pages` (`id`, `page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (197, 'Tenant Master', 'Tenants', 'tenant-master', 'Admin panel Tenant Master listing', '1', '0', '0', '1', NOW(), UNIX_TIMESTAMP(), '0', '1');
+
+26-09-2026 Dhaval
+-- every tenant DB + smalloffice_sample_tenant. Automations module (plans/2026-09-26-automations-plan.txt).
+-- New tables: also add their 9 LIKE lines to new_company_creation_sql/SQL/create-company/create_company_copy.sql.
+CREATE TABLE `automation_flows` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `company_masters_id` INT(11) NOT NULL,
+  `name` VARCHAR(150) NOT NULL,
+  `description` TEXT NULL DEFAULT NULL,
+  `trigger_type` VARCHAR(60) NOT NULL,
+  `trigger_config` LONGTEXT NULL DEFAULT NULL,
+  `nodes` LONGTEXT NULL DEFAULT NULL,
+  `connections` LONGTEXT NULL DEFAULT NULL,
+  `is_active` TINYINT(1) NOT NULL DEFAULT 0,
+  `is_paused` TINYINT(1) NOT NULL DEFAULT 0,
+  `version` INT(11) NOT NULL DEFAULT 1,
+  `run_as_user_id` INT(11) NULL DEFAULT NULL,
+  `allow_automation_trigger` TINYINT(1) NOT NULL DEFAULT 0,
+  `include_imported_records` TINYINT(1) NOT NULL DEFAULT 0,
+  `consecutive_failures` INT(11) NOT NULL DEFAULT 0,
+  `paused_reason` VARCHAR(255) NULL DEFAULT NULL,
+  `last_run_at` DATETIME NULL DEFAULT NULL,
+  `run_count` INT(11) NOT NULL DEFAULT 0,
+  `created_by` INT(11) NULL DEFAULT NULL,
+  `modified_by` INT(11) NULL DEFAULT NULL,
+  `isDelete` TINYINT(1) NOT NULL DEFAULT 0,
+  `created_date_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `modified_date` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  INDEX `idx_af_company_trigger` (`company_masters_id`, `trigger_type`, `is_active`, `isDelete`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `automation_flow_versions` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `flow_id` INT(11) NOT NULL,
+  `version` INT(11) NOT NULL,
+  `trigger_type` VARCHAR(60) NOT NULL,
+  `trigger_config` LONGTEXT NULL DEFAULT NULL,
+  `nodes` LONGTEXT NULL DEFAULT NULL,
+  `connections` LONGTEXT NULL DEFAULT NULL,
+  `saved_by` INT(11) NULL DEFAULT NULL,
+  `saved_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_afv_flow_version` (`flow_id`, `version`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `automation_executions` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `flow_id` INT(11) NOT NULL,
+  `flow_version` INT(11) NOT NULL DEFAULT 1,
+  `company_masters_id` INT(11) NOT NULL,
+  `record_type` VARCHAR(40) NULL DEFAULT NULL,
+  `record_id` INT(11) NULL DEFAULT NULL,
+  `status` ENUM('running','waiting','success','failed','cancelled','skipped') NOT NULL DEFAULT 'running',
+  `current_node_id` VARCHAR(64) NULL DEFAULT NULL,
+  `resume_at` DATETIME NULL DEFAULT NULL,
+  `wait_type` VARCHAR(20) NULL DEFAULT NULL,
+  `context` LONGTEXT NULL DEFAULT NULL,
+  `error` TEXT NULL DEFAULT NULL,
+  `is_test` TINYINT(1) NOT NULL DEFAULT 0,
+  `origin` VARCHAR(20) NOT NULL DEFAULT 'user',
+  `chain_depth` INT(11) NOT NULL DEFAULT 0,
+  `parent_execution_id` INT(11) NULL DEFAULT NULL,
+  `started_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `completed_at` DATETIME NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  INDEX `idx_ae_flow` (`flow_id`, `started_at`),
+  INDEX `idx_ae_waiting` (`status`, `resume_at`),
+  INDEX `idx_ae_record` (`record_type`, `record_id`),
+  INDEX `idx_ae_started` (`started_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `automation_execution_logs` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `execution_id` INT(11) NOT NULL,
+  `node_id` VARCHAR(64) NOT NULL,
+  `node_type` VARCHAR(60) NOT NULL,
+  `status` ENUM('success','failed','skipped','waiting') NOT NULL DEFAULT 'success',
+  `input` LONGTEXT NULL DEFAULT NULL,
+  `output` LONGTEXT NULL DEFAULT NULL,
+  `error` TEXT NULL DEFAULT NULL,
+  `start_time` DATETIME(3) NOT NULL,
+  `end_time` DATETIME(3) NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  INDEX `idx_ael_execution` (`execution_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `automation_webhooks` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `flow_id` INT(11) NOT NULL,
+  `company_masters_id` INT(11) NOT NULL,
+  `token` VARCHAR(64) NOT NULL,
+  `secret` VARCHAR(100) NULL DEFAULT NULL,
+  `auth_type` VARCHAR(20) NOT NULL DEFAULT 'token',
+  `sample_payload` LONGTEXT NULL DEFAULT NULL,
+  `listen_until` DATETIME NULL DEFAULT NULL,
+  `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+  `last_called_at` DATETIME NULL DEFAULT NULL,
+  `isDelete` TINYINT(1) NOT NULL DEFAULT 0,
+  `created_date_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_aw_token` (`token`),
+  INDEX `idx_aw_flow` (`flow_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `automation_assign_pointers` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `flow_id` INT(11) NOT NULL,
+  `node_id` VARCHAR(64) NOT NULL,
+  `last_user_id` INT(11) NULL DEFAULT NULL,
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_aap_flow_node` (`flow_id`, `node_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `automation_run_marks` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `flow_id` INT(11) NOT NULL,
+  `record_type` VARCHAR(40) NOT NULL,
+  `record_id` INT(11) NOT NULL,
+  `period_key` VARCHAR(20) NOT NULL DEFAULT '',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_arm_flow_record_period` (`flow_id`, `record_type`, `record_id`, `period_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `automation_usage` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `company_masters_id` INT(11) NOT NULL,
+  `year_month` CHAR(7) NOT NULL,
+  `runs` INT(11) NOT NULL DEFAULT 0,
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_au_company_month` (`company_masters_id`, `year_month`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `automation_settings` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `company_masters_id` INT(11) NOT NULL,
+  `wa_limit_per_minute` INT(11) NULL DEFAULT NULL,
+  `wa_limit_per_day` INT(11) NULL DEFAULT NULL,
+  `quiet_hours_from` TIME NULL DEFAULT NULL,
+  `quiet_hours_to` TIME NULL DEFAULT NULL,
+  `business_hours` LONGTEXT NULL DEFAULT NULL,
+  `timezone` VARCHAR(10) NOT NULL DEFAULT '+05:30',
+  `failure_alert_user_ids` VARCHAR(255) NULL DEFAULT NULL,
+  `modified_by` INT(11) NULL DEFAULT NULL,
+  `modified_date` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_as_company` (`company_masters_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+26-09-2026 Dhaval
+-- every tenant DB + smalloffice_sample_tenant. Form Builder v2 per-form Permissions tab: which users (a_application_login_id)
+-- or teams (team_id = departments.id) may change dates / override auto number / see masked fields / import Excel /
+-- manage schedules / edit completed entries / convert. Exactly one of a_application_login_id / team_id is set.
+-- New table: also add its LIKE line to new_company_creation_sql/SQL/create-company/create_company_copy.sql.
+CREATE TABLE `form_builder_form_permissions` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `company_masters_id` INT(11) NOT NULL,
+  `form_id` INT(11) NOT NULL,
+  `permission_key` VARCHAR(50) NOT NULL,
+  `a_application_login_id` INT(11) NULL DEFAULT NULL,
+  `team_id` INT(11) NULL DEFAULT NULL,
+  `isDelete` TINYINT(4) NOT NULL DEFAULT 0,
+  `isActive` TINYINT(4) NOT NULL DEFAULT 1,
+  `created_date_time` DATETIME NOT NULL,
+  `modified_date` DATETIME NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  INDEX `idx_form_builder_form_permissions_form_key` (`form_id`, `permission_key`),
+  INDEX `idx_form_builder_form_permissions_login` (`a_application_login_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+26-09-2026 Dhaval
+-- every tenant DB + smalloffice_sample_tenant. Form Builder v2 Auto Number fields: running counter per form + field +
+-- series (e.g. per Division, '' when single) + period (reset bucket: 'all' / FY '2026-2027' / year / 'YYYY-MM').
+-- New table: also add its LIKE line to new_company_creation_sql/SQL/create-company/create_company_copy.sql.
+CREATE TABLE `form_builder_number_series` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `company_masters_id` INT(11) NOT NULL,
+  `form_id` INT(11) NOT NULL,
+  `field_key` VARCHAR(64) NOT NULL,
+  `series_key` VARCHAR(100) NOT NULL DEFAULT '',
+  `period_key` VARCHAR(20) NOT NULL,
+  `last_number` INT(11) NOT NULL DEFAULT 0,
+  `created_date_time` DATETIME NOT NULL,
+  `updated_date_time` DATETIME NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uniq_form_builder_number_series` (`form_id`, `field_key`, `series_key`, `period_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+26-09-2026 Dhaval
+-- every tenant DB + smalloffice_sample_tenant. Form Builder v2 custom lists (Division / Department / Site / Project ...):
+-- reusable pick-lists a company builds inside Form Builder; a Reference field uses master = 'custom:<list id>'.
+-- New tables: also add their LIKE lines to new_company_creation_sql/SQL/create-company/create_company_copy.sql.
+CREATE TABLE `form_builder_custom_lists` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `company_masters_id` INT(11) NOT NULL,
+  `name` VARCHAR(100) NOT NULL,
+  `created_by_a_application_login_id` INT(11) NULL DEFAULT NULL,
+  `created_date_time` DATETIME NOT NULL,
+  `isDelete` TINYINT(4) NOT NULL DEFAULT 0,
+  `isActive` TINYINT(4) NOT NULL DEFAULT 1,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+CREATE TABLE `form_builder_custom_list_items` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `company_masters_id` INT(11) NOT NULL,
+  `list_id` INT(11) NOT NULL,
+  `label` VARCHAR(150) NOT NULL,
+  `display_order` INT(11) NOT NULL DEFAULT 0,
+  `created_date_time` DATETIME NOT NULL,
+  `isDelete` TINYINT(4) NOT NULL DEFAULT 0,
+  `isActive` TINYINT(4) NOT NULL DEFAULT 1,
+  PRIMARY KEY (`id`),
+  INDEX `idx_form_builder_custom_list_items_list` (`list_id`, `isDelete`, `display_order`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+26-09-2026 Dhaval
+-- every tenant DB + smalloffice_sample_tenant. Form Builder v2 approval stages: form-level settings (draft + published) and the
+-- stage history log. The per-entry columns current_stage / stage_status are added to each form's own fbs_<form_id> table
+-- automatically the next time a form with approval stages is published.
+-- New table: also add its LIKE line to new_company_creation_sql/SQL/create-company/create_company_copy.sql.
+ALTER TABLE `form_builder_forms` ADD `settings_json` LONGTEXT NULL DEFAULT NULL, ADD `published_settings_json` LONGTEXT NULL DEFAULT NULL;
+CREATE TABLE `form_builder_stage_log` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `company_masters_id` INT(11) NOT NULL,
+  `form_id` INT(11) NOT NULL,
+  `submission_id` INT(11) NOT NULL,
+  `stage_id` VARCHAR(20) NOT NULL,
+  `stage_name` VARCHAR(100) NOT NULL,
+  `action` VARCHAR(20) NOT NULL,
+  `comment` TEXT NULL DEFAULT NULL,
+  `a_application_login_id` INT(11) NULL DEFAULT NULL,
+  `created_date_time` DATETIME NOT NULL,
+  `isDelete` TINYINT(4) NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  INDEX `idx_form_builder_stage_log_submission` (`form_id`, `submission_id`, `created_date_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+26-09-2026 Dhaval
+-- every tenant DB + smalloffice_sample_tenant. Form Builder v2 company templates ("Save as template" / New form from a template).
+-- New table: also add its LIKE line to new_company_creation_sql/SQL/create-company/create_company_copy.sql.
+CREATE TABLE `form_builder_templates` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `company_masters_id` INT(11) NOT NULL,
+  `title` VARCHAR(150) NOT NULL,
+  `description` VARCHAR(500) NULL DEFAULT NULL,
+  `schema_json` LONGTEXT NOT NULL,
+  `settings_json` LONGTEXT NULL DEFAULT NULL,
+  `created_by_a_application_login_id` INT(11) NULL DEFAULT NULL,
+  `created_date_time` DATETIME NOT NULL,
+  `isDelete` TINYINT(4) NOT NULL DEFAULT 0,
+  `isActive` TINYINT(4) NOT NULL DEFAULT 1,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+26-09-2026 Dhaval
+-- every tenant DB + smalloffice_sample_tenant. Form Builder v2 recurring forms: the schedule rule and one entry per person per due day.
+-- New tables: also add their LIKE lines to new_company_creation_sql/SQL/create-company/create_company_copy.sql.
+CREATE TABLE `form_builder_schedules` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `company_masters_id` INT(11) NOT NULL,
+  `form_id` INT(11) NOT NULL,
+  `title` VARCHAR(150) NOT NULL,
+  `frequency` VARCHAR(10) NOT NULL,
+  `weekdays` VARCHAR(20) NULL DEFAULT NULL,
+  `day_of_month` TINYINT(4) NULL DEFAULT NULL,
+  `assignee_login_ids` TEXT NOT NULL,
+  `start_date` DATE NOT NULL,
+  `end_date` DATE NULL DEFAULT NULL,
+  `last_generated_date` DATE NULL DEFAULT NULL,
+  `created_by_a_application_login_id` INT(11) NULL DEFAULT NULL,
+  `created_date_time` DATETIME NOT NULL,
+  `isDelete` TINYINT(4) NOT NULL DEFAULT 0,
+  `isActive` TINYINT(4) NOT NULL DEFAULT 1,
+  PRIMARY KEY (`id`),
+  INDEX `idx_form_builder_schedules_form` (`form_id`, `isDelete`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+CREATE TABLE `form_builder_schedule_entries` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `company_masters_id` INT(11) NOT NULL,
+  `schedule_id` INT(11) NOT NULL,
+  `form_id` INT(11) NOT NULL,
+  `due_date` DATE NOT NULL,
+  `a_application_login_id` INT(11) NOT NULL,
+  `submission_id` INT(11) NULL DEFAULT NULL,
+  `filled_at` DATETIME NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE INDEX `uq_form_builder_schedule_entry` (`schedule_id`, `due_date`, `a_application_login_id`),
+  INDEX `idx_form_builder_schedule_entry_user` (`a_application_login_id`, `due_date`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+26-09-2026 Dhaval
+-- every tenant DB + smalloffice_sample_tenant. Form Builder v2 "Save and continue later": a person's unfinished form (their own copy, JSON).
+-- New table: also add its LIKE line to new_company_creation_sql/SQL/create-company/create_company_copy.sql.
+CREATE TABLE `form_builder_drafts` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `company_masters_id` INT(11) NOT NULL,
+  `form_id` INT(11) NOT NULL,
+  `a_application_login_id` INT(11) NOT NULL,
+  `answers_json` LONGTEXT NOT NULL,
+  `created_date_time` DATETIME NOT NULL,
+  `updated_date_time` DATETIME NOT NULL,
+  `isDelete` TINYINT(4) NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  INDEX `idx_form_builder_drafts_user` (`a_application_login_id`, `form_id`, `isDelete`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

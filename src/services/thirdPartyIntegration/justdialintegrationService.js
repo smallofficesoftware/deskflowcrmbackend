@@ -13,6 +13,7 @@ import { generateNumber, isValid, normalizeToTenDigit, resBadRequest, resError, 
 import { getCompanyByLoginId, insertStagesAndStatusLogs } from "../commonServices.js";
 import { autoAssignmentContactIdsGet, prepareMailAndWhatsappSenderToTheContact } from "../other_settings/wrkflwAutoAssignmentContactService.js";
 import logger from "../../utils/logger.js";
+import { emitAutomationEvent } from "../automation/emit.js";
 
 
 
@@ -198,6 +199,7 @@ export const addContactByjustdialPushApi = async (req, res) => {
 
             contact = await CTContactModel.create(contactEntry);
             if (contact) {
+                emitAutomationEvent(req, "contact.created", { id: contact.id, origin: "import", company_masters_id: contact.company_masters_id });
                 if (isValid(whatsappEmailSendTeamPersonList) && isValid(contactEntry.email_id)) {
                     const result = whatsappEmailSendTeamPersonList.find(item => item.team_id == contactEntry.assinged_to_work_a_application_id);
                     if (result) {
@@ -251,6 +253,7 @@ export const addContactByjustdialPushApi = async (req, res) => {
             source_type_id: SOURCE_TYPE_ID,
         };
         const createdInquiry = await CTInquiryModel.create(inquiryEntry);
+        emitAutomationEvent(req, "inquiry.created", { id: createdInquiry.id, origin: "import", company_masters_id: createdInquiry.company_masters_id });
 
         // Rich Message History with all fields
         const messageHtml = `

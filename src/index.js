@@ -12,6 +12,7 @@ import routers from "./routes/indexRouter.js";
 import storeSocketId from "./services/1socketIOServices/storeSocketId.js";
 import { getCompanyByLoginId } from "./services/commonServices.js";
 import { startVersionRetentionCron } from "./services/pdfmeEngine/versionRetentionCron.js";
+import { startAutomationCron } from "./services/automation/scheduler.js";
 import { baseURL, ENCRYPT_SMALL_OFFICE_CRM_RESPONSE, NODE_ENV, PORT } from "./utils/appConstants.js";
 import logger from "./utils/logger.js";
 import { parseSession, resError } from "./utils/sharedFunctions.js";
@@ -304,6 +305,7 @@ server.listen(PORT, () => {
     logger.info(`Response data encryption: ${ENCRYPT_SMALL_OFFICE_CRM_RESPONSE}`)
     logger.info(`Server running on ${baseURL}`)
     startVersionRetentionCron();
+    startAutomationCron(io);
 });
 // } catch (error) {
 //     logger.fatal('App failed to start:', err);

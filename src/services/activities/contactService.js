@@ -54,6 +54,7 @@ import { isFeatureEnabled } from "../company_setup/featureFlagServices.js";
 import { ClaudeOfficeWhatsAppOtp, sendMultipleNotification } from "../company_setup/thirdPartyIntegrationService.js";
 import { autoAssignmentContactIdsGet, prepareMailAndWhatsappSenderToTheContact } from "../other_settings/wrkflwAutoAssignmentContactService.js";
 import { generateContactAddressPdf, generateContactEnvelopePdf } from "../pdfmeEngine/contactPrintGenerate.js";
+import { emitAutomationEvent, automationBefore } from "../automation/emit.js";
 const oauth2Client = new google.auth.OAuth2(
   GOOGLE_API.GOOGLE_CLIENT_ID,
   GOOGLE_API.GOOGLE_CLIENT_SECRET
@@ -847,6 +848,7 @@ export const addContact = async (req, res) => {
         developer_msg: "Contact creation returned no data",
       });
     }
+    emitAutomationEvent(req, "contact.created", { id: contactCreate.dataValues.id });
     const contactEmailSendList = [];
     const contactWhatsappSendList = [];
 
@@ -992,6 +994,7 @@ export const addContact = async (req, res) => {
           developer_msg: "Inquiry creation returned no data",
         });
       }
+      emitAutomationEvent(req, "inquiry.created", { id: contactInquiry.dataValues.id });
 
       // Create message history
       if (!CTMModel || typeof CTMModel.create !== "function") {
@@ -1295,6 +1298,7 @@ export const addContactByQR = async (req, res) => {
         is_unread: 1,
         assinged_to_work_a_application_id: assinged_to_work_a_application_id
       });
+      if (contactCreate?.id) emitAutomationEvent(req, "contact.created", { id: contactCreate.id, company_masters_id });
       const contactEmailSendList = [];
       const contactWhatsappSendList = [];
       if (!contactCreate?.id) {
@@ -1439,6 +1443,7 @@ export const addContactByQR = async (req, res) => {
           developer_msg: "Inquiry creation failed in QR flow",
         });
       }
+      emitAutomationEvent(req, "inquiry.created", { id: contactInquiry.id, company_masters_id });
 
       /* Status Log Entry Added BY Dinesh -> 20-11-2025 */
       await insertStagesAndStatusLogs(req,
@@ -1794,6 +1799,7 @@ export const addContactByOnlineStore = async (req, res) => {
           developer_msg: "Contact creation failed",
         });
       }
+      emitAutomationEvent(req, "contact.created", { id: exists.id, company_masters_id });
     }
 
     if (!exists && !haveOTP) {
@@ -3231,6 +3237,7 @@ export const CreateContactWithReminder = async (req, res) => {
       };
       contactData = await COTModel.create(contactBody);
       isNewContact = true;
+      emitAutomationEvent(req, "contact.created", { id: contactData.id, company_masters_id: findCompanyId.company_masters_id });
     }
 
     if (isNewContact) {
@@ -3626,6 +3633,7 @@ export const visitingCardReadByGeminiAndInsertDetail = async (req, res) => {
 
     const insertContact = await contactModelIntance.create(contactBody)
     if (insertContact) {
+      emitAutomationEvent(req, "contact.created", { id: insertContact.id });
       const contactEmailSendList = [];
       const contactWhatsappSendList = [];
 
@@ -3912,6 +3920,7 @@ export const assignContact = async (req) => {
 
       })
     );
+    emitAutomationEvent(req, "record.updated", { table: "contact_masters", before: contacts, data: {} });
 
 
     return resSuccess({
@@ -3951,12 +3960,14 @@ export const assignLableContact = async (req) => {
     }
     const User = contactModel(req.tenantDB);
 
+    const __automationBefore = await automationBefore(req, "contact_masters", whereClause_e);
     const [affectedRows] = await User.update(
       {
         lable: updateCollection?.join(",") || ""
       },
       { where: whereClause_e }
     )
+    emitAutomationEvent(req, "record.updated", { table: "contact_masters", before: __automationBefore, data: { lable: updateCollection?.join(",") || "" } });
     return resSuccess({
       data: { affectedRows },
       ack_msg: "Label assigned successfully."
@@ -3994,12 +4005,14 @@ export const assignSourceContact = async (req) => {
     }
     const User = contactModel(req.tenantDB);
 
+    const __automationBefore = await automationBefore(req, "contact_masters", whereClause_e);
     const [affectedRows] = await User.update(
       {
         source_type_id: updateCollection
       },
       { where: whereClause_e }
     )
+    emitAutomationEvent(req, "record.updated", { table: "contact_masters", before: __automationBefore, data: { source_type_id: updateCollection } });
     return resSuccess({
       data: { affectedRows },
       ack_msg: "Source assigned successfully."
@@ -4713,6 +4726,7 @@ export const mergeContact = async (req) => {
     );
 
     await transaction.commit();
+    emitAutomationEvent(req, "record.updated", { table: "contact_masters", where: { id: keep_id }, data: {} });
 
     return resSuccess({
       ack_msg: "Contacts merged successfully",

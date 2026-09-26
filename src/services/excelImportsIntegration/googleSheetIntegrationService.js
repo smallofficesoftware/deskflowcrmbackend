@@ -37,6 +37,7 @@ import {
     autoAssignmentContactIdsGet,
     prepareMailAndWhatsappSenderToTheContact
 } from "../other_settings/wrkflwAutoAssignmentContactService.js";
+import { emitAutomationEvent } from "../automation/emit.js";
 
 // ==================== CONSTANTS ====================
 const SCOPES = ["https://www.googleapis.com/auth/spreadsheets"];
@@ -1469,6 +1470,7 @@ export const addContactByGoogleSheetForFacebook = async (req) => {
                 processedContacts,
                 { returning: true }
             );
+            emitAutomationEvent(req, "contact.created", { ids: createdContacts.map((c) => c.id), origin: "import", company_masters_id: createdContacts[0]?.company_masters_id });
 
             // Post-creation tasks
             await handlePostCreationTasks(
@@ -1499,6 +1501,7 @@ export const addContactByGoogleSheetForFacebook = async (req) => {
         // Bulk insert inquiries
         if (inquiryMatches.length > 0) {
             const createdInquiries = await CTInquiryModel.bulkCreate(inquiryMatches);
+            emitAutomationEvent(req, "inquiry.created", { ids: createdInquiries.map((q) => q.id), origin: "import", company_masters_id: createdInquiries[0]?.company_masters_id });
 
             await Promise.all(
                 createdInquiries.map(inquiry =>

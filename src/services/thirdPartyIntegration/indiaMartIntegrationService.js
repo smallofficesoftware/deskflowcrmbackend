@@ -18,6 +18,7 @@ import { generateNumber, isValid, normalizeToTenDigit, resBadRequest, resError, 
 import { getCompanyByLoginId, insertStagesAndStatusLogs } from "../commonServices.js";
 import { autoAssignmentContactIdsGet, prepareMailAndWhatsappSenderToTheContact } from "../other_settings/wrkflwAutoAssignmentContactService.js";
 import logger from "../../utils/logger.js";
+import { emitAutomationEvent } from "../automation/emit.js";
 
 export const addContactByIndiaMart = async (req) => {
     try {
@@ -318,6 +319,7 @@ export const addContactByIndiaMart = async (req) => {
         //  11: Insert new leads and prepare response
         if (filteredContactBody.length > 0) {
             const result = await CTContactModel.bulkCreate(filteredContactBody);
+            emitAutomationEvent(req, "contact.created", { ids: result.map((c) => c.id), origin: "import", company_masters_id: result[0]?.company_masters_id });
             const contactEmailSendList = [];
             const contactWhatsappSendList = [];
             await Promise.all(
@@ -415,6 +417,7 @@ export const addContactByIndiaMart = async (req) => {
                 });
             if (insertInquiry.length > 0) {
                 const createdInq = await CTInquiryModel.bulkCreate(insertInquiry);
+                emitAutomationEvent(req, "inquiry.created", { ids: createdInq.map((q) => q.id), origin: "import", company_masters_id: createdInq[0]?.company_masters_id });
 
                 await Promise.all(
                     createdInq.map((v) =>
@@ -842,6 +845,7 @@ export const addContactByIndiaMartPushApi = async (req, res) => {
         //  11: Insert new leads and prepare response
         if (filteredContactBody.length > 0) {
             const result = await CTContactModel.bulkCreate(filteredContactBody);
+            emitAutomationEvent(req, "contact.created", { ids: result.map((c) => c.id), origin: "import", company_masters_id: result[0]?.company_masters_id });
 
             const contactEmailSendList = [];
             const contactWhatsappSendList = [];
@@ -939,6 +943,7 @@ export const addContactByIndiaMartPushApi = async (req, res) => {
                 });
             if (insertInquiry.length > 0) {
                 const createdInq = await CTInquiryModel.bulkCreate(insertInquiry);
+                emitAutomationEvent(req, "inquiry.created", { ids: createdInq.map((q) => q.id), origin: "import", company_masters_id: createdInq[0]?.company_masters_id });
                 await Promise.all(
                     createdInq.map((v) =>
                         /* Status Log Entry Added BY Dinesh -> 20-11-2025 */

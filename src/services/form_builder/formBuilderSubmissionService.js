@@ -5,6 +5,7 @@ import { formBuilderFormModel } from "../../models/form_builder/formBuilderFormM
 import { formBuilderSubmissionFileModel } from "../../models/form_builder/formBuilderSubmissionFileModel.js";
 import { stagestatusModel } from "../../models/masters/stagestatusModel.js";
 import { statusAndStagesLogsModel } from "../../models/common/statusAndStagesLogsModel.js";
+import { emitAutomationEvent } from "../automation/emit.js";
 import { isValidFieldKey, mainTableName, repeaterTableName } from "./formBuilderDdlBuilder.js";
 import {
   relatedRecordExists,
@@ -327,6 +328,11 @@ export async function createFormSubmission({
     }
   }
 
+  emitAutomationEvent({ tenantDB, company_masters_id }, "form.submitted", {
+    id: insertId,
+    origin: submittedByType === "public" ? "import" : "user",
+  });
+
   return { submissionId: insertId, possibleDuplicateContactId };
 }
 
@@ -622,6 +628,7 @@ export const updateFormSubmission = async (req) => {
       `UPDATE \`${table}\` SET ${setSql} WHERE id = :id`,
       { replacements: { ...updateColumns, id }, type: QueryTypes.UPDATE },
     );
+    emitAutomationEvent(req, "form.updated", { table, id, before: [existing], data: updateColumns });
 
     // Repeaters — full replace, not diffed (plan §4).
     for (const field of fields) {
@@ -722,6 +729,15 @@ export const updateSubmissionStatus = async (req) => {
       previous_status_id: existing.submission_status_id || 0,
       updated_by: req.body?.a_application_login_id,
       updated_date_time: new Date(),
+    });
+    // This model is written directly here, not through commonServices.js's
+    // insertStagesAndStatusLogs (that helper's own emit, C3, doesn't cover it).
+    emitAutomationEvent(req, "status.changed", {
+      reference_table: "form_builder_submissions",
+      table,
+      reference_id: id,
+      status_id,
+      previous_status_id: existing.submission_status_id || 0,
     });
 
     return resSuccess({ ack_msg: "Status updated" });

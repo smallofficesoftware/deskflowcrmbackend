@@ -27,6 +27,7 @@ import { priceListModel } from "../../models/product_settings/priceListModel.js"
 import { customFieldFormModel } from "../../models/other_settings/customFieldFormModel.js";
 import { Op } from "sequelize";
 import { CART_TYPE_TO_PREFIX_FIELD } from "../../utils/AppEnumeration.js";
+import { emitAutomationEvent } from "../automation/emit.js";
 
 /**
  * Miracle invoice numbers arrive as one opaque string (e.g. "RJT1769/26-27")
@@ -727,6 +728,7 @@ async function createOrUpdateContactFromDetail(tenantDB, companyId, tenantId, co
     } else {
         contact = await contactModelInstance.create(contactPayload);
         created = true;
+        emitAutomationEvent({ tenantDB, company_masters_id: companyId }, "contact.created", { id: contact.id, origin: "import" });
     }
 
     return { contact, created };
