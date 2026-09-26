@@ -31,6 +31,12 @@ export const formBuilderFormModel = (sequelize) => {
         type: TINYINT,
         defaultValue: 0,
       },
+      settings_json: {
+        type: TEXT("long"),
+      },
+      published_settings_json: {
+        type: TEXT("long"),
+      },
       version: {
         type: INTEGER,
         defaultValue: 1,

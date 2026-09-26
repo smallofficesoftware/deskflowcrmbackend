@@ -1,0 +1,260 @@
+[
+  { "name": "arithmetic precedence", "formula": "3 + 4 * 2", "values": {}, "expected": { "value": 11, "kind": "number" } },
+  { "name": "brackets change the order", "formula": "(3 + 4) * 2", "values": {}, "expected": { "value": 14, "kind": "number" } },
+  { "name": "unary minus", "formula": "-5 + 2", "values": {}, "expected": { "value": -3, "kind": "number" } },
+  { "name": "decimals without a leading zero", "formula": "1.5 + .5", "values": {}, "expected": { "value": 2, "kind": "number" } },
+  { "name": "division gives decimals", "formula": "10 / 4", "values": {}, "expected": { "value": 2.5, "kind": "number" } },
+  { "name": "remainder", "formula": "10 % 4", "values": {}, "expected": { "value": 2, "kind": "number" } },
+  {
+    "name": "quantity times rate",
+    "formula": "[qty] * [rate]",
+    "values": { "qty": { "value": 4, "type": "number" }, "rate": { "value": "12.5", "type": "number" } },
+    "expected": { "value": 50, "kind": "number" }
+  },
+  {
+    "name": "an empty field counts as zero",
+    "formula": "[a] + [b]",
+    "values": { "a": { "value": 5, "type": "number" } },
+    "expected": { "value": 5, "kind": "number" }
+  },
+  {
+    "name": "field names are not case sensitive",
+    "formula": "[QTY] * 2",
+    "values": { "qty": { "value": 3, "type": "number" } },
+    "expected": { "value": 6, "kind": "number" }
+  },
+  {
+    "name": "division by zero gives an empty result, not a wrong number",
+    "formula": "[a] / [b]",
+    "values": { "a": { "value": 5, "type": "number" }, "b": { "value": 0, "type": "number" } },
+    "expected": { "value": null, "kind": null, "error": "Division by zero" }
+  },
+  {
+    "name": "a text answer that is not a number is empty",
+    "formula": "[x]",
+    "values": { "x": { "value": "abc", "type": "text" } },
+    "expected": { "value": null, "kind": null }
+  },
+  {
+    "name": "a ticked checkbox is 1",
+    "formula": "[opt] * 100",
+    "values": { "opt": { "value": 1, "type": "checkbox" } },
+    "expected": { "value": 100, "kind": "number" }
+  },
+  {
+    "name": "a true boolean is 1",
+    "formula": "[opt] * 100",
+    "values": { "opt": { "value": true, "type": "switch" } },
+    "expected": { "value": 100, "kind": "number" }
+  },
+  {
+    "name": "SUM over a table column skips empty rows",
+    "formula": "SUM([items.amount])",
+    "values": { "items.amount": { "value": [10, null, 5.5], "type": "list" } },
+    "expected": { "value": 15.5, "kind": "number" }
+  },
+  {
+    "name": "MIN over a table column",
+    "formula": "MIN([items.amount])",
+    "values": { "items.amount": { "value": [10, null, 5.5], "type": "list" } },
+    "expected": { "value": 5.5, "kind": "number" }
+  },
+  {
+    "name": "MAX over a table column",
+    "formula": "MAX([items.amount])",
+    "values": { "items.amount": { "value": [10, null, 5.5], "type": "list" } },
+    "expected": { "value": 10, "kind": "number" }
+  },
+  {
+    "name": "AVG over a table column",
+    "formula": "AVG([items.amount])",
+    "values": { "items.amount": { "value": [10, null, 5.5], "type": "list" } },
+    "expected": { "value": 7.75, "kind": "number" }
+  },
+  {
+    "name": "COUNT counts filled rows",
+    "formula": "COUNT([items.amount])",
+    "values": { "items.amount": { "value": [10, null, 5.5], "type": "list" } },
+    "expected": { "value": 2, "kind": "number" }
+  },
+  {
+    "name": "MAX of nothing is empty",
+    "formula": "MAX([items.amount])",
+    "values": { "items.amount": { "value": [], "type": "list" } },
+    "expected": { "value": null, "kind": null }
+  },
+  {
+    "name": "AVG of nothing is an error",
+    "formula": "AVG([items.amount])",
+    "values": { "items.amount": { "value": [], "type": "list" } },
+    "expected": { "value": null, "kind": null, "error": "Nothing to average" }
+  },
+  {
+    "name": "SUM with several arguments mixing lists and numbers",
+    "formula": "SUM([items.amount], 4, [extra])",
+    "values": { "items.amount": { "value": [1, 2], "type": "list" }, "extra": { "value": 3, "type": "number" } },
+    "expected": { "value": 10, "kind": "number" }
+  },
+  {
+    "name": "a list used like a single number is an error",
+    "formula": "[items.amount] + 1",
+    "values": { "items.amount": { "value": [1, 2], "type": "list" } },
+    "expected": { "value": null, "kind": null, "error": "list of values" }
+  },
+  { "name": "ROUND to a whole number", "formula": "ROUND(2.5)", "values": {}, "expected": { "value": 3, "kind": "number" } },
+  { "name": "ROUND to 2 decimals", "formula": "ROUND(1.2345, 2)", "values": {}, "expected": { "value": 1.23, "kind": "number" } },
+  { "name": "ROUND a division", "formula": "ROUND(7 / 3, 1)", "values": {}, "expected": { "value": 2.3, "kind": "number" } },
+  { "name": "ABS", "formula": "ABS(-4.5)", "values": {}, "expected": { "value": 4.5, "kind": "number" } },
+  {
+    "name": "IF picks the true branch",
+    "formula": "IF([score] >= 50, 1, 0)",
+    "values": { "score": { "value": 62, "type": "number" } },
+    "expected": { "value": 1, "kind": "number" }
+  },
+  {
+    "name": "IF picks the false branch",
+    "formula": "IF([score] >= 50, 1, 0)",
+    "values": { "score": { "value": 40, "type": "number" } },
+    "expected": { "value": 0, "kind": "number" }
+  },
+  {
+    "name": "IF only evaluates the branch it takes (no division by zero)",
+    "formula": "IF([b] = 0, 0, [a] / [b])",
+    "values": { "a": { "value": 5, "type": "number" }, "b": { "value": 0, "type": "number" } },
+    "expected": { "value": 0, "kind": "number" }
+  },
+  {
+    "name": "tolerance check passes inside the limits",
+    "formula": "IF([r] >= [lo], IF([r] <= [hi], 1, 0), 0)",
+    "values": { "r": { "value": 9.5, "type": "number" }, "lo": { "value": 9, "type": "number" }, "hi": { "value": 10, "type": "number" } },
+    "expected": { "value": 1, "kind": "number" }
+  },
+  {
+    "name": "tolerance check fails outside the limits",
+    "formula": "IF([r] >= [lo], IF([r] <= [hi], 1, 0), 0)",
+    "values": { "r": { "value": 10.5, "type": "number" }, "lo": { "value": 9, "type": "number" }, "hi": { "value": 10, "type": "number" } },
+    "expected": { "value": 0, "kind": "number" }
+  },
+  {
+    "name": "comparison equal",
+    "formula": "[a] = [b]",
+    "values": { "a": { "value": 3, "type": "number" }, "b": { "value": 3, "type": "number" } },
+    "expected": { "value": 1, "kind": "number" }
+  },
+  {
+    "name": "comparison not equal",
+    "formula": "[a] != [b]",
+    "values": { "a": { "value": 3, "type": "number" }, "b": { "value": 4, "type": "number" } },
+    "expected": { "value": 1, "kind": "number" }
+  },
+  {
+    "name": "score as a percentage of the maximum",
+    "formula": "[checks.score] / [checks.max_score] * 100",
+    "values": { "checks.score": { "value": 3, "type": "number" }, "checks.max_score": { "value": 4, "type": "number" } },
+    "expected": { "value": 75, "kind": "number" }
+  },
+  {
+    "name": "due date = received + 7 days",
+    "formula": "ADD_DAYS([received], 7)",
+    "values": { "received": { "value": "2026-03-28", "type": "date" } },
+    "expected": { "value": "2026-04-04", "kind": "date" }
+  },
+  {
+    "name": "adding a day rolls over the year",
+    "formula": "ADD_DAYS([d], 1)",
+    "values": { "d": { "value": "2026-12-31", "type": "date" } },
+    "expected": { "value": "2027-01-01", "kind": "date" }
+  },
+  {
+    "name": "leap day",
+    "formula": "ADD_DAYS([d], 1)",
+    "values": { "d": { "value": "2028-02-28", "type": "date" } },
+    "expected": { "value": "2028-02-29", "kind": "date" }
+  },
+  {
+    "name": "datetime values count as their day",
+    "formula": "ADD_DAYS([d], 1)",
+    "values": { "d": { "value": "2026-03-28T10:30", "type": "datetime" } },
+    "expected": { "value": "2026-03-29", "kind": "date" }
+  },
+  {
+    "name": "no date yet gives an empty result without an error",
+    "formula": "ADD_DAYS([received], 5)",
+    "values": {},
+    "expected": { "value": null, "kind": null }
+  },
+  {
+    "name": "an impossible date is treated as empty",
+    "formula": "ADD_DAYS([d], 1)",
+    "values": { "d": { "value": "2026-02-31", "type": "date" } },
+    "expected": { "value": null, "kind": null }
+  },
+  {
+    "name": "days between two dates",
+    "formula": "DAYS_BETWEEN([from], [to])",
+    "values": { "from": { "value": "2026-03-01", "type": "date" }, "to": { "value": "2026-03-31", "type": "date" } },
+    "expected": { "value": 30, "kind": "number" }
+  },
+  {
+    "name": "date minus date is a number of days",
+    "formula": "[to] - [from]",
+    "values": { "from": { "value": "2026-03-01", "type": "date" }, "to": { "value": "2026-03-31", "type": "date" } },
+    "expected": { "value": 30, "kind": "number" }
+  },
+  {
+    "name": "date plus a number is a date",
+    "formula": "[from] + 3",
+    "values": { "from": { "value": "2026-03-01", "type": "date" } },
+    "expected": { "value": "2026-03-04", "kind": "date" }
+  },
+  {
+    "name": "multiplying a date is an error",
+    "formula": "[from] * 2",
+    "values": { "from": { "value": "2026-03-01", "type": "date" } },
+    "expected": { "value": null, "kind": null, "error": "Dates can only be added" }
+  },
+  {
+    "name": "age the day before the birthday",
+    "formula": "AGE_YEARS([dob])",
+    "today": "2026-06-14",
+    "values": { "dob": { "value": "1990-06-15", "type": "date" } },
+    "expected": { "value": 35, "kind": "number" }
+  },
+  {
+    "name": "age on the birthday",
+    "formula": "AGE_YEARS([dob])",
+    "today": "2026-06-15",
+    "values": { "dob": { "value": "1990-06-15", "type": "date" } },
+    "expected": { "value": 36, "kind": "number" }
+  },
+  {
+    "name": "age as of another date",
+    "formula": "AGE_YEARS([dob], [visit])",
+    "today": "2030-01-01",
+    "values": { "dob": { "value": "2000-01-01", "type": "date" }, "visit": { "value": "2020-06-01", "type": "date" } },
+    "expected": { "value": 20, "kind": "number" }
+  },
+  {
+    "name": "TODAY",
+    "formula": "TODAY()",
+    "today": "2026-09-26",
+    "values": {},
+    "expected": { "value": "2026-09-26", "kind": "date" }
+  },
+  {
+    "name": "days left until a date",
+    "formula": "DAYS_BETWEEN(TODAY(), [due])",
+    "today": "2026-09-26",
+    "values": { "due": { "value": "2026-10-06", "type": "date" } },
+    "expected": { "value": 10, "kind": "number" }
+  },
+  { "name": "unknown function is explained", "formula": "FOO(1)", "values": {}, "expected": { "value": null, "kind": null, "error": "isn't a function" } },
+  { "name": "missing closing bracket", "formula": "(1 + 2", "values": {}, "expected": { "value": null, "kind": null, "error": "closing )" } },
+  { "name": "symbol that can't be used", "formula": "2 $ 3", "values": {}, "expected": { "value": null, "kind": null, "error": "can't be used" } },
+  { "name": "empty formula", "formula": "", "values": {}, "expected": { "value": null, "kind": null, "error": "Type a formula" } },
+  { "name": "function without values", "formula": "SUM()", "values": {}, "expected": { "value": null, "kind": null, "error": "needs at least 1" } },
+  { "name": "wrong number of values", "formula": "IF(1, 2)", "values": {}, "expected": { "value": null, "kind": null, "error": "needs 3" } },
+  { "name": "unclosed field name", "formula": "[qty * 2", "values": {}, "expected": { "value": null, "kind": null, "error": "closing ]" } },
+  { "name": "code is never run", "formula": "process.exit(1)", "values": {}, "expected": { "value": null, "kind": null, "error": "can't be used" } },
+  { "name": "property access is not a formula", "formula": "[a].constructor", "values": {}, "expected": { "value": null, "kind": null, "error": "can't be used" } }
+]

@@ -1,0 +1,482 @@
+[
+  {
+    "name": "no conditions: every field visible, only required ones required",
+    "fields": [
+      { "key": "name", "label": "Name", "type": "text", "required": true },
+      { "key": "note", "label": "Note", "type": "textarea" }
+    ],
+    "answers": {},
+    "expectedVisible": ["name", "note"],
+    "expectedRequired": ["name"]
+  },
+  {
+    "name": "is: Reason of rejection shows only when Order is Reject",
+    "fields": [
+      { "key": "order", "label": "Order", "type": "radio", "options": ["Accept", "Reject"] },
+      { "key": "reason", "label": "Reason of rejection", "type": "textarea", "required": true,
+        "conditions": { "match": "all", "rules": [{ "field": "order", "op": "is", "value": "Reject" }] } }
+    ],
+    "answers": { "order": "Reject" },
+    "expectedVisible": ["order", "reason"],
+    "expectedRequired": ["reason"]
+  },
+  {
+    "name": "is: hidden field is not required even when marked required",
+    "fields": [
+      { "key": "order", "label": "Order", "type": "radio", "options": ["Accept", "Reject"] },
+      { "key": "reason", "label": "Reason of rejection", "type": "textarea", "required": true,
+        "conditions": { "match": "all", "rules": [{ "field": "order", "op": "is", "value": "Reject" }] } }
+    ],
+    "answers": { "order": "Accept", "reason": "left over text" },
+    "expectedVisible": ["order"],
+    "expectedRequired": []
+  },
+  {
+    "name": "is: text compare is trimmed and case-insensitive",
+    "fields": [
+      { "key": "order", "label": "Order", "type": "dropdown" },
+      { "key": "reason", "label": "Reason", "type": "text",
+        "conditions": { "match": "all", "rules": [{ "field": "order", "op": "is", "value": "reject" }] } }
+    ],
+    "answers": { "order": "  REJECT " },
+    "expectedVisible": ["order", "reason"],
+    "expectedRequired": []
+  },
+  {
+    "name": "is_not: empty answer counts as 'is not'",
+    "fields": [
+      { "key": "order", "label": "Order", "type": "dropdown" },
+      { "key": "thanks", "label": "Thanks note", "type": "text",
+        "conditions": { "match": "all", "rules": [{ "field": "order", "op": "is_not", "value": "Reject" }] } }
+    ],
+    "answers": {},
+    "expectedVisible": ["order", "thanks"],
+    "expectedRequired": []
+  },
+  {
+    "name": "is_empty / is_not_empty on text",
+    "fields": [
+      { "key": "gst", "label": "GST", "type": "text" },
+      { "key": "why_no_gst", "label": "Why no GST", "type": "text",
+        "conditions": { "match": "all", "rules": [{ "field": "gst", "op": "is_empty" }] } },
+      { "key": "gst_state", "label": "GST state", "type": "text",
+        "conditions": { "match": "all", "rules": [{ "field": "gst", "op": "is_not_empty" }] } }
+    ],
+    "answers": { "gst": "   " },
+    "expectedVisible": ["gst", "why_no_gst"],
+    "expectedRequired": []
+  },
+  {
+    "name": "numbers: '5' equals 5.0, gt / lt compare as numbers",
+    "fields": [
+      { "key": "qty", "label": "Qty", "type": "number" },
+      { "key": "exactly_five", "label": "Five", "type": "text",
+        "conditions": { "match": "all", "rules": [{ "field": "qty", "op": "is", "value": 5 }] } },
+      { "key": "big", "label": "Big", "type": "text",
+        "conditions": { "match": "all", "rules": [{ "field": "qty", "op": "gt", "value": "10" }] } },
+      { "key": "small", "label": "Small", "type": "text",
+        "conditions": { "match": "all", "rules": [{ "field": "qty", "op": "lt", "value": 10 }] } }
+    ],
+    "answers": { "qty": "5.0" },
+    "expectedVisible": ["exactly_five", "qty", "small"],
+    "expectedRequired": []
+  },
+  {
+    "name": "numbers: 9 is not greater than 10 (not a text compare)",
+    "fields": [
+      { "key": "qty", "label": "Qty", "type": "number" },
+      { "key": "big", "label": "Big", "type": "text",
+        "conditions": { "match": "all", "rules": [{ "field": "qty", "op": "gt", "value": 10 }] } }
+    ],
+    "answers": { "qty": "9" },
+    "expectedVisible": ["qty"],
+    "expectedRequired": []
+  },
+  {
+    "name": "gt / lt on empty or non-number answer is false",
+    "fields": [
+      { "key": "qty", "label": "Qty", "type": "number" },
+      { "key": "big", "label": "Big", "type": "text",
+        "conditions": { "match": "all", "rules": [{ "field": "qty", "op": "gt", "value": 0 }] } },
+      { "key": "neg", "label": "Negative", "type": "text",
+        "conditions": { "match": "all", "rules": [{ "field": "qty", "op": "lt", "value": 1 }] } }
+    ],
+    "answers": { "qty": "" },
+    "expectedVisible": ["qty"],
+    "expectedRequired": []
+  },
+  {
+    "name": "dates: gt / lt compare as dates",
+    "fields": [
+      { "key": "visit_date", "label": "Visit date", "type": "date" },
+      { "key": "late_reason", "label": "Late reason", "type": "text",
+        "conditions": { "match": "all", "rules": [{ "field": "visit_date", "op": "gt", "value": "2026-09-30" }] } },
+      { "key": "early_note", "label": "Early note", "type": "text",
+        "conditions": { "match": "all", "rules": [{ "field": "visit_date", "op": "lt", "value": "2026-10-15" }] } }
+    ],
+    "answers": { "visit_date": "2026-10-01" },
+    "expectedVisible": ["early_note", "late_reason", "visit_date"],
+    "expectedRequired": []
+  },
+  {
+    "name": "checkbox: is true / is 1 / is_empty when unticked",
+    "fields": [
+      { "key": "agree", "label": "Agree", "type": "checkbox" },
+      { "key": "when_true", "label": "When true", "type": "text",
+        "conditions": { "match": "all", "rules": [{ "field": "agree", "op": "is", "value": true }] } },
+      { "key": "when_one", "label": "When 1", "type": "text",
+        "conditions": { "match": "all", "rules": [{ "field": "agree", "op": "is", "value": 1 }] } },
+      { "key": "when_unticked", "label": "When unticked", "type": "text",
+        "conditions": { "match": "all", "rules": [{ "field": "agree", "op": "is_empty" }] } }
+    ],
+    "answers": { "agree": "1" },
+    "expectedVisible": ["agree", "when_one", "when_true"],
+    "expectedRequired": []
+  },
+  {
+    "name": "switch: false / 0 / 'false' all count as off",
+    "fields": [
+      { "key": "a", "label": "A", "type": "switch" },
+      { "key": "b", "label": "B", "type": "switch" },
+      { "key": "c", "label": "C", "type": "switch" },
+      { "key": "a_off", "label": "A off", "type": "text",
+        "conditions": { "match": "all", "rules": [{ "field": "a", "op": "is", "value": false }] } },
+      { "key": "b_off", "label": "B off", "type": "text",
+        "conditions": { "match": "all", "rules": [{ "field": "b", "op": "is_not", "value": true }] } },
+      { "key": "c_off", "label": "C off", "type": "text",
+        "conditions": { "match": "all", "rules": [{ "field": "c", "op": "is", "value": "0" }] } }
+    ],
+    "answers": { "a": false, "b": 0, "c": "false" },
+    "expectedVisible": ["a", "a_off", "b", "b_off", "c", "c_off"],
+    "expectedRequired": []
+  },
+  {
+    "name": "checkbox: never answered counts as unticked",
+    "fields": [
+      { "key": "agree", "label": "Agree", "type": "checkbox" },
+      { "key": "when_off", "label": "When off", "type": "text",
+        "conditions": { "match": "all", "rules": [{ "field": "agree", "op": "is", "value": false }] } }
+    ],
+    "answers": {},
+    "expectedVisible": ["agree", "when_off"],
+    "expectedRequired": []
+  },
+  {
+    "name": "multi-select: contains / is / is_not / any_of",
+    "fields": [
+      { "key": "services", "label": "Services", "type": "multi-select", "options": ["Water", "Air", "Soil"] },
+      { "key": "water_detail", "label": "Water detail", "type": "text",
+        "conditions": { "match": "all", "rules": [{ "field": "services", "op": "contains", "value": "Water" }] } },
+      { "key": "air_detail", "label": "Air detail", "type": "text",
+        "conditions": { "match": "all", "rules": [{ "field": "services", "op": "is", "value": "air" }] } },
+      { "key": "no_soil", "label": "No soil", "type": "text",
+        "conditions": { "match": "all", "rules": [{ "field": "services", "op": "is_not", "value": "Soil" }] } },
+      { "key": "lab", "label": "Lab", "type": "text",
+        "conditions": { "match": "all", "rules": [{ "field": "services", "op": "any_of", "value": ["Soil", "Air"] }] } }
+    ],
+    "answers": { "services": ["Water", "Air"] },
+    "expectedVisible": ["air_detail", "lab", "no_soil", "services", "water_detail"],
+    "expectedRequired": []
+  },
+  {
+    "name": "multi-select stored as JSON text is read as a list",
+    "fields": [
+      { "key": "services", "label": "Services", "type": "multi-select" },
+      { "key": "soil_detail", "label": "Soil detail", "type": "text",
+        "conditions": { "match": "all", "rules": [{ "field": "services", "op": "contains", "value": "Soil" }] } }
+    ],
+    "answers": { "services": "[\"Soil\"]" },
+    "expectedVisible": ["services", "soil_detail"],
+    "expectedRequired": []
+  },
+  {
+    "name": "multi-select: empty list is empty; any_of with none ticked is false",
+    "fields": [
+      { "key": "services", "label": "Services", "type": "multi-select" },
+      { "key": "pick_one", "label": "Pick one", "type": "text",
+        "conditions": { "match": "all", "rules": [{ "field": "services", "op": "is_empty" }] } },
+      { "key": "lab", "label": "Lab", "type": "text",
+        "conditions": { "match": "all", "rules": [{ "field": "services", "op": "any_of", "value": ["Soil"] }] } }
+    ],
+    "answers": { "services": [] },
+    "expectedVisible": ["pick_one", "services"],
+    "expectedRequired": []
+  },
+  {
+    "name": "contains on text is a case-insensitive substring",
+    "fields": [
+      { "key": "remark", "label": "Remark", "type": "text" },
+      { "key": "urgent_by", "label": "Urgent by", "type": "date",
+        "conditions": { "match": "all", "rules": [{ "field": "remark", "op": "contains", "value": "urgent" }] } }
+    ],
+    "answers": { "remark": "Very URGENT please" },
+    "expectedVisible": ["remark", "urgent_by"],
+    "expectedRequired": []
+  },
+  {
+    "name": "any_of on a dropdown",
+    "fields": [
+      { "key": "city", "label": "City", "type": "dropdown" },
+      { "key": "gujarat_note", "label": "Gujarat note", "type": "text",
+        "conditions": { "match": "all", "rules": [{ "field": "city", "op": "any_of", "value": ["Surat", "Vadodara", "Ahmedabad"] }] } }
+    ],
+    "answers": { "city": "vadodara" },
+    "expectedVisible": ["city", "gujarat_note"],
+    "expectedRequired": []
+  },
+  {
+    "name": "match all vs match any",
+    "fields": [
+      { "key": "a", "label": "A", "type": "text" },
+      { "key": "b", "label": "B", "type": "text" },
+      { "key": "both", "label": "Both", "type": "text",
+        "conditions": { "match": "all", "rules": [{ "field": "a", "op": "is", "value": "x" }, { "field": "b", "op": "is", "value": "y" }] } },
+      { "key": "either", "label": "Either", "type": "text",
+        "conditions": { "match": "any", "rules": [{ "field": "a", "op": "is", "value": "x" }, { "field": "b", "op": "is", "value": "y" }] } }
+    ],
+    "answers": { "a": "x", "b": "n" },
+    "expectedVisible": ["a", "b", "either"],
+    "expectedRequired": []
+  },
+  {
+    "name": "match missing defaults to all; empty rules list means always shown",
+    "fields": [
+      { "key": "a", "label": "A", "type": "text" },
+      { "key": "b", "label": "B", "type": "text",
+        "conditions": { "rules": [{ "field": "a", "op": "is", "value": "x" }, { "field": "a", "op": "is", "value": "z" }] } },
+      { "key": "c", "label": "C", "type": "text", "conditions": { "match": "all", "rules": [] } }
+    ],
+    "answers": { "a": "x" },
+    "expectedVisible": ["a", "c"],
+    "expectedRequired": []
+  },
+  {
+    "name": "chain: field depending on a hidden field is hidden (even with is_empty)",
+    "fields": [
+      { "key": "order", "label": "Order", "type": "radio" },
+      { "key": "reason", "label": "Reason", "type": "dropdown",
+        "conditions": { "match": "all", "rules": [{ "field": "order", "op": "is", "value": "Reject" }] } },
+      { "key": "other_reason", "label": "Other reason", "type": "text", "required": true,
+        "conditions": { "match": "all", "rules": [{ "field": "reason", "op": "is", "value": "Other" }] } },
+      { "key": "no_reason", "label": "No reason", "type": "text",
+        "conditions": { "match": "all", "rules": [{ "field": "reason", "op": "is_empty" }] } }
+    ],
+    "answers": { "order": "Accept", "reason": "Other", "other_reason": "stale" },
+    "expectedVisible": ["order"],
+    "expectedRequired": []
+  },
+  {
+    "name": "chain resolves when the source comes later in the list",
+    "fields": [
+      { "key": "detail", "label": "Detail", "type": "text", "required": true,
+        "conditions": { "match": "all", "rules": [{ "field": "kind", "op": "is", "value": "B" }] } },
+      { "key": "kind", "label": "Kind", "type": "radio" }
+    ],
+    "answers": { "kind": "B" },
+    "expectedVisible": ["detail", "kind"],
+    "expectedRequired": ["detail"]
+  },
+  {
+    "name": "match any: one true rule still shows it when the other source is hidden",
+    "fields": [
+      { "key": "a", "label": "A", "type": "text" },
+      { "key": "b", "label": "B", "type": "text",
+        "conditions": { "match": "all", "rules": [{ "field": "a", "op": "is", "value": "show b" }] } },
+      { "key": "c", "label": "C", "type": "text",
+        "conditions": { "match": "any", "rules": [{ "field": "b", "op": "is_empty" }, { "field": "a", "op": "is", "value": "x" }] } }
+    ],
+    "answers": { "a": "x" },
+    "expectedVisible": ["a", "c"],
+    "expectedRequired": []
+  },
+  {
+    "name": "section: hidden section hides every field up to the next section",
+    "fields": [
+      { "key": "in_scope", "label": "In scope?", "type": "radio" },
+      { "key": "sec_not_scope", "label": "If not in scope", "type": "section-header",
+        "conditions": { "match": "all", "rules": [{ "field": "in_scope", "op": "is", "value": "No" }] } },
+      { "key": "q2", "label": "Q2", "type": "text", "required": true },
+      { "key": "q3", "label": "Q3", "type": "text" },
+      { "key": "sec_end", "label": "Order", "type": "section-header" },
+      { "key": "order", "label": "Order", "type": "radio", "required": true }
+    ],
+    "answers": { "in_scope": "Yes", "q2": "x" },
+    "expectedVisible": ["in_scope", "order", "sec_end"],
+    "expectedRequired": ["order"]
+  },
+  {
+    "name": "section: shown section keeps its fields' own rules",
+    "fields": [
+      { "key": "in_scope", "label": "In scope?", "type": "radio" },
+      { "key": "sec_not_scope", "label": "If not in scope", "type": "section-header",
+        "conditions": { "match": "all", "rules": [{ "field": "in_scope", "op": "is", "value": "No" }] } },
+      { "key": "q2", "label": "Q2", "type": "radio", "required": true },
+      { "key": "q3", "label": "Q3", "type": "text",
+        "conditions": { "match": "all", "rules": [{ "field": "q2", "op": "is", "value": "Yes" }] } }
+    ],
+    "answers": { "in_scope": "No", "q2": "No" },
+    "expectedVisible": ["in_scope", "q2", "sec_not_scope"],
+    "expectedRequired": ["q2"]
+  },
+  {
+    "name": "section without a key still hides its fields",
+    "fields": [
+      { "key": "mode", "label": "Mode", "type": "radio" },
+      { "label": "Courier details", "type": "section-header",
+        "conditions": { "match": "all", "rules": [{ "field": "mode", "op": "is", "value": "Courier" }] } },
+      { "key": "awb", "label": "AWB no", "type": "text", "required": true }
+    ],
+    "answers": { "mode": "Hand" },
+    "expectedVisible": ["mode"],
+    "expectedRequired": []
+  },
+  {
+    "name": "rule pointing at a missing field is false",
+    "fields": [
+      { "key": "x", "label": "X", "type": "text",
+        "conditions": { "match": "all", "rules": [{ "field": "deleted_field", "op": "is_empty" }] } }
+    ],
+    "answers": {},
+    "expectedVisible": [],
+    "expectedRequired": []
+  },
+  {
+    "name": "unknown operator is false",
+    "fields": [
+      { "key": "a", "label": "A", "type": "text" },
+      { "key": "b", "label": "B", "type": "text",
+        "conditions": { "match": "all", "rules": [{ "field": "a", "op": "starts_with", "value": "x" }] } }
+    ],
+    "answers": { "a": "xyz" },
+    "expectedVisible": ["a"],
+    "expectedRequired": []
+  },
+  {
+    "name": "circular chain at fill time: both hidden",
+    "fields": [
+      { "key": "a", "label": "A", "type": "text",
+        "conditions": { "match": "all", "rules": [{ "field": "b", "op": "is_empty" }] } },
+      { "key": "b", "label": "B", "type": "text",
+        "conditions": { "match": "all", "rules": [{ "field": "a", "op": "is_empty" }] } },
+      { "key": "c", "label": "C", "type": "text" }
+    ],
+    "answers": {},
+    "expectedVisible": ["c"],
+    "expectedRequired": []
+  },
+  {
+    "name": "required_conditions: required only when Order is Reject",
+    "fields": [
+      { "key": "order", "label": "Order", "type": "radio" },
+      { "key": "remarks", "label": "Remarks", "type": "textarea",
+        "required_conditions": { "match": "all", "rules": [{ "field": "order", "op": "is", "value": "Reject" }] } }
+    ],
+    "answers": { "order": "Reject" },
+    "expectedVisible": ["order", "remarks"],
+    "expectedRequired": ["remarks"]
+  },
+  {
+    "name": "required_conditions not met: optional",
+    "fields": [
+      { "key": "order", "label": "Order", "type": "radio" },
+      { "key": "remarks", "label": "Remarks", "type": "textarea",
+        "required_conditions": { "match": "all", "rules": [{ "field": "order", "op": "is", "value": "Reject" }] } }
+    ],
+    "answers": { "order": "Accept" },
+    "expectedVisible": ["order", "remarks"],
+    "expectedRequired": []
+  },
+  {
+    "name": "required_conditions on a hidden field: not required",
+    "fields": [
+      { "key": "order", "label": "Order", "type": "radio" },
+      { "key": "remarks", "label": "Remarks", "type": "textarea",
+        "conditions": { "match": "all", "rules": [{ "field": "order", "op": "is_not_empty" }] },
+        "required_conditions": { "match": "all", "rules": [{ "field": "order", "op": "is_empty" }] } }
+    ],
+    "answers": {},
+    "expectedVisible": ["order"],
+    "expectedRequired": []
+  },
+  {
+    "name": "required_conditions using a hidden source: not required",
+    "fields": [
+      { "key": "a", "label": "A", "type": "text" },
+      { "key": "b", "label": "B", "type": "text",
+        "conditions": { "match": "all", "rules": [{ "field": "a", "op": "is", "value": "show" }] } },
+      { "key": "c", "label": "C", "type": "text",
+        "required_conditions": { "match": "all", "rules": [{ "field": "b", "op": "is_empty" }] } }
+    ],
+    "answers": { "a": "hide" },
+    "expectedVisible": ["a", "c"],
+    "expectedRequired": []
+  },
+  {
+    "name": "required_conditions with checkbox ticked",
+    "fields": [
+      { "key": "gst_registered", "label": "GST registered", "type": "switch" },
+      { "key": "gst", "label": "GST", "type": "text",
+        "required_conditions": { "match": "any", "rules": [{ "field": "gst_registered", "op": "is", "value": true }] } }
+    ],
+    "answers": { "gst_registered": true },
+    "expectedVisible": ["gst", "gst_registered"],
+    "expectedRequired": ["gst"]
+  },
+  {
+    "name": "repeater row: sub-field rule uses a field of the same row",
+    "outer": {
+      "fields": [
+        { "key": "customer", "label": "Customer", "type": "text" },
+        { "key": "items", "label": "Items", "type": "repeater", "columns": [] }
+      ],
+      "answers": { "customer": "ACME" }
+    },
+    "fields": [
+      { "key": "item_type", "label": "Type", "type": "dropdown" },
+      { "key": "other_text", "label": "Other", "type": "text", "required": true,
+        "conditions": { "match": "all", "rules": [{ "field": "item_type", "op": "is", "value": "Other" }] } }
+    ],
+    "answers": { "item_type": "Other" },
+    "expectedVisible": ["item_type", "other_text"],
+    "expectedRequired": ["other_text"]
+  },
+  {
+    "name": "repeater row: sub-field rule uses a top-level field",
+    "outer": {
+      "fields": [
+        { "key": "export_order", "label": "Export order", "type": "switch" },
+        { "key": "items", "label": "Items", "type": "repeater", "columns": [] }
+      ],
+      "answers": { "export_order": 0 }
+    },
+    "fields": [
+      { "key": "item", "label": "Item", "type": "text" },
+      { "key": "hs_code", "label": "HS code", "type": "text", "required": true,
+        "conditions": { "match": "all", "rules": [{ "field": "export_order", "op": "is", "value": true }] } }
+    ],
+    "answers": { "item": "Pump", "hs_code": "8413" },
+    "expectedVisible": ["item"],
+    "expectedRequired": []
+  },
+  {
+    "name": "repeater row: top-level source hidden -> sub-field hidden",
+    "outer": {
+      "fields": [
+        { "key": "kind", "label": "Kind", "type": "radio" },
+        { "key": "detail", "label": "Detail", "type": "text",
+          "conditions": { "match": "all", "rules": [{ "field": "kind", "op": "is", "value": "B" }] } },
+        { "key": "items", "label": "Items", "type": "repeater", "columns": [] }
+      ],
+      "answers": { "kind": "A", "detail": "x" }
+    },
+    "fields": [
+      { "key": "sub", "label": "Sub", "type": "text",
+        "conditions": { "match": "all", "rules": [{ "field": "detail", "op": "is_not_empty" }] } },
+      { "key": "sub2", "label": "Sub 2", "type": "text",
+        "required_conditions": { "match": "all", "rules": [{ "field": "kind", "op": "is", "value": "A" }] } }
+    ],
+    "answers": {},
+    "expectedVisible": ["sub2"],
+    "expectedRequired": ["sub2"]
+  }
+]

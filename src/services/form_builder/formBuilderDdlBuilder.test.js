@@ -22,6 +22,11 @@ import {
   buildCreateRepeaterTableStatement,
   buildAlterAddColumnsStatement,
   buildAlterModifyColumnsStatement,
+  NO_COLUMN_TYPES,
+  NO_COLUMN_NON_REPEATER_TYPES,
+  LAYOUT_TYPES,
+  FILE_TYPES,
+  SERVER_OWNED_TYPES,
 } from "./formBuilderDdlBuilder.js";
 
 let passed = 0;
@@ -181,6 +186,85 @@ test("throws for a type with no column mapping (e.g. a layout-only type passed b
   assert.throws(() => columnTypeForField({ type: "section-header" }), /no column mapping/);
 });
 
+// ---- v2 Phase 1 field types ----
+
+test("maps auto-number to VARCHAR(100)", () => {
+  assert.strictEqual(columnTypeForField({ type: "auto-number" }), "VARCHAR(100)");
+});
+
+test("maps customer-lookup to INT", () => {
+  assert.strictEqual(columnTypeForField({ type: "customer-lookup" }), "INT");
+});
+
+test("maps question-table to LONGTEXT (JSON answer grid)", () => {
+  assert.strictEqual(columnTypeForField({ type: "question-table" }), "LONGTEXT");
+});
+
+test("maps calculation to DECIMAL(18,4)", () => {
+  assert.strictEqual(columnTypeForField({ type: "calculation" }), "DECIMAL(18,4)");
+});
+
+test("maps user to INT", () => {
+  assert.strictEqual(columnTypeForField({ type: "user" }), "INT");
+});
+
+test("instruction has no column mapping (layout-only, like section-header)", () => {
+  assert.throws(() => columnTypeForField({ type: "instruction" }), /no column mapping/);
+});
+
+test("NO_COLUMN_TYPES covers layout, file and repeater types", () => {
+  for (const t of ["section-header", "instruction", "file", "signature", "image", "repeater"]) {
+    assert.ok(NO_COLUMN_TYPES.has(t), `expected ${t} in NO_COLUMN_TYPES`);
+  }
+  assert.ok(!NO_COLUMN_TYPES.has("auto-number"), "auto-number has a real column");
+});
+
+test("NO_COLUMN_NON_REPEATER_TYPES is NO_COLUMN_TYPES minus repeater", () => {
+  assert.ok(!NO_COLUMN_NON_REPEATER_TYPES.has("repeater"));
+  assert.strictEqual(NO_COLUMN_NON_REPEATER_TYPES.size, NO_COLUMN_TYPES.size - 1);
+  for (const t of LAYOUT_TYPES) assert.ok(NO_COLUMN_NON_REPEATER_TYPES.has(t));
+  for (const t of FILE_TYPES) assert.ok(NO_COLUMN_NON_REPEATER_TYPES.has(t));
+});
+
+test("SERVER_OWNED_TYPES contains auto-number", () => {
+  assert.ok(SERVER_OWNED_TYPES.has("auto-number"));
+});
+
+test("buildCreateMainTableStatement adds columns for every new v2 type and skips instruction", () => {
+  const sql = buildCreateMainTableStatement(1, [
+    { key: "note", type: "instruction", content: "Take sign of division head" },
+    { key: "doc_no", type: "auto-number", unique: true },
+    { key: "customer", type: "customer-lookup", filterable: true },
+    { key: "checks", type: "question-table" },
+    { key: "total", type: "calculation" },
+    { key: "assigned_to", type: "user" },
+  ]);
+  assert.ok(!sql.includes("`note`"), "instruction must not become a column");
+  assert.ok(sql.includes("`doc_no` VARCHAR(100) NULL"), sql);
+  assert.ok(sql.includes("UNIQUE INDEX `uniq_doc_no` (`doc_no`)"), sql);
+  assert.ok(sql.includes("`customer` INT NULL"), sql);
+  assert.ok(sql.includes("INDEX `idx_customer` (`customer`)"), sql);
+  assert.ok(sql.includes("`checks` LONGTEXT NULL"), sql);
+  assert.ok(sql.includes("`total` DECIMAL(18,4) NULL"), sql);
+  assert.ok(sql.includes("`assigned_to` INT NULL"), sql);
+});
+
+test("buildCreateRepeaterTableStatement skips an instruction sub-field", () => {
+  const sql = buildCreateRepeaterTableStatement(1, 5, [
+    { key: "hint", type: "instruction", content: "Fill one row per item" },
+    { key: "qty", type: "number" },
+  ]);
+  assert.ok(!sql.includes("`hint`"), sql);
+  assert.ok(sql.includes("`qty` DECIMAL(18,4) NULL"), sql);
+});
+
+test("invalid-key VALIDATION message names the field by its label", () => {
+  assert.throws(
+    () => buildCreateMainTableStatement(1, [{ key: "isDelete", type: "text", label: "Deleted?" }]),
+    /VALIDATION: “Deleted\?”/,
+  );
+});
+
 // ---- CREATE TABLE generation ----
 
 test("buildCreateMainTableStatement includes every fixed column", () => {
@@ -276,6 +360,25 @@ test("buildAlterModifyColumnsStatement returns null when nothing changed", () =>
 test("buildAlterModifyColumnsStatement generates MODIFY COLUMN, not ADD COLUMN", () => {
   const sql = buildAlterModifyColumnsStatement("fbs_1", [{ key: "qty", type: "number" }]);
   assert.ok(sql.includes("MODIFY COLUMN `qty`"), sql);
+});
+
+test("auto-number column always gets a unique index", () => {
+  const sql = buildCreateMainTableStatement(7, [{ key: "form_no", type: "auto-number", label: "Form No" }]);
+  assert.ok(/UNIQUE/i.test(sql), sql);
+});
+
+test("a calculation is DECIMAL, or DATE when its result is a date", () => {
+  assert.strictEqual(columnTypeForField({ key: "t", type: "calculation" }), "DECIMAL(18,4)");
+  assert.strictEqual(columnTypeForField({ key: "d", type: "calculation", result_type: "number" }), "DECIMAL(18,4)");
+  assert.strictEqual(columnTypeForField({ key: "d", type: "calculation", result_type: "date" }), "DATE");
+});
+
+test("Phase 7 field types have columns", () => {
+  assert.strictEqual(columnTypeForField({ type: "time" }), "TIME");
+  assert.strictEqual(columnTypeForField({ type: "currency" }), "DECIMAL(18,2)");
+  assert.strictEqual(columnTypeForField({ type: "percentage" }), "DECIMAL(9,2)");
+  assert.strictEqual(columnTypeForField({ type: "location" }), "VARCHAR(60)");
+  assert.strictEqual(columnTypeForField({ type: "barcode" }), "VARCHAR(255)");
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

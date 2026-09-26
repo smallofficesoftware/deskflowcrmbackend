@@ -8,6 +8,8 @@
 // Every table/column name below is verified against the real model files
 // (see plan §1/§4's "verified" notes), not guessed.
 import { QueryTypes } from "sequelize";
+import { isExtraMaster } from "./formBuilderLookups.js";
+import { getExtraMasterOptions, resolveExtraMasterLabels } from "./formBuilderExtraMasters.js";
 
 // master key -> { table, label, parentColumn? }
 // parentColumn is present only for masters that cascade from another
@@ -23,17 +25,26 @@ export const MASTER_REGISTRY = {
 // related_module -> table, for the related_record_id existence-check and
 // display-label resolution (plan §4). "order" -> "carts" is the one that
 // isn't obvious from the name alone (verified against orderServices.js).
+// `extraWhere` (plan N7) is a hardcoded, never-user-supplied SQL fragment
+// for a table two related modules share — task_managements holds both
+// ordinary tasks and support tickets, told apart by is_support_ticket.
 export const RELATED_MODULE_REGISTRY = {
   contact: { table: "contact_masters", label: "person_name" },
   product: { table: "products", label: "product_name" },
   inquiry: { table: "inquiries", label: "name" },
   order: { table: "carts", label: "cart_number" },
+  task: { table: "task_managements", label: "task_title", extraWhere: "is_support_ticket = 0" },
+  support_ticket: { table: "task_managements", label: "task_title", extraWhere: "is_support_ticket = 1" },
+  work_order: { table: "production_transactions", label: "job_id" },
 };
 
 // Live options for a reference field's dropdown (plan §1's
 // /reference-options endpoint, both internal and public variants). Not
 // cached/baked into schema_json — master data changes over time.
-export async function getReferenceOptions({ tenantDB, master, parentId }) {
+export async function getReferenceOptions({ tenantDB, master, parentId, company_masters_id }) {
+  // "user" and "custom:<list id>" masters (Phase 5) aren't plain CRM tables.
+  if (isExtraMaster(master)) return getExtraMasterOptions({ tenantDB, master, company_masters_id });
+
   const entry = MASTER_REGISTRY[master];
   if (!entry) {
     throw new Error(`formBuilderMasterRegistry: unknown master "${master}"`);
@@ -63,6 +74,8 @@ export async function getReferenceOptions({ tenantDB, master, parentId }) {
 // one query per row. Soft-deleted rows fall back to "(deleted)" rather than
 // a blank label.
 export async function resolveMasterLabels({ tenantDB, master, ids }) {
+  if (isExtraMaster(master)) return resolveExtraMasterLabels({ tenantDB, master, ids });
+
   const uniqueIds = [...new Set((ids || []).filter((id) => id != null))];
   if (uniqueIds.length === 0) return {};
 
@@ -95,7 +108,7 @@ export async function resolveRelatedRecordLabels({ tenantDB, relatedModule, ids 
   if (!entry) return {};
 
   const rows = await tenantDB.query(
-    `SELECT id, \`${entry.label}\` AS label, isDelete FROM \`${entry.table}\` WHERE id IN (:ids)`,
+    `SELECT id, \`${entry.label}\` AS label, isDelete FROM \`${entry.table}\` WHERE id IN (:ids)${entry.extraWhere ? ` AND ${entry.extraWhere}` : ""}`,
     { replacements: { ids: uniqueIds }, type: tenantDB.QueryTypes.SELECT },
   );
 
@@ -115,7 +128,7 @@ export async function relatedRecordExists({ tenantDB, relatedModule, recordId })
   if (!entry || recordId == null) return false;
 
   const [row] = await tenantDB.query(
-    `SELECT id FROM \`${entry.table}\` WHERE id = :recordId AND isDelete = 0 LIMIT 1`,
+    `SELECT id FROM \`${entry.table}\` WHERE id = :recordId AND isDelete = 0${entry.extraWhere ? ` AND ${entry.extraWhere}` : ""} LIMIT 1`,
     { replacements: { recordId }, type: tenantDB.QueryTypes.SELECT },
   );
   return !!row;
