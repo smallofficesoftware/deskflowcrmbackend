@@ -19,6 +19,7 @@ import { PAGE_ID } from "../../utils/AppEnumeration.js";
 import { isValid, resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { inserStockAdjustment } from "../activities/stockAdjustmentServices.js";
 import { getCompanyByLoginId } from "../commonServices.js";
+import { fetchJobCardsPerProcess } from "./rawMaterialProcessJobCards.js";
 
 export const jobCardsFetch = async (req) => {
     try {
@@ -572,6 +573,15 @@ export const jobCardsDetails = async (req) => {
                         };
                     };
 
+                    // Which OTHER open job cards (same product) are also
+                    // logging consumption at each process, with their status -
+                    // lets the UI show "N job cards" per process and drill in.
+                    const jobCardsByProcess = await fetchJobCardsPerProcess(
+                        req,
+                        productId,
+                        processes.map(proc => Number(proc.id)),
+                    );
+
                     bomProcesses = processes.map((proc) => {
                         const pId = Number(proc.id);
                         const processId = Number(proc.process_id);
@@ -586,7 +596,8 @@ export const jobCardsDetails = async (req) => {
                                 .map(m => formatMaterial(m, pId, 2)),
                             rejection: materials
                                 .filter(m => Number(m.type) === 2)
-                                .map(m => formatMaterial(m, pId, 1))
+                                .map(m => formatMaterial(m, pId, 1)),
+                            job_cards: jobCardsByProcess[pId] || [],
                         };
                     });
                 }
@@ -729,7 +740,9 @@ const fetchOtherOpenJobCardStock = async (req, currentJobCard, materialIds) => {
         if (!bomIds.length) return { incoming, incomingBy };
 
         // Consumption materials only (type 1 / unset), limited to the
-        // materials shown on this job card.
+        // materials shown on this job card. processRowId kept (not just
+        // summed) so we can later tell which process each material's
+        // consumption was logged against.
         const materials = await BOMMaterials.findAll({
             where: { bom_id: { [Op.in]: bomIds }, isDelete: 0 },
             raw: true,
@@ -739,7 +752,32 @@ const fetchOtherOpenJobCardStock = async (req, currentJobCard, materialIds) => {
             const mId = Number(m.item_id || m.material_id);
             if (!wanted.has(mId) || (m.type && Number(m.type) !== 1)) return;
             if (!materialsByBom.has(Number(m.bom_id))) materialsByBom.set(Number(m.bom_id), []);
-            materialsByBom.get(Number(m.bom_id)).push({ mId, qty: Number(m.qty) || 0 });
+            materialsByBom.get(Number(m.bom_id)).push({ mId, qty: Number(m.qty) || 0, processRowId: Number(m.process_id) });
+        });
+
+        // Ordered (id ASC = pipeline order, same convention as jobCardsDetails)
+        // process rows per bom, with resolved process names - lets each
+        // reserving job card report which process it's currently at.
+        const processRows = await bomVsProcessListsModel(req.tenantDB).findAll({
+            where: { bom_id: { [Op.in]: bomIds }, isDelete: 0 },
+            attributes: ["id", "bom_id", "process_id"],
+            order: [["id", "ASC"]],
+            raw: true,
+        });
+        const processMasterIds = [...new Set(processRows.map((p) => Number(p.process_id)))];
+        const processMasterRows = processMasterIds.length
+            ? await processMastersModel(req.tenantDB).findAll({
+                where: { id: { [Op.in]: processMasterIds } },
+                attributes: ["id", "process_name"],
+                raw: true,
+            })
+            : [];
+        const processNameMap = new Map(processMasterRows.map((pm) => [Number(pm.id), pm.process_name]));
+        const processRowsByBom = new Map();
+        processRows.forEach((p) => {
+            const bomId = Number(p.bom_id);
+            if (!processRowsByBom.has(bomId)) processRowsByBom.set(bomId, []);
+            processRowsByBom.get(bomId).push({ id: Number(p.id), name: processNameMap.get(Number(p.process_id)) || "Unknown Process" });
         });
 
         const openIds = openCards.map((c) => c.id);
@@ -750,30 +788,53 @@ const fetchOtherOpenJobCardStock = async (req, currentJobCard, materialIds) => {
                 job_id: { [Op.in]: openIds },
                 item_id: { [Op.in]: [...wanted] },
             },
-            attributes: ["job_id", "item_id", [Sequelize.fn("SUM", Sequelize.col("qty")), "consumed"]],
-            group: ["job_id", "item_id"],
+            attributes: ["job_id", "item_id", "process_id", [Sequelize.fn("SUM", Sequelize.col("qty")), "consumed"]],
+            group: ["job_id", "item_id", "process_id"],
             raw: true,
         });
-        const consumedMap = new Map(consumedRows.map((r) => [`${r.job_id}:${r.item_id}`, Number(r.consumed) || 0]));
+        const consumedMap = new Map();
+        const consumedByProcessMap = new Map(consumedRows.map((r) => {
+            const total = Number(r.consumed) || 0;
+            const totalKey = `${r.job_id}:${r.item_id}`;
+            consumedMap.set(totalKey, (consumedMap.get(totalKey) || 0) + total);
+            return [`${r.job_id}:${r.item_id}:${r.process_id}`, total];
+        }));
 
         const reserved = {};
         const reservedBy = {};
         for (const card of openCards) {
             const bom = bomByProduct.get(card.productId);
             const bomQty = Number(bom?.qty) || 1;
+            const bomMaterials = materialsByBom.get(Number(bom?.id)) || [];
+            const bomProcessRows = processRowsByBom.get(Number(bom?.id)) || [];
             // A material can appear in several processes - total its need per card first.
             const needByMaterial = {};
-            for (const m of materialsByBom.get(Number(bom?.id)) || []) {
+            for (const m of bomMaterials) {
                 needByMaterial[m.mId] = (needByMaterial[m.mId] || 0) + (m.qty / bomQty) * card.qty;
             }
             for (const [mId, need] of Object.entries(needByMaterial)) {
                 const pending = need - (consumedMap.get(`${card.id}:${mId}`) || 0);
                 if (pending > 0) {
                     reserved[mId] = (reserved[mId] || 0) + pending;
+
+                    // Latest process (in pipeline order) with any logged
+                    // consumption for this material on this job card.
+                    const materialProcessIds = new Set(
+                        bomMaterials.filter((m) => m.mId === Number(mId)).map((m) => m.processRowId),
+                    );
+                    let currentProcess = "Not Started";
+                    for (const pr of bomProcessRows) {
+                        if (!materialProcessIds.has(pr.id)) continue;
+                        if ((consumedByProcessMap.get(`${card.id}:${mId}:${pr.id}`) || 0) > 0) {
+                            currentProcess = pr.name;
+                        }
+                    }
+
                     (reservedBy[mId] = reservedBy[mId] || []).push({
                         job_id: card.id,
                         item_name: productNameMap.get(card.productId) || "",
                         pending_qty: pending,
+                        process_name: currentProcess,
                     });
                 }
             }
