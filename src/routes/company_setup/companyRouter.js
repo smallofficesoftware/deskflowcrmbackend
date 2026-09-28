@@ -33,6 +33,7 @@ import {
   updateThirdParty
 } from "../../controllers/company_setup/companyController.js";
 import { authenticateToken, publicAuthenticateToken } from "../../middlewares/auth.js";
+import { workspaceLimitInfo } from "../../controllers/company_setup/workspaceLimitController.js";
 import { companyUpload } from "../../middlewares/multer.js";
 import { tenantMiddleware } from "../../middlewares/tenantMiddleware.js";
 
@@ -40,6 +41,7 @@ export default (app) => {
   app.post("/company", authenticateToken, allCompany);
   app.post("/createCompany", createCompany);
   app.post("/createWorkspace", authenticateToken, createWorkspace);
+  app.post("/workspaceLimitInfo", authenticateToken, workspaceLimitInfo);
   app.post("/createPlane", createPlane);
   app.post("/step-company", setNewCompany);
   app.post("/companyQR", authenticateToken, companyQR);

@@ -3905,3 +3905,9 @@ ALTER TABLE `job_cards` ADD COLUMN `parent_material_id` INT NULL DEFAULT NULL;
 -- Sub job card: per-BOM-material checkbox (BOM Master, consumption items)
 -- deciding whether that material needs its own sub jobwork.
 ALTER TABLE `bom_process_vs_cons_rejcts` ADD COLUMN `requires_sub_job_card` TINYINT NULL DEFAULT 0;
+
+28-09-2026 Dhaval
+-- MASTER DB only. Workspace limit: plan entitlement page "workspaces"; plan_vs_pages.data_limit = number of workspaces a Main Company can create (default 1, "0" = no limit).
+-- Edit per plan on Admin Panel -> Plans. Page id is AUTO_INCREMENT (code looks it up by page_slug).
+INSERT INTO `a_application_pages` (`page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES ('Workspaces', 'Workspaces', 'workspaces', 'Number of workspaces a company can create (plan limit)', '0', '0', '0', '1', NOW(), UNIX_TIMESTAMP(), '0', '1');
+INSERT INTO `plan_vs_pages` (`plan_id`, `page_id`, `data_limit`, `extra_information`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) SELECT pm.`id`, p.`id`, '1', '', NOW(), current_timestamp(), '0', '1' FROM `plan_masters` pm JOIN `a_application_pages` p ON p.`page_slug` = 'workspaces' WHERE pm.`isDelete` = 0 AND NOT EXISTS (SELECT 1 FROM `plan_vs_pages` x WHERE x.`plan_id` = pm.`id` AND x.`page_id` = p.`id`);

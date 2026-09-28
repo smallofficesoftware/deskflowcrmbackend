@@ -21,6 +21,7 @@ import companyVsApplicationLoginModel from "../../models/company_setup/companyVs
 import companyVsPlansModel from "../../models/configuration/companyVsPlanModel.js";
 import planMasterModel from "../../models/configuration/planMasterModel.js";
 import planVsPageModel from "../../models/configuration/planVsPageModel.js";
+import { checkWorkspaceLimit } from "./workspaceLimit.js";
 import tenantMasterModel from "../../models/configuration/tenantMasterModel.js";
 import { cityModel } from "../../models/masters/cityModel.js";
 import { productModel } from "../../models/product_settings/productModel.js";
@@ -4884,6 +4885,14 @@ export const createWorkspace = async (req) => {
       return resError({
         ack_msg: "Workspaces can only be created from the Main Company. Sub-workspaces cannot create sub-workspaces.",
         developer_msg: "Creation prohibited for sub-workspaces",
+      });
+    }
+
+    const workspaceCheck = await checkWorkspaceLimit(parent_company_id);
+    if (!workspaceCheck.allowed) {
+      return resError({
+        ack_msg: `Your plan allows ${workspaceCheck.limit} workspace${workspaceCheck.limit === 1 ? "" : "s"}. Please upgrade your plan to add more.`,
+        developer_msg: "Workspace limit exceeded",
       });
     }
 
