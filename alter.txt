@@ -3900,3 +3900,8 @@ CREATE TABLE `form_builder_drafts` (
 -- row it was auto-created to fulfil.
 ALTER TABLE `job_cards` ADD COLUMN `parent_job_card_id` INT NULL DEFAULT NULL;
 ALTER TABLE `job_cards` ADD COLUMN `parent_material_id` INT NULL DEFAULT NULL;
+
+28-09-2026 Dhaval
+-- Sub job card: per-BOM-material checkbox (BOM Master, consumption items)
+-- deciding whether that material needs its own sub jobwork.
+ALTER TABLE `bom_process_vs_cons_rejcts` ADD COLUMN `requires_sub_job_card` TINYINT NULL DEFAULT 0;

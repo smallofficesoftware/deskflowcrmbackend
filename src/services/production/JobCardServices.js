@@ -605,10 +605,10 @@ export const jobCardsDetails = async (req) => {
                             // Consumed (consumption rows) / rejected (rejection
                             // rows) so far by this job card in this process.
                             consumed_qty: doneMap.get(`${processRowId}:${mId}:${entryType}`) || 0,
-                            // This material is itself a manufactured product
-                            // with its own BOM - eligible for "Generate Sub
-                            // Job Card".
-                            has_own_bom: ownBomProductIds.has(mId),
+                            // Eligible for "Generate Sub Job Card": the
+                            // material has its own BOM AND the BOM Master
+                            // checkbox for it is checked (requires_sub_job_card).
+                            has_own_bom: ownBomProductIds.has(mId) && !!Number(m.requires_sub_job_card),
                         };
                     };
 

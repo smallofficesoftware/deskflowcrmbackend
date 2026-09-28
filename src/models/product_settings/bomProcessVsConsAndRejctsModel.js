@@ -34,6 +34,9 @@ export const bomVsProcessVsConsAndRejctsModel = (sequelize) => {
         is_reusable: {
             type: TINYINT,
         },
+        requires_sub_job_card: {
+            type: TINYINT,
+        },
         company_masters_id: {
             type: INTEGER,
         },
