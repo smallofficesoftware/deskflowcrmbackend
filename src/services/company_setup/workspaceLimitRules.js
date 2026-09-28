@@ -10,8 +10,10 @@ export const parseWorkspaceLimit = (raw) => {
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : null;
 };
 
-/** { allowed, limit, used } - limit null = unlimited. */
-export const decideWorkspaceCreate = ({ hasPlanEntry, rawDataLimit, used }) => {
-  const limit = hasPlanEntry ? parseWorkspaceLimit(rawDataLimit) : DEFAULT_WORKSPACE_LIMIT;
+/** { allowed, limit, used } - limit null = unlimited. extraWorkspaces = quantity bought as Admin Panel add-ons; ignored when the plan is unlimited. */
+export const decideWorkspaceCreate = ({ hasPlanEntry, rawDataLimit, used, extraWorkspaces = 0 }) => {
+  const base = hasPlanEntry ? parseWorkspaceLimit(rawDataLimit) : DEFAULT_WORKSPACE_LIMIT;
+  const extra = Number.isFinite(Number(extraWorkspaces)) && Number(extraWorkspaces) > 0 ? Math.floor(Number(extraWorkspaces)) : 0;
+  const limit = base == null ? null : base + extra;
   return { allowed: limit == null || used < limit, limit, used };
 };

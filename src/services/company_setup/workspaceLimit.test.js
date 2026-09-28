@@ -29,3 +29,15 @@ test("no plan entry falls back to the default", () => {
 test("already above the limit stays blocked, existing ones untouched", () => {
   assert.equal(decideWorkspaceCreate({ hasPlanEntry: true, rawDataLimit: "2", used: 5 }).allowed, false);
 });
+
+test("add-on workspaces raise the plan limit", () => {
+  assert.deepEqual(decideWorkspaceCreate({ hasPlanEntry: true, rawDataLimit: "1", used: 1, extraWorkspaces: 2 }), { allowed: true, limit: 3, used: 1 });
+  assert.equal(decideWorkspaceCreate({ hasPlanEntry: true, rawDataLimit: "1", used: 3, extraWorkspaces: 2 }).allowed, false);
+  assert.equal(decideWorkspaceCreate({ hasPlanEntry: false, rawDataLimit: null, used: 1, extraWorkspaces: 1 }).allowed, true);
+});
+
+test("add-ons do not change an unlimited plan; junk extras ignored", () => {
+  assert.equal(decideWorkspaceCreate({ hasPlanEntry: true, rawDataLimit: "0", used: 9, extraWorkspaces: 3 }).limit, null);
+  assert.equal(decideWorkspaceCreate({ hasPlanEntry: true, rawDataLimit: "1", used: 1, extraWorkspaces: "x" }).allowed, false);
+  assert.equal(decideWorkspaceCreate({ hasPlanEntry: true, rawDataLimit: "1", used: 1, extraWorkspaces: -5 }).limit, 1);
+});
