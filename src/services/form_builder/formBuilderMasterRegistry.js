@@ -36,6 +36,21 @@ export const RELATED_MODULE_REGISTRY = {
   task: { table: "task_managements", label: "task_title", extraWhere: "is_support_ticket = 0" },
   support_ticket: { table: "task_managements", label: "task_title", extraWhere: "is_support_ticket = 1" },
   work_order: { table: "production_transactions", label: "job_id" },
+  visit: { table: "visits", label: "person_name" },
+  // The rest of the cart module, one entry per carts.type (see
+  // CART_TYPE_TO_PREFIX_FIELD). "order" above is unfiltered (any cart type) and
+  // kept as-is so existing forms/links keep working.
+  quotation: { table: "carts", label: "cart_number", extraWhere: "type = 1" },
+  sales_invoice: { table: "carts", label: "cart_number", extraWhere: "type = 3" },
+  purchase_invoice: { table: "carts", label: "cart_number", extraWhere: "type = 4" },
+  purchase_order: { table: "carts", label: "cart_number", extraWhere: "type = 5" },
+  sales_return: { table: "carts", label: "cart_number", extraWhere: "type = 6" },
+  purchase_return: { table: "carts", label: "cart_number", extraWhere: "type = 7" },
+  inward: { table: "carts", label: "cart_number", extraWhere: "type = 8" },
+  dispatch: { table: "carts", label: "cart_number", extraWhere: "type = 9" },
+  proforma_invoice: { table: "carts", label: "cart_number", extraWhere: "type = 12" },
+  job_card: { table: "job_cards", label: "id" },
+  expense: { table: "expenses", label: "amount" },
 };
 
 // Live options for a reference field's dropdown (plan §1's
