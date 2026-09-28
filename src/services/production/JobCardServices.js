@@ -20,6 +20,7 @@ import { isValid, resBadRequest, resError, resSuccess } from "../../utils/shared
 import { inserStockAdjustment } from "../activities/stockAdjustmentServices.js";
 import { getCompanyByLoginId } from "../commonServices.js";
 import { fetchJobCardsPerProcess } from "./rawMaterialProcessJobCards.js";
+import { fetchMaterialsWithOwnBom } from "./materialOwnBomLookup.js";
 
 export const jobCardsFetch = async (req) => {
     try {
@@ -459,8 +460,37 @@ export const jobCardsDetails = async (req) => {
             order_qty: Number(item?.item_qty) || 0,
             unit: item?.item_unit_name || directProduct?.unit || "",
             pending_qty: Number(item?.item_qty) || 0,
-            delivery_date: cart?.due_date || null
+            delivery_date: cart?.due_date || null,
+            parent_job_card: null,
         };
+
+        // This job card is itself a sub jobwork - resolve the parent's name
+        // so the UI can show a breadcrumb back to it.
+        if (jobCard.parent_job_card_id) {
+            const parentRow = await JobCardsModelInstance.findOne({
+                where: { id: jobCard.parent_job_card_id, isDelete: 0 },
+                raw: true,
+            });
+            if (parentRow) {
+                const parentIsDirect = [2, 3].includes(Number(parentRow.job_card_type) || 1);
+                const parentTargetId = parentRow.item_id;
+                const parentProduct = parentIsDirect
+                    ? await ProductModelInstance.findOne({
+                        where: { id: parentTargetId, isDelete: 0 },
+                        attributes: ["product_name"],
+                        raw: true,
+                    })
+                    : await CartItemModelInstance.findOne({
+                        where: { id: parentTargetId, isDelete: 0 },
+                        attributes: ["item_product_name"],
+                        raw: true,
+                    });
+                itemDetail.parent_job_card = {
+                    id: parentRow.id,
+                    item_name: parentProduct?.product_name || parentProduct?.item_product_name || "",
+                };
+            }
+        }
 
         // 4. Fetch BOM & Processes
         let bomProcesses = [];
@@ -514,6 +544,11 @@ export const jobCardsDetails = async (req) => {
                     const unitMap = stockBatchResult?.unitMap || {};
                     const { reserved: reservedMap = {}, reservedBy = {}, incoming: incomingMap = {}, incomingBy = {} } =
                         await fetchOtherOpenJobCardStock(req, jobCard, itemIds);
+
+                    // Which of these materials are themselves a manufactured
+                    // product with their own BOM - drives whether "Generate
+                    // Sub Job Card" is offered for that row.
+                    const ownBomProductIds = await fetchMaterialsWithOwnBom(req, itemIds);
 
                     // What THIS job card's production entries already used, per
                     // BOM process row (production_transactions_items.process_id is
@@ -570,6 +605,10 @@ export const jobCardsDetails = async (req) => {
                             // Consumed (consumption rows) / rejected (rejection
                             // rows) so far by this job card in this process.
                             consumed_qty: doneMap.get(`${processRowId}:${mId}:${entryType}`) || 0,
+                            // This material is itself a manufactured product
+                            // with its own BOM - eligible for "Generate Sub
+                            // Job Card".
+                            has_own_bom: ownBomProductIds.has(mId),
                         };
                     };
 
@@ -655,7 +694,7 @@ const fetchOtherOpenJobCardStock = async (req, currentJobCard, materialIds) => {
                 id: { [Op.ne]: currentJobCard.id },
                 ...(currentJobCard.company_masters_id ? { company_masters_id: currentJobCard.company_masters_id } : {}),
             },
-            attributes: ["id", "job_card_type", "item_id", "production_qty"],
+            attributes: ["id", "job_card_type", "item_id", "production_qty", "parent_job_card_id"],
             raw: true,
         });
         if (!otherCards.length) return {};
@@ -683,6 +722,7 @@ const fetchOtherOpenJobCardStock = async (req, currentJobCard, materialIds) => {
                     id: Number(c.id),
                     productId: Number(direct ? c.item_id : ci?.item_product_id) || null,
                     qty: Number(c.production_qty) || Number(ci?.item_qty) || 1,
+                    parentJobCardId: Number(c.parent_job_card_id) || null,
                 };
             })
             .filter((c) => c.productId);
@@ -714,6 +754,10 @@ const fetchOtherOpenJobCardStock = async (req, currentJobCard, materialIds) => {
                 production_qty: card.qty,
                 produced_qty: producedQty,
                 pending_qty: pendingQty,
+                // This job card was auto-created FOR this parent (an
+                // explicit link), not just incidentally producing the
+                // same material for someone else.
+                is_sub_job_card: card.parentJobCardId === Number(currentJobCard.id),
             });
         }
 

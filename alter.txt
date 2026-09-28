@@ -3894,3 +3894,9 @@ CREATE TABLE `form_builder_drafts` (
   PRIMARY KEY (`id`),
   INDEX `idx_form_builder_drafts_user` (`a_application_login_id`, `form_id`, `isDelete`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+28-09-2026 Dhaval
+-- Sub job card: link a job card back to the parent job card / BOM material
+-- row it was auto-created to fulfil.
+ALTER TABLE `job_cards` ADD COLUMN `parent_job_card_id` INT NULL DEFAULT NULL;
+ALTER TABLE `job_cards` ADD COLUMN `parent_material_id` INT NULL DEFAULT NULL;
