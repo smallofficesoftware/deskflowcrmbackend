@@ -848,7 +848,7 @@ const fetchOtherOpenJobCardStock = async (req, currentJobCard, materialIds) => {
 
 // Batched stock lookup: one query for ALL item_ids at once, grouped in SQL.
 // Replaces per-item fetchItemStock() calls inside loops.
-const fetchItemStockBatch = async (req, itemIds) => {
+export const fetchItemStockBatch = async (req, itemIds) => {
     if (!itemIds.length) return {};
 
     try {
