@@ -103,6 +103,9 @@ export const getPublicFormSchema = async (req) => {
           status,
           require_otp: publicSettings.require_otp,
           one_per_mobile: publicSettings.one_per_mobile,
+          ask_name: publicSettings.ask_name,
+          ask_email: publicSettings.ask_email,
+          ask_phone: publicSettings.ask_phone,
           // Second language (plan M8) — the visitor gets a switch on the fill screen; each field's own
           // "translations" already rode along inside `fields` (they are plain schema_json props).
           language: languageNameOf(form.published_settings_json),
@@ -188,9 +191,9 @@ export const submitPublicForm = async (req) => {
         form,
         company_masters_id,
         submittedByType: "public",
-        submitterName: submitter_name,
-        submitterEmail: submitter_email,
-        submitterPhone: submitter_phone,
+        submitterName: settings.ask_name ? submitter_name : null,
+        submitterEmail: settings.ask_email ? submitter_email : null,
+        submitterPhone: settings.ask_phone ? submitter_phone : null,
         answers: parsedAnswers,
         relatedRecordId: null, // never trusted from a public caller regardless of payload
         sourceIp: req.ip || req.headers["x-forwarded-for"] || null,

@@ -1,6 +1,6 @@
 // Public-form controls (plan item M3): open/close dates, a total entry
 // limit, one entry per mobile number, a thank-you message or redirect, and
-// whether an OTP is required. Stored under the form's settings (settings_json
+// whether an OTP is required, and which of the visitor's name / email / phone boxes are shown. Stored under the form's settings (settings_json
 // / published_settings_json, same JSON column approval stages and print
 // settings use): { public: { ... } }. Pure module — the DB-side checks
 // (counting entries, looking up a mobile) live in formBuilderPublicService.js.
@@ -26,6 +26,11 @@ export function parsePublicSettings(json) {
     max_entries: Number.isInteger(Number(p?.max_entries)) && Number(p?.max_entries) > 0 ? Number(p.max_entries) : null,
     one_per_mobile: !!p?.one_per_mobile,
     require_otp: !!p?.require_otp,
+    // Which "who is filling this" boxes the public page shows. On unless switched off; the phone box
+    // stays on whenever an OTP or one-entry-per-mobile rule needs the number.
+    ask_name: p?.ask_name !== false,
+    ask_email: p?.ask_email !== false,
+    ask_phone: p?.ask_phone !== false || !!p?.require_otp || !!p?.one_per_mobile,
   };
 }
 

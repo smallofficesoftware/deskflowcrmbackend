@@ -34,6 +34,9 @@ test("defaults when there are no public settings", () => {
     max_entries: null,
     one_per_mobile: false,
     require_otp: false,
+    ask_name: true,
+    ask_email: true,
+    ask_phone: true,
   });
   assert.deepStrictEqual(parsePublicSettings("not json").max_entries, null);
 });
@@ -44,6 +47,16 @@ test("values are read and lightly cleaned", () => {
   assert.strictEqual(s.max_entries, 50);
   assert.strictEqual(s.one_per_mobile, true);
   assert.strictEqual(s.require_otp, true);
+});
+
+test("visitor name / email / phone boxes: on by default, can be switched off, phone stays on when OTP or one-per-mobile needs it", () => {
+  const off = parsePublicSettings(settings({ ask_name: false, ask_email: false, ask_phone: false }));
+  assert.strictEqual(off.ask_name, false);
+  assert.strictEqual(off.ask_email, false);
+  assert.strictEqual(off.ask_phone, false);
+  assert.strictEqual(parsePublicSettings(settings({ ask_phone: false, require_otp: true })).ask_phone, true);
+  assert.strictEqual(parsePublicSettings(settings({ ask_phone: false, one_per_mobile: true })).ask_phone, true);
+  assert.strictEqual(parsePublicSettings(settings({})).ask_name, true);
 });
 
 test("a non-positive or non-numeric max_entries is ignored", () => {
