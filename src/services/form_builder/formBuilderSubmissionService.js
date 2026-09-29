@@ -49,6 +49,7 @@ import {
   resolveMasterLabels,
   resolveRelatedRecordLabels,
 } from "./formBuilderMasterRegistry.js";
+import { matchRelatedRecord } from "./formBuilderRelatedMatch.js";
 import { resolveFormAccess } from "./formBuilderRights.js";
 import { evaluateVisibility, isRequired } from "./formBuilderConditions.js";
 import { isDateField, resolveDateValue, checkDateLimits, sameStoredDate } from "./formBuilderDateRules.js";
@@ -618,6 +619,18 @@ export async function createFormSubmission({
       email: resolvedEmail,
       phone: resolvedPhone,
     });
+  } else if (form.related_module && !finalRelatedRecordId) {
+    // Any other related module: a field tagged "related" holds the id / number / code to look up.
+    // Stored in the same "possible match" column; staff confirm it with Link, it is never linked here.
+    const relatedMatchField = fields.find((f) => f.match_key === "related" && !isEncryptedAadhaarField(f));
+    if (relatedMatchField) {
+      possibleDuplicateContactId = await matchRelatedRecord({
+        tenantDB,
+        relatedModule: form.related_module,
+        value: columns[relatedMatchField.key],
+        company_masters_id,
+      });
+    }
   }
 
   // It then waits at stage 2.
