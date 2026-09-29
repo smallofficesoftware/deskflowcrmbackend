@@ -65,7 +65,10 @@ import { logAuditEvent, listAuditLog } from "../company_setup/auditLogServices.j
 
 const MODULE_KEY = "form_builder";
 const ENTITY_TYPE_SUBMISSION = "form_builder_submission";
-const FORM_SUBMISSIONS_ORDER_TYPE = 13; // stageAndStatusMasterTableReference["form_builder_submissions"]
+// stageAndStatusMasterTableReference["form_builder_submissions"]
+// (statusLogServices.js) - 15, not 13: 13 is job_cards' own order_type,
+// 14 is route_planner's. Both already taken.
+const FORM_SUBMISSIONS_ORDER_TYPE = 15;
 
 function parseSchema(json) {
   if (!json) return [];
