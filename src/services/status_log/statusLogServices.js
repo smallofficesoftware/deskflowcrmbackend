@@ -47,10 +47,12 @@ export const getStatusLog = async (req, res) => {
                 "cart_return_purchase_invoice": 10,
                 "cart_inward": 12,
                 "cart_dispatch": 11,
-                // Custom Form Maker — one shared status set for all of a
-                // company's form submissions, not per-form (plan §1
-                // "Submission status"). 13 was free when this was added.
-                "form_builder_submissions": 13,
+                // 13 = job_cards (JobCardController.ts's get-status call),
+                // 14 = route_planner - both already taken (confirmed via
+                // grep, not just this list). Custom Form Maker's shared
+                // status set for all of a company's form submissions (plan
+                // §1 "Submission status") - 15 is the actual next-free slot.
+                "form_builder_submissions": 15,
             }
 
             const getStageAndStatus = await stagestatusModelInstance.findAll({
