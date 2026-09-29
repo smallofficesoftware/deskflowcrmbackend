@@ -44,6 +44,14 @@ export const formBuilderFormModel = (sequelize) => {
       related_module: {
         type: STRING(50),
       },
+      // Sidebar section this form's per-form row shows under (CRM, HRMS,
+      // Production, ...) - same category taxonomy as Report Builder's
+      // report_definitions.category (reportsMenuData.tsx's menu.key
+      // values), so a form sits in the sidebar the same way a custom
+      // report does. NULL/unset falls back to "Others".
+      category: {
+        type: STRING(50),
+      },
       allow_public_submission: {
         type: TINYINT,
         defaultValue: 0,

@@ -74,6 +74,11 @@ export function findLookupProblems(fields, { existingCustomListIds = null } = {}
   const byKey = new Map(list.filter((f) => f.key).map((f) => [f.key, f]));
 
   for (const field of list) {
+    // A Reference field with no list picked would call reference-options with
+    // an empty master and fail every time the form is opened.
+    if (field.type === "reference" && (typeof field.master !== "string" || field.master.trim() === "")) {
+      return `${nameOf(field)}: pick which list it should show (country, product, team member ...).`;
+    }
     if (field.type === "reference" && typeof field.master === "string" && field.master.startsWith(CUSTOM_MASTER_PREFIX)) {
       const id = customListIdOf(field.master);
       if (id == null) return `${nameOf(field)}: the list it uses couldn't be read. Pick the list again.`;

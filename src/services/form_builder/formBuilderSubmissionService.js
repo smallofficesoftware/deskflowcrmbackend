@@ -739,6 +739,12 @@ export async function createFormSubmission({
     if (dbError.original?.code === "ER_DUP_ENTRY" || dbError.parent?.code === "ER_DUP_ENTRY") {
       throw Object.assign(new Error("This has already been submitted — an entry with the same value already exists."), { code: 409 });
     }
+    // A form published before a newer fixed column existed (consent_at, source
+    // ...) only gets it when republished - say that, not the raw SQL error.
+    if (dbError.original?.code === "ER_BAD_FIELD_ERROR" || dbError.parent?.code === "ER_BAD_FIELD_ERROR") {
+      console.error("createFormSubmission: form table is missing a column:", dbError.original?.sqlMessage || dbError.message);
+      throw Object.assign(new Error("This form needs to be republished before it can take entries. Open it in Form Builder and click Publish again."), { code: 400 });
+    }
     throw dbError;
   }
 

@@ -183,7 +183,7 @@ export const createForm = async (req) => {
       return resError({ code: 403, ack_msg: "You don't have permission to create forms" });
     }
 
-    const { title, description, related_module, template } = req.body || {};
+    const { title, description, related_module, category, template } = req.body || {};
     if (!title) return resError({ ack_msg: "Please enter a form title" });
 
     // Starting from a starter form or a saved template (plan L1): its fields (and
@@ -200,6 +200,7 @@ export const createForm = async (req) => {
       schema_json: fromTemplate?.schema_json || JSON.stringify([]),
       settings_json: fromTemplate?.settings_json || null,
       related_module: related_module || null,
+      category: category || null,
       version: 1,
     });
 
@@ -223,11 +224,12 @@ export const updateDraftForm = async (req) => {
     const { form, error } = await loadOwnedForm(req, { requireEdit: true });
     if (error) return error;
 
-    const { title, description, related_module, restrict_to_assigned_team, schema_json, settings } = req.body || {};
+    const { title, description, related_module, category, restrict_to_assigned_team, schema_json, settings } = req.body || {};
     const changed = {};
     if (title !== undefined) changed.title = title;
     if (description !== undefined) changed.description = description;
     if (related_module !== undefined) changed.related_module = related_module;
+    if (category !== undefined) changed.category = category;
     if (restrict_to_assigned_team !== undefined) changed.restrict_to_assigned_team = restrict_to_assigned_team;
     if (schema_json !== undefined) {
       changed.schema_json = typeof schema_json === "string" ? schema_json : JSON.stringify(schema_json);
