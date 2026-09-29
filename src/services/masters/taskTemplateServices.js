@@ -748,11 +748,12 @@ export const StartAllWorkflow = async (req) => {
                     [Op.in]: taskIdMap
                 }
             },
-            attributes: ["assigned_team_member"]
+            attributes: ["id", "assigned_team_member"]
         });
 
-
-        const allAssignedMemberIds = new Set();
+        // Per-member task ids, not just a flat set of member ids, so each person's
+        // notification names only their own task(s) instead of a blank "New Task(s)".
+        const taskIdsByMember = new Map();
 
         getTaskTeamMemberIds.forEach(task => {
             if (task.assigned_team_member) {
@@ -761,13 +762,16 @@ export const StartAllWorkflow = async (req) => {
                     .map(id => id.trim())
                     .filter(id => id);
 
-                memberIds.forEach(id => allAssignedMemberIds.add(id));
+                memberIds.forEach(id => {
+                    if (!taskIdsByMember.has(id)) taskIdsByMember.set(id, []);
+                    taskIdsByMember.get(id).push(task.id);
+                });
             }
         });
 
 
-        if (allAssignedMemberIds.size > 0) {
-            const assignedMemberIdsArray = Array.from(allAssignedMemberIds);
+        if (taskIdsByMember.size > 0) {
+            const assignedMemberIdsArray = Array.from(taskIdsByMember.keys());
 
             try {
                 const assignedMembers = await loginModel.findAll({
@@ -778,36 +782,35 @@ export const StartAllWorkflow = async (req) => {
                     attributes: ["id", "username", "web_refresh_token", "android_refresh_token", "ios_refresh_token"],
                 });
 
+                const assigner = await loginModel.findOne({
+                    where: {
+                        id: a_application_login_id,
+                        isDelete: 0,
+                    },
+                    attributes: ["username"],
+                });
 
-                const allTokens = assignedMembers
-                    .flatMap((member) => [
-                        member.web_refresh_token,
-                        member.android_refresh_token,
-                        member.ios_refresh_token,
-                    ])
-                    .filter((token) => token && token.trim() !== "");
+                const assignerName = assigner?.username || "Someone";
 
-                const uniqueTokens = [...new Set(allTokens)];
+                for (const member of assignedMembers) {
+                    const memberTaskIds = taskIdsByMember.get(String(member.id)) || [];
+                    if (memberTaskIds.length === 0) continue;
 
-                if (uniqueTokens.length > 0) {
-                    const assigner = await loginModel.findOne({
-                        where: {
-                            id: a_application_login_id,
-                            isDelete: 0,
-                        },
-                        attributes: ["username"],
-                    });
+                    const tokens = [member.web_refresh_token, member.android_refresh_token, member.ios_refresh_token]
+                        .filter((token) => token && token.trim() !== "");
+                    const uniqueTokens = [...new Set(tokens)];
+                    if (uniqueTokens.length === 0) continue;
 
-                    const assignerName = assigner?.username || "Someone";
-
-                    await sendMultipleNotification({
-                        deviceTokens: uniqueTokens,
-                        title: `New Task(s) Assigned to You by ${assignerName}`,
-                        body: `You have been assigned to new task(s)`,
-                    });
-
-                } else {
-                    console.log("No device tokens found for assigned team members.");
+                    const idsLabel = memberTaskIds.map((id) => `#${id}`).join(", ");
+                    try {
+                        await sendMultipleNotification({
+                            deviceTokens: uniqueTokens,
+                            title: `Task ${idsLabel} Assigned to You by ${assignerName}`,
+                            body: memberTaskIds.length > 1 ? `You have been assigned to ${memberTaskIds.length} new tasks` : `You have been assigned to a new task`,
+                        });
+                    } catch (notificationError) {
+                        console.error("Notification failed (non-critical):", notificationError.message);
+                    }
                 }
             } catch (notificationError) {
                 console.error("Notification failed (non-critical):", notificationError.message);
