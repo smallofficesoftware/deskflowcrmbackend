@@ -23,6 +23,7 @@ import {
   MAIL_SETTING_HOST_PORT,
   MAIL_SETTING_HOST_USER_NAME,
   MAIL_SETTING_HOST_USER_PASSWORD,
+  NODE_ENV,
   RAZORPAY_KEY_ID,
   RAZORPAY_KEY_SECRET,
   SUPER_ADMIN_WHATSAPP_APP_KEY,
@@ -32,6 +33,7 @@ import {
   WPP_CONNECT_CONNECTION_TYPE
 } from "../../utils/appConstants.js";
 import { PAGE_ID } from "../../utils/AppEnumeration.js";
+import { logger } from "../../utils/logger.js";
 import {
   resBadRequest,
   resError,
@@ -1025,7 +1027,7 @@ export const ClaudeOfficeWhatsAppOtp = async (otp, mobileNumber) => {
     const payload = {
       messaging_product: "whatsapp",
       recipient_type: "individual",
-      to: mobileNumber,
+      to: normalizeIndiaPrefixMinimal(String(mobileNumber ?? "")),
       type: "template",
       template: {
         name: "small_office_otp",
@@ -1056,16 +1058,27 @@ export const ClaudeOfficeWhatsAppOtp = async (otp, mobileNumber) => {
         ],
       },
     };
+    if (NODE_ENV === "development") {
+      logger.info(`[send-otp] REQUEST url=${url} payload=${JSON.stringify(payload)}`);
+    }
     const response = await axios.post(url, payload, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
     });
+    if (NODE_ENV === "development") {
+      logger.info(`[send-otp] RESPONSE status=${response.status} data=${JSON.stringify(response.data)}`);
+    }
     return resSuccess({
       data: response.data,
     });
   } catch (error) {
+    if (NODE_ENV === "development") {
+      logger.info(
+        `[send-otp] ERROR status=${error?.response?.status} data=${JSON.stringify(error?.response?.data)} message=${error?.message}`
+      );
+    }
     return resError({
       message: "Internal server error",
       error: "Failed to send WhatsApp message",

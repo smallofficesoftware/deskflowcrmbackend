@@ -1064,11 +1064,18 @@ export const listSubmissions = async (req) => {
       `SELECT * FROM \`${table}\` WHERE ${whereClauses.join(" AND ")} ORDER BY created_date_time DESC LIMIT ${finalLimit} OFFSET ${finalOffset}`,
       { replacements, type: QueryTypes.SELECT },
     );
+    // Same WHERE clause, no LIMIT/OFFSET - total for the grid's paginator
+    // (page numbers, not infinite scroll, matching allContactReportView.tsx).
+    const [{ total: totalCount }] = await req.tenantDB.query(
+      `SELECT COUNT(*) AS total FROM \`${table}\` WHERE ${whereClauses.join(" AND ")}`,
+      { replacements, type: QueryTypes.SELECT },
+    );
 
     const enriched = await enrichSubmissionRows({ tenantDB: req.tenantDB, form, fields, rows });
     return resSuccess({
       data: {
         item: enriched.map((r) => applyReadRestrictions(r, restricted)),
+        total: Number(totalCount) || 0,
         restricted,
         approval: approvalSummary(actorCtx),
         can_reveal_sensitive: perms.see_masked_fields,
