@@ -990,6 +990,11 @@ export const listSubmissions = async (req) => {
   try {
     const { form, company_masters_id, a_application_login_id, access, error } = await loadFormForAccess(req);
     if (error) return error;
+    // A form that was never published has no submissions table yet (it is
+    // created on publish) - return an empty list instead of a SQL error.
+    if (!form.published_schema_json) {
+      return resSuccess({ data: { item: [], can_reveal_sensitive: false, can_change_dates: false } });
+    }
     // No general access: a stage's people still see the entries waiting for them (and ones they handled).
     const actorCtx = await loadActorContext({ form, loginId: a_application_login_id, company_masters_id });
     const actorScope = access.submissionsScope === "none" ? actorEntryScope(actorCtx, form.id) : null;
