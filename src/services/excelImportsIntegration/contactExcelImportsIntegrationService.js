@@ -1059,7 +1059,7 @@ export const addContactByExcelSheetV2 = async (req) => {
         /** Fetch dynamic custom fields **/
         const getCustomFormFieldR = await customFormFieldModelIntance.findAll({
             where: { form_type: 1, isDelete: 0 },
-            attributes: ["title", "reference_column_name", "data_type", "id", "required_or_not"],
+            attributes: ["title", "reference_column_name", "data_type", "id", "required_or_not", "display_on"],
             raw: true,
         });
 
@@ -1078,8 +1078,9 @@ export const addContactByExcelSheetV2 = async (req) => {
             : {};
 
         const getCustomFormFieldMandetoryRuleObj = Array.isArray(getCustomFormFieldR)
-            ? getCustomFormFieldR.reduce((acc, { reference_column_name, title, data_type, required_or_not }) => {
-                if (required_or_not == 1) {
+            ? getCustomFormFieldR.reduce((acc, { reference_column_name, title, data_type, required_or_not, display_on }) => {
+                // stage form fields (display_on 2) are asked on stage change, not at import
+                if (required_or_not == 1 && display_on != 2) {
                     acc[reference_column_name] = required_or_not;
                 }
                 return acc;

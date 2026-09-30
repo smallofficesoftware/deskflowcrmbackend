@@ -3333,7 +3333,7 @@ export const insertStagesAndStatusLogs = async (req, detail) => {
   try {
     if (!isValid(detail)) return {};
 
-    const { reference_table, reference_id, status_id, a_application_login_id, inside_table_type } = detail;
+    const { reference_table, reference_id, status_id, a_application_login_id, inside_table_type, stage_form_data } = detail;
     console.log("detaildetaildetail", detail);
 
     const tenantDB = req.tenantDB;
@@ -3458,7 +3458,9 @@ export const insertStagesAndStatusLogs = async (req, detail) => {
       information = `${config.title !== null && typeof config.title === 'object' ? config.title[inside_table_type] : config.title} ${entityText} status changed from ${previousStatus.name} to ${currentStatus.name}.`;
     }
 
-    await StatusLog.create({
+    // stage_form_data (JSON string) / transaction are optional and only passed by
+    // the stage-change-with-form flow; every other caller is unchanged.
+    const createdLog = await StatusLog.create({
       reference_table,
       reference_id,
       information,
@@ -3466,8 +3468,10 @@ export const insertStagesAndStatusLogs = async (req, detail) => {
       previous_status_id: lastEntry?.status_id || 0,
       updated_by: a_application_login_id,
       updated_date_time: moment().format("YYYY-MM-DD HH:mm:ss"),
-    });
+      ...(stage_form_data ? { stage_form_data } : {}),
+    }, detail.transaction ? { transaction: detail.transaction } : undefined);
     if (lastEntry) emitAutomationEvent(req, "status.changed", { reference_table, reference_id, status_id, previous_status_id: lastEntry.status_id });
+    return createdLog;
 
   } catch (error) {
     console.error("insertStagesAndStatusLogs error", error);

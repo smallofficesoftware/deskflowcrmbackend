@@ -67,6 +67,15 @@ export const customFieldFormModel = (sequelize) => {
       type: STRING,
       defaultValue: null
     },
+    display_on: {
+      type: TINYINT,
+      allowNull: false,
+      defaultValue: 1,
+    },
+    stage_ids: {
+      type: STRING,
+      defaultValue: null
+    },
     calc_config: {
       type: TEXT,
       defaultValue: null

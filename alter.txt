@@ -3915,3 +3915,12 @@ INSERT INTO `plan_vs_pages` (`plan_id`, `page_id`, `data_limit`, `extra_informat
 29-09-2026 Dhaval
 -- Sidebar section a published form shows under (same category taxonomy as report_definitions.category), so it groups next to CRM/HRMS reports.
 ALTER TABLE `form_builder_forms` ADD COLUMN `category` VARCHAR(50) NULL DEFAULT NULL;
+
+30-09-2026 Dhaval
+-- Custom field "Display on" (1 = Form, 2 = Stage form) + stages a stage-form field is asked on (CSV of stage_status_masters.id).
+-- status_and_stages_logs.stage_form_data = JSON snapshot of stage-form values (old -> new) saved when a Contact/Inquiry moves to a stage.
+-- Apply on every tenant DB + smalloffice_sample_tenant.
+ALTER TABLE `custom_field_form_masters` ADD COLUMN `display_on` TINYINT NOT NULL DEFAULT 1;
+UPDATE `custom_field_form_masters` SET `display_on` = 1 WHERE `display_on` IS NULL OR `display_on` = 0;
+ALTER TABLE `custom_field_form_masters` ADD COLUMN `stage_ids` VARCHAR(255) NULL DEFAULT NULL;
+ALTER TABLE `status_and_stages_logs` ADD COLUMN `stage_form_data` TEXT NULL DEFAULT NULL;

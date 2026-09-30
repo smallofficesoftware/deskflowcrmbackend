@@ -28,6 +28,11 @@ export const statusAndStagesLogsModel = (sequelize) => {
                 type: INTEGER,
                 allowNull: false,
             },
+            stage_form_data: {
+                type: TEXT,
+                allowNull: true,
+                defaultValue: null,
+            },
             updated_by: {
                 type: INTEGER,
                 allowNull: false,
