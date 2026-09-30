@@ -7,6 +7,7 @@ import { clearFlowCache, loadFlowForRun } from "./flowStore.js";
 import { canStartRun, getSettings, incrementUsage, isMaintenanceOn } from "./limits.js";
 import { NODE_HANDLERS } from "./nodes/index.js";
 import { notifyFlowFailure } from "./notify.js";
+import { enrichContext } from "./enrich.js";
 import { contactIdOf, fetchRowById, fetchRowsByWhere, fetchUser, firstUserId, publicUser } from "./records.js";
 import { logError, runInTenantContext } from "./runtime.js";
 import { ASSIGN_FIELD } from "./constants.js";
@@ -55,6 +56,7 @@ const buildInitialContext = async (tenantDB, flow, company_masters_id, triggerCt
       ctx.contact =
         triggerCtx.record_type === "contact" ? triggerCtx.record : await fetchRowById(tenantDB, "contact_masters", contactId);
     }
+    await enrichContext(tenantDB, ctx);
     const assignField = ASSIGN_FIELD[triggerCtx.record_type];
     const assignedId =
       firstUserId(assignField ? triggerCtx.record?.[assignField] : null) ||
