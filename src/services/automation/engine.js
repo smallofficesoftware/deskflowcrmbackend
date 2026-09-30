@@ -7,7 +7,7 @@ import { clearFlowCache, loadFlowForRun } from "./flowStore.js";
 import { canStartRun, getSettings, incrementUsage, isMaintenanceOn } from "./limits.js";
 import { NODE_HANDLERS } from "./nodes/index.js";
 import { notifyFlowFailure } from "./notify.js";
-import { contactIdOf, fetchRowById, fetchUser, firstUserId, publicUser } from "./records.js";
+import { contactIdOf, fetchRowById, fetchRowsByWhere, fetchUser, firstUserId, publicUser } from "./records.js";
 import { logError, runInTenantContext } from "./runtime.js";
 import { ASSIGN_FIELD } from "./constants.js";
 import { nextBusinessMoment } from "./time.js";
@@ -45,6 +45,11 @@ const buildInitialContext = async (tenantDB, flow, company_masters_id, triggerCt
     error: null,
   };
   try {
+    // Order / document lines as an array: {{record.items}} (whole array) or {{record.items.0.item_qty}}.
+    if (triggerCtx.record_type === "cart" && triggerCtx.record?.id) {
+      const items = await fetchRowsByWhere(tenantDB, "cart_items", { cart_id: triggerCtx.record.id, isDelete: 0 });
+      ctx.record = { ...triggerCtx.record, items };
+    }
     const contactId = contactIdOf(triggerCtx.record_type, triggerCtx.record);
     if (contactId) {
       ctx.contact =

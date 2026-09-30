@@ -23,6 +23,7 @@ import {
   useTemplateController,
 } from "../../controllers/automation/automationController.js";
 import { authenticateToken } from "../../middlewares/auth.js";
+import { getRecordFieldsController } from "../../services/automation/recordFields.js";
 import { tenantMiddleware } from "../../middlewares/tenantMiddleware.js";
 
 // Automations module routes. All POST like the rest of the CRM API.
@@ -32,6 +33,7 @@ export default (app) => {
 
   app.post("/automation/catalog", ...secured, getCatalogController);
   app.post("/automation/usage", ...secured, getUsageController);
+  app.post("/automation/record-fields", ...secured, getRecordFieldsController);
   app.post("/automation/templates/list", ...secured, listTemplatesController);
   app.post("/automation/templates/use", ...secured, useTemplateController);
 
