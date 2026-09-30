@@ -44,6 +44,7 @@ import { __dirnameConstant, CHAT_MESSAGE_IMG_LINK_EXTENDED, CUSTOMER_SUPPORT_TIC
 import { PAGE_ID } from "../../utils/AppEnumeration.js";
 import { exportData } from "../../utils/exporter.js";
 import { addWhatsappDispatchJobs, taskSendWhatsappMessages } from "../whatsapp/whatsappService.js";
+import { emitAutomationEvent, automationBefore } from "../automation/emit.js";
 
 // import logger from "../utils/logger.js";
 
@@ -488,30 +489,26 @@ export const buildAllTaskWhere = ({
   /* ================= DATE RANGE ================= */
 
   if (startDate && endDate) {
-    whereClause.task_fromdate = {
-      [Op.gte]: moment(startDate + " 00:00:00").format("YYYY-MM-DD HH:mm:ss")
-    };
-    whereClauseForAllTask.task_fromdate = {
-      [Op.gte]: moment(startDate + " 00:00:00").format("YYYY-MM-DD HH:mm:ss")
-    };
-    whereClauseForMyTask.task_fromdate = {
-      [Op.gte]: moment(startDate + " 00:00:00").format("YYYY-MM-DD HH:mm:ss")
-    };
-    whereClauseForDueTask.task_fromdate = {
-      [Op.gte]: moment(startDate + " 00:00:00").format("YYYY-MM-DD HH:mm:ss")
-    };
-    whereClause.task_enddate = {
-      [Op.lte]: moment(endDate + " 23:59:59").format("YYYY-MM-DD HH:mm:ss")
-    };
-    whereClauseForAllTask.task_enddate = {
-      [Op.lte]: moment(endDate + " 23:59:59").format("YYYY-MM-DD HH:mm:ss")
-    };
-    whereClauseForMyTask.task_enddate = {
-      [Op.lte]: moment(endDate + " 23:59:59").format("YYYY-MM-DD HH:mm:ss")
-    };
-    whereClauseForDueTask.task_enddate = {
-      [Op.lte]: moment(endDate + " 23:59:59").format("YYYY-MM-DD HH:mm:ss")
-    };
+    // Overlap, not containment (support ticket #2583): a task counts as "in
+    // this date range" when its [fromdate, enddate] window overlaps the
+    // picked [startDate, endDate] window at all - task_fromdate <= endDate
+    // AND task_enddate >= startDate. The old task_fromdate >= startDate AND
+    // task_enddate <= endDate required the WHOLE task lifespan to sit
+    // inside the picked window, which silently hid almost every real task
+    // (created today, due later) the moment someone picked a future range -
+    // fromdate (today) can never be >= a future startDate. The Start
+    // Date/End Date picker (CheckBoxFilterModal.tsx) carries no "created
+    // between" qualifier, so users read it as an ordinary date-range filter.
+    const rangeStart = moment(startDate + " 00:00:00").format("YYYY-MM-DD HH:mm:ss");
+    const rangeEnd = moment(endDate + " 23:59:59").format("YYYY-MM-DD HH:mm:ss");
+    whereClause.task_fromdate = { [Op.lte]: rangeEnd };
+    whereClauseForAllTask.task_fromdate = { [Op.lte]: rangeEnd };
+    whereClauseForMyTask.task_fromdate = { [Op.lte]: rangeEnd };
+    whereClauseForDueTask.task_fromdate = { [Op.lte]: rangeEnd };
+    whereClause.task_enddate = { [Op.gte]: rangeStart };
+    whereClauseForAllTask.task_enddate = { [Op.gte]: rangeStart };
+    whereClauseForMyTask.task_enddate = { [Op.gte]: rangeStart };
+    whereClauseForDueTask.task_enddate = { [Op.gte]: rangeStart };
   } else {
     whereClause.task_fromdate = {
       [Op.lte]: moment().format("YYYY-MM-DD") + " 23:59:59"
@@ -1851,6 +1848,7 @@ export const createAllTask = async (req) => {
       }
     }
 
+    emitAutomationEvent(req, "task.created", { ids: [].concat(newTask).map((t) => t.id) });
     return resSuccess({
       data: { item: newTask },
       ack_msg: "Task created successfully",
@@ -1992,6 +1990,7 @@ export const AllTaskUpdate = async (req) => {
       finalContactId = reference_contact;
     }
 
+    const __automationBefore = await automationBefore(req, "task_managements", { id: editId });
     const updatedTask = await TaskModel.update(
       {
         assigned_team_member: assignedTeamStr,
@@ -2085,6 +2084,7 @@ export const AllTaskUpdate = async (req) => {
       },
       { where: { id: editId } }
     );
+    emitAutomationEvent(req, "record.updated", { table: "task_managements", where: { id: editId }, before: __automationBefore, data: {} });
 
     const taskDataForTaskTemplateDataValues = {
       task_id: editId,
@@ -2298,6 +2298,7 @@ export const assignTaskTeamMembersToTasks = async (req) => {
       });
     }
 
+    emitAutomationEvent(req, "record.updated", { table: "task_managements", before: tasks.map((t) => t.get({ plain: true })), data: {} });
     return resSuccess({
       ack_msg:
         skippedIndividual > 0
@@ -3286,6 +3287,7 @@ export const convertSupportTicketToTasks = async (req) => {
     const TaskModel = taskManagementModel(req.tenantDB);
 
     // update tasks
+    const __automationBefore = await automationBefore(req, "task_managements", { id: taskIds });
     const [affectedCount] = await TaskModel.update(
       { is_support_ticket: 0 },
       {
@@ -3296,6 +3298,7 @@ export const convertSupportTicketToTasks = async (req) => {
         },
       }
     );
+    emitAutomationEvent(req, "record.updated", { table: "task_managements", before: __automationBefore, data: { is_support_ticket: 0 } });
 
     return resSuccess({
       ack_msg:
@@ -3534,6 +3537,7 @@ export const taskTypeWiseTaskCreation = async (req) => {
 
     if (finalInsertData.length > 0) {
       const newTask = await taskManagementModelIntance.bulkCreate(finalInsertData);
+      emitAutomationEvent(req, "task.created", { ids: newTask.map((t) => t.id), company_masters_id });
 
       /* Task Message Entry */
       const TaskModelChatMessageHistoryIntance = taskMessageHistroyModel(req.tenantDB);
@@ -4539,6 +4543,7 @@ export const createCustomerSupportTicket = async (req, res) => {
       });
 
       contactId = newContact.id;
+      emitAutomationEvent({ tenantDB, company_masters_id: tenantDBFind.company_masters_id }, "contact.created", { id: newContact.id });
 
     }
 
@@ -4611,6 +4616,7 @@ export const createCustomerSupportTicket = async (req, res) => {
     const newTask = await TaskModel.create(taskPayload);
 
     if (newTask) {
+      emitAutomationEvent({ tenantDB, company_masters_id: tenantDBFind.company_masters_id }, "task.created", { id: newTask.id });
       const getassginId = CUSTOMER_SUPPORT_TICKET_ASSING_ID.split(",")
       /* Status Log Entry Added BY Dinesh -> 20-11-2025 */
       req.headers["x-tenant-id"] = getassginId[0];

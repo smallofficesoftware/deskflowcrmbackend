@@ -4,6 +4,8 @@
 // already does. Both resolve reference/status/related-record ids to labels
 // via formBuilderMasterRegistry's batched resolveLabels before rendering —
 // never a raw stored id.
+import { buildLabelMaps, displayValueFor } from "./formBuilderDisplayValues.js";
+import { applyReadRestrictions, fieldsForExport, resolveRestrictions } from "./formBuilderFieldRestrictions.js";
 import fs from "fs";
 import path from "path";
 import { generate } from "@pdfme/generator";
@@ -12,9 +14,10 @@ import { customRectangle } from "../pdfmeEngine/customRectanglePlugin.js";
 import { richText } from "../pdfmeEngine/richTextPlugin.js";
 import { loadFonts } from "../pdfmeEngine/fonts.js";
 import { buildBulkSubmissionsTemplate } from "../pdfmeEngine/formSubmissionTemplate.js";
-import { mainTableName, repeaterTableName } from "./formBuilderDdlBuilder.js";
-import { exportSubmissionPdf } from "../pdfmeEngine/formSubmissionGenerate.js";
+import { mainTableName, repeaterTableName, NO_COLUMN_NON_REPEATER_TYPES } from "./formBuilderDdlBuilder.js";
+import { exportSubmissionPdf, exportSubmissionsPagesPdf, BULK_PAGES_CAP } from "../pdfmeEngine/formSubmissionGenerate.js";
 import { resolveMasterLabels, resolveRelatedRecordLabels } from "./formBuilderMasterRegistry.js";
+import { maskSensitiveValues } from "./formBuilderSensitiveValue.js";
 import { stagestatusModel } from "../../models/masters/stagestatusModel.js";
 import { formBuilderFormModel } from "../../models/form_builder/formBuilderFormModel.js";
 import { resolveFormAccess } from "./formBuilderRights.js";
@@ -56,7 +59,7 @@ function ensureUploadDir(subPath) {
 function displayColumnsFor(fields) {
   const cols = [];
   for (const field of fields) {
-    if (["section-header", "file", "signature", "image"].includes(field.type)) continue;
+    if (NO_COLUMN_NON_REPEATER_TYPES.has(field.type)) continue;
     if (field.type === "repeater") {
       cols.push({ key: `_${field.key}_count`, label: `${field.label || field.key} (count)`, repeaterKey: field.key });
       continue;
@@ -95,16 +98,20 @@ async function loadFormAndRows(req) {
     { replacements, type: QueryTypes.SELECT },
   );
 
-  return { form, company_masters_id, rows };
+  // Restricted fields (plan O8): hidden / masked for this user in every export.
+  const restrictions = await resolveRestrictions({
+    form,
+    fields: parseSchema(form.published_schema_json),
+    loginId: a_application_login_id,
+    company_masters_id,
+    tenantDB: req.tenantDB,
+  });
+  return { form, company_masters_id, rows: rows.map((r) => applyReadRestrictions(r, restrictions)), restrictions };
 }
 
 async function buildExportRows({ tenantDB, form, fields, rows }) {
-  const referenceFields = fields.filter((f) => f.type === "reference");
-  const labelMaps = {};
-  for (const field of referenceFields) {
-    const ids = rows.map((r) => r[field.key]).filter((v) => v != null);
-    labelMaps[field.key] = await resolveMasterLabels({ tenantDB, master: field.master, ids });
-  }
+  // Reference / Team member / Customer ids -> labels, one batch per field.
+  const labelMaps = await buildLabelMaps({ tenantDB, fields, rows });
 
   const statusIds = rows.map((r) => r.submission_status_id).filter((v) => v != null);
   let statusMap = {};
@@ -125,24 +132,18 @@ async function buildExportRows({ tenantDB, form, fields, rows }) {
     repeaterCounts[field.key] = Object.fromEntries(counts.map((c) => [c.submission_id, c.cnt]));
   }
 
-  return rows.map((row) => {
+  // Encrypted Aadhaar values leave as XXXXXXXX1234 only — never the
+  // ciphertext or the full number, in bulk PDF or Excel.
+  return rows.map((storedRow) => {
+    const row = maskSensitiveValues(fields, storedRow);
     const out = { id: row.id, created_date_time: row.created_date_time };
     for (const field of fields) {
-      if (["section-header", "file", "signature", "image"].includes(field.type)) continue;
+      if (NO_COLUMN_NON_REPEATER_TYPES.has(field.type)) continue;
       if (field.type === "repeater") {
         out[`_${field.key}_count`] = repeaterCounts[field.key]?.[row.id] || 0;
         continue;
       }
-      let value = row[field.key];
-      if (field.type === "reference" && value != null) value = labelMaps[field.key][value];
-      if (field.type === "multi-select" && value) {
-        try {
-          value = JSON.parse(value).join(", ");
-        } catch {
-          /* leave as-is */
-        }
-      }
-      out[field.key] = value;
+      out[field.key] = displayValueFor(field, row[field.key], labelMaps);
     }
     out._status = row.submission_status_id != null ? statusMap[row.submission_status_id] : null;
     return out;
@@ -151,11 +152,17 @@ async function buildExportRows({ tenantDB, form, fields, rows }) {
 
 export const exportSubmissionsBulkPdf = async (req) => {
   try {
-    const { form, company_masters_id, rows, error } = await loadFormAndRows(req);
+    const { form, company_masters_id, rows, restrictions, error } = await loadFormAndRows(req);
     if (error) return error;
     if (!rows.length) return resError({ ack_msg: "No submissions to export" });
 
-    const fields = parseSchema(form.published_schema_json);
+    // "One entry per page" (plan K4): each entry printed with the form's own PDF layout.
+    if (req.body?.layout === "pages") {
+      const { fileUrl, fileName } = await exportSubmissionsPagesPdf({ req, form, rows, company_masters_id, restrictions, template_id: req.body?.template_id });
+      return resSuccess({ ack_msg: rows.length > BULK_PAGES_CAP ? `Printed the latest ${BULK_PAGES_CAP} entries.` : undefined, data: { fileUrl, fileName } });
+    }
+
+    const fields = fieldsForExport(parseSchema(form.published_schema_json), restrictions);
     const columns = displayColumnsFor(fields);
     const exportRows = (await buildExportRows({ tenantDB: req.tenantDB, form, fields, rows })).slice(0, BULK_PDF_ROW_CAP);
 
@@ -184,11 +191,11 @@ export const exportSubmissionsBulkPdf = async (req) => {
 
 export const exportSubmissionsExcel = async (req) => {
   try {
-    const { form, company_masters_id, rows, error } = await loadFormAndRows(req);
+    const { form, company_masters_id, rows, restrictions, error } = await loadFormAndRows(req);
     if (error) return error;
     if (!rows.length) return resError({ ack_msg: "No submissions to export" });
 
-    const fields = parseSchema(form.published_schema_json);
+    const fields = fieldsForExport(parseSchema(form.published_schema_json), restrictions);
     const columns = displayColumnsFor(fields);
     const exportRows = await buildExportRows({ tenantDB: req.tenantDB, form, fields, rows });
 
@@ -239,10 +246,54 @@ export const exportSubmissionPdfController = async (req) => {
     });
     if (!row) return resError({ ack_msg: "Submission not found" });
 
-    const { fileUrl, fileName } = await exportSubmissionPdf({ req, form, row, company_masters_id, template_id });
+    const restrictions = await resolveRestrictions({
+      form,
+      fields: parseSchema(form.published_schema_json),
+      loginId: req.body?.a_application_login_id,
+      company_masters_id,
+      tenantDB: req.tenantDB,
+    });
+    const { fileUrl, fileName } = await exportSubmissionPdf({
+      req,
+      form,
+      row: applyReadRestrictions(row, restrictions),
+      company_masters_id,
+      template_id,
+      restrictions,
+    });
     return resSuccess({ data: { fileUrl, fileName } });
   } catch (e) {
     console.error("exportSubmissionPdfController error:", e);
+    return resError({ developer_msg: `Failed to Catch ${e}` });
+  }
+};
+
+// POST /form-builder/export-blank-pdf { form_id } — the empty form as a PDF,
+// to print and fill in by hand (plan O9). Fields hidden from this user are
+// left out, like in every other export.
+export const exportBlankFormPdfController = async (req) => {
+  try {
+    const { form, company_masters_id, error } = await loadPublishedForm(req);
+    if (error) return error;
+    const restrictions = await resolveRestrictions({
+      form,
+      fields: parseSchema(form.published_schema_json),
+      loginId: req.body?.a_application_login_id,
+      company_masters_id,
+      tenantDB: req.tenantDB,
+    });
+    const { fileUrl, fileName } = await exportSubmissionPdf({
+      req,
+      form,
+      row: { id: 0 },
+      company_masters_id,
+      template_id: req.body?.template_id,
+      restrictions,
+      blank: true,
+    });
+    return resSuccess({ data: { fileUrl, fileName } });
+  } catch (e) {
+    console.error("exportBlankFormPdfController error:", e);
     return resError({ developer_msg: `Failed to Catch ${e}` });
   }
 };

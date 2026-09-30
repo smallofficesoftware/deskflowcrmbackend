@@ -85,6 +85,9 @@ export const addCustomFieldFrom = async (req) => {
       reference_column_name: validColumn,
       third_party_field_name: req.body.third_party_field_name ? String(req.body.third_party_field_name).trim() : null,
       applicable_modules: req.body.applicable_modules ? String(req.body.applicable_modules).trim() : null,
+      display_on: Number(req.body.display_on) === 2 ? 2 : 1,
+      stage_ids: Number(req.body.display_on) === 2 && req.body.stage_ids ? String(req.body.stage_ids).trim() : null,
+      calc_config: req.body.calc_config ? String(req.body.calc_config).trim() : null,
       created_date_time: formattedDate,
     };
 
@@ -142,7 +145,10 @@ export const getAllCustomFieldFrom = async (req) => {
         "data_sorce",
         "third_party_field_name",
         "applicable_modules",
-        "form_type"
+        "calc_config",
+        "form_type",
+        "display_on",
+        "stage_ids"
       ],
       order: [["display_order", "ASC"]],
       raw: true,
@@ -340,9 +346,12 @@ export const getAllCustomFieldFromByUsingCompany = async (req, res) => {
     const a_application_login_id = getCompanyData.a_application_login_id;
     const tenantId = a_application_login_id;
 
+    // display_on 2 = stage form field: asked only when moving a record to a
+    // stage, never on the public create form.
     let whereClause = {
       company_masters_id: company_masters_id,
       isDelete: 0,
+      display_on: 1,
     };
 
     if (form_type) {

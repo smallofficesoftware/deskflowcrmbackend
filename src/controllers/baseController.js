@@ -20,6 +20,7 @@ const SOCKET_EVENT_MAP = {
   updateContact: "contact-changed",
   deleteContact: "contact-changed",
   assignStatusContactsProvider: "contact-changed",
+  changeStageWithFormProvider: "contact-changed",
   assignLableContactsProvider: "contact-changed",
   assignContactsProvider: "contact-changed",
   assignSourceContactsProvider: "contact-changed",

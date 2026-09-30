@@ -19,6 +19,8 @@ import { PAGE_ID } from "../../utils/AppEnumeration.js";
 import { isValid, resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { inserStockAdjustment } from "../activities/stockAdjustmentServices.js";
 import { getCompanyByLoginId } from "../commonServices.js";
+import { fetchJobCardsPerProcess } from "./rawMaterialProcessJobCards.js";
+import { fetchMaterialsWithOwnBom } from "./materialOwnBomLookup.js";
 
 export const jobCardsFetch = async (req) => {
     try {
@@ -458,8 +460,37 @@ export const jobCardsDetails = async (req) => {
             order_qty: Number(item?.item_qty) || 0,
             unit: item?.item_unit_name || directProduct?.unit || "",
             pending_qty: Number(item?.item_qty) || 0,
-            delivery_date: cart?.due_date || null
+            delivery_date: cart?.due_date || null,
+            parent_job_card: null,
         };
+
+        // This job card is itself a sub jobwork - resolve the parent's name
+        // so the UI can show a breadcrumb back to it.
+        if (jobCard.parent_job_card_id) {
+            const parentRow = await JobCardsModelInstance.findOne({
+                where: { id: jobCard.parent_job_card_id, isDelete: 0 },
+                raw: true,
+            });
+            if (parentRow) {
+                const parentIsDirect = [2, 3].includes(Number(parentRow.job_card_type) || 1);
+                const parentTargetId = parentRow.item_id;
+                const parentProduct = parentIsDirect
+                    ? await ProductModelInstance.findOne({
+                        where: { id: parentTargetId, isDelete: 0 },
+                        attributes: ["product_name"],
+                        raw: true,
+                    })
+                    : await CartItemModelInstance.findOne({
+                        where: { id: parentTargetId, isDelete: 0 },
+                        attributes: ["item_product_name"],
+                        raw: true,
+                    });
+                itemDetail.parent_job_card = {
+                    id: parentRow.id,
+                    item_name: parentProduct?.product_name || parentProduct?.item_product_name || "",
+                };
+            }
+        }
 
         // 4. Fetch BOM & Processes
         let bomProcesses = [];
@@ -511,6 +542,25 @@ export const jobCardsDetails = async (req) => {
                     const stockBatchResult = await fetchItemStockBatch(req, itemIds);
                     const stockMap = stockBatchResult?.stockMap || {};
                     const unitMap = stockBatchResult?.unitMap || {};
+                    const { reserved: reservedMap = {}, reservedBy = {}, incoming: incomingMap = {}, incomingBy = {} } =
+                        await fetchOtherOpenJobCardStock(req, jobCard, itemIds);
+
+                    // Which of these materials are themselves a manufactured
+                    // product with their own BOM - drives whether "Generate
+                    // Sub Job Card" is offered for that row.
+                    const ownBomProductIds = await fetchMaterialsWithOwnBom(req, itemIds);
+
+                    // What THIS job card's production entries already used, per
+                    // BOM process row (production_transactions_items.process_id is
+                    // bom_vs_process_lists.id) and material: entry_type 2 =
+                    // consumption, 1 = rejection.
+                    const doneRows = itemIds.length > 0 ? await productionTransactionsItemsModel(req.tenantDB).findAll({
+                        where: { isDelete: 0, job_id: jobCard.id, item_id: { [Op.in]: itemIds } },
+                        attributes: ["process_id", "item_id", "entry_type", [Sequelize.fn("SUM", Sequelize.col("qty")), "done"]],
+                        group: ["process_id", "item_id", "entry_type"],
+                        raw: true,
+                    }) : [];
+                    const doneMap = new Map(doneRows.map(r => [`${r.process_id}:${r.item_id}:${r.entry_type}`, Number(r.done) || 0]));
 
                     // Group materials by process_id
                     const materialsByProcess = new Map();
@@ -523,7 +573,7 @@ export const jobCardsDetails = async (req) => {
                     });
 
                     // Material Formatter
-                    const formatMaterial = (m) => {
+                    const formatMaterial = (m, processRowId, entryType) => {
                         const mId = Number(m.item_id || m.material_id);
                         const productInfo = productMap.get(mId);
 
@@ -539,9 +589,37 @@ export const jobCardsDetails = async (req) => {
                             unit: unit,
                             required_qty: requiredQty,
                             available_qty: availableQty,
-                            qty_diff: availableQty - requiredQty
+                            qty_diff: availableQty - requiredQty,
+                            // Pending need of OTHER open job cards for this
+                            // material; the UI can optionally deduct it
+                            // (free stock = available_qty - reserved_qty).
+                            reserved_qty: Number(reservedMap[mId]) || 0,
+                            // Which other open job cards reserve it:
+                            // [{ job_id, item_name, pending_qty }]
+                            reserved_by: reservedBy[mId] || [],
+                            // Other open job cards PRODUCING this material
+                            // (semi-finished item) - qty still to come:
+                            incoming_qty: Number(incomingMap[mId]) || 0,
+                            // [{ job_id, production_qty, produced_qty, pending_qty }]
+                            incoming_by: incomingBy[mId] || [],
+                            // Consumed (consumption rows) / rejected (rejection
+                            // rows) so far by this job card in this process.
+                            consumed_qty: doneMap.get(`${processRowId}:${mId}:${entryType}`) || 0,
+                            // Eligible for "Generate Sub Job Card": the
+                            // material has its own BOM AND the BOM Master
+                            // checkbox for it is checked (requires_sub_job_card).
+                            has_own_bom: ownBomProductIds.has(mId) && !!Number(m.requires_sub_job_card),
                         };
                     };
+
+                    // Which OTHER open job cards (same product) are also
+                    // logging consumption at each process, with their status -
+                    // lets the UI show "N job cards" per process and drill in.
+                    const jobCardsByProcess = await fetchJobCardsPerProcess(
+                        req,
+                        productId,
+                        processes.map(proc => Number(proc.id)),
+                    );
 
                     bomProcesses = processes.map((proc) => {
                         const pId = Number(proc.id);
@@ -554,10 +632,11 @@ export const jobCardsDetails = async (req) => {
                             process_name: processMaster?.process_name || proc.process_name || "Unknown Process",
                             consumption: materials
                                 .filter(m => Number(m.type) === 1 || !m.type)
-                                .map(formatMaterial),
+                                .map(m => formatMaterial(m, pId, 2)),
                             rejection: materials
                                 .filter(m => Number(m.type) === 2)
-                                .map(formatMaterial)
+                                .map(m => formatMaterial(m, pId, 1)),
+                            job_cards: jobCardsByProcess[pId] || [],
                         };
                     });
                 }
@@ -586,9 +665,234 @@ export const jobCardsDetails = async (req) => {
     }
 };
 
+// What OTHER open job cards mean for each material's stock:
+// - reserved: their pending consumption need (reservedBy lists each card)
+// - incoming: cards that PRODUCE this material (a semi-finished item) and
+//   still have qty to produce (incomingBy lists each card).
+// "Open" = not fully produced yet (sum of its production entries'
+// production_qty < its production qty) - job card statuses are
+// company-defined with no "completed" flag, so progress is the reliable
+// signal. For each open card: pending need of a material = its BOM
+// consumption requirement for the card's qty minus what production entries
+// already consumed for it (that part is already out of physical stock via
+// the consumption stock adjustment), floored at 0. Returns {} on failure
+// so the job card still loads.
+const fetchOtherOpenJobCardStock = async (req, currentJobCard, materialIds) => {
+    if (!materialIds.length) return {};
+
+    try {
+        const JobCards = JobCardsModel(req.tenantDB);
+        const CartItems = cartItemModel(req.tenantDB);
+        const BOMs = productBillOfMaterialModel(req.tenantDB);
+        const BOMMaterials = bomVsProcessVsConsAndRejctsModel(req.tenantDB);
+        const Productions = productionTransactionModel(req.tenantDB);
+        const ProductionItems = productionTransactionsItemsModel(req.tenantDB);
+
+        const otherCards = await JobCards.findAll({
+            where: {
+                isDelete: 0,
+                id: { [Op.ne]: currentJobCard.id },
+                ...(currentJobCard.company_masters_id ? { company_masters_id: currentJobCard.company_masters_id } : {}),
+            },
+            attributes: ["id", "job_card_type", "item_id", "production_qty", "parent_job_card_id"],
+            raw: true,
+        });
+        if (!otherCards.length) return {};
+
+        // Type 1 cards point at a cart item (product + qty fallback);
+        // types 2/3 point straight at the product.
+        const cartItemIds = otherCards
+            .filter((c) => ![2, 3].includes(Number(c.job_card_type) || 1))
+            .map((c) => c.item_id)
+            .filter(Boolean);
+        const cartItems = cartItemIds.length
+            ? await CartItems.findAll({
+                where: { id: { [Op.in]: cartItemIds }, isDelete: 0 },
+                attributes: ["id", "item_product_id", "item_qty"],
+                raw: true,
+            })
+            : [];
+        const cartItemMap = new Map(cartItems.map((ci) => [Number(ci.id), ci]));
+
+        const cards = otherCards
+            .map((c) => {
+                const direct = [2, 3].includes(Number(c.job_card_type) || 1);
+                const ci = direct ? null : cartItemMap.get(Number(c.item_id));
+                return {
+                    id: Number(c.id),
+                    productId: Number(direct ? c.item_id : ci?.item_product_id) || null,
+                    qty: Number(c.production_qty) || Number(ci?.item_qty) || 1,
+                    parentJobCardId: Number(c.parent_job_card_id) || null,
+                };
+            })
+            .filter((c) => c.productId);
+        if (!cards.length) return {};
+
+        const cardIds = cards.map((c) => c.id);
+        const produced = await Productions.findAll({
+            where: { isDelete: 0, job_id: { [Op.in]: cardIds } },
+            attributes: ["job_id", [Sequelize.fn("SUM", Sequelize.col("production_qty")), "produced"]],
+            group: ["job_id"],
+            raw: true,
+        });
+        const producedMap = new Map(produced.map((p) => [Number(p.job_id), Number(p.produced) || 0]));
+        const openCards = cards.filter((c) => (producedMap.get(c.id) || 0) < c.qty);
+        if (!openCards.length) return {};
+
+        const wanted = new Set(materialIds.map(Number));
+
+        // Incoming: open cards whose finished product IS one of these materials.
+        const incoming = {};
+        const incomingBy = {};
+        for (const card of openCards) {
+            if (!wanted.has(card.productId)) continue;
+            const producedQty = producedMap.get(card.id) || 0;
+            const pendingQty = card.qty - producedQty;
+            incoming[card.productId] = (incoming[card.productId] || 0) + pendingQty;
+            (incomingBy[card.productId] = incomingBy[card.productId] || []).push({
+                job_id: card.id,
+                production_qty: card.qty,
+                produced_qty: producedQty,
+                pending_qty: pendingQty,
+                // This job card was auto-created FOR this parent (an
+                // explicit link), not just incidentally producing the
+                // same material for someone else.
+                is_sub_job_card: card.parentJobCardId === Number(currentJobCard.id),
+            });
+        }
+
+        const productNames = await productModel(req.tenantDB).findAll({
+            where: { id: { [Op.in]: [...new Set(openCards.map((c) => c.productId))] } },
+            attributes: ["id", "product_name"],
+            raw: true,
+        });
+        const productNameMap = new Map(productNames.map((p) => [Number(p.id), p.product_name]));
+
+        // Same BOM pick as jobCardsDetails (first live BOM per product).
+        const productIds = [...new Set(openCards.map((c) => c.productId))];
+        const boms = await BOMs.findAll({
+            where: { product_id: { [Op.in]: productIds }, isDelete: 0 },
+            attributes: ["id", "product_id", "qty"],
+            order: [["id", "ASC"]],
+            raw: true,
+        });
+        const bomByProduct = new Map();
+        boms.forEach((b) => {
+            if (!bomByProduct.has(Number(b.product_id))) bomByProduct.set(Number(b.product_id), b);
+        });
+        const bomIds = [...bomByProduct.values()].map((b) => b.id);
+        if (!bomIds.length) return { incoming, incomingBy };
+
+        // Consumption materials only (type 1 / unset), limited to the
+        // materials shown on this job card. processRowId kept (not just
+        // summed) so we can later tell which process each material's
+        // consumption was logged against.
+        const materials = await BOMMaterials.findAll({
+            where: { bom_id: { [Op.in]: bomIds }, isDelete: 0 },
+            raw: true,
+        });
+        const materialsByBom = new Map();
+        materials.forEach((m) => {
+            const mId = Number(m.item_id || m.material_id);
+            if (!wanted.has(mId) || (m.type && Number(m.type) !== 1)) return;
+            if (!materialsByBom.has(Number(m.bom_id))) materialsByBom.set(Number(m.bom_id), []);
+            materialsByBom.get(Number(m.bom_id)).push({ mId, qty: Number(m.qty) || 0, processRowId: Number(m.process_id) });
+        });
+
+        // Ordered (id ASC = pipeline order, same convention as jobCardsDetails)
+        // process rows per bom, with resolved process names - lets each
+        // reserving job card report which process it's currently at.
+        const processRows = await bomVsProcessListsModel(req.tenantDB).findAll({
+            where: { bom_id: { [Op.in]: bomIds }, isDelete: 0 },
+            attributes: ["id", "bom_id", "process_id"],
+            order: [["id", "ASC"]],
+            raw: true,
+        });
+        const processMasterIds = [...new Set(processRows.map((p) => Number(p.process_id)))];
+        const processMasterRows = processMasterIds.length
+            ? await processMastersModel(req.tenantDB).findAll({
+                where: { id: { [Op.in]: processMasterIds } },
+                attributes: ["id", "process_name"],
+                raw: true,
+            })
+            : [];
+        const processNameMap = new Map(processMasterRows.map((pm) => [Number(pm.id), pm.process_name]));
+        const processRowsByBom = new Map();
+        processRows.forEach((p) => {
+            const bomId = Number(p.bom_id);
+            if (!processRowsByBom.has(bomId)) processRowsByBom.set(bomId, []);
+            processRowsByBom.get(bomId).push({ id: Number(p.id), name: processNameMap.get(Number(p.process_id)) || "Unknown Process" });
+        });
+
+        const openIds = openCards.map((c) => c.id);
+        const consumedRows = await ProductionItems.findAll({
+            where: {
+                isDelete: 0,
+                entry_type: 2, // 2 = consumption
+                job_id: { [Op.in]: openIds },
+                item_id: { [Op.in]: [...wanted] },
+            },
+            attributes: ["job_id", "item_id", "process_id", [Sequelize.fn("SUM", Sequelize.col("qty")), "consumed"]],
+            group: ["job_id", "item_id", "process_id"],
+            raw: true,
+        });
+        const consumedMap = new Map();
+        const consumedByProcessMap = new Map(consumedRows.map((r) => {
+            const total = Number(r.consumed) || 0;
+            const totalKey = `${r.job_id}:${r.item_id}`;
+            consumedMap.set(totalKey, (consumedMap.get(totalKey) || 0) + total);
+            return [`${r.job_id}:${r.item_id}:${r.process_id}`, total];
+        }));
+
+        const reserved = {};
+        const reservedBy = {};
+        for (const card of openCards) {
+            const bom = bomByProduct.get(card.productId);
+            const bomQty = Number(bom?.qty) || 1;
+            const bomMaterials = materialsByBom.get(Number(bom?.id)) || [];
+            const bomProcessRows = processRowsByBom.get(Number(bom?.id)) || [];
+            // A material can appear in several processes - total its need per card first.
+            const needByMaterial = {};
+            for (const m of bomMaterials) {
+                needByMaterial[m.mId] = (needByMaterial[m.mId] || 0) + (m.qty / bomQty) * card.qty;
+            }
+            for (const [mId, need] of Object.entries(needByMaterial)) {
+                const pending = need - (consumedMap.get(`${card.id}:${mId}`) || 0);
+                if (pending > 0) {
+                    reserved[mId] = (reserved[mId] || 0) + pending;
+
+                    // Latest process (in pipeline order) with any logged
+                    // consumption for this material on this job card.
+                    const materialProcessIds = new Set(
+                        bomMaterials.filter((m) => m.mId === Number(mId)).map((m) => m.processRowId),
+                    );
+                    let currentProcess = "Not Started";
+                    for (const pr of bomProcessRows) {
+                        if (!materialProcessIds.has(pr.id)) continue;
+                        if ((consumedByProcessMap.get(`${card.id}:${mId}:${pr.id}`) || 0) > 0) {
+                            currentProcess = pr.name;
+                        }
+                    }
+
+                    (reservedBy[mId] = reservedBy[mId] || []).push({
+                        job_id: card.id,
+                        item_name: productNameMap.get(card.productId) || "",
+                        pending_qty: pending,
+                        process_name: currentProcess,
+                    });
+                }
+            }
+        }
+        return { reserved, reservedBy, incoming, incomingBy };
+    } catch (error) {
+        console.log("fetchOtherOpenJobCardStock Error", error);
+        return {};
+    }
+};
+
 // Batched stock lookup: one query for ALL item_ids at once, grouped in SQL.
 // Replaces per-item fetchItemStock() calls inside loops.
-const fetchItemStockBatch = async (req, itemIds) => {
+export const fetchItemStockBatch = async (req, itemIds) => {
     if (!itemIds.length) return {};
 
     try {

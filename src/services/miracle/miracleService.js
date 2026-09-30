@@ -24,6 +24,7 @@ import { cleanHtmlText, parseMiracleRights } from "../../utils/miracleRightsHelp
 import { getFinancialYearRangeWise, isValid, resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { getCompanyByLoginId } from "../commonServices.js";
 import { insertMiracleLog } from "../activities/miracleLogService.js";
+import { emitAutomationEvent } from "../automation/emit.js";
 
 export const getMiracleUfdDet = async (tenantDB, companyId, formType, entityData) => {
     try {
@@ -2387,6 +2388,7 @@ export const processContact = async (req) => {
         const insertResults = await processInChunksWithResults(recordsToInsert, 100, async (record) => {
             return contactModelInstance.create(record);
         });
+        emitAutomationEvent(req, "contact.created", { where: { miracle_UniqueId: recordsToInsert.map((r) => r.miracle_UniqueId) }, origin: "import" });
 
         const updateResults = await processInChunksWithResults(recordsToUpdate, 100, async (record) => {
             const { id, ...updateFields } = record;

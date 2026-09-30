@@ -32,6 +32,12 @@ export const JobCardsModel = (sequelize) => {
         status_id: {
             type: INTEGER,
         },
+        parent_job_card_id: {
+            type: INTEGER,
+        },
+        parent_material_id: {
+            type: INTEGER,
+        },
         label_ids: {
             type: TEXT,
         },

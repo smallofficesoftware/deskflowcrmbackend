@@ -1,61 +1,40 @@
 import { Op, Sequelize } from "sequelize";
 
+const escapeLike = (text) => text.replace(/[\\%_]/g, "\\$&");
+
 export function buildSearchQueryTask(searchValue, searchableColumns) {
 
     if (!searchValue || !searchValue.trim()) {
         return {};
     }
 
-    const words = searchValue.trim().toLowerCase().split(/\s+/);
     const fullSearch = searchValue.trim().toLowerCase();
+    const words = fullSearch.split(/\s+/);
 
-    // FIXED WHERE CLAUSE
-    let searchClause = {
-        [Op.and]: words.map((word, index) => ({
-            [Op.or]: searchableColumns.map(col =>
-                Sequelize.where(
-                    Sequelize.fn("LOWER", Sequelize.col(col)),
-                    {
-                        [Op.like]: index === 0
-                            ? `${word}%`
-                            : `%${word}%`
-                    }
-                )
+    const lowerCol = (col) => Sequelize.fn("LOWER", Sequelize.col(col));
+    // id is numeric, so it stays prefix-only; "12" should not match every id containing 12
+    const likePattern = (col, text) =>
+        col === "id" ? `${escapeLike(text)}%` : `%${escapeLike(text)}%`;
+
+    // every word must appear in at least one column, anywhere in that column
+    const searchClause = {
+        [Op.and]: words.map((word) => ({
+            [Op.or]: searchableColumns.map((col) =>
+                Sequelize.where(lowerCol(col), { [Op.like]: likePattern(col, word) })
             )
         }))
     };
 
-    // ORDER BY (same as yours)
+    // user text is only ever passed as a value, so Sequelize escapes it
+    const score = (col, comparator, value, points) => [
+        Sequelize.fn("IF", Sequelize.where(lowerCol(col), comparator, value), points, 0),
+        "DESC"
+    ];
+
     const relevanceSearchOrder = [
-        ...searchableColumns.map(col => [
-            Sequelize.literal(`
-                CASE 
-                    WHEN LOWER(${col}) = '${fullSearch}' 
-                    THEN 100 ELSE 0 
-                END
-            `),
-            "DESC"
-        ]),
-
-        ...searchableColumns.map(col => [
-            Sequelize.literal(`
-                CASE 
-                    WHEN LOWER(${col}) LIKE '${fullSearch}%' 
-                    THEN 50 ELSE 0 
-                END
-            `),
-            "DESC"
-        ]),
-
-        ...searchableColumns.map(col => [
-            Sequelize.literal(`
-                CASE 
-                    WHEN LOWER(${col}) LIKE '%${fullSearch}%' 
-                    THEN 10 ELSE 0 
-                END
-            `),
-            "DESC"
-        ])
+        ...searchableColumns.map((col) => score(col, Op.eq, fullSearch, 100)),
+        ...searchableColumns.map((col) => score(col, Op.like, `${escapeLike(fullSearch)}%`, 50)),
+        ...searchableColumns.map((col) => score(col, Op.like, likePattern(col, fullSearch), 10))
     ];
 
     return { searchClause, relevanceSearchOrder };

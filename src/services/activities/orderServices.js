@@ -74,6 +74,7 @@ import {
   getLoginDetailById,
   insertStagesAndStatusLogs
 } from "../commonServices.js";
+import { emitAutomationEvent, automationBefore } from "../automation/emit.js";
 
 
 const orderTypesList = [
@@ -997,6 +998,7 @@ export const orderCreate = async (req, res) => {
     } else {
       console.log("No device tokens found for assigned members or owners.");
     }
+    emitAutomationEvent(req, "cart.created", { id: resultCart.dataValues.id });
     return resSuccess({
       data: { item: resultCartItem, companyDetail: companyDetail },
       ack_msg: "Added successfully",
@@ -2120,7 +2122,12 @@ export const orderUpdate = async (req, res) => {
 
 
 
-    if (cart_id && update_cart == undefined && update_cart_items == undefined) {
+    // Approve-only call (e.g. multi-approve from the order lists): no cart data
+    // is sent and a_application_login_id is the approver, not the order's owner.
+    const isApproveOnlyUpdate =
+      cart_id && update_cart == undefined && update_cart_items == undefined;
+
+    if (isApproveOnlyUpdate) {
 
       const updateCartData = await CATModel.findOne({
         where: {
@@ -2459,6 +2466,14 @@ export const orderUpdate = async (req, res) => {
         };
         break;
     }
+    if (isApproveOnlyUpdate) {
+      // Keep the order's owner (credited in reports / target vs incentive);
+      // the caller is only the approver. Sequelize skips undefined on update.
+      cartBody.approve_a_application_login_id =
+        Approve_application_login_id ?? a_application_login_id;
+      cartBody.a_application_login_id = undefined;
+    }
+    const __automationBefore = await automationBefore(req, "carts", { id: cart_id });
     const updateCartResult = await CATModel.update(cartBody, {
       where: { id: cart_id, isDelete: 0 },
     });
@@ -3239,6 +3254,7 @@ export const orderUpdate = async (req, res) => {
       }
     }
 
+    emitAutomationEvent(req, "record.updated", { table: "carts", where: { id: cart_id }, before: __automationBefore, data: cartBody });
     return resSuccess({
       ack_msg: "Updated Successfully",
       data: { item: results, resultCartItem, companyDetail: companyDetail },
@@ -3391,6 +3407,7 @@ export const orderDelete = async (req, res) => {
     });
 
     await transaction.commit();
+    emitAutomationEvent(req, "cart.deleted", { id: findCartData.id });
 
     // Update Status 
     if (findCartData.referance_cart_id && findCartData.reference_type) {
@@ -3789,6 +3806,7 @@ export const covertOrderSystem = async (req, res) => {
 
       if (resultCart) {
         const cartId = resultCart.dataValues.id;
+        emitAutomationEvent(req, "cart.created", { id: cartId });
 
         const cartItemsBody = mergedCartItems.map((item) => {
           const { old_cart_item_id, ...rest } = item;
@@ -4073,6 +4091,7 @@ export const covertOrderSystem = async (req, res) => {
 
       if (resultCart) {
         const cartId = resultCart.dataValues.id;
+        emitAutomationEvent(req, "cart.created", { id: cartId });
 
         const cartItemsBody = cartItems.map((item) => {
           const { old_cart_item_id, ...rest } = item;
@@ -6485,6 +6504,7 @@ export const deleteMultipleOrder = async (req) => {
       }
 
       await transaction.commit();
+      emitAutomationEvent(req, "cart.deleted", { ids: deletableList.map((d) => d.id) });
 
       // status update
       for (const v of statusEffectList) {

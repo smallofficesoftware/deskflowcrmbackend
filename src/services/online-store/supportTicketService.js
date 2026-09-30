@@ -13,6 +13,7 @@ import { stagestatusModel } from "../../models/masters/stagestatusModel.js";
 import { taskCategoryModel } from "../../models/masters/taskCategoryModel.js";
 import { TASK_ATTEECHMENT_VIEW } from "../../utils/appConstants.js";
 import { formatDateAndTimeCreateDateTimeV2, isValid, resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
+import { emitAutomationEvent } from "../automation/emit.js";
 
 export const storeSupportTicketCreate = async (req, res) => {
     try {
@@ -148,6 +149,7 @@ export const storeSupportTicketCreate = async (req, res) => {
         const newTask = await TaskModel.create(taskPayload);
 
         if (newTask) {
+            emitAutomationEvent(req, "task.created", { id: newTask.id, company_masters_id: companyIdFind.id });
             if (companyIdFind.a_application_login_id) {
                 const assignedMemberIds = companyIdFind.a_application_login_id;
 

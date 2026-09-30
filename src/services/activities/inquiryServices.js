@@ -15,6 +15,7 @@ import {
 } from "../../utils/sharedFunctions.js";
 import { getCompanyByLoginId } from "../commonServices.js";
 import { sendMultipleNotification } from "../company_setup/thirdPartyIntegrationService.js";
+import { emitAutomationEvent } from "../automation/emit.js";
 
 export const getAllInquiry = async (req) => {
   try {
@@ -492,6 +493,7 @@ export const CreateInquiryBtoB = async (req, res) => {
         company_masters_id: company_masters_id,
         a_application_login_id: a_application_login_id,
       });
+      emitAutomationEvent(req, "contact.created", { id: existingContact.id, company_masters_id });
     }
 
     const newInquiry = await INQModel.create({
@@ -505,6 +507,7 @@ export const CreateInquiryBtoB = async (req, res) => {
     });
 
     if (newInquiry) {
+      emitAutomationEvent(req, "inquiry.created", { id: newInquiry.id, company_masters_id });
       const ownerTokenData = await companyVsApplicationLoginModel.findAll({
         where: {
           isDelete: 0,

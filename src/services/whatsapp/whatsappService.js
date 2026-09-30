@@ -24,6 +24,7 @@ import { autoAssignmentContactIdsGet, prepareMailAndWhatsappSenderToTheContact }
 import { sendWhatsappTemplateViaBackend } from "./variableSystemService.js";
 import { WHATSAPP_AXIOS } from "./whatsappAxiosRegistry.js";
 import { WHATSAPP_FETCH_TEMPLATE_HANDLER, WHATSAPP_FETCH_WABA_CONFIG_DETAILS, WHATSAPP_FETCH_WABA_CONFIG_DETAILS_TEAM, WHATSAPP_SEND_CONTACT_ASSIGNMENT, WHATSAPP_SEND_SALES_PDF_HANDLER, WHATSAPP_SEND_TASK_HANDLER, WHATSAPP_SEND_TEMPLATE_HANDLER } from "./whatsappHandlerRegistry.js";
+import { emitAutomationEvent } from "../automation/emit.js";
 
 export const sendSalesPdfWhatsapp = async (req) => {
     try {
@@ -929,6 +930,7 @@ export const waCloudHook = async (req, res) => {
                     assinged_to_work_a_application_id: contactAssignedIdsStr || companyRecord.a_application_login_id
                 });
             isNewContact = contactReponse ? true : false;
+            if (isNewContact) emitAutomationEvent(req, "contact.created", { id: contactReponse.id, company_masters_id: a_company_id });
 
         }
 
@@ -942,7 +944,7 @@ export const waCloudHook = async (req, res) => {
                 source_type_id: SOURCE_TYPE_ID,
                 a_application_login_id: companyRecord.a_application_login_id
             });
-
+        emitAutomationEvent(req, "inquiry.created", { id: createdInquiry.id, company_masters_id: a_company_id });
 
         if (isNewContact) {
             await insertStagesAndStatusLogs(req, {
@@ -996,6 +998,7 @@ export const waCloudHook = async (req, res) => {
                 message_type_id: "0",
             })
             : null;
+        if (messageEntry) emitAutomationEvent(req, "whatsapp.received", { id: messageEntry.id, company_masters_id: a_company_id });
 
         // Only a payload that actually carried message text marks the contact
         // unread (messageEntry is only created when hasMessageText is true).

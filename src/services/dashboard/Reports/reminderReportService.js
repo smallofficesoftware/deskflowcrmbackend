@@ -19,6 +19,7 @@ export const getTeamReminderReport = async (req) => {
             selectedContactId,
             referenceWiseContact = 1,
             typeFilter = "due",
+            viewScope, // "all" | "my" - explicit scope toggle, same idea as Task Management's All/My
         } = req.body;
 
         // ────────────────────────────────────────────────
@@ -70,28 +71,39 @@ export const getTeamReminderReport = async (req) => {
             tenentId: req.tenantDB
         });
 
+        // "All"/"My" toggle (feature request: same as Task Management's
+        // All/My buttons). "My" always means own+assigned, even for someone
+        // with all-data rights - matches Task's taskFilter===2. "All" asks
+        // for company-wide, still capped by showAllData. No toggle sent
+        // (older callers) keeps the rights-only default unchanged.
+        const wantsAllData = viewScope === "my" ? false : showAllData;
+
+        // own OR assigned-to-me — matches crm-insight's totalReminderCount
+        // definition (buildAccessAnd's ownerOrAssigned). Previously only checked
+        // a_application_login_id (creator), so a reminder someone else created
+        // and assigned to this login silently never showed up here even though
+        // the Insight card counted it.
+        const personalScope = {
+            [Op.or]: [
+                { a_application_login_id: a_application_login_id },
+                { assigned_to: a_application_login_id },
+            ],
+        };
+
         let baseWhereClause = {
             isDelete: 0,
             is_reminder_app_flag: 0
         };
 
-        if (showAllData) {
+        if (wantsAllData) {
             baseWhereClause.company_masters_id = companyId;
-        } else if (showPersonalData) {
-            // Owner OR assigned-to-me — matches crm-insight's totalReminderCount
-            // definition (buildAccessAnd's ownerOrAssigned). Previously only checked
-            // a_application_login_id (creator), so a reminder someone else created
-            // and assigned to this login silently never showed up here even though
-            // the Insight card counted it.
+        } else if (showPersonalData || viewScope === "my") {
             baseWhereClause.company_masters_id = companyId;
-            baseWhereClause[Op.or] = [
-                { a_application_login_id: a_application_login_id },
-                { assigned_to: a_application_login_id },
-            ];
+            Object.assign(baseWhereClause, personalScope);
         } else {
             // No rights → return empty
             return resSuccess({
-                data: { data: [], counts: { due: 0, future: 0, complete: 0, all: 0 } },
+                data: { data: [], counts: { due: 0, future: 0, complete: 0, all: 0, my: 0 }, can_see_all_data: showAllData },
                 ack_msg: "No data access rights",
             });
         }
@@ -155,12 +167,27 @@ export const getTeamReminderReport = async (req) => {
 
         const reminderModel = reminderMessagesModel(req.tenantDB);
 
-        const [dueCount, futureCount, completeCount, allCount] = await Promise.all([
+        // Counts follow the same filters as the list, including the free-text
+        // search (previously only the date range/team-member/contact filters
+        // did - globalSearch was silently left out of every count here).
+        const countExtraConditions = [...baseDateConditions];
+        if (Object.keys(fullTextSearchCondition).length > 0) {
+            countExtraConditions.push(fullTextSearchCondition);
+        }
+
+        // "All"/"My" badge totals (matches Task Management's
+        // isTaskCountGetAll/isTaskCountGetMy): shown regardless of which
+        // scope is currently selected, so the toggle itself can show both
+        // numbers. "myCount" is always personal, even when the current
+        // request is already scoped to "all".
+        const myBaseForCount = { ...baseWhereClause, ...personalScope };
+
+        const [dueCount, futureCount, completeCount, allCount, myCount] = await Promise.all([
             reminderModel.count({
                 where: {
                     ...baseWhereClause,
                     [Op.and]: [
-                        ...baseDateConditions,
+                        ...countExtraConditions,
                         {
                             status: { [Op.ne]: 1 },
                             reminder_data_time: { [Op.lt]: currentDate },
@@ -172,7 +199,7 @@ export const getTeamReminderReport = async (req) => {
                 where: {
                     ...baseWhereClause,
                     [Op.and]: [
-                        ...baseDateConditions,
+                        ...countExtraConditions,
                         {
                             status: { [Op.ne]: 1 },
                             completed_date_time: { [Op.or]: [null, ""] },
@@ -185,7 +212,7 @@ export const getTeamReminderReport = async (req) => {
                 where: {
                     ...baseWhereClause,
                     [Op.and]: [
-                        ...baseDateConditions,
+                        ...countExtraConditions,
                         {
                             status: 1,
                         },
@@ -195,10 +222,22 @@ export const getTeamReminderReport = async (req) => {
             reminderModel.count({
                 where: {
                     ...baseWhereClause,
-                    [Op.and]: baseDateConditions,
+                    [Op.and]: countExtraConditions,
                 },
             }),
+            showAllData
+                ? reminderModel.count({
+                    where: {
+                        ...myBaseForCount,
+                        [Op.and]: countExtraConditions,
+                    },
+                })
+                : Promise.resolve(null), // backfilled below - already equals allCount when there's no all-data right
         ]);
+        // Without the all-data right, baseWhereClause was already personal-scoped
+        // (the showPersonalData branch above), so allCount IS myCount already -
+        // no need for a second, identical query.
+        const resolvedMyCount = myCount ?? allCount;
 
         const orderClause =
             typeFilter === "future"
@@ -279,11 +318,13 @@ export const getTeamReminderReport = async (req) => {
             data: {
                 data: enrichedReminders,
                 total: totalMatchingCount,
+                can_see_all_data: showAllData, // lets the frontend decide whether to show the "All" button at all
                 counts: {
                     due: dueCount,
                     future: futureCount,
                     complete: completeCount,
                     all: allCount,
+                    my: resolvedMyCount,
                 },
             },
             ack_msg: "Reminder report fetched successfully",

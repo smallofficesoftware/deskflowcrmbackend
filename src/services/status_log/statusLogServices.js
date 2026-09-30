@@ -29,7 +29,7 @@ export const getStatusLog = async (req, res) => {
                         reference_id
                     },
                     raw: true,
-                    attributes: ["reference_table", "reference_id", "information", "status_id", "previous_status_id", "updated_by", "updated_date_time"],
+                    attributes: ["reference_table", "reference_id", "information", "status_id", "previous_status_id", "updated_by", "updated_date_time", "stage_form_data"],
                     order: [["updated_date_time", "DESC"]]
                 }
             );
@@ -47,10 +47,12 @@ export const getStatusLog = async (req, res) => {
                 "cart_return_purchase_invoice": 10,
                 "cart_inward": 12,
                 "cart_dispatch": 11,
-                // Custom Form Maker — one shared status set for all of a
-                // company's form submissions, not per-form (plan §1
-                // "Submission status"). 13 was free when this was added.
-                "form_builder_submissions": 13,
+                // 13 = job_cards (JobCardController.ts's get-status call),
+                // 14 = route_planner - both already taken (confirmed via
+                // grep, not just this list). Custom Form Maker's shared
+                // status set for all of a company's form submissions (plan
+                // §1 "Submission status") - 15 is the actual next-free slot.
+                "form_builder_submissions": 15,
             }
 
             const getStageAndStatus = await stagestatusModelInstance.findAll({
@@ -75,8 +77,13 @@ export const getStatusLog = async (req, res) => {
                             attributes: ["username"]
                         }
                     )
+                    let stageFormData = null;
+                    if (v.stage_form_data) {
+                        try { stageFormData = JSON.parse(v.stage_form_data); } catch (e) { stageFormData = null; }
+                    }
                     return {
                         ...v,
+                        stage_form_data: stageFormData,
                         updated_date_time: v.updated_date_time ? formatDateAndTimeCreateDateTimeV2(v.updated_date_time) : "",
                         status_color_code: stageAndStatusColorMap.get(String(v.status_id)) || "",
                         status_name: stageAndStatusNameMap.get(String(v.status_id)) || "",

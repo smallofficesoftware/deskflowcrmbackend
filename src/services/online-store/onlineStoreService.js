@@ -10,6 +10,7 @@ import {
     resError,
     resSuccess
 } from "../../utils/sharedFunctions.js";
+import { emitAutomationEvent } from "../automation/emit.js";
 
 export const orderCreateByOnlineStore = async (req, res) => {
     const qr_code = req.params.qrcode;
@@ -131,6 +132,7 @@ export const orderCreateByOnlineStore = async (req, res) => {
                 created_date_time: moment().format("YYYY-MM-DD HH:mm:ss"),
                 source_type_id: -18,
             });
+            emitAutomationEvent({ company_masters_id }, "contact.created", { id: contact.id });
         }
         const contactId = contact.id || contact.dataValues?.id;
         const productById = new Map();
@@ -392,6 +394,7 @@ export const orderCreateByOnlineStore = async (req, res) => {
                 return resError({ ack_msg: "Failed to create cart items", developer_msg: "Failed to create cart items" });
             }
             await t.commit();
+            emitAutomationEvent({ company_masters_id }, "cart.created", { id: cartId });
             // close tenant connection if provided
             if (tenantSequelize && typeof tenantSequelize.close === "function") {
                 try { await tenantSequelize.close(); } catch (e) { /* ignore */ }

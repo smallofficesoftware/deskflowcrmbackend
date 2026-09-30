@@ -1,10 +1,11 @@
 import Sequelize, { Op, col, fn } from "sequelize";
 import { reminderMessagesModel } from "../../models/activities/reminderMessagesModel.js";
 import loginModel from "../../models/application_login/loginModel.js";
-import companyVsApplicationLoginModel from "../../models/company_setup/companyVsApplicationLoginModel.js";
 import { labelModel } from "../../models/masters/labelModel.js";
 import { sourceTypesModel } from "../../models/masters/sourceTypeMode.js";
 import { stagestatusModel } from "../../models/masters/stagestatusModel.js";
+import { getUserRights } from "../../helpers/rightsHelper.js";
+import { PAGE_ID } from "../../utils/AppEnumeration.js";
 import {
   formatDateAndTimeCreateDateTime,
   formatDateCustom,
@@ -12,6 +13,7 @@ import {
   resSuccess,
   sanitizeObjectOfNull,
 } from "../../utils/sharedFunctions.js";
+import { getCompanyByLoginId } from "../commonServices.js";
 
 export const getAllReminder = async (req) => {
   try {
@@ -23,6 +25,7 @@ export const getAllReminder = async (req) => {
       reminderCheckFlag,
       allreminderCheckFlag,
       typeFilter,
+      viewScope, // "all" | "my" - explicit scope toggle, same idea as Task Management's All/My
       startDate,
       endDate,
       assignedByMultiTeamMember,
@@ -31,42 +34,56 @@ export const getAllReminder = async (req) => {
 
     const reminderMSGModel = reminderMessagesModel(req.tenantDB);
 
-    const companyflag = await companyVsApplicationLoginModel.findOne({
-      where: {
-        a_application_login_id: req.body.a_application_login_id,
-        isDelete: 0,
-      },
-      attributes: ["company_flag"],
+    const companyInfo = await getCompanyByLoginId(a_application_login_id);
+    const company_flag = companyInfo ? companyInfo.company_flag : null;
+
+    // Rights (ticket #2573, "also see personal data and all data"): same
+    // all_data/personal page-rights model Task Management already uses
+    // (rightsHelper.js), instead of the old hardcoded "company owner + on
+    // the All tab" special case - so a team member granted "All data" sees
+    // every reminder too, on every tab, not just the owner on one tab. The
+    // owner still always gets full access even without a seeded rights row,
+    // matching the bypass every other page gets.
+    const { showAllData } = await getUserRights({
+      company_masters_id: companyInfo?.company_masters_id,
+      a_application_login_id,
+      page_id: PAGE_ID.REMINDER,
+      tenentId: req.tenantDB,
     });
-    const company_flag = companyflag ? companyflag.company_flag : null;
+    const canSeeAllData = showAllData || Number(company_flag) === 1;
 
-    let whereClause = {
-      isDelete: "0",
-      is_reminder_app_flag: "0",
-      [Op.or]: [
-        { a_application_login_id },
-        { assigned_to: a_application_login_id },
-      ],
-      status: 0,
-    };
+    // "All"/"My" toggle (feature request: same as Task Management's All/My
+    // buttons). "My" always means own+assigned, even for someone with
+    // all-data rights - matches Task's taskFilter===2 meaning "assigned to
+    // me" unconditionally. "All" asks for company-wide, still capped by the
+    // same rights check. No toggle sent (older callers) keeps the
+    // rights-only default from ticket #2573 unchanged.
+    const effectiveSeesAllData = viewScope === "my" ? false : canSeeAllData;
 
-    let baseWhereClause = {
-      isDelete: "0",
-      is_reminder_app_flag: "0",
+    // "Own + assigned to me" - what everyone gets by default: personal-data
+    // rights, or no rights row configured at all (deliberately conservative,
+    // unlike Task Management's "no rights row = full access" - reminders
+    // were always own-only before this fix, so an unconfigured team member
+    // should stay restricted rather than suddenly seeing everyone's).
+    const personalScope = {
       [Op.or]: [
         { a_application_login_id: a_application_login_id },
         { assigned_to: a_application_login_id },
       ],
     };
-    if (typeFilter == "all" && Number(company_flag) === 1) {
-      // "All" spans every team member's reminders only for the company
-      // owner - a regular team member always stays scoped to their own
-      // (created or assigned) reminders, same as due/upcoming/completed.
-      whereClause = {
-        isDelete: "0",
-        is_reminder_app_flag: "0",
-      };
-    }
+
+    let whereClause = {
+      isDelete: "0",
+      is_reminder_app_flag: "0",
+      status: 0,
+      ...(effectiveSeesAllData ? {} : personalScope),
+    };
+
+    let baseWhereClause = {
+      isDelete: "0",
+      is_reminder_app_flag: "0",
+      ...(effectiveSeesAllData ? {} : personalScope),
+    };
 
     // searchDate filter
     if (searchDate) {
@@ -113,6 +130,14 @@ export const getAllReminder = async (req) => {
         ...whereClause,
         status: 1,
       };
+    } else if (typeFilter === "all") {
+      // "All" means every status, not just not-yet-completed - drop the
+      // status:0 default the base whereClause carries. (Regression from the
+      // rights rework above: that used to only happen for the company
+      // owner, via a whereClause replaced wholesale further up; scope is
+      // unified now, so this needs to be explicit and apply to everyone.)
+      const { status, ...rest } = whereClause;
+      whereClause = rest;
     }
 
     if (searchTerm) {
@@ -171,9 +196,79 @@ export const getAllReminder = async (req) => {
       });
     }
 
+    // Counts follow the same filters as the list (ticket #2573): search
+    // term, single-day/date-range filter and the creator/assignee
+    // multi-selects all apply here too - only the scope (base) each count
+    // starts from differs. Never built from whereClause, since that one
+    // already has a specific typeFilter's condition folded into it above.
+    const applyCountFilters = (base) => {
+      let result = { ...base };
+
+      if (searchDate) {
+        result[Op.and] = result[Op.and] || [];
+        result[Op.and].push(
+          Sequelize.where(fn("DATE", col("reminder_data_time")), searchDate)
+        );
+      }
+
+      if (startDate && endDate) {
+        result[Op.and] = result[Op.and] || [];
+        result[Op.and].push(
+          Sequelize.where(fn("DATE", col("reminder_data_time")), {
+            [Op.between]: [startDate, endDate],
+          })
+        );
+      }
+
+      if (searchTerm) {
+        result = {
+          [Op.and]: [
+            result,
+            {
+              [Op.or]: [
+                { assigned_to_name: { [Op.like]: `%${searchTerm}%` } },
+                { remark: { [Op.like]: `%${searchTerm}%` } },
+              ],
+            },
+          ],
+        };
+      }
+
+      if (createdByMultiTeamMember && Array.isArray(createdByMultiTeamMember) && createdByMultiTeamMember.length > 0) {
+        result[Op.and] = result[Op.and] || [];
+        result[Op.and].push({
+          a_application_login_id: { [Op.in]: createdByMultiTeamMember },
+        });
+      }
+
+      if (assignedByMultiTeamMember && Array.isArray(assignedByMultiTeamMember) && assignedByMultiTeamMember.length > 0) {
+        result[Op.and] = result[Op.and] || [];
+        result[Op.and].push({
+          assigned_to: { [Op.in]: assignedByMultiTeamMember },
+        });
+      }
+
+      return result;
+    };
+
+    const countsWhereClause = applyCountFilters(baseWhereClause);
+
+    // "All"/"My" badge totals (feature request, matches Task Management's
+    // isTaskCountGetAll/isTaskCountGetMy): total live reminders in each
+    // scope, same extra filters as above, independent of due/upcoming/
+    // completed. "All" is still capped by canSeeAllData - a login without
+    // the right just gets the same number as "My".
+    const scopelessBase = { isDelete: "0", is_reminder_app_flag: "0" };
+    const myCount = await reminderMSGModel.count({
+      where: applyCountFilters({ ...scopelessBase, ...personalScope }),
+    });
+    const allCount = canSeeAllData
+      ? await reminderMSGModel.count({ where: applyCountFilters(scopelessBase) })
+      : myCount;
+
     const dueCount = await reminderMSGModel.count({
       where: {
-        ...baseWhereClause,
+        ...countsWhereClause,
         status: { [Op.ne]: 1 },
         reminder_data_time: { [Op.lt]: new Date() },
       },
@@ -181,7 +276,7 @@ export const getAllReminder = async (req) => {
 
     const futureCount = await reminderMSGModel.count({
       where: {
-        ...baseWhereClause,
+        ...countsWhereClause,
         status: { [Op.ne]: 1 },
         completed_date_time: { [Op.or]: [null, ""] },
         reminder_data_time: { [Op.gt]: currentDate },
@@ -190,7 +285,7 @@ export const getAllReminder = async (req) => {
 
     const completeCount = await reminderMSGModel.count({
       where: {
-        ...baseWhereClause,
+        ...countsWhereClause,
         status: 1,
       },
     });
@@ -429,10 +524,13 @@ export const getAllReminder = async (req) => {
         data: {
           item: sanitizedReminders,
           company_flag: company_flag,
+          can_see_all_data: canSeeAllData, // lets the frontend decide whether to show the "All" button at all
           counts: {
             due: dueCount,
             future: futureCount,
             complete: completeCount,
+            all: allCount,
+            my: myCount,
           },
         },
       });

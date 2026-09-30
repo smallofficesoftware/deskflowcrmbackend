@@ -43,6 +43,13 @@ const RESERVED_FIELD_KEYS = new Set([
   "last_edited_by_a_application_login_id",
   "last_edited_date_time",
   "source_ip",
+  "current_stage",
+  "stage_status",
+  "is_draft",
+  "consent_at",
+  "consent_ip",
+  "source",
+  "campaign",
   "created_date_time",
   "modified_date",
   "isDelete",
@@ -70,13 +77,17 @@ function assertValidFormId(formId) {
   }
 }
 
-function assertValidFieldKey(key) {
+function assertValidFieldKey(key, label) {
   if (!isValidFieldKey(key)) {
     // VALIDATION: prefix matches formBuilderService.js's publishForm()
     // convention for user-facing validation failures (400 + friendly
     // message) vs. an unexpected DDL error (500 + generic message) — see
-    // its catch block's isValidation check.
-    throw new Error(`VALIDATION: "${key}" is not a valid field key, or collides with a reserved system column name`);
+    // its catch block's isValidation check. Message is shown to the form
+    // builder as-is, so it names the field by its label.
+    const name = label ? `“${label}”` : `A field (key "${key}")`;
+    throw new Error(
+      `VALIDATION: ${name} has an internal name that can't be used ("${key}"). Use only small letters, numbers and _, start with a letter, and avoid system names like id or isDelete.`,
+    );
   }
 }
 
@@ -100,8 +111,9 @@ export function repeaterTableName(formId, repeaterFieldId) {
   return `fbs_${formId}_r${repeaterFieldId}`;
 }
 
-// Field type -> SQL column type, per plan §1's type table. Types with no
-// physical column (section-header, file/signature/image, repeater) are not
+// Field type -> SQL column type, per plan §1's type table (+ Form Builder
+// v2 Phase 1 types at the bottom). Types with no physical column
+// (section-header/instruction, file/signature/image, repeater) are not
 // in this map — callers must filter those out before calling
 // columnTypeForField (columnDefinitionsForFields does this already).
 const FIELD_TYPE_COLUMN_MAP = {
@@ -121,12 +133,45 @@ const FIELD_TYPE_COLUMN_MAP = {
   switch: "TINYINT",
   "multi-select": "TEXT",
   reference: "INT",
+  // v2 Phase 1. auto-number is server-owned (numbers assigned in Phase 4);
+  // question-table holds the whole answer grid as JSON; calculation is
+  // recomputed server-side in Phase 6; customer-lookup/user hold a
+  // contact_masters / application login id.
+  "auto-number": "VARCHAR(100)",
+  "customer-lookup": "INT",
+  "question-table": "LONGTEXT",
+  calculation: "DECIMAL(18,4)",
+  user: "INT",
+  // v2 Phase 7: time of day, money (2 decimals), percentage, GPS "lat,lng",
+  // and scanned / typed barcode text.
+  time: "TIME",
+  currency: "DECIMAL(18,2)",
+  percentage: "DECIMAL(9,2)",
+  location: "VARCHAR(60)",
+  barcode: "VARCHAR(255)",
+  // v2 Phase 11: "I agree to the terms" tick, linked to a terms block (M2).
+  consent: "TINYINT",
 };
 
+// Shared field-type sets — imported by the submission, export and PDF code
+// instead of each keeping its own hardcoded copy.
+//
+// Layout-only types: shown to the filler, never validated or stored.
+export const LAYOUT_TYPES = new Set(["section-header", "instruction"]);
+// Upload types: stored in form_builder_submission_files, not on the table.
+export const FILE_TYPES = new Set(["file", "signature", "image"]);
+// Every no-column type except repeater — for callers that handle repeater
+// separately (Excel/PDF column lists, repeater sub-field lists).
+export const NO_COLUMN_NON_REPEATER_TYPES = new Set([...LAYOUT_TYPES, ...FILE_TYPES]);
 // Field types that never become a physical column on the dynamic table.
-const NO_COLUMN_TYPES = new Set(["section-header", "file", "signature", "image", "repeater"]);
+export const NO_COLUMN_TYPES = new Set([...NO_COLUMN_NON_REPEATER_TYPES, "repeater"]);
+// Types whose value the server sets itself — any client-sent value is
+// ignored (auto-number: Phase 4 assigns it; NULL until then).
+export const SERVER_OWNED_TYPES = new Set(["auto-number"]);
 
 export function columnTypeForField(field) {
+  // A calculation that works out a date (due date = received + 7 days) is a DATE column.
+  if (field.type === "calculation" && field.result_type === "date") return "DATE";
   const columnType = FIELD_TYPE_COLUMN_MAP[field.type];
   if (!columnType) {
     throw new Error(`formBuilderDdlBuilder: field type "${field.type}" has no column mapping`);
@@ -140,11 +185,12 @@ function columnDefinitionsForFields(fields) {
   return fields
     .filter((f) => !NO_COLUMN_TYPES.has(f.type))
     .map((f) => {
-      assertValidFieldKey(f.key);
+      assertValidFieldKey(f.key, f.label);
       return {
         key: f.key,
         columnType: columnTypeForField(f),
-        unique: !!f.unique,
+        // auto-number values must never repeat (plan B5) — always unique.
+        unique: !!f.unique || f.type === "auto-number",
         filterable: !!f.filterable,
       };
     });
@@ -184,13 +230,22 @@ const MAIN_TABLE_FIXED_COLUMNS_SQL = `
   \`last_edited_by_a_application_login_id\` INT NULL DEFAULT NULL,
   \`last_edited_date_time\` DATETIME NULL DEFAULT NULL,
   \`source_ip\` VARCHAR(64) NULL DEFAULT NULL,
+  \`current_stage\` VARCHAR(20) NULL DEFAULT NULL,
+  \`stage_status\` VARCHAR(20) NULL DEFAULT NULL,
+  \`is_draft\` TINYINT NOT NULL DEFAULT 0,
+  \`consent_at\` DATETIME NULL DEFAULT NULL,
+  \`consent_ip\` VARCHAR(64) NULL DEFAULT NULL,
+  \`source\` VARCHAR(100) NULL DEFAULT NULL,
+  \`campaign\` VARCHAR(100) NULL DEFAULT NULL,
   \`created_date_time\` DATETIME NOT NULL,
   \`isDelete\` TINYINT NOT NULL DEFAULT 0,
   \`isActive\` TINYINT NOT NULL DEFAULT 1,
   PRIMARY KEY (\`id\`),
   INDEX \`idx_company_isdelete_created\` (\`company_masters_id\`, \`isDelete\`, \`created_date_time\`),
   INDEX \`idx_possible_duplicate_contact\` (\`possible_duplicate_contact_id\`),
-  INDEX \`idx_submission_status\` (\`submission_status_id\`)`.trim();
+  INDEX \`idx_submission_status\` (\`submission_status_id\`),
+  INDEX \`idx_stage\` (\`current_stage\`, \`stage_status\`),
+  INDEX \`idx_draft\` (\`is_draft\`)`.trim();
 
 // CREATE TABLE fbs_<form_id> — main table, first publish. All columns and
 // their indexes declared inline in this one statement (plan §1's schema-

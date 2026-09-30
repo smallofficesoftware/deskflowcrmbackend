@@ -142,13 +142,23 @@ export const getTargetIncentiveReport = async (req) => {
             contactCounts.map((c) => [c.a_application_login_id, parseInt(c.count || 0, 10)])
         );
 
-        // 2. Batch aggregate cart counts & totals grouped by assigned user and cart type
+        // 2. Batch aggregate cart counts & totals grouped by assigned user and cart type.
+        // Achieved value is the pre-tax amount (taxable_amt: after discounts,
+        // incl. packing/transport, excl. GST and TCS) — incentive must not be
+        // earned on GST. Falls back to grand_total - gst_amt for any row whose
+        // taxable_amt was never stored.
         const cartAggregates = await CartsModel.findAll({
             attributes: [
                 "a_application_login_id",
                 "type",
                 [sequelize.fn("COUNT", sequelize.col("id")), "count"],
-                [sequelize.fn("SUM", sequelize.col("grand_total")), "total"],
+                [
+                    sequelize.literal(
+                        "SUM(CASE WHEN taxable_amt IS NULL OR (taxable_amt = 0 AND grand_total > 0) " +
+                        "THEN COALESCE(grand_total, 0) - COALESCE(gst_amt, 0) ELSE taxable_amt END)"
+                    ),
+                    "total",
+                ],
             ],
             where: {
                 isDelete: 0,

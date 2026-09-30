@@ -59,6 +59,7 @@ import dashboardRouter from './report_builder/dashboardRouter.js';
 import reportDefinitionRouter from './report_builder/reportDefinitionRouter.js';
 import formBuilderRouter from './form_builder/formBuilderRouter.js';
 import formBuilderPublicRouter from './form_builder/formBuilderPublicRouter.js';
+import automationRouter from './automation/automationRouter.js';
 import reviewRouter from './company_setup/reviewRouter.js';
 import currencyRouter from "./configuration/currencyRouter.js";
 import updateTenent from "./configuration/updateTenentRouter.js";
@@ -106,6 +107,7 @@ import ProductUnitGet from "./product_settings/productUnitMasterRouter.js";
 import taxRouter from "./product_settings/taxRouter.js";
 import JobCardRouter from "./production/JobCardRouter.js";
 import statusLogRouter from "./status_log/statusLogRouter.js";
+import stageChangeWithFormRouter from "./stage_change/stageChangeWithFormRouter.js";
 import changeMobileNumberRouter from "./user_profile/changeMobileNumberRouter.js";
 import whatsappRoutes from "./whatsapp/whatsappRoutes.js";
 import statusWiseContactCountReportRouter from "./dashboard/Reports/statusWiseContactCountReportRouter.js";
@@ -171,6 +173,7 @@ export default () => {
   reportDefinitionRouter(app);
   formBuilderRouter(app);
   formBuilderPublicRouter(app);
+  automationRouter(app);
   dashboardRouter(app);
   reviewRouter(app);
   TaskManagement(app);
@@ -182,6 +185,7 @@ export default () => {
   wrkflwAutoAssignmentContactRouter(app)
   getTaskTemplateDataSource(app)
   statusLogRouter(app),
+  stageChangeWithFormRouter(app),
     onlineStoreRouter(app)
   ProductUnitGet(app)
   getAllReminderReports(app)

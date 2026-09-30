@@ -13,6 +13,7 @@ import {
 } from "../../utils/sharedFunctions.js";
 import { getCompanyByLoginId } from '../commonServices.js';
 import { autoAssignmentContactIdsGet, prepareMailAndWhatsappSenderToTheContact } from '../other_settings/wrkflwAutoAssignmentContactService.js';
+import { emitAutomationEvent } from "../automation/emit.js";
 
 export const getSerpSearchResultProvider = async (req) => {
     try {
@@ -193,6 +194,7 @@ export const insertGlobalSearchContact = async (req) => {
             })
 
             const createdContacts = await CTContactModel.bulkCreate(nonDuplicateValuesLevalTwo);
+            emitAutomationEvent(req, "contact.created", { ids: createdContacts.map((c) => c.id), origin: "import", company_masters_id: createdContacts[0]?.company_masters_id });
             if (createdContacts.length > 1) {
                 const contactEmailSendList = [];
                 const contactWhatsappSendList = [];

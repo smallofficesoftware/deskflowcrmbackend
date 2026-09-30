@@ -118,6 +118,19 @@ function buildFilterCondition(columnDef, columnKey, filter) {
   if (!operator) {
     throw new Error(`Operator "${filter.op}" is not allowed`);
   }
+  // Relative date token — "@today" resolves to the current server day at run
+  // time, so a saved report/dashboard tile always means "today".
+  if (columnDef.type === "date" && filter.value === "@today") {
+    const day = new Date();
+    const ymd = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
+    const start = `${ymd} 00:00:00`;
+    const end = `${ymd} 23:59:59`;
+    const op = filter.op || "eq";
+    if (op === "eq") return { [columnKey]: { [Op.between]: [start, end] } };
+    if (op === "gte") return { [columnKey]: { [Op.gte]: start } };
+    if (op === "lte") return { [columnKey]: { [Op.lte]: end } };
+    throw new Error(`Operator "${op}" is not supported with @today`);
+  }
   return { [columnKey]: { [operator]: filter.value } };
 }
 
@@ -524,6 +537,7 @@ export const runQueryReport = async (definition, req) => {
     // Op.or is the same Symbol key every time) and merged into the final
     // where the same way csvWhereClauses already are. ----
     const blankAwareWhereClauses = [];
+    const existsFilterSpecs = []; // {existsDef, has} — virtual has/has-no-child-row flags
     const inboundFilterSpecs = []; // {column, childFilters} — resolved after this loop, needs an await
     // Relation filters — "base rows whose JOINED row matches" (e.g. carts
     // whose customer.referance_contact = X — the normal SQL "join then
@@ -627,6 +641,17 @@ export const runQueryReport = async (definition, req) => {
         blankAwareWhereClauses.push({ [Op.or]: orConditions });
         continue;
       }
+      // Virtual "has / has no matching child row" flag (e.g. contacts.call_status:
+      // 1 = has a call, 0 = none). Not a real column — resolved below to an
+      // id IN / NOT IN list, so the value only ever picks a branch.
+      if (columnDef && columnDef.existsFilter) {
+        if (!columnDef.filterable) throw new Error(`Column "${f.column}" is not filterable`);
+        if ((f.op || "eq") !== "eq" || !["0", "1"].includes(String(f.value))) {
+          throw new Error(`Column "${f.column}" only supports "equals" 1 or 0`);
+        }
+        existsFilterSpecs.push({ existsDef: columnDef.existsFilter, has: String(f.value) === "1" });
+        continue;
+      }
       Object.assign(userWhere, buildFilterCondition(columnDef, f.column, f));
     }
 
@@ -653,6 +678,21 @@ export const runQueryReport = async (definition, req) => {
       });
       const parentIds = matchedChildRows.map((r) => r[inboundDef.childForeignKey]).filter((v) => v !== null && v !== undefined);
       userWhere[inboundDef.parentKey] = { [Op.in]: parentIds.length > 0 ? parentIds : [0] };
+    }
+
+    for (const { existsDef, has } of existsFilterSpecs) {
+      const childRegistryEntry = getRegisteredModel(existsDef.childModelKey);
+      if (!childRegistryEntry) throw new Error(`Exists filter child table "${existsDef.childModelKey}" is not registered`);
+      const ChildModel = childRegistryEntry.getModel(req.tenantDB);
+      const childRows = await ChildModel.findAll({
+        where: { isDelete: 0 },
+        attributes: [existsDef.childForeignKey],
+        group: [existsDef.childForeignKey],
+        raw: true,
+      });
+      const ids = childRows.map((r) => r[existsDef.childForeignKey]).filter((v) => v !== null && v !== undefined);
+      if (has) csvWhereClauses.push({ [existsDef.parentKey]: { [Op.in]: ids.length > 0 ? ids : [0] } });
+      else if (ids.length > 0) csvWhereClauses.push({ [existsDef.parentKey]: { [Op.notIn]: ids } });
     }
 
     // ---- Resolve relation filters — one query per filter against the
@@ -978,7 +1018,7 @@ export const runQueryReport = async (definition, req) => {
           // "reverse" needs every matching child row (to join/count all of
           // them per parent), not one row per targetKey value — fetched
           // ungrouped, grouped into arrays in JS below instead.
-          const nonCountRelColKeys = isReverse ? fetchColKeys.filter((k) => !relTargetColumns[k].countOf) : fetchColKeys;
+          const nonCountRelColKeys = isReverse ? fetchColKeys.filter((k) => !relTargetColumns[k].countOf && !relTargetColumns[k].hasAny) : fetchColKeys;
           const relatedRows = await RelatedModel.findAll({
             where: { [relDef.targetKey]: { [Op.in]: distinctFkValues }, isDelete: 0 },
             // nestedFkKeys are fetched even though never displayed directly —
@@ -1042,6 +1082,14 @@ export const runQueryReport = async (definition, req) => {
             relColKeys.forEach((relColKey) => {
               r[`${relKey}.${relColKey}`] = relTargetColumns[relColKey].countOf
                 ? children.length
+                : relTargetColumns[relColKey].hasAny
+                ? (children.length > 0 ? 1 : 0)
+                : relTargetColumns[relColKey].latestOf
+                ? children.reduce((latest, c) => {
+                    const v = c[relColKey];
+                    if (v === undefined || v === null || v === "") return latest;
+                    return latest === null || new Date(v) > new Date(latest) ? v : latest;
+                  }, null)
                 : children
                     .map((c) => c[relColKey])
                     .filter((v) => v !== undefined && v !== null && v !== "")

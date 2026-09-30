@@ -18,6 +18,7 @@ import {
   resSuccess
 } from "../../utils/sharedFunctions.js";
 import { getCompanyByLoginId } from "../commonServices.js";
+import { emitAutomationEvent } from "../automation/emit.js";
 
 const callTypesShowList = [
   { id: "1", type: "Incoming", color: "#008000", msg_type: "2" },
@@ -213,6 +214,7 @@ export const createCall = async (req, res) => {
       })
     };
     const createdCalls = await callhistorydata.bulkCreate(Callarray);
+    emitAutomationEvent(req, "call.created", { ids: createdCalls.map((c) => c.id) });
     const getCallType = (callTypeId) => {
       const id = String(callTypeId || "");
       return callTypesShowList.find((option) => option.id === id);

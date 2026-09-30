@@ -23,11 +23,19 @@
         width: 100%;
         border-collapse: collapse;
       }
+      /* Main table: fixed layout with per-column widths computed in
+         exporter.js (computePdfColumnWidths) so long text wraps instead of
+         one column taking the whole page. */
+      table.report-table {
+        table-layout: fixed;
+      }
       th, td {
         border: 1px solid #ccc;
         padding: 4px 6px;
         text-align: left;
         word-break: break-word;
+        word-wrap: break-word;
+        overflow-wrap: break-word;
       }
       th {
         background-color: #2980b9;
@@ -64,7 +72,12 @@
   </head>
   <body>
     <h1><%= title %></h1>
-    <table>
+    <table class="report-table" style="width: <%= tableWidthPct %>%;">
+      <colgroup>
+        <% columns.forEach(function(col) { %>
+          <col style="width: <%= col.widthPct %>%;" />
+        <% }); %>
+      </colgroup>
       <thead>
         <tr>
           <% columns.forEach(function(col) { %>

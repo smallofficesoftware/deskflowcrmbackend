@@ -2,6 +2,7 @@ import moment from "moment";
 import { Op, Sequelize } from "sequelize";
 import XLSX from "xlsx";
 import loginModel from "../../models/application_login/loginModel.js";
+import companyVsApplicationLoginModel from "../../models/company_setup/companyVsApplicationLoginModel.js";
 import { attendanceModel } from "../../models/hr/attendanceModel.js";
 import {
     resBadRequest,
@@ -32,7 +33,39 @@ export const importAttendanceByExcel = async (req, res) => {
 
         const companyDetail = await getCompanyByLoginId(a_application_login_id);
 
+        if (!companyDetail?.company_masters_id) {
+            return resBadRequest({
+                ack_msg: "Company not found",
+                developer_msg: "Could not resolve company for a_application_login_id",
+            });
+        }
+
         const AMmodel = attendanceModel(req.tenantDB);
+
+        // Employee IDs are only unique within a company (a_application_logins
+        // is shared by all companies), so resolve them against this company's
+        // members only. Keyed by trimmed, lower-cased employee_id.
+        const companyMembers = await companyVsApplicationLoginModel.findAll({
+            where: {
+                company_masters_id: companyDetail.company_masters_id,
+                isDelete: 0,
+            },
+            attributes: ["a_application_login_id"],
+            raw: true,
+        });
+        const companyEmployees = await loginModel.findAll({
+            where: {
+                id: { [Op.in]: companyMembers.map((m) => m.a_application_login_id) },
+                isDelete: 0,
+            },
+            attributes: ["id", "employee_id"],
+            raw: true,
+        });
+        const employeeByCode = new Map();
+        companyEmployees.forEach((e) => {
+            const code = (e.employee_id || "").toString().trim().toLowerCase();
+            if (code) employeeByCode.set(code, e);
+        });
 
         /** Read Excel **/
         const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
@@ -91,15 +124,10 @@ export const importAttendanceByExcel = async (req, res) => {
                 continue;
             }
 
-            /** Find employee **/
-            const employee = await loginModel.findOne({
-                where: {
-                    employee_id: employee_id.toString().trim(),
-                    isDelete: 0,
-                },
-                attributes: ["id"],
-                raw: true,
-            });
+            /** Find employee (within this company only) **/
+            const employee = employeeByCode.get(
+                employee_id.toString().trim().toLowerCase()
+            );
 
             if (!employee) {
                 errorRows.push(`Row ${rowNumber} invalid employee_id`);

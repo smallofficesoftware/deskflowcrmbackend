@@ -29,6 +29,7 @@ import {
 } from "../../utils/sharedFunctions.js";
 import { getCompanyByLoginId } from "../commonServices.js";
 import { autoAssignmentContactIdsGet, prepareMailAndWhatsappSenderToTheContact } from "../other_settings/wrkflwAutoAssignmentContactService.js";
+import { emitAutomationEvent } from "../automation/emit.js";
 
 
 
@@ -860,6 +861,7 @@ export const addContactByExcelSheet = async (req) => {
                     returning: true,
                 }
             );
+            emitAutomationEvent(req, "contact.created", { ids: createdContacts.map((c) => c.id), origin: "import", company_masters_id: createdContacts[0]?.company_masters_id });
 
             // Map created contact IDs
             const contactIdMap = createdContacts.reduce((map, contact, index) => {
@@ -895,9 +897,10 @@ export const addContactByExcelSheet = async (req) => {
 
             // Bulk create inquiries and messages
             if (validInquiryMatches.length > 0) {
-                await CTinquiryModel.bulkCreate(validInquiryMatches, {
+                const __createdInquiries = await CTinquiryModel.bulkCreate(validInquiryMatches, {
                     validate: true,
                 });
+                emitAutomationEvent(req, "inquiry.created", { ids: __createdInquiries.map((q) => q.id), origin: "import", company_masters_id: __createdInquiries[0]?.company_masters_id });
             }
             if (validMessageMatches.length > 0) {
                 await CTcontactMessageHistory.bulkCreate(validMessageMatches, {
@@ -1056,7 +1059,7 @@ export const addContactByExcelSheetV2 = async (req) => {
         /** Fetch dynamic custom fields **/
         const getCustomFormFieldR = await customFormFieldModelIntance.findAll({
             where: { form_type: 1, isDelete: 0 },
-            attributes: ["title", "reference_column_name", "data_type", "id", "required_or_not"],
+            attributes: ["title", "reference_column_name", "data_type", "id", "required_or_not", "display_on"],
             raw: true,
         });
 
@@ -1075,8 +1078,9 @@ export const addContactByExcelSheetV2 = async (req) => {
             : {};
 
         const getCustomFormFieldMandetoryRuleObj = Array.isArray(getCustomFormFieldR)
-            ? getCustomFormFieldR.reduce((acc, { reference_column_name, title, data_type, required_or_not }) => {
-                if (required_or_not == 1) {
+            ? getCustomFormFieldR.reduce((acc, { reference_column_name, title, data_type, required_or_not, display_on }) => {
+                // stage form fields (display_on 2) are asked on stage change, not at import
+                if (required_or_not == 1 && display_on != 2) {
                     acc[reference_column_name] = required_or_not;
                 }
                 return acc;
@@ -1732,6 +1736,7 @@ export const addContactByExcelSheetV2 = async (req) => {
                     returning: true,
                 }
             ) : [];
+            emitAutomationEvent(req, "contact.created", { ids: createdContacts.map((c) => c.id), origin: "import", company_masters_id: createdContacts[0]?.company_masters_id });
 
             {
                 const contactEmailSendList = [];
@@ -1875,9 +1880,10 @@ export const addContactByExcelSheetV2 = async (req) => {
 
                 // Bulk create inquiries and messages
                 if (inquiryInsert.length > 0) {
-                    await CTinquiryModel.bulkCreate(inquiryInsert, {
+                    const __createdInquiries = await CTinquiryModel.bulkCreate(inquiryInsert, {
                         validate: true,
                     });
+                    emitAutomationEvent(req, "inquiry.created", { ids: __createdInquiries.map((q) => q.id), origin: "import", company_masters_id: __createdInquiries[0]?.company_masters_id });
                 }
                 if (messageInsert.length > 0) {
                     await CTcontactMessageHistory.bulkCreate(messageInsert, {

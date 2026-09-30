@@ -4,6 +4,7 @@ import { getUserRights } from "../../../helpers/rightsHelper.js";
 import { cartItemModel } from "../../../models/activities/cartItemsModel.js";
 import { cartModel } from "../../../models/activities/cartsModel.js";
 import { contactModel } from "../../../models/activities/contactModel.js";
+import { inquiryModel } from "../../../models/activities/inquiryModel.js";
 import loginModel from "../../../models/application_login/loginModel.js";
 import { areaModel } from "../../../models/masters/areaModel.js";
 import { cityModel } from "../../../models/masters/cityModel.js";
@@ -36,6 +37,8 @@ export const getAllContactReport = async (req) => {
       selectedProductSearchId,
       setSelectOrderType,
       labelwiseContactShowAndOrNot,
+      assignedByMultiTeamMember,
+      createdByMultiTeamMember,
       ul,
       ll,
       is_archive,
@@ -122,13 +125,15 @@ export const getAllContactReport = async (req) => {
     // has its OWN [Op.or] key when a search term is active, and since
     // Op.or is the same Symbol every time, a second [Op.or]: ... spread
     // on top would silently replace this one instead of combining with it.
+    // All-data rights see everything; personal scope applies only without
+    // them (same as the sibling reports). The old extra
+    // `else if (showPersonalData)` branch fired for users holding BOTH
+    // rights and replaced the whole whereClause - dropping the company and
+    // isDelete/deleted_flag conditions and wrongly narrowing them to
+    // personal data.
     if (!showAllData && showPersonalData) {
       whereClause = {
         ...whereClause,
-        [Op.and]: [{ [Op.or]: personalScopeOr }],
-      };
-    } else if (showPersonalData) {
-      whereClause = {
         [Op.and]: [{ [Op.or]: personalScopeOr }],
       };
     }
@@ -270,6 +275,29 @@ export const getAllContactReport = async (req) => {
       };
     }
 
+    // MULTI TEAM MEMBER FILTER - created by OR assigned to any selected
+    // member, same as buildContactWhereClause in contactService.js.
+    const toIds = (list) =>
+      (Array.isArray(list) ? list : [])
+        .map((id) => parseInt(id, 10))
+        .filter((id) => !isNaN(id));
+    const createdByIds = toIds(createdByMultiTeamMember);
+    const assignedToIds = toIds(assignedByMultiTeamMember);
+    const multiMemberParts = [
+      ...createdByIds.map(
+        (id) => `FIND_IN_SET(${id}, a_application_login_id) > 0`
+      ),
+      ...assignedToIds.map(
+        (id) => `FIND_IN_SET(${id}, assinged_to_work_a_application_id) > 0`
+      ),
+    ];
+    if (multiMemberParts.length > 0) {
+      whereClause[Op.and] = [
+        ...(whereClause[Op.and] || []),
+        Sequelize.literal(`(${multiMemberParts.join(" OR ")})`),
+      ];
+    }
+
     // DEMOGRAPHY
     if (Array.isArray(selectedDemography)) {
       if (
@@ -325,30 +353,86 @@ export const getAllContactReport = async (req) => {
       }
     }
 
-    //isArchive
+    // Archive: the archive filter shows archived contacts only; otherwise
+    // archived contacts are excluded, same as the contact list
+    // (buildContactWhereClause's is_archive = 0). The Deleted Contact report
+    // (deleted_flag = 1) keeps showing deleted contacts whether archived or not.
     if (is_archive) {
-      console.log("dddddddd", is_archive);
       whereClause["is_archive"] = 1;
+    } else if (!Number(deleted_flag)) {
+      whereClause["is_archive"] = 0;
     }
 
     let cartItemContactIds = [];
+    // When the product filter is used, the date range applies to the
+    // document / inquiry date instead of the contact's created date.
+    let productFilterApplied = false;
+    const hasDateRange = selected_dates?.length === 2;
 
     if (
       selectedProductSearchId &&
       setSelectOrderType
     ) {
-      const itemsInCart =
-        await CartItem.findAll({
+      // Older clients sent the whole dropdown option instead of its id.
+      const orderType =
+        typeof setSelectOrderType === "object"
+          ? setSelectOrderType?.value
+          : setSelectOrderType;
+
+      productFilterApplied = true;
+      let itemsInCart = [];
+      if (orderType === "inquiry") {
+        // inquiry_date_time can be '0000-00-00 00:00:00'; fall back to
+        // create_date_time for those rows.
+        const inquiryDate = Sequelize.fn(
+          "DATE",
+          Sequelize.literal(
+            "IF(inquiry_date_time > '1971-01-01', inquiry_date_time, create_date_time)"
+          )
+        );
+        // inquiries.product_id is a comma-separated list of product ids.
+        const inquiryConditions = [
+          Sequelize.where(
+            Sequelize.fn(
+              "FIND_IN_SET",
+              String(selectedProductSearchId),
+              Sequelize.col("product_id")
+            ),
+            { [Op.gt]: 0 }
+          ),
+        ];
+        if (hasDateRange) {
+          inquiryConditions.push(
+            Sequelize.where(inquiryDate, {
+              [Op.between]: [startDate, endDate],
+            })
+          );
+        }
+        itemsInCart = await inquiryModel(req.tenantDB).findAll({
           where: {
-            cart_type: setSelectOrderType,
-            item_product_id:
-              selectedProductSearchId,
             isDelete: 0,
+            [Op.and]: inquiryConditions,
           },
           attributes: ["contact_master_id"],
           group: ["contact_master_id"],
           raw: true,
         });
+      } else if (orderType) {
+        itemsInCart = await CartItem.findAll({
+          where: {
+            cart_type: orderType,
+            item_product_id:
+              selectedProductSearchId,
+            isDelete: 0,
+            ...(hasDateRange && {
+              cart_date: { [Op.between]: [startDate, endDate] },
+            }),
+          },
+          attributes: ["contact_master_id"],
+          group: ["contact_master_id"],
+          raw: true,
+        });
+      }
 
       cartItemContactIds = itemsInCart.map(
         (item) => item.contact_master_id
@@ -504,11 +588,16 @@ export const getAllContactReport = async (req) => {
         : agingIn;
     }
 
-    let dateFilter = {};
+    // Date range goes INTO whereClause's Op.and list, not a separate
+    // { [Op.and]: ... } object spread next to it - whereClause already has
+    // its own [Op.and] whenever personal-scope rights, a label filter or the
+    // multi team-member filter is active, and spreading both silently kept
+    // only one of them (the date filter was dropped).
+    const andConditions = [...(whereClause[Op.and] || [])];
 
-    if (selected_dates.length === 2) {
-      dateFilter = {
-        [Op.and]: Sequelize.where(
+    if (selected_dates.length === 2 && !productFilterApplied) {
+      andConditions.push(
+        Sequelize.where(
           Sequelize.fn(
             "DATE",
             Sequelize.col("created_date_time")
@@ -519,14 +608,14 @@ export const getAllContactReport = async (req) => {
               endDate,
             ],
           }
-        ),
-      };
+        )
+      );
     }
 
     const contactWhere = {
       isDelete: 0,
-      ...dateFilter,
       ...whereClause,
+      ...(andConditions.length > 0 ? { [Op.and]: andConditions } : {}),
     };
 
     const [contacts, totalCount] = await Promise.all([

@@ -43,6 +43,7 @@ import { isFeatureEnabled } from "../company_setup/featureFlagServices.js";
 import { sendMultipleNotification } from "../company_setup/thirdPartyIntegrationService.js";
 import { generateAccountStatementPdf } from "../pdfmeEngine/accountStatementGenerate.js";
 import { generateAccountTransactionPdf } from "../pdfmeEngine/accountTransactionGenerate.js";
+import { emitAutomationEvent } from "../automation/emit.js";
 
 // Loads a company's own pdfme template JSON for accountStatement/
 // accountTransaction (created via Document Designer's generic
@@ -1201,6 +1202,7 @@ export const createAccountTransaction = async (req, res) => {
       }
     }
 
+    emitAutomationEvent(req, "payment.created", { ids: createdItems.map((c) => c.id) });
     return resSuccess({
       ack_msg: "Account transaction created successfully.",
       data: createdItems

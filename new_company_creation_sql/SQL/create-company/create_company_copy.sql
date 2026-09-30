@@ -120,6 +120,15 @@ CREATE TABLE `route_plan_vs_contacts` LIKE smalloffice_sample_tenant.route_plan_
 CREATE TABLE `miracle_logs` LIKE smalloffice_sample_tenant.miracle_logs;
 CREATE TABLE `third_party_logs` LIKE smalloffice_sample_tenant.third_party_logs;
 CREATE TABLE `user_column_preferences` LIKE smalloffice_sample_tenant.user_column_preferences;
+CREATE TABLE `automation_flows` LIKE smalloffice_sample_tenant.automation_flows;
+CREATE TABLE `automation_flow_versions` LIKE smalloffice_sample_tenant.automation_flow_versions;
+CREATE TABLE `automation_executions` LIKE smalloffice_sample_tenant.automation_executions;
+CREATE TABLE `automation_execution_logs` LIKE smalloffice_sample_tenant.automation_execution_logs;
+CREATE TABLE `automation_webhooks` LIKE smalloffice_sample_tenant.automation_webhooks;
+CREATE TABLE `automation_assign_pointers` LIKE smalloffice_sample_tenant.automation_assign_pointers;
+CREATE TABLE `automation_run_marks` LIKE smalloffice_sample_tenant.automation_run_marks;
+CREATE TABLE `automation_usage` LIKE smalloffice_sample_tenant.automation_usage;
+CREATE TABLE `automation_settings` LIKE smalloffice_sample_tenant.automation_settings;
 CREATE TABLE `document_print_templates` LIKE smalloffice_sample_tenant.document_print_templates;
 ALTER TABLE `document_print_templates`  DISABLE KEYS;
 START TRANSACTION;
@@ -137,6 +146,15 @@ CREATE TABLE `dashboard_widgets` LIKE smalloffice_sample_tenant.dashboard_widget
 CREATE TABLE `form_builder_forms` LIKE smalloffice_sample_tenant.form_builder_forms;
 CREATE TABLE `form_builder_submission_files` LIKE smalloffice_sample_tenant.form_builder_submission_files;
 CREATE TABLE `form_builder_form_team_rights` LIKE smalloffice_sample_tenant.form_builder_form_team_rights;
+CREATE TABLE `form_builder_form_permissions` LIKE smalloffice_sample_tenant.form_builder_form_permissions;
+CREATE TABLE `form_builder_number_series` LIKE smalloffice_sample_tenant.form_builder_number_series;
+CREATE TABLE `form_builder_custom_lists` LIKE smalloffice_sample_tenant.form_builder_custom_lists;
+CREATE TABLE `form_builder_custom_list_items` LIKE smalloffice_sample_tenant.form_builder_custom_list_items;
+CREATE TABLE `form_builder_stage_log` LIKE smalloffice_sample_tenant.form_builder_stage_log;
+CREATE TABLE `form_builder_templates` LIKE smalloffice_sample_tenant.form_builder_templates;
+CREATE TABLE `form_builder_schedules` LIKE smalloffice_sample_tenant.form_builder_schedules;
+CREATE TABLE `form_builder_schedule_entries` LIKE smalloffice_sample_tenant.form_builder_schedule_entries;
+CREATE TABLE `form_builder_drafts` LIKE smalloffice_sample_tenant.form_builder_drafts;
 
 CREATE TABLE `adjustment_types` LIKE smalloffice_sample_tenant.adjustment_types;
 ALTER TABLE `adjustment_types`  DISABLE KEYS;

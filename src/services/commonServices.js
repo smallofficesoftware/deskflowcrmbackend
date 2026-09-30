@@ -85,6 +85,7 @@ import {
   resError,
   resSuccess
 } from "../utils/sharedFunctions.js";
+import { emitAutomationEvent, automationBefore } from "./automation/emit.js";
 
 
 // Contacts are stored with the canonical mobile (91 + 10 digits, see the write path in
@@ -710,6 +711,7 @@ export const createCommon = async (req) => {
           developer_msg: "Database error occurred.",
         });
       }
+      emitAutomationEvent(req, "record.created", { table, id: createdItem.dataValues.id, data: parsedData });
 
       if (req.body.request_flag === "CreateCompanyNotExists") {
         const token = jwt.sign(
@@ -2115,13 +2117,35 @@ export const updateCommon = async (req) => {
 
     if (table === "a_application_logins") {
       if (updateData.employee_id) {
-        const employeeIDDuplication =
-          await loginModel.findOne({
+        // a_application_logins is shared by every company, so only compare
+        // against members of the current company — each company numbers its
+        // own employees. Falls back to the global check if the company can't
+        // be resolved.
+        const duplicateWhere = {
+          id: { [Op.ne]: whereObj.id },
+          employee_id: updateData.employee_id,
+          isDelete: 0,
+        };
+        const currentCompany = await getCompanyByLoginId(
+          req.body.a_application_login_id
+        );
+        if (currentCompany?.company_masters_id) {
+          const companyMembers = await companyVsApplicationLoginModel.findAll({
             where: {
-              id: { [Op.ne]: whereObj.id },
-              employee_id: updateData.employee_id,
+              company_masters_id: currentCompany.company_masters_id,
               isDelete: 0,
             },
+            attributes: ["a_application_login_id"],
+            raw: true,
+          });
+          duplicateWhere.id = {
+            [Op.ne]: whereObj.id,
+            [Op.in]: companyMembers.map((m) => m.a_application_login_id),
+          };
+        }
+        const employeeIDDuplication =
+          await loginModel.findOne({
+            where: duplicateWhere,
             attributes: ["employee_id"],
           });
         if (employeeIDDuplication != null) {
@@ -2180,6 +2204,7 @@ export const updateCommon = async (req) => {
       }
     }
 
+    const __automationBefore = await automationBefore(req, table, whereObj);
     const [rowsUpdated, updatedRows] = await sequelize.models[table].update(
       updateData,
       {
@@ -2187,6 +2212,7 @@ export const updateCommon = async (req) => {
         returning: true,
       }
     );
+    emitAutomationEvent(req, "record.updated", { table, where: whereObj, before: __automationBefore, data: parsedData });
     if (table === "contact_masters" && parsedData.contact_status) {
       /* Status Log Entry Added BY Dinesh -> 20-11-2025 */
       await insertStagesAndStatusLogs(req,
@@ -3307,7 +3333,7 @@ export const insertStagesAndStatusLogs = async (req, detail) => {
   try {
     if (!isValid(detail)) return {};
 
-    const { reference_table, reference_id, status_id, a_application_login_id, inside_table_type } = detail;
+    const { reference_table, reference_id, status_id, a_application_login_id, inside_table_type, stage_form_data } = detail;
     console.log("detaildetaildetail", detail);
 
     const tenantDB = req.tenantDB;
@@ -3432,7 +3458,9 @@ export const insertStagesAndStatusLogs = async (req, detail) => {
       information = `${config.title !== null && typeof config.title === 'object' ? config.title[inside_table_type] : config.title} ${entityText} status changed from ${previousStatus.name} to ${currentStatus.name}.`;
     }
 
-    await StatusLog.create({
+    // stage_form_data (JSON string) / transaction are optional and only passed by
+    // the stage-change-with-form flow; every other caller is unchanged.
+    const createdLog = await StatusLog.create({
       reference_table,
       reference_id,
       information,
@@ -3440,7 +3468,10 @@ export const insertStagesAndStatusLogs = async (req, detail) => {
       previous_status_id: lastEntry?.status_id || 0,
       updated_by: a_application_login_id,
       updated_date_time: moment().format("YYYY-MM-DD HH:mm:ss"),
-    });
+      ...(stage_form_data ? { stage_form_data } : {}),
+    }, detail.transaction ? { transaction: detail.transaction } : undefined);
+    if (lastEntry) emitAutomationEvent(req, "status.changed", { reference_table, reference_id, status_id, previous_status_id: lastEntry.status_id });
+    return createdLog;
 
   } catch (error) {
     console.error("insertStagesAndStatusLogs error", error);

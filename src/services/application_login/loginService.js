@@ -62,6 +62,7 @@ import fs from "fs-extra";
 import path from "path";
 import applicationLoginHistoriesModel from "../../models/application_login/applicationLoginHistoriesModel.js";
 import { applicationLoginTypeRightModel } from "../../models/application_login/applicationLoginTypeRightModel.js";
+import applicationSessionModel from "../../models/application_login/applicationSessionModel.js";
 import companyVsWhatsappConfigModel from "../../models/company_setup/companyVsWhatsappConfigModel.js";
 import miracleConfigModel from "../../models/company_setup/miracleConfigModel.js";
 import eventMasterModel from "../../models/configuration/eventMasterModel.js";
@@ -86,6 +87,29 @@ function computeAutoOutTime(lastCheckOutDateTime, defaultDailyOutTime) {
   return defaultOut.format("YYYY-MM-DD HH:mm:ss");
 }
 
+// Issues a company-bearing JWT and records it in application_sessions (master DB),
+// keyed by (a_application_login_id, platform) — so any device's next request resolves
+// the login's current active company from here rather than a possibly stale JWT claim
+// baked in on another device. See migration 20260923100000-create-application-sessions.
+async function issueSessionToken(userId, companyId, platform) {
+  const jti = crypto.randomUUID();
+  const token = jwt.sign({ id: userId, companyId, jti }, JWT_TOKEN_SIGNATURE, {
+    expiresIn: JWT_TOKEN_EXPIRES_TIME,
+  });
+  const decoded = jwt.decode(token);
+
+  await applicationSessionModel.upsert({
+    a_application_login_id: userId,
+    company_masters_id: companyId,
+    platform: platform || "web",
+    jwt_jti: jti,
+    issued_at: moment.unix(decoded.iat).toDate(),
+    expires_at: moment.unix(decoded.exp).toDate(),
+    isDelete: 0,
+  });
+
+  return token;
+}
 
 export const registerUser = async (req, res) => {
   try {
@@ -636,9 +660,7 @@ export const verifyOtp = async (req, res) => {
           });
         }
 
-        token = jwt.sign({ id: user.id, companyId: activeCompanyId }, JWT_TOKEN_SIGNATURE, {
-          expiresIn: JWT_TOKEN_EXPIRES_TIME,
-        });
+        token = await issueSessionToken(user.id, activeCompanyId, platform);
 
         checkCompanyAlreadyExists = 1;
 
@@ -1763,6 +1785,20 @@ export const logOutUser = async (req) => {
     );
     if (resultLogOut) {
       if (request_flag) {
+        const platformByRequestFlag = { 1: "web", 2: "android", 3: "ios" };
+        const platform = platformByRequestFlag[request_flag];
+        if (platform) {
+          await applicationSessionModel.update(
+            { isDelete: 1 },
+            {
+              where: {
+                a_application_login_id: req.body.a_application_login_id,
+                platform,
+              },
+            }
+          );
+        }
+
         const updateData = {};
         // 1=> web 2=> Android 3=> IOS
         if (request_flag == 1) {
@@ -1924,7 +1960,7 @@ export const PlanCreateOtp = async (req, res) => {
 };
 
 export const chooseWorkspace = async (req, res) => {
-  const { companyId } = req.body;
+  const { companyId, platform } = req.body;
   const userId = req.user.id;
 
   try {
@@ -2012,9 +2048,7 @@ export const chooseWorkspace = async (req, res) => {
       });
     }
 
-    const token = jwt.sign({ id: user.id, companyId }, JWT_TOKEN_SIGNATURE, {
-      expiresIn: JWT_TOKEN_EXPIRES_TIME,
-    });
+    const token = await issueSessionToken(user.id, companyId, platform);
 
     let daysUntilExpiry;
     let expiryMsg;

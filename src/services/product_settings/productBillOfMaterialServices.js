@@ -724,6 +724,7 @@ export const itemListCreate = async (req) => {
         unit,
         remark,
         reuse,
+        requires_sub_job_card,
         a_application_login_id
     } = req.body;
 
@@ -756,6 +757,7 @@ export const itemListCreate = async (req) => {
                 remark,
                 a_application_login_id,
                 is_reusable: reuse,
+                requires_sub_job_card: requires_sub_job_card ? 1 : 0,
                 company_masters_id: findCompanyId.company_masters_id,
             },
         );
@@ -801,6 +803,7 @@ export const itemListGet = async (req) => {
                 "type",
                 "remark",
                 "is_reusable",
+                "requires_sub_job_card",
                 [
                     Sequelize.literal(`(
                                 SELECT products.product_name

@@ -17,6 +17,23 @@ function getNested(obj, key) {
     );
 }
 
+// Last-resort flattening for an untyped cell whose raw value isn't a
+// scalar (a nested array/object the report's registry entry didn't
+// derive a display string for). Without this, xlsx got "[object Object]"
+// or a rich-value error and the PDF got "[object Object]". Dates stay
+// Date objects for xlsx (real date cells) and are formatted for PDF.
+const displayNameOf = (v) => (v && typeof v === "object" ? v.name ?? v.label ?? v.title ?? "" : v);
+function toScalarCell(raw, { formatDates = false } = {}) {
+    if (raw instanceof Date) {
+        return formatDates ? moment(raw).format("DD/MM/YYYY - hh:mm A") : raw;
+    }
+    if (Array.isArray(raw)) {
+        return raw.map(displayNameOf).filter((v) => v !== "" && v != null).join(", ");
+    }
+    if (raw && typeof raw === "object") return displayNameOf(raw);
+    return raw;
+}
+
 export async function exportData(data, options = {}) {
     try {
         const {
@@ -128,7 +145,7 @@ export async function exportData(data, options = {}) {
                     const num = Number(raw);
                     rowData[k] = isNaN(num) ? raw : num;
                 } else {
-                    rowData[k] = raw;
+                    rowData[k] = toScalarCell(raw);
                 }
             });
             sheet.addRow(rowData);
@@ -245,6 +262,50 @@ function formatCellForDisplay(raw, format, currencySymbol) {
     return String(raw);
 }
 
+// PDF column sizing. With an auto-layout 100%-wide table, one long-text
+// column (remark, items, address) grabbed most of the page and squeezed
+// the rest. Instead: size each column from its longest line of content,
+// cap every column at a share of an A4-landscape printable width (so long
+// text wraps rather than widening the column), and only let the table
+// grow to the full page width when the columns actually need it - a
+// 3-column report no longer stretches edge to edge (but keeps at least
+// half the page so it doesn't shrink into a corner).
+const PRINTABLE_WIDTH_MM = { A4: 277, A3: 400, A2: 574 }; // landscape, minus 2 x 10mm border
+const A4_MAX_COLUMN_MM = 70; // ~25% of A4 landscape
+const MIN_COLUMN_MM = 14;
+const MIN_TABLE_SHARE = 0.5; // a few-column report still spans at least half the page
+const MM_PER_CHAR = 1.45; // 9px Arial average glyph
+const CELL_PADDING_MM = 4; // 6px left + right padding + border
+const MAX_SAMPLE_ROWS = 300;
+
+const plainTextOf = (value) =>
+    String(value ?? "")
+        .replace(/<br\s*\/?>/gi, "\n")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/&nbsp;/g, " ")
+        .replace(/&[a-z#0-9]+;/gi, "x");
+const longestLine = (value) => plainTextOf(value).split("\n").reduce((max, line) => Math.max(max, line.trim().length), 0);
+
+function computePdfColumnWidths(columns, rows, pageFormat) {
+    const pageWidthMm = PRINTABLE_WIDTH_MM[pageFormat] || PRINTABLE_WIDTH_MM.A4;
+    const sample = rows.slice(0, MAX_SAMPLE_ROWS);
+
+    const naturalMm = columns.map((col) => {
+        // Headers wrap on word boundaries, so only their longest word is a hard minimum.
+        const headerWord = String(col.label || "").split(/\s+/).reduce((m, w) => Math.max(m, w.length), 0);
+        const contentChars = sample.reduce((m, row) => Math.max(m, longestLine(row[col.key])), 0);
+        const mm = Math.max(headerWord, contentChars) * MM_PER_CHAR + CELL_PADDING_MM;
+        return Math.min(Math.max(mm, MIN_COLUMN_MM), A4_MAX_COLUMN_MM);
+    });
+
+    const totalMm = naturalMm.reduce((a, b) => a + b, 0);
+    const tableMm = Math.min(Math.max(totalMm, pageWidthMm * MIN_TABLE_SHARE), pageWidthMm);
+    return {
+        columnWidths: naturalMm.map((mm) => +((mm / totalMm) * 100).toFixed(2)),
+        tableWidthPct: +((tableMm / pageWidthMm) * 100).toFixed(2),
+    };
+}
+
 // Same-shaped counterpart to the xlsx branch above — renders `data` as an
 // HTML table (genericReportExport.ejs) via the same pdf-creator-node
 // pipeline every document-print template in this codebase already uses,
@@ -279,7 +340,7 @@ async function exportPdf(data, { keys, headerMap, fileName, outputPath, file_nam
             const raw = getNested(row, key);
             formatted[key] = format
                 ? formatCellForDisplay(raw, format, currencySymbol)
-                : (raw ?? "");
+                : (toScalarCell(raw, { formatDates: true }) ?? "");
         });
         return formatted;
     });
@@ -290,8 +351,16 @@ async function exportPdf(data, { keys, headerMap, fileName, outputPath, file_nam
     // bigger page instead of every column being squeezed onto a fixed A4.
     const pageFormat = columns.length <= 10 ? "A4" : columns.length <= 16 ? "A3" : "A2";
 
+    const { columnWidths, tableWidthPct } = computePdfColumnWidths(columns, rows, pageFormat);
+
     const templateHtml = fs.readFileSync(REPORT_PDF_TEMPLATE_PATH, "utf-8");
-    const renderedHtml = ejs.render(templateHtml, { title: fileName, columns, rows, pageFormat });
+    const renderedHtml = ejs.render(templateHtml, {
+        title: fileName,
+        columns: columns.map((col, i) => ({ ...col, widthPct: columnWidths[i] })),
+        rows,
+        pageFormat,
+        tableWidthPct,
+    });
 
     const document = {
         html: renderedHtml,
