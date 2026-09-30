@@ -130,6 +130,16 @@ export const MODEL_REGISTRY = {
       city: { label: "City", type: "string", filterable: true, sortable: false, groupable: true },
       area: { label: "Area", type: "string", filterable: true, sortable: false, groupable: true },
       created_date_time: { label: "Created Date", type: "date", filterable: true, sortable: true, groupable: false },
+      // Filter-only virtual flag (no DB column) — see existsFilter in queryEngine.js.
+      call_status: {
+        label: "Call Status (1 = Called, 0 = Pending)",
+        type: "lookup",
+        filterable: true,
+        sortable: false,
+        groupable: false,
+        filterOnly: true,
+        existsFilter: { childModelKey: "call_histories", childForeignKey: "contact_id", parentKey: "id" },
+      },
       // Real scalar INTEGER FK (confirmed in contactModel.js — same column
       // the "children" reverse-relation below already matches against, just
       // exposed here as a plain filterable column too — e.g. "carts whose
@@ -235,6 +245,22 @@ export const MODEL_REGISTRY = {
         columns: {
           person_name: { label: "Child Names", type: "string" },
           child_count: { label: "Child Count", type: "number", countOf: true },
+        },
+      },
+      // Reverse relation to call_histories.contact_id (same shape as
+      // "children" above) — per-contact call info for lead call-status reports.
+      calls: {
+        label: "Calls",
+        matchMode: "reverse",
+        foreignKey: "id",
+        getModel: (tenantDB) => callhistoryModel(tenantDB),
+        targetKey: "contact_id",
+        columns: {
+          call_count: { label: "Call Count", type: "number", countOf: true },
+          // 1 if the contact has any call, else 0 — pair with a column
+          // format's statusColors to render Called / Pending.
+          has_called: { label: "Has Called (1/0)", type: "number", hasAny: true },
+          call_date_time: { label: "Last Call Date", type: "date", latestOf: true },
         },
       },
     },
