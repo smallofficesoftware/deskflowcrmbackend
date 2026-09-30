@@ -3924,3 +3924,94 @@ ALTER TABLE `custom_field_form_masters` ADD COLUMN `display_on` TINYINT NOT NULL
 UPDATE `custom_field_form_masters` SET `display_on` = 1 WHERE `display_on` IS NULL OR `display_on` = 0;
 ALTER TABLE `custom_field_form_masters` ADD COLUMN `stage_ids` VARCHAR(255) NULL DEFAULT NULL;
 ALTER TABLE `status_and_stages_logs` ADD COLUMN `stage_form_data` TEXT NULL DEFAULT NULL;
+
+
+30-09-2026 Dhaval
+-- MASTER DB only. Admin Panel onboarding: who handles a company's onboarding for a product + planned onboarding date. One row per (company, product); product = status_masters.status_parent id (2 = CRM, 3 = WhatsApp, 4 = Miracle).
+CREATE TABLE `superadmin_company_onboarding_assignments` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `company_masters_id` INT NOT NULL,
+  `product` INT NOT NULL COMMENT '2 = CRM, 3 = WhatsApp, 4 = Miracle',
+  `assigned_to_superadmin_user_id` INT NULL DEFAULT NULL,
+  `onboarding_date` DATE NULL DEFAULT NULL,
+  `updated_by_superadmin_user_id` INT NULL DEFAULT NULL,
+  `created_date_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `modified_date` DATETIME NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_company_onboarding_assignment` (`company_masters_id`, `product`),
+  KEY `idx_onboarding_assignee_date` (`assigned_to_superadmin_user_id`, `onboarding_date`)
+);
+
+
+30-09-2026 Dhaval
+-- MASTER DB only. Admin Panel onboarding tracking per company and product. Append-only: every stage change adds a row, newest row per (company, product) is the current stage, older rows are history. product / status_id come from status_masters (status_parent: 2 = CRM, 3 = WhatsApp, 4 = Miracle).
+CREATE TABLE `superadmin_company_onboardings` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `company_masters_id` INT NOT NULL,
+  `product` INT NOT NULL COMMENT 'status_masters.status_parent: 2 = CRM, 3 = WhatsApp, 4 = Miracle',
+  `status_id` INT NOT NULL COMMENT 'status_masters.id (the stage)',
+  `remark` TEXT NULL DEFAULT NULL,
+  `updated_by_superadmin_user_id` INT NULL DEFAULT NULL,
+  `created_date_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `isDelete` TINYINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  KEY `idx_company_onboardings_company_product` (`company_masters_id`, `product`, `id`)
+);
+
+
+30-09-2026 Dhaval
+-- MASTER DB only. Admin Panel products master (POST/GET /api/v1/products).
+CREATE TABLE `superadmin_products` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `product_name` VARCHAR(100) NOT NULL,
+  `display_order` INT(11) NOT NULL DEFAULT 0,
+  `created_date_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `modified_date` DATETIME NULL DEFAULT NULL,
+  `isActive` TINYINT(4) NOT NULL DEFAULT 1,
+  `isDelete` TINYINT(4) NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`)
+);
+
+
+30-09-2026 Dhaval
+-- MASTER DB only. Admin Panel page "Onboarding Tasks" (route /admin/onboarding-tasks, page_slug onboarding-tasks) + Super Admin rights.
+INSERT INTO `a_application_pages` (`page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `isDelete`, `isActive`) SELECT 'Onboarding Tasks', 'Tenants', 'onboarding-tasks', 'Onboarding Tasks', 1, 44, 0, 1, NOW(), 0, 1 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM `a_application_pages` WHERE `page_slug` = 'onboarding-tasks');
+
+INSERT INTO `superadmin_role_page_rights` (`role_id`, `page_id`, `rights_json`, `created_date_time`, `isActive`, `isDelete`)
+SELECT r.id, p.id, '{"view":1,"add":1,"edit":1,"delete":1}', NOW(), 1, 0
+FROM `superadmin_roles` r, `a_application_pages` p
+WHERE r.name = 'Super Admin' AND p.page_slug = 'onboarding-tasks'
+  AND NOT EXISTS (SELECT 1 FROM `superadmin_role_page_rights` x WHERE x.role_id = r.id AND x.page_id = p.id);
+
+
+30-09-2026 Dhaval
+-- MASTER DB only. Plans and add-ons belong to a product: superadmin_products.id. NULL = not linked to any product yet (existing rows).
+ALTER TABLE `plan_masters` ADD COLUMN `product_id` INT(11) NULL DEFAULT NULL;
+ALTER TABLE `plan_masters` ADD INDEX `plan_masters_product_id` (`product_id`);
+ALTER TABLE `addon_masters` ADD COLUMN `product_id` INT(11) NULL DEFAULT NULL;
+ALTER TABLE `addon_masters` ADD INDEX `addon_masters_product_id` (`product_id`);
+
+
+30-09-2026 Dhaval
+-- MASTER DB only. Admin Panel page "Invoices & Quotations" (page_slug invoices) now has its own rights instead of reusing the "plans" view right.
+-- Super Admin gets full rights; every other role that already has view on "plans" gets view-only, so existing access is kept.
+INSERT INTO `a_application_pages` (`page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `isDelete`, `isActive`) SELECT 'Invoices & Quotations', 'Billing', 'invoices', 'Invoices & Quotations', 1, 45, 0, 1, NOW(), 0, 1 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM `a_application_pages` WHERE `page_slug` = 'invoices');
+
+INSERT INTO `superadmin_role_page_rights` (`role_id`, `page_id`, `rights_json`, `created_date_time`, `isActive`, `isDelete`)
+SELECT r.id, p.id, '{"view":1,"add":1,"edit":1,"delete":1}', NOW(), 1, 0
+FROM `superadmin_roles` r, `a_application_pages` p
+WHERE r.name = 'Super Admin' AND p.page_slug = 'invoices'
+  AND NOT EXISTS (SELECT 1 FROM `superadmin_role_page_rights` x WHERE x.role_id = r.id AND x.page_id = p.id);
+
+INSERT INTO `superadmin_role_page_rights` (`role_id`, `page_id`, `rights_json`, `created_date_time`, `isActive`, `isDelete`)
+SELECT pr.role_id, inv.id, '{"view":1,"add":0,"edit":0,"delete":0}', NOW(), 1, 0
+FROM `superadmin_role_page_rights` pr
+JOIN `a_application_pages` plans ON plans.id = pr.page_id AND plans.page_slug = 'plans'
+JOIN `a_application_pages` inv ON inv.page_slug = 'invoices'
+WHERE pr.isDelete = 0 AND JSON_EXTRACT(pr.rights_json, '$.view') = 1
+  AND NOT EXISTS (SELECT 1 FROM `superadmin_role_page_rights` x WHERE x.role_id = pr.role_id AND x.page_id = inv.id);
+
+
+30-09-2026 Dhaval
+-- MASTER DB only. Plan entitlement pages: what the page's plan_vs_pages.data_limit is counted in (usage metric). NULL = no metric.
+ALTER TABLE `a_application_pages` ADD COLUMN `usage_metric` VARCHAR(50) NULL DEFAULT NULL;
