@@ -118,6 +118,19 @@ function buildFilterCondition(columnDef, columnKey, filter) {
   if (!operator) {
     throw new Error(`Operator "${filter.op}" is not allowed`);
   }
+  // Relative date token — "@today" resolves to the current server day at run
+  // time, so a saved report/dashboard tile always means "today".
+  if (columnDef.type === "date" && filter.value === "@today") {
+    const day = new Date();
+    const ymd = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
+    const start = `${ymd} 00:00:00`;
+    const end = `${ymd} 23:59:59`;
+    const op = filter.op || "eq";
+    if (op === "eq") return { [columnKey]: { [Op.between]: [start, end] } };
+    if (op === "gte") return { [columnKey]: { [Op.gte]: start } };
+    if (op === "lte") return { [columnKey]: { [Op.lte]: end } };
+    throw new Error(`Operator "${op}" is not supported with @today`);
+  }
   return { [columnKey]: { [operator]: filter.value } };
 }
 
