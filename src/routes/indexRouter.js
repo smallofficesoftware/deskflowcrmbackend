@@ -17,6 +17,7 @@ import commonRouter from "./commonRouter.js";
 import thirdPartyIntegrationRouter from "./company_setup/thirdPartyIntegrationRouter.js";
 // import axios from "axios";
 import accountTransactionRouter from "./activities/accountTransactionRouter.js";
+import accountTransactionCartLinkRouter from "./activities/accountTransactionCartLinkRouter.js";
 import callhistoryRouter from "./activities/callHistoryRouter.js";
 import reminderNotificationRouter from "./configuration/Cron Job Routes/reminderNotificationRouter.js";
 import { default as accountOutstandingReport, default as allAccountTranctionsReport } from "./dashboard/Reports/accountTranstionReportRouter.js";
@@ -129,6 +130,7 @@ export default () => {
   priceListItemRouter(app);
   sourceOfTypesRouter(app);
   accountTransactionRouter(app);
+  accountTransactionCartLinkRouter(app);
   activationCodeMasterRouter(app);
   orderRouter(app);
   insightRouter(app);

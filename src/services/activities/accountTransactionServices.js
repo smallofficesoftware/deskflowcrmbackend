@@ -44,6 +44,7 @@ import { sendMultipleNotification } from "../company_setup/thirdPartyIntegration
 import { generateAccountStatementPdf } from "../pdfmeEngine/accountStatementGenerate.js";
 import { generateAccountTransactionPdf } from "../pdfmeEngine/accountTransactionGenerate.js";
 import { emitAutomationEvent } from "../automation/emit.js";
+import { CART_LINK_REFERENCE_TABLE, checkCartLinkRules, getCartInfoMap, getCartLinkSettings, resolveCartIdByNumber } from "./accountTransactionCartLinkServices.js";
 
 // Loads a company's own pdfme template JSON for accountStatement/
 // accountTransaction (created via Document Designer's generic
@@ -424,14 +425,22 @@ export const getAllAccountTransactions = async (req, res) => {
         activeTeamList.map(user => [user.id, user.username])
       );
     }
+    const cartInfoMap = await getCartInfoMap(
+      req.tenantDB,
+      findCompanyId.company_masters_id,
+      accountTransactionResult.map((r) => r.toJSON())
+    );
     const accountTransactions = await Promise.all(
       accountTransactionResult.map(async (row) => {
         const json = sanitizeObjectOfNull(row.toJSON());
         const approvedByUser = activeTeamMap.get(Number(json.approve_by_a_application_login_id)) || null;
         const createdByUser = activeTeamMap.get(Number(json.a_application_login_id)) || null;
         const paymentTypeName = paymentTypeMap.get(Number(json.mode)) || null;
+        const cartInfo = cartInfoMap.get(Number(json.reference_id));
         return {
           ...json,
+          cart_number: cartInfo?.cart_number || null,
+          cart_type_name: cartInfo?.cart_type_name || null,
           approve_by_a_application_login_name: approvedByUser || null,
           a_application_login_name: createdByUser || null,
           payment_type_name: paymentTypeName,
@@ -1049,7 +1058,8 @@ export const createAccountTransaction = async (req, res) => {
       mode,
       remark,
       payment_date_time,
-      auto_reverse_entry
+      auto_reverse_entry,
+      cart_id
     } = req.body;
 
     // Validation
@@ -1074,6 +1084,22 @@ export const createAccountTransaction = async (req, res) => {
     if (!contactData) {
       return resError({ ack_msg: "Contact not found" });
     }
+
+    if (cart_id && auto_reverse_entry === 1) {
+      return resError({ ack_msg: "Cart cannot be linked when Auto Reverse Entry is selected" });
+    }
+    // Optional cart link + company settings (bill to bill / no over-payment),
+    // see accountTransactionCartLinkServices.js
+    const cartLinkError = await checkCartLinkRules(tenantDB, {
+      cart_id,
+      contact_masters_id,
+      type,
+      amount,
+      company_masters_id: findCompanyId.company_masters_id,
+      // a reverse-entry pair is an adjustment, exempt from bill to bill
+      isAutoReverse: auto_reverse_entry === 1,
+    });
+    if (cartLinkError) return resError({ ack_msg: cartLinkError });
 
     // ====================== RIGHTS CHECK ======================
     let isApproveRight = false;
@@ -1127,7 +1153,8 @@ export const createAccountTransaction = async (req, res) => {
     // === Normal Entry ===
     const firstEntry = await accountTransaction.create({
       ...baseData,
-      type: Number(type)
+      type: Number(type),
+      ...(cart_id ? { reference_table: CART_LINK_REFERENCE_TABLE, reference_id: cart_id } : {})
     });
 
     createdItems.push(firstEntry);
@@ -1819,6 +1846,8 @@ export const generateAccountTransactionSampleSheet = async (req, res) => {
       amount: "1000",
       payment_date_time: moment().format("YYYY-MM-DD HH:mm:ss"),
       remark: "Sample account transaction",
+      // optional; required when the company has Bill to Bill Payment on
+      cart_number: "INV-0001",
     };
 
     const data = [excelColumnDefineArray];
@@ -1968,6 +1997,8 @@ export const importAccountTransactionByExcel = async (req) => {
     let errorRows = [];
     let duplicateRows = [];
     let finalData = [];
+    const cartLinkSettings = await getCartLinkSettings(findCompanyId.company_masters_id);
+    const importedAmountByCart = new Map(); // cart_id -> amount queued earlier in this sheet
     const now = new Date();
     const formattedNowStr = moment(now).format("YYYY-MM-DD HH:mm:ss");
 
@@ -2067,6 +2098,37 @@ export const importAccountTransactionByExcel = async (req) => {
         }
       }
 
+      // Optional cart_number column -> cart link, with the same company
+      // settings as the create screen (bill to bill / no over-payment).
+      let rowCartId = null;
+      const rawCartNumber = row[colIndex["cart_number"]] ?? row[colIndex["cart_no"]];
+      if (rawCartNumber !== undefined && rawCartNumber !== null && rawCartNumber.toString().trim() !== "") {
+        const resolved = await resolveCartIdByNumber(tenantDB, {
+          cart_number: rawCartNumber,
+          contact_masters_id: matchedContact.id,
+          type: typeVal,
+          company_masters_id: findCompanyId.company_masters_id,
+        });
+        if (resolved.error) {
+          errorRows.push(`Row ${rowNumber}: ${resolved.error}`);
+          continue;
+        }
+        rowCartId = resolved.cart_id;
+      }
+      const cartRuleError = await checkCartLinkRules(tenantDB, {
+        cart_id: rowCartId,
+        contact_masters_id: matchedContact.id,
+        type: typeVal,
+        amount: amountVal,
+        company_masters_id: findCompanyId.company_masters_id,
+        settings: cartLinkSettings,
+        extraCommitted: rowCartId ? importedAmountByCart.get(rowCartId) || 0 : 0,
+      });
+      if (cartRuleError) {
+        errorRows.push(`Row ${rowNumber}: ${cartRuleError}`);
+        continue;
+      }
+
       // Skip if this contact already has a transaction with the same
       // date-time and amount (existing in DB, or an earlier row in this sheet).
       const key = dupKey(matchedContact.id, paymentDateTime, amountVal);
@@ -2077,8 +2139,10 @@ export const importAccountTransactionByExcel = async (req) => {
         continue;
       }
       seenKeys.add(key);
+      if (rowCartId) importedAmountByCart.set(rowCartId, (importedAmountByCart.get(rowCartId) || 0) + amountVal);
 
       finalData.push({
+        cart_id: rowCartId,
         contact_masters_id: matchedContact.id,
         a_application_login_id,
         company_masters_id: findCompanyId.company_masters_id,
@@ -2116,6 +2180,7 @@ export const importAccountTransactionByExcel = async (req) => {
         remark: item.remark,
         approve_by_a_application_login_id: item.approve_by_a_application_login_id,
         approve_date_time: item.approve_date_time,
+        ...(item.cart_id ? { reference_table: CART_LINK_REFERENCE_TABLE, reference_id: item.cart_id } : {}),
       });
 
       // If approved, create message history entry
