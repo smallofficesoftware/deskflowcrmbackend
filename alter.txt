@@ -4015,3 +4015,13 @@ WHERE pr.isDelete = 0 AND JSON_EXTRACT(pr.rights_json, '$.view') = 1
 30-09-2026 Dhaval
 -- MASTER DB only. Plan entitlement pages: what the page's plan_vs_pages.data_limit is counted in (usage metric). NULL = no metric.
 ALTER TABLE `a_application_pages` ADD COLUMN `usage_metric` VARCHAR(50) NULL DEFAULT NULL;
+
+
+01-10-2026 Dhaval
+-- Re-log of 29-06-2026 change: some tenant DBs (and possibly smalloffice_sample_tenant) never received it -> "Unknown column is_sandwich_applied" on api/attendance/initializing. Run only where column is missing.
+ALTER TABLE `attendance_batch_process` ADD COLUMN `is_sandwich_applied` TINYINT NOT NULL DEFAULT 0 AFTER `overtime_hour`;
+
+
+01-10-2026 Dhaval
+-- late_in/early_out were NOT NULL but code/model write NULL (week-off, holiday, leave, on-time) -> "Column early_out cannot be null" on api/attendance/attendance-d-up. Also apply on smalloffice_sample_tenant.
+ALTER TABLE `attendance_batch_process` MODIFY `late_in` VARCHAR(100) NULL DEFAULT NULL, MODIFY `early_out` VARCHAR(100) NULL DEFAULT NULL;
