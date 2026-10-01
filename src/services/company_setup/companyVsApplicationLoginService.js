@@ -356,13 +356,7 @@ const companyPlaneCreateWayJoin = async ({
 
 export const getByIdTeam = async (req) => {
   try {
-    const { searchTerm } = req.body;
-    // Body may omit a_application_login_id; fall back to the authenticated
-    // user / tenant header so the reporting-chain filter never gets undefined.
-    const a_application_login_id =
-      req.body.a_application_login_id ||
-      req.user?.id ||
-      req.headers["x-tenant-id"];
+    const { a_application_login_id, searchTerm } = req.body;
 
     const findAllApplicationLogin = await getCompanyByLoginId(
       a_application_login_id
@@ -540,7 +534,7 @@ export const getByIdTeam = async (req) => {
     }
   } catch (e) {
     console.error("ERROR IN getByIdTeam:", e);
-    return resBadRequest({ developer_msg: e?.message || `${e}` });
+    return resBadRequest({ developer_msg: e });
     throw e;
   }
 };
