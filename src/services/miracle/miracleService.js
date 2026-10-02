@@ -1219,12 +1219,21 @@ export const miracleConfigGet = async (req) => {
             raw: true
         });
 
+        // Company code used in the inbound webhook URL: /webhookmiracle/:companyCode
+        const companyRow = await companyModel.findOne({
+            where: { id: findCompanyId.company_masters_id, isDelete: "0" },
+            attributes: ["qr_code"],
+            raw: true
+        });
+        const webhookCompanyCode = companyRow?.qr_code || "";
+
         if (result) {
             const safeRights = parseMiracleRights(result.rights_config);
             return resSuccess({
                 data: {
                     item: {
                         ...result,
+                        webhook_company_code: webhookCompanyCode,
                         rights_config: safeRights
                     }
                 },
@@ -1236,6 +1245,7 @@ export const miracleConfigGet = async (req) => {
                 developer_msg: "Data not found",
                 data: {
                     item: {
+                        webhook_company_code: webhookCompanyCode,
                         rights_config: safeRights
                     }
                 }
