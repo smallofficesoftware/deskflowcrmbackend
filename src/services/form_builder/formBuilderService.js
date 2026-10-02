@@ -32,6 +32,7 @@ import { approvalOf, findApprovalProblems } from "./formBuilderApproval.js";
 import { findConsentProblems, findPublicSettingsProblems } from "./formBuilderPublicSettings.js";
 import { findProductLookupProblems } from "./formBuilderProductLookup.js";
 import { countPendingForMe, ensureStageColumns, loadActorContext } from "./formBuilderApprovalService.js";
+import { loadFormForFill } from "./formBuilderFillAccess.js";
 import { resolveTemplateForCreate } from "./formBuilderTemplates.js";
 import { normalizePermissionChanges } from "./formBuilderPermissionKeys.js";
 import {
@@ -142,8 +143,13 @@ export const listForms = async (req) => {
 
 export const getForm = async (req) => {
   try {
-    const { form, company_masters_id, a_application_login_id, error } = await loadOwnedForm(req);
-    if (error) return error;
+    let { form, company_masters_id, a_application_login_id, error } = await loadOwnedForm(req);
+    if (error) {
+      // No Form Builder rights: still open the form if this user may fill it.
+      const fill = await loadFormForFill(req);
+      if (!fill) return error;
+      ({ form, company_masters_id, a_application_login_id } = fill);
+    }
     const company_qr_code = await getCompanyQrCode(company_masters_id);
     // This user's per-form permissions (section 3) — the fill screen locks
     // "permission" date fields when can_change_dates is false.
