@@ -13,6 +13,8 @@ import { PROCESS_TYPE } from "../../utils/AppEnumeration.js";
 import { generateDateRange, resBadRequest, resSuccess } from "../../utils/sharedFunctions.js";
 import { getCompanyByLoginId } from "../commonServices.js";
 import { rejectTodayOrFutureDates } from "./processAttendanceDateGuard.js";
+import { toJoinDateIso } from "./attendanceJoinDate.js";
+import { hasShiftTime } from "./attendanceShiftTime.js";
 
 export const misPunchList = async (req) => {
     const { a_application_login_id, from_date, to_date } = req.body;
@@ -496,7 +498,7 @@ export const attendanceDetailUpdate = async (req) => {
 
         const employeeIds = activeTeamList.map(e => e.id);
         const employeeJoinDateMap = new Map(
-            activeTeamList.map(e => [e.id, e.date_of_joining ? moment(e.date_of_joining).format("YYYY-MM-DD") : null])
+            activeTeamList.map(e => [e.id, toJoinDateIso(e.date_of_joining)])
         );
 
         const dateRange = generateDateRange(from_date, to_date);
@@ -1143,7 +1145,7 @@ function calcDayStatus(date, first_in, last_out, total_working_hour, payroll, co
         day_status === DAY_STATUS.WOPH;
 
     let late_in = null;
-    if (firstInStr && !skipLateEarly) {
+    if (firstInStr && !skipLateEarly && hasShiftTime(payroll.daily_in_time)) {
         const datePrefix = firstInStr.slice(0, 10);
         const scheduledIn = moment(`${datePrefix} ${payroll.daily_in_time}`, "YYYY-MM-DD HH:mm:ss");
         const graceIn = scheduledIn.clone().add(gracePeriodMins, "minutes");
@@ -1154,7 +1156,7 @@ function calcDayStatus(date, first_in, last_out, total_working_hour, payroll, co
     }
 
     let early_out = null;
-    if (lastOutStr && !skipLateEarly) {
+    if (lastOutStr && !skipLateEarly && hasShiftTime(payroll.daily_out_time)) {
         const datePrefix = lastOutStr.slice(0, 10);
         const scheduledOut = moment(`${datePrefix} ${payroll.daily_out_time}`, "YYYY-MM-DD HH:mm:ss");
         const graceOut = scheduledOut.clone().subtract(gracePeriodMins, "minutes");
