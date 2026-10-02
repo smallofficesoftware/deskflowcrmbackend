@@ -1,5 +1,6 @@
 import { getExcelSheetAttendance } from "../../controllers/company_setup/thirdPartyIntegration/attendanceImportsController.js";
 import { getExcelSheet, getExcelSheetV2 } from "../../controllers/company_setup/thirdPartyIntegration/contactImportsController.js";
+import { generateContactUpdateSheetProvider, updateContactsByExcelSheetProvider } from "../../controllers/company_setup/thirdPartyIntegration/contactUpdateSheetController.js";
 import { getGoogleSheetColumns, getGoogleSheetForFacebook, updateGoogleSheetsColumns } from "../../controllers/company_setup/thirdPartyIntegration/googleSheetController.js";
 import { indiaMartApi, indiaMartPushApi } from "../../controllers/company_setup/thirdPartyIntegration/indiaMartIntegrationController.js";
 import { justdialPushApi } from "../../controllers/company_setup/thirdPartyIntegration/justdialController.js";
@@ -39,6 +40,8 @@ export default (app) => {
   app.post("/excel-sheet-task", authenticateToken, tenantMiddleware, uploadExcelSheetTask.single("file"), getExcelSheetTask);
   app.post("/excel-sheet-attendance", authenticateToken, tenantMiddleware, uploadExcelSheetTask.single("file"), getExcelSheetAttendance);
   app.post("/excel-sheet-product-update-data", authenticateToken, tenantMiddleware, uploadExcelSheetProduct.single("file"), getExcelSheetProductUpdateData);
+  app.post("/generate-contact-update-sheet", authenticateToken, tenantMiddleware, generateContactUpdateSheetProvider);
+  app.post("/excel-sheet-contact-update-data", authenticateToken, tenantMiddleware, uploadExcelSheetProduct.single("file"), updateContactsByExcelSheetProvider);
   app.post("/excel-sheet-pricelist-update-data", authenticateToken, tenantMiddleware, uploadExcelSheetPricelist.single("file"), getExcelSheetPriceListUpdateData);
 
 };
