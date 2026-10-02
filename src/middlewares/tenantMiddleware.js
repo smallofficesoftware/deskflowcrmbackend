@@ -7,6 +7,20 @@ import companyVsApplicationLoginModel from "../models/company_setup/companyVsApp
 import logger from "../utils/logger.js";
 import { parseSession, resError } from "../utils/sharedFunctions.js";
 
+// [tenant-guard] warnings fire for every request from a stale client, so log each distinct
+// situation once per hour (and only the route path, never the query string) instead.
+const GUARD_LOG_REPEAT_MS = 60 * 60 * 1000;
+const GUARD_LOG_MAX_KEYS = 5000;
+const guardLogSeen = new Map();
+const guardWarnOnce = (key, message) => {
+  const now = Date.now();
+  const last = guardLogSeen.get(key);
+  if (last && now - last < GUARD_LOG_REPEAT_MS) return;
+  if (guardLogSeen.size >= GUARD_LOG_MAX_KEYS) guardLogSeen.clear();
+  guardLogSeen.set(key, now);
+  logger.warn(message);
+};
+
 export const tenantMiddleware = async (req, res, next) => {
   try {
     // Extract from sessionName (e.g. a3055_c606 used in WhatsApp webhooks)
@@ -39,19 +53,23 @@ export const tenantMiddleware = async (req, res, next) => {
     const verifiedLoginId = req.user?.id ?? req.user?.a_application_login_id;
     const headerLoginId = req.headers["x-tenant-id"];
     const headerCompanyId = req.headers["x-company-id"];
+    const routePath = String(req.originalUrl || "").split("?")[0];
     if (verifiedLoginId && headerLoginId && String(headerLoginId) !== String(verifiedLoginId)) {
-      logger.warn(
-        `[tenant-guard] x-tenant-id ${headerLoginId} differs from token login ${verifiedLoginId}, using token login path=${req.originalUrl}`
+      guardWarnOnce(
+        `login:${headerLoginId}:${verifiedLoginId}`,
+        `[tenant-guard] x-tenant-id ${headerLoginId} differs from token login ${verifiedLoginId}, using token login path=${routePath}`
       );
       tenantId = verifiedLoginId;
     }
     if (req.user && !req.user.companyId) {
-      logger.warn(
-        `[tenant-guard] token has no session company (login ${verifiedLoginId}), company taken from request path=${req.originalUrl}`
+      guardWarnOnce(
+        `nosession:${verifiedLoginId}`,
+        `[tenant-guard] token has no session company (login ${verifiedLoginId}), company taken from request path=${routePath}`
       );
     } else if (req.user?.companyId && headerCompanyId && String(headerCompanyId) !== String(req.user.companyId)) {
-      logger.warn(
-        `[tenant-guard] x-company-id ${headerCompanyId} differs from session company ${req.user.companyId} (login ${verifiedLoginId}) path=${req.originalUrl}`
+      guardWarnOnce(
+        `company:${verifiedLoginId}:${headerCompanyId}:${req.user.companyId}`,
+        `[tenant-guard] x-company-id ${headerCompanyId} differs from session company ${req.user.companyId} (login ${verifiedLoginId}) path=${routePath}`
       );
     }
 
@@ -139,8 +157,9 @@ export const tenantMiddleware = async (req, res, next) => {
         } else {
           // Authenticated request: the login must be mapped (directly or via parent) to the
           // company, or be its owner. No "company merely has a tenant DB" grant.
-          logger.warn(
-            `[tenant-guard] denied: login ${tenantId} is not mapped to company ${companyId} path=${req.originalUrl}`
+          guardWarnOnce(
+            `denied:${tenantId}:${companyId}`,
+            `[tenant-guard] denied: login ${tenantId} is not mapped to company ${companyId} path=${routePath}`
           );
         }
       }
