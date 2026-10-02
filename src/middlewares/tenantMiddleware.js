@@ -30,6 +30,31 @@ export const tenantMiddleware = async (req, res, next) => {
       req.query?.company_masters_id ||
       req.query?.company_id;
 
+    // Tenant guard. On authenticated requests the verified JWT (and the application_sessions
+    // company merged into it by authenticateToken) is the source of truth for who is calling
+    // and which company they act in - never the x-tenant-id / x-company-id headers, which a
+    // stale or tampered client can send. The login must also be mapped to the company (below).
+    // Public / webhook routes carry no token, so they keep resolving from companyCode,
+    // sessionName and body as before. Violations are logged as `[tenant-guard]`.
+    const verifiedLoginId = req.user?.id ?? req.user?.a_application_login_id;
+    const headerLoginId = req.headers["x-tenant-id"];
+    const headerCompanyId = req.headers["x-company-id"];
+    if (verifiedLoginId && headerLoginId && String(headerLoginId) !== String(verifiedLoginId)) {
+      logger.warn(
+        `[tenant-guard] x-tenant-id ${headerLoginId} differs from token login ${verifiedLoginId}, using token login path=${req.originalUrl}`
+      );
+      tenantId = verifiedLoginId;
+    }
+    if (req.user && !req.user.companyId) {
+      logger.warn(
+        `[tenant-guard] token has no session company (login ${verifiedLoginId}), company taken from request path=${req.originalUrl}`
+      );
+    } else if (req.user?.companyId && headerCompanyId && String(headerCompanyId) !== String(req.user.companyId)) {
+      logger.warn(
+        `[tenant-guard] x-company-id ${headerCompanyId} differs from session company ${req.user.companyId} (login ${verifiedLoginId}) path=${req.originalUrl}`
+      );
+    }
+
     // If companyCode is in params or body, resolve company & tenant
     const companyCode = req.params?.companyCode || req.body?.companyCode;
     if (companyCode && (!companyId || !tenantId)) {
@@ -101,7 +126,9 @@ export const tenantMiddleware = async (req, res, next) => {
         });
         if (isDirectOwner) {
           mapping = isDirectOwner;
-        } else {
+        } else if (!req.user) {
+          // Tokenless public / webhook request: there is no verified login to check against a
+          // company, so accept a company that has a tenant DB (resolved from companyCode etc.).
           const tenantMasterExists = await globalSequelize.query(
             "SELECT id FROM tenant_masters WHERE company_masters_id = ? AND isDelete = 0 LIMIT 1",
             { replacements: [companyId], type: sequelize.QueryTypes.SELECT }
@@ -109,6 +136,12 @@ export const tenantMiddleware = async (req, res, next) => {
           if (tenantMasterExists && tenantMasterExists.length > 0) {
             mapping = tenantMasterExists[0];
           }
+        } else {
+          // Authenticated request: the login must be mapped (directly or via parent) to the
+          // company, or be its owner. No "company merely has a tenant DB" grant.
+          logger.warn(
+            `[tenant-guard] denied: login ${tenantId} is not mapped to company ${companyId} path=${req.originalUrl}`
+          );
         }
       }
     } else {
