@@ -11,6 +11,7 @@ import { numberToWordsCurrency } from "../../utils/numberToWordsCurrency.js";
 import { resBadRequest, resSuccess } from "../../utils/sharedFunctions.js";
 import { getCompanyByLoginId } from "../commonServices.js";
 import { getCompanySignDataUrl } from "./salarySlipCompanySign.js";
+import { calcRateBasedBasic } from "./salaryRatePay.js";
 
 // ── Constants ────────────────────────────────────────────────────────────
 
@@ -337,7 +338,11 @@ const calculateDays = resolveCalculateDays(year, month, payroll);
     const perDaySalary = calcPerDaySalary(grossSalary, calculateDays);
 
     const fxs = calcFixedSalary(payroll);
-    const dws = calcDaysWorkedSalary(fxs, totalDay, calculateDays);
+    // Hour-wise / day-wise staff with only a rate (no Basic+DA structure) are paid from that rate.
+    const rateBasedBasic = calcRateBasedBasic({ payroll, salaryType, totalDay, netWorkingMins, regularOtMins, extraOtMins });
+    const dws = rateBasedBasic === null
+        ? calcDaysWorkedSalary(fxs, totalDay, calculateDays)
+        : { dws_basic: rateBasedBasic, dws_hra: 0, dws_other: 0, dws_total_earning: rateBasedBasic };
 
     const { regularOtPayableAmt, extraOtPayableAmt, earnOtPayableAmt } = calcOvertimePayable(
         payroll, regularOtMins, extraOtMins, num(payroll.basic_da), calculateDays
