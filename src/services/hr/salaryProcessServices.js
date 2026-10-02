@@ -12,6 +12,7 @@ import { resBadRequest, resSuccess } from "../../utils/sharedFunctions.js";
 import { getCompanyByLoginId } from "../commonServices.js";
 import { getCompanySignDataUrl } from "./salarySlipCompanySign.js";
 import { calcRateBasedBasic } from "./salaryRatePay.js";
+import { buildSalaryProcessResult } from "./salarySkippedNotice.js";
 
 // ── Constants ────────────────────────────────────────────────────────────
 
@@ -505,10 +506,15 @@ export const salaryCalculate = async (req) => {
         // ── 4. Build salary rows (pure CPU, no awaits) ──────────────────────
         const CurrentDate = moment().format("YYYY-MM-DD");
         const upsertValues = [];
+        const skippedEmployees = []; // no Employee Payroll row -> no salary can be calculated
+        const nameById = new Map(activeTeamList.map(e => [e.id, e.username]));
 
         for (const empId of employeeIds) {
             const payroll = employeePayrollMap.get(empId);
-            if (!payroll) continue;
+            if (!payroll) {
+                skippedEmployees.push({ id: empId, name: nameById.get(empId) });
+                continue;
+            }
 
             const batchRows = attendanceByEmp[empId] ?? [];
             const calculated = calculateEmployeeSalary(year, month, payroll, batchRows);
@@ -531,7 +537,7 @@ export const salaryCalculate = async (req) => {
 
         await salaryRegisterModelInstance.bulkCreate(upsertValues, { updateOnDuplicate });
 
-        return resSuccess({ ack_msg: "salary calculation success" });
+        return resSuccess(buildSalaryProcessResult(upsertValues.length, skippedEmployees));
 
     } catch (error) {
         console.error("salaryCalculate:", error);
