@@ -13,6 +13,7 @@ import { getCompanyByLoginId } from "../commonServices.js";
 import { getCompanySignDataUrl } from "./salarySlipCompanySign.js";
 import { calcRateBasedBasic } from "./salaryRatePay.js";
 import { buildSalaryProcessResult } from "./salarySkippedNotice.js";
+import { collectSalaryWarnings } from "./salaryWarnings.js";
 
 // ── Constants ────────────────────────────────────────────────────────────
 
@@ -508,6 +509,7 @@ export const salaryCalculate = async (req) => {
         const upsertValues = [];
         const skippedEmployees = []; // no Employee Payroll row -> no salary can be calculated
         const nameById = new Map(activeTeamList.map(e => [e.id, e.username]));
+        const employeeWarnings = []; // calculated, but pay is 0 or attendance is not ready - with the reasons
 
         for (const empId of employeeIds) {
             const payroll = employeePayrollMap.get(empId);
@@ -518,6 +520,9 @@ export const salaryCalculate = async (req) => {
 
             const batchRows = attendanceByEmp[empId] ?? [];
             const calculated = calculateEmployeeSalary(year, month, payroll, batchRows);
+
+            const reasons = collectSalaryWarnings({ payroll, salaryType: parseInt(payroll.salary_type, 10), calculated, batchRows });
+            if (reasons.length) employeeWarnings.push({ id: empId, name: nameById.get(empId), reasons });
 
             upsertValues.push({
                 year: String(year),
@@ -537,7 +542,7 @@ export const salaryCalculate = async (req) => {
 
         await salaryRegisterModelInstance.bulkCreate(upsertValues, { updateOnDuplicate });
 
-        return resSuccess(buildSalaryProcessResult(upsertValues.length, skippedEmployees));
+        return resSuccess(buildSalaryProcessResult(upsertValues.length, skippedEmployees, employeeWarnings));
 
     } catch (error) {
         console.error("salaryCalculate:", error);
