@@ -12,6 +12,7 @@ import { AttendanceBatchProcess } from "../../models/hr/processAttendanceModel.j
 import { PROCESS_TYPE } from "../../utils/AppEnumeration.js";
 import { generateDateRange, resBadRequest, resSuccess } from "../../utils/sharedFunctions.js";
 import { getCompanyByLoginId } from "../commonServices.js";
+import { rejectTodayOrFutureDates } from "./processAttendanceDateGuard.js";
 
 export const misPunchList = async (req) => {
     const { a_application_login_id, from_date, to_date } = req.body;
@@ -156,6 +157,8 @@ export const misPunchList = async (req) => {
 export const initializing = async (req) => {
 
     const { a_application_login_id, from_date, to_date } = req.body;
+    const blockedDate = rejectTodayOrFutureDates(from_date, to_date);
+    if (blockedDate) return blockedDate;
     const findCompanyId = await getCompanyByLoginId(a_application_login_id);
 
     const lockAcquired = await acquireProcessLock(
@@ -451,6 +454,8 @@ export const fetchProcessList = async (req) => {
 
 export const attendanceDetailUpdate = async (req) => {
     const { a_application_login_id, from_date, to_date } = req.body;
+    const blockedDate = rejectTodayOrFutureDates(from_date, to_date);
+    if (blockedDate) return blockedDate;
     const findCompanyId = await getCompanyByLoginId(a_application_login_id);
     const lockAcquired = await acquireProcessLock(
         findCompanyId.company_masters_id,
