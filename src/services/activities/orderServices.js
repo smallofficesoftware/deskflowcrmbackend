@@ -1433,32 +1433,26 @@ export const orderById = async (req, res) => {
         });
         state_name = state ? state.dataValues.state_name : null;
       }
-      // else {
-      //   const companyDetail = await getCompanyDetailByLoginId(
-      //     resultCartById.dataValues.a_application_login_id
-      //   );
-      //   if (companyDetail && companyDetail.state_id > 0) {
-      //     const state = await stateModel(req.tenantDB).findOne({
-      //       where: {
-      //         id: companyDetail.state_id,
-      //         isDelete: 0,
-      //       },
-      //       attributes: ["state_name"],
-      //     });
-      //     state_name = state ? state.dataValues.state_name : null;
-      //     // Assign company's state_id to cart's state_id
-      //     cart_state_id = companyDetail.state_id;
-      //     resultCartById.dataValues.state_id = companyDetail.state_id;
-      //   }
-      //   if (!state_name) {
-      //     console.warn(
-      //       `Invalid state_id: ${resultCartById.dataValues.state_id} for cart_id: ${cart_id} and no valid company state_id`
-      //     );
-      //     return resError({
-      //       ack_msg: "please Select Company State"
-      //     })
-      //   }
-      // }
+      else {
+        // Customer has no state: treat the supply as local (company's own state)
+        // so the invoice splits into CGST + SGST instead of defaulting to IGST.
+        // If the company has no state either, leave it empty (unchanged behaviour).
+        const companyDetail = await getCompanyDetailByLoginId(
+          resultCartById.dataValues.a_application_login_id
+        );
+        if (companyDetail && companyDetail.state_id > 0) {
+          const state = await stateModel(req.tenantDB).findOne({
+            where: {
+              id: companyDetail.state_id,
+              isDelete: 0,
+            },
+            attributes: ["state_name"],
+          });
+          state_name = state ? state.dataValues.state_name : null;
+          cart_state_id = companyDetail.state_id;
+          resultCartById.dataValues.state_id = companyDetail.state_id;
+        }
+      }
 
       resultCartById.dataValues.state_name = state_name;
 
@@ -4429,8 +4423,11 @@ const generateSingleOrderPdf = async (req, res) => {
     const stateModels = stateModel(req.tenantDB);
     const cityModels = cityModel(req.tenantDB);
 
-    // Only use cart state_id
-    const stateIdToUse = resultCartById.dataValues.state_id;
+    // Cart state_id; a customer with no state falls back to the company state
+    // (local supply -> CGST + SGST, not IGST)
+    const stateIdToUse = resultCartById.dataValues.state_id > 0
+      ? resultCartById.dataValues.state_id
+      : companyDetail.state_id;
 
     // Get State Name
     let customerStateName = "";
