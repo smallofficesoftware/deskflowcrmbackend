@@ -10,6 +10,7 @@ import { PROCESS_TYPE } from "../../utils/AppEnumeration.js";
 import { numberToWordsCurrency } from "../../utils/numberToWordsCurrency.js";
 import { resBadRequest, resSuccess } from "../../utils/sharedFunctions.js";
 import { getCompanyByLoginId } from "../commonServices.js";
+import { getCompanySignDataUrl } from "./salarySlipCompanySign.js";
 
 // ── Constants ────────────────────────────────────────────────────────────
 
@@ -652,7 +653,8 @@ export const getSalaryDetail = async (req) => {
             const dedThird = num(row.ded_third);
             const othersDeduction = dedFirst + dedSecond + dedThird
 
-            const totalDeduction = dedEmpPf + dedPt + dedPradhanMantriPf + dedEsiEmployee + dedInsurance + dedFirst + dedSecond + dedThird + othersDeduction
+            // othersDeduction already is dedFirst + dedSecond + dedThird; adding both double counted it.
+            const totalDeduction = dedEmpPf + dedPt + dedPradhanMantriPf + dedEsiEmployee + dedInsurance + othersDeduction
 
             const salaryToBePaid = Math.round(num(row.net_bank_pay));
 
@@ -687,7 +689,7 @@ export const getSalaryDetail = async (req) => {
             };
         }
 
-        return resSuccess({ data: { salary } });
+        return resSuccess({ data: { salary, company_sign: await getCompanySignDataUrl(req) } });
 
     } catch (error) {
         console.error("getSalaryDetail:", error);
