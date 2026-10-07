@@ -563,7 +563,6 @@ export const attendanceDetailUpdate = async (req) => {
             holidayModelInstance.findAll({
                 where: {
                     isDelete: 0,
-                    a_application_login_id: { [Op.in]: employeeIds },
                     [Op.and]: [
                         Sequelize.where(
                             Sequelize.fn('DATE', Sequelize.col('holiday_date')),
@@ -616,13 +615,12 @@ export const attendanceDetailUpdate = async (req) => {
             groupedLeavesData[empId][date].push(record);
         }
 
-        const groupedHolidayData = {};
+        // Holidays are company-wide (a_application_login_id is only the creator), so key by date.
+        const groupedHolidayByDate = {};
         for (const record of holidayData) {
-            const empId = record.a_application_login_id;
             const date = moment(record.holiday_date).format("YYYY-MM-DD");
-            if (!groupedHolidayData[empId]) groupedHolidayData[empId] = {};
-            if (!groupedHolidayData[empId][date]) groupedHolidayData[empId][date] = [];
-            groupedHolidayData[empId][date].push(record);
+            if (!groupedHolidayByDate[date]) groupedHolidayByDate[date] = [];
+            groupedHolidayByDate[date].push(record);
         }
 
         // ── 4. Build upsert payload ──────────────────────────────────────────
@@ -643,7 +641,7 @@ export const attendanceDetailUpdate = async (req) => {
                 const records = grouped[empId]?.[date] ?? [];
                 const compensation_list = groupedProcessAttendance[empId]?.[date] ?? [];
                 const leave_list = groupedLeavesData[empId]?.[date] ?? [];
-                const holiday_list = groupedHolidayData[empId]?.[date] ?? [];
+                const holiday_list = groupedHolidayByDate[date] ?? [];
 
                 const isWeekOffDay = isWeekOff(date, payroll);
                 const isHolidayDay = holiday_list.length > 0;

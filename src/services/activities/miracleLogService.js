@@ -105,14 +105,20 @@ export const getMiracleLogs = async (req) => {
             if (end_date) where.created_date_time[Op.lte] = new Date(end_date + "T23:59:59.999Z");
         }
 
-        // Search across url, module_name, error_message, miracle_unique_id
+        // Search across url, module_name, error_message, miracle_unique_id and the
+        // request/response payloads (e.g. a Miracle UniqueId). Kept under Op.and so
+        // it doesn't overwrite the module filter's Op.or above.
         if (search) {
-            where[Op.or] = [
-                { url: { [Op.like]: `%${search}%` } },
-                { module_name: { [Op.like]: `%${search}%` } },
-                { error_message: { [Op.like]: `%${search}%` } },
-                { miracle_unique_id: { [Op.like]: `%${search}%` } },
-            ];
+            where[Op.and] = [{
+                [Op.or]: [
+                    { url: { [Op.like]: `%${search}%` } },
+                    { module_name: { [Op.like]: `%${search}%` } },
+                    { error_message: { [Op.like]: `%${search}%` } },
+                    { miracle_unique_id: { [Op.like]: `%${search}%` } },
+                    { request_payload: { [Op.like]: `%${search}%` } },
+                    { response_payload: { [Op.like]: `%${search}%` } },
+                ],
+            }];
         }
 
         const offset = (Number(page) - 1) * Number(page_size);

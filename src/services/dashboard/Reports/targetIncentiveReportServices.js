@@ -11,6 +11,7 @@ import {
     resSuccess
 } from "../../../utils/sharedFunctions.js";
 import { getCompanyByLoginId } from "../../commonServices.js";
+import { normalizeRange, targetWindow, windowBounds, windowKey } from "./targetIncentiveDates.js";
 
 const TARGET_TYPE_MAP = {
     1: "Lead",
@@ -53,21 +54,9 @@ export const getTargetIncentiveReport = async (req) => {
 
         const currencySymbol = currency?.symbol || "₹";
 
-        // Date range filter for achieved actions
-        let dateFilter = {};
-        if (selectedDates && selectedDates.length === 2) {
-            const startDate = new Date(selectedDates[0]);
-            startDate.setHours(0, 0, 0, 0);
-
-            const endDate = new Date(selectedDates[1]);
-            endDate.setHours(23, 59, 59, 999);
-
-            dateFilter = {
-                created_date_time: {
-                    [Op.between]: [startDate, endDate],
-                },
-            };
-        }
+        // Selected date range (null = none given). A target is listed only when its own
+        // period overlaps this range, and its achievement is counted over that overlap.
+        const range = normalizeRange(selectedDates);
 
         const targetModel = targetVsIncentiveModel(req.tenantDB);
         const CartsModel = cartModel(req.tenantDB);
@@ -107,9 +96,30 @@ export const getTargetIncentiveReport = async (req) => {
             });
         }
 
+        // Keep only the targets whose period overlaps the selected range.
+        const listedTargets = targetRecords
+            .map((targetRecord) => ({ targetRecord, window: targetWindow(targetRecord, range) }))
+            .filter((entry) => entry.window);
+
+        if (listedTargets.length === 0) {
+            return resSuccess({
+                data: {
+                    item: [],
+                    totalRecords: 0,
+                    summary: {
+                        totalMembers: 0,
+                        totalTargetAmount: 0,
+                        totalAchievedAmount: 0,
+                        totalIncentivePayout: 0,
+                        currency_symbol: currencySymbol,
+                    },
+                },
+            });
+        }
+
         // Get assigned user IDs from target records
         const assignedUserIds = [
-            ...new Set(targetRecords.map((t) => t.assigned_team_member).filter(Boolean)),
+            ...new Set(listedTargets.map((entry) => entry.targetRecord.assigned_team_member).filter(Boolean)),
         ];
 
         // Fetch login details for assigned users
@@ -124,64 +134,77 @@ export const getTargetIncentiveReport = async (req) => {
 
         const userMap = new Map(users.map((u) => [u.id, u.username]));
 
-        // 1. Batch aggregate contact counts grouped by assigned user
-        const contactCounts = await ContactModel.findAll({
-            attributes: [
-                "a_application_login_id",
-                [sequelize.fn("COUNT", sequelize.col("id")), "count"],
-            ],
-            where: {
-                isDelete: 0,
-                a_application_login_id: { [Op.in]: assignedUserIds },
-                ...dateFilter,
-            },
-            group: ["a_application_login_id"],
-            raw: true,
-        });
-        const contactCountMap = new Map(
-            contactCounts.map((c) => [c.a_application_login_id, parseInt(c.count || 0, 10)])
-        );
-
-        // 2. Batch aggregate cart counts & totals grouped by assigned user and cart type.
+        // 1 + 2. Batch aggregates per distinct counting window (a target's own period clipped to
+        // the selected range), each grouped by assigned user (contacts) or user and cart type.
         // Achieved value is the pre-tax amount (taxable_amt: after discounts,
-        // incl. packing/transport, excl. GST and TCS) — incentive must not be
+        // incl. packing/transport, excl. GST and TCS) - incentive must not be
         // earned on GST. Falls back to grand_total - gst_amt for any row whose
         // taxable_amt was never stored.
-        const cartAggregates = await CartsModel.findAll({
-            attributes: [
-                "a_application_login_id",
-                "type",
-                [sequelize.fn("COUNT", sequelize.col("id")), "count"],
-                [
-                    sequelize.literal(
-                        "SUM(CASE WHEN taxable_amt IS NULL OR (taxable_amt = 0 AND grand_total > 0) " +
-                        "THEN COALESCE(grand_total, 0) - COALESCE(gst_amt, 0) ELSE taxable_amt END)"
-                    ),
-                    "total",
-                ],
-            ],
-            where: {
-                isDelete: 0,
-                a_application_login_id: { [Op.in]: assignedUserIds },
-                type: { [Op.in]: [1, 2, 3] },
-                ...dateFilter,
-            },
-            group: ["a_application_login_id", "type"],
-            raw: true,
-        });
+        const windows = new Map();
+        listedTargets.forEach((entry) => windows.set(windowKey(entry.window), entry.window));
 
-        const cartMap = new Map();
-        cartAggregates.forEach((row) => {
-            const key = `${row.a_application_login_id}_${row.type}`;
-            cartMap.set(key, {
-                count: parseInt(row.count || 0, 10),
-                total: parseFloat(row.total || 0),
+        const aggregatesByWindow = new Map();
+        for (const [key, window] of windows) {
+            const bounds = windowBounds(window);
+            const dateFilter = bounds
+                ? { created_date_time: { [Op.between]: [bounds.start, bounds.end] } }
+                : {};
+
+            const contactCounts = await ContactModel.findAll({
+                attributes: [
+                    "a_application_login_id",
+                    [sequelize.fn("COUNT", sequelize.col("id")), "count"],
+                ],
+                where: {
+                    isDelete: 0,
+                    a_application_login_id: { [Op.in]: assignedUserIds },
+                    ...dateFilter,
+                },
+                group: ["a_application_login_id"],
+                raw: true,
             });
-        });
+            const contactCountMap = new Map(
+                contactCounts.map((c) => [c.a_application_login_id, parseInt(c.count || 0, 10)])
+            );
+
+            const cartAggregates = await CartsModel.findAll({
+                attributes: [
+                    "a_application_login_id",
+                    "type",
+                    [sequelize.fn("COUNT", sequelize.col("id")), "count"],
+                    [
+                        sequelize.literal(
+                            "SUM(CASE WHEN taxable_amt IS NULL OR (taxable_amt = 0 AND grand_total > 0) " +
+                            "THEN COALESCE(grand_total, 0) - COALESCE(gst_amt, 0) ELSE taxable_amt END)"
+                        ),
+                        "total",
+                    ],
+                ],
+                where: {
+                    isDelete: 0,
+                    a_application_login_id: { [Op.in]: assignedUserIds },
+                    type: { [Op.in]: [1, 2, 3] },
+                    ...dateFilter,
+                },
+                group: ["a_application_login_id", "type"],
+                raw: true,
+            });
+
+            const cartMap = new Map();
+            cartAggregates.forEach((row) => {
+                cartMap.set(`${row.a_application_login_id}_${row.type}`, {
+                    count: parseInt(row.count || 0, 10),
+                    total: parseFloat(row.total || 0),
+                });
+            });
+
+            aggregatesByWindow.set(key, { contactCountMap, cartMap });
+        }
 
         // 3. Fast synchronous mapping in memory
-        const reportItems = targetRecords
-            .map((targetRecord) => {
+        const reportItems = listedTargets
+            .map(({ targetRecord, window }) => {
+                const { contactCountMap, cartMap } = aggregatesByWindow.get(windowKey(window));
                 const userId = targetRecord.assigned_team_member;
                 const userName = userMap.get(userId);
                 if (!userName) return null; // Skip if user is deleted

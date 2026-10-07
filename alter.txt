@@ -4025,3 +4025,10 @@ ALTER TABLE `attendance_batch_process` ADD COLUMN `is_sandwich_applied` TINYINT 
 01-10-2026 Dhaval
 -- late_in/early_out were NOT NULL but code/model write NULL (week-off, holiday, leave, on-time) -> "Column early_out cannot be null" on api/attendance/attendance-d-up. Also apply on smalloffice_sample_tenant.
 ALTER TABLE `attendance_batch_process` MODIFY `late_in` VARCHAR(100) NULL DEFAULT NULL, MODIFY `early_out` VARCHAR(100) NULL DEFAULT NULL;
+
+
+07-10-2026 Dhaval
+-- migration: migration/tenant/migrations/20261007100000-add-product-serial-to-task-managements-and-visits.js
+-- Task / Support Ticket / Visit store an optional serial number (entry shown when the company has a product with is_serial_number = 2); product_id is derived from the serial. Also apply on smalloffice_sample_tenant.
+ALTER TABLE `task_managements` ADD COLUMN `product_id` INT(11) NULL DEFAULT NULL, ADD COLUMN `serial_number` VARCHAR(100) NULL DEFAULT NULL;
+ALTER TABLE `visits` ADD COLUMN `product_id` INT(11) NULL DEFAULT NULL, ADD COLUMN `serial_number` VARCHAR(100) NULL DEFAULT NULL;
