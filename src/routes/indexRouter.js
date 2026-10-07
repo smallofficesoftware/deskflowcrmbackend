@@ -97,6 +97,7 @@ import miracleRoutes from "./miracle/miracleRoutes.js";
 import thirdPartyLogRouter from "./activities/thirdPartyLogRouter.js";
 import onlineStoreRouter from "./online-store/onlineStoreRouter.js";
 import supportTicketRouter from "./online-store/supportTicketRouter.js";
+import serialRequirementRouter from "./serial_requirement/serialRequirementRouter.js";
 import customFieldFormRouter from "./other_settings/customFieldFormRouter.js";
 import getwarehouse from "./other_settings/warehouseRouter.js";
 import wrkflwAutoAssignmentContactRouter from "./other_settings/wrkflwAutoAssignmentContactRouter.js";
@@ -199,6 +200,7 @@ export default () => {
   productBillOfMaterialRouter(app);
   stockAdjustmentRouter(app);
   supportTicketRouter(app);
+  serialRequirementRouter(app);
   whatsappRoutes(app);
   miracleRoutes(app);
   thirdPartyLogRouter(app);
