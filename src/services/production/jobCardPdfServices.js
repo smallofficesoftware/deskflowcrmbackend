@@ -16,7 +16,7 @@ import { fetchProductionEntryDetail, jobCardsDetails } from "./JobCardServices.j
 const num = (v) => Number(v) || 0;
 
 // 5 -> "5", 2.5 -> "2.5", 2.125 -> "2.125" (no trailing zeros)
-const fmt = (v) => {
+export const fmt = (v) => {
     const s = num(v).toFixed(3);
     return s.replace(/\.?0+$/, "");
 };
@@ -37,7 +37,7 @@ const duration = (seconds) => {
     return parts.join(" ");
 };
 
-const renderPdf = async ({ companyDetail, viewName, data, filePrefix }) => {
+export const renderPdf = async ({ companyDetail, viewName, data, filePrefix }) => {
     const uploadDir = path.resolve(
         __dirnameConstant,
         `../../media-folder/jobCardPdf/${companyDetail.id.toString()}`
