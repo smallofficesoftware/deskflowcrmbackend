@@ -1,4 +1,5 @@
 import { assignLabelToJob, assignStatusToJob, assignTeamToJob, deleteProductionEntryProvider, fetchBomOrderItemsProvider, fetchBomProductsProvider, fetchProductionEntryDetailProvider, fetchWarehouseStockBatchProvider, jobCardDeleteProvider, jobCardsDetailsProvider, jobCardsFetchProductionListProvider, jobCardsFetchProvider, jobCardsSaveProvider, printBomProvider, productionEntryProvider, updateJobCardQtyProvider } from "../../controllers/production/JobCardController.js";
+import { bomPdfProvider, jobCardPdfProvider, productionEntryPdfProvider } from "../../controllers/production/JobCardPdfController.js";
 import { rawMaterialProcessStatusReportProvider } from "../../controllers/production/RawMaterialProcessStatusController.js";
 import { createSubJobCardProvider } from "../../controllers/production/SubJobCardController.js";
 import { authenticateToken } from "../../middlewares/auth.js";
@@ -24,5 +25,10 @@ export default (app) => {
     app.post("/assign-lable-to-job", authenticateToken, tenantMiddleware, assignLabelToJob);
     app.post("/assign-status-to-job", authenticateToken, tenantMiddleware, assignStatusToJob);
     app.post("/job-card/update", authenticateToken, tenantMiddleware, updateJobCardQtyProvider);
+    // Server-made PDFs: body { id, kind: "jobCard" | "bom" } / { id } -> data.fileLinkPath
+    app.post("/job-card/pdf", authenticateToken, tenantMiddleware, jobCardPdfProvider);
+    // The product BOM sheet the web prints: body { product_id, bom_id? }
+    app.post("/bom/pdf", authenticateToken, tenantMiddleware, bomPdfProvider);
+    app.post("/job-card/production-entry/pdf", authenticateToken, tenantMiddleware, productionEntryPdfProvider);
 
 }
