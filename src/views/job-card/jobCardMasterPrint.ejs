@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    body { font-family: sans-serif; color: #000; padding: 20px; margin: 0; }
+    h2 { text-align: center; border-bottom: 2px solid #000; padding-bottom: 10px; }
+    h5 { font-size: 12px; font-weight: bold; margin: 5px 0; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 12px; }
+    th, td { border: 1px solid #000; padding: 6px; text-align: left; }
+    th { background-color: #f8f9fa; }
+    td.center { text-align: center; }
+    .short { color: red; }
+    .none { font-size: 12px; font-style: italic; margin-bottom: 20px; }
+  </style>
+</head>
+<body>
+  <!-- Same layout as the web's "Print Master Report" (JobCardFullPrint). -->
+  <h2>MASTER JOB CARD REPORT #<%= jobCardId %></h2>
+
+  <table>
+    <tbody>
+      <tr>
+        <th style="width:20%">Customer</th><td><%= dash(contact.name) %></td>
+        <th style="width:20%">Contact No</th><td><%= dash(contact.phone) %></td>
+      </tr>
+      <tr>
+        <th>Item Name</th><td><%= dash(item.item_name) %> (<%= item.item_code || "" %>)</td>
+        <th>Order No</th><td><%= dash(item.order_no) %></td>
+      </tr>
+      <tr>
+        <th>Target Qty</th><td><strong><%= item.order_qty %> <%= item.unit || "" %></strong></td>
+        <th>Total Produced</th><td><strong><%= totalProduced %> <%= item.unit || "" %></strong></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h4>Required Materials</h4>
+  <% if (!processes.length) { %>
+    <p class="none">No required materials recorded.</p>
+  <% } %>
+  <% processes.forEach(function (process, index) { %>
+    <div style="margin-bottom:15px">
+      <h5><%= index + 1 %>. Process: <%= process.process_name %></h5>
+      <table>
+        <thead>
+          <tr>
+            <th>Type</th>
+            <th>Material Name</th>
+            <th>Required Qty</th>
+            <th>Available Qty</th>
+            <th>Consumed/Rejected</th>
+            <th>Pending Qty</th>
+            <th>Shortage/Diff</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% [["Consumption", process.consumption], ["Rejection", process.rejection]].forEach(function (g) {
+               g[1].forEach(function (m) { %>
+            <tr>
+              <td><%= g[0] %></td>
+              <td><%= m.material_name %> (<%= m.unit %>)</td>
+              <td><%= f3(m.required_qty) %></td>
+              <td><%= f3(m.available_qty) %></td>
+              <td><%= f3(m.consumed_qty) %></td>
+              <td><%= f3(pendingOf(m)) %></td>
+              <td class="<%= diffOf(m) < 0 ? 'short' : '' %>"><%= f3(diffOf(m)) %></td>
+            </tr>
+          <% }); }); %>
+          <% if (!process.consumption.length && !process.rejection.length) { %>
+            <tr><td colspan="7" class="center">No materials required for this process.</td></tr>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+  <% }); %>
+
+  <h4>Production History</h4>
+  <table>
+    <thead>
+      <tr>
+        <th>Entry ID</th>
+        <th>Date</th>
+        <th>Produced Qty</th>
+        <th>Consumption Items</th>
+        <th>Rejection Items</th>
+        <th>Remark</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% if (!entries.length) { %>
+        <tr><td colspan="6" class="center">No production entries recorded yet.</td></tr>
+      <% } else { entries.forEach(function (e) { %>
+        <tr>
+          <td>#<%= e.id %></td>
+          <td><%= e.entry_date %></td>
+          <td><strong><%= e.produced_qty %></strong></td>
+          <td><%= e.consumption_count %></td>
+          <td><%= e.rejection_count %></td>
+          <td><%= dash(e.remark) %></td>
+        </tr>
+      <% }); } %>
+    </tbody>
+    <% if (entries.length) { %>
+      <tfoot>
+        <tr>
+          <th colspan="2" style="text-align:right">Total:</th>
+          <th><%= totalProduced %></th>
+          <th colspan="3"></th>
+        </tr>
+      </tfoot>
+    <% } %>
+  </table>
+</body>
+</html>

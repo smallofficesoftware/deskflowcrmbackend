@@ -17,7 +17,7 @@ import { productionTransactionProcessTimesModel } from "../../models/production/
 import { productionTransactionsItemsModel } from "../../models/production/productionTransactionsItemsModel.js";
 import { PAGE_ID } from "../../utils/AppEnumeration.js";
 import { isValid, resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
-import { inserStockAdjustment } from "../activities/stockAdjustmentServices.js";
+import { checkStockAvailability, checkWarehouseWiseStock, getStockCheckMode, inserStockAdjustment } from "../activities/stockAdjustmentServices.js";
 import { getCompanyByLoginId } from "../commonServices.js";
 import { fetchJobCardsPerProcess } from "./rawMaterialProcessJobCards.js";
 import { fetchMaterialsWithOwnBom } from "./materialOwnBomLookup.js";
@@ -1179,6 +1179,63 @@ export const submitUnifiedProductionEntry = async (req) => {
         let rejStockId = null;
         let consStockId = null;
 
+        // The master row, items and process times are already saved above. If
+        // a stock step below fails, undo them (and any stock entry already
+        // made) the way deleteProductionEntry does, and tell the caller -
+        // otherwise the entry stays saved with its stock never updated and the
+        // user is still told it succeeded.
+        const rollbackEntry = async () => {
+            const stockIds = [fgStockId, rejStockId, consStockId].filter(Boolean);
+            const now = new Date();
+            if (stockIds.length > 0) {
+                await cartModel(req.tenantDB).update(
+                    { isDelete: 1, modified_date: now },
+                    { where: { id: stockIds } }
+                );
+                await cartItemModel(req.tenantDB).update(
+                    { isDelete: 1, modified_date: now },
+                    { where: { cart_id: stockIds } }
+                );
+            }
+            await productionTransactionModelInstance.update(
+                { isDelete: 1, modified_date: now }, { where: { id: productionId } });
+            await productionTransactionsItemsModelInstance.update(
+                { isDelete: 1, modified_date: now }, { where: { production_id: productionId } });
+            await productionTransactionProcessTimesModelInstance.update(
+                { isDelete: 1, modified_date: now }, { where: { production_id: productionId } });
+        };
+        const failEntry = async (stepName, ackMsg) => {
+            await rollbackEntry();
+            return resError({
+                ack_msg: ackMsg || `Stock update failed (${stepName}). The production entry was not saved.`,
+                developer_msg: `production entry rolled back: ${stepName} stock step failed`,
+            });
+        };
+
+        // Check the consumption stock up front, before any stock entry is
+        // made, so a shortage leaves nothing behind. How strict it is follows
+        // the company's two stock switches (same as the web / sales invoices):
+        //   "Strict Product Stock Check" off              -> no check
+        //   on, "Warehouse Wise" off                      -> company-wide stock
+        //   on and "Warehouse Wise" on                    -> stock of the chosen warehouse
+        const consumptionToCheck = consumption_items
+            .filter(item => productCache[item.material_id] && item.qty > 0)
+            .map(item => ({
+                product_id: item.material_id,
+                product_name: productCache[item.material_id].product_name,
+                warehouse_from: item.warehouse_id,
+                qty: item.qty,
+            }));
+        const stockMode = consumptionToCheck.length > 0 ? await getStockCheckMode(a_application_login_id) : 0;
+        if (stockMode > 0) {
+            const stockCheck = stockMode === 2
+                ? await checkWarehouseWiseStock(req, consumptionToCheck)
+                : await checkStockAvailability(req, { stock_adjustment_type: "3" }, consumptionToCheck);
+            if (!stockCheck?.status) {
+                return failEntry("consumption", (stockCheck?.errors || []).join("\n"));
+            }
+        }
+
         // ==========================================
         // 3A. FINISHED GOODS STOCK ADJUSTMENT (INWARD)
         // ==========================================
@@ -1202,7 +1259,8 @@ export const submitUnifiedProductionEntry = async (req) => {
             }];
 
             const fgInsert = await inserStockAdjustment(req);
-            if (fgInsert && fgInsert.ack === 1) fgStockId = fgInsert.inserted_id;
+            if (!fgInsert || fgInsert.ack !== 1) return failEntry("finished goods", fgInsert?.ack_msg);
+            fgStockId = fgInsert.data?.inserted_id;
         }
 
         // ==========================================
@@ -1236,7 +1294,8 @@ export const submitUnifiedProductionEntry = async (req) => {
                 req.body.stockItem = rejStockItems;
 
                 const rejInsert = await inserStockAdjustment(req);
-                if (rejInsert && rejInsert.ack === 1) rejStockId = rejInsert.inserted_id;
+                if (!rejInsert || rejInsert.ack !== 1) return failEntry("rejection", rejInsert?.ack_msg);
+                rejStockId = rejInsert.data?.inserted_id;
             }
         }
 
@@ -1266,12 +1325,15 @@ export const submitUnifiedProductionEntry = async (req) => {
                 req.body.stockDetail = {
                     stock_adjustment_type: "3", // Minus
                     stock_date: entry_date,
-                    stock_remark: `Production CONSUMPTION OUTWARD (Job Card #${job_id})`
+                    stock_remark: `Production CONSUMPTION OUTWARD (Job Card #${job_id})`,
+                    // Already checked above, as strictly as the company settings ask.
+                    skip_stock_check: true
                 };
                 req.body.stockItem = consStockItems;
 
                 const consInsert = await inserStockAdjustment(req);
-                if (consInsert && consInsert.ack === 1) consStockId = consInsert.inserted_id;
+                if (!consInsert || consInsert.ack !== 1) return failEntry("consumption", consInsert?.ack_msg);
+                consStockId = consInsert.data?.inserted_id;
             }
         }
 

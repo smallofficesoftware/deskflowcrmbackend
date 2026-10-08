@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    body { font-family: sans-serif; color: #000; padding: 20px; margin: 0; }
+    h2 { text-align: center; border-bottom: 2px solid #000; padding-bottom: 10px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 12px; }
+    th, td { border: 1px solid #000; padding: 6px; text-align: left; }
+    th { background-color: #f8f9fa; }
+  </style>
+</head>
+<body>
+  <!-- Same layout as the web's production entry print (ProductionEntryPrint). -->
+  <h2>PRODUCTION ENTRY RECEIPT</h2>
+
+  <table>
+    <tbody>
+      <tr>
+        <th style="width:25%">Job Card No</th><td>#<%= jobCardId %></td>
+        <th style="width:25%">Entry ID</th><td>#<%= entry.id %></td>
+      </tr>
+      <tr>
+        <th>Item Name</th><td><%= itemName %></td>
+        <th>Date</th><td><%= entry.entry_date %></td>
+      </tr>
+      <tr>
+        <th>Produced Qty</th><td><strong><%= entry.produced_qty %></strong></td>
+        <th>Remark</th><td><%= dash(entry.remark) %></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h4>Consumed Materials</h4>
+  <table>
+    <thead>
+      <tr><th>Material Name</th><th>Process ID</th><th>Consumed Qty</th></tr>
+    </thead>
+    <tbody>
+      <% entry.consumption_items.forEach(function (m) { %>
+        <tr>
+          <td><%= m.material_name || ("Material ID: " + m.material_id) %></td>
+          <td><%= m.process_id %></td>
+          <td><%= m.qty %> <%= m.unit || "" %></td>
+        </tr>
+      <% }); %>
+    </tbody>
+  </table>
+
+  <h4>Rejected/Scrap Materials</h4>
+  <table>
+    <thead>
+      <tr><th>Material Name</th><th>Process ID</th><th>Rejected Qty</th></tr>
+    </thead>
+    <tbody>
+      <% entry.rejection_items.forEach(function (m) { %>
+        <tr>
+          <td><%= m.material_name || ("Material ID: " + m.material_id) %></td>
+          <td><%= m.process_id %></td>
+          <td><%= m.qty %> <%= m.unit || "" %></td>
+        </tr>
+      <% }); %>
+    </tbody>
+  </table>
+</body>
+</html>

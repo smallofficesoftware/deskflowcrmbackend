@@ -6,12 +6,15 @@ import pdf from "pdf-creator-node";
 import { __dirnameConstant, PDF_LINK_EXTENDED_JOB_CARD } from "../../utils/appConstants.js";
 import { resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { getCompanyDetailByLoginId } from "../commonServices.js";
-import { fetchProductionEntryDetail, jobCardsDetails } from "./JobCardServices.js";
+import { fetchProductionEntryDetail, fetchProductionList, jobCardsDetails } from "./JobCardServices.js";
 
-// Server-side PDFs for the mobile app (and anything else that wants one):
-// the client asks, gets a link, downloads the file and prints it. The data
-// comes from the same services the web screens use (jobCardsDetails /
-// fetchProductionEntryDetail), so a printed sheet always matches the screen.
+// Server-side PDFs for the mobile app (and anything else that wants one): the
+// client asks, gets a link, downloads the file and prints it.
+//
+// Each print copies one of the web's print templates exactly (JobCardPrint,
+// JobCardFullPrint, RequiredMaterialPrint, ProductionEntryPrint), and the data
+// comes from the same services the web screens use, so a printed sheet always
+// matches the web's.
 
 const num = (v) => Number(v) || 0;
 
@@ -20,6 +23,12 @@ export const fmt = (v) => {
     const s = num(v).toFixed(3);
     return s.replace(/\.?0+$/, "");
 };
+
+// The web prints material quantities with three decimals.
+const f3 = (v) => num(v).toFixed(3);
+
+// The web shows a dash for an empty value.
+const dash = (v) => (v === undefined || v === null || v === "" ? "—" : v);
 
 // What the job card still needs from stock: required minus what its production
 // entries already consumed, never below 0 (same rule as the web print).
@@ -56,6 +65,8 @@ export const renderPdf = async ({ companyDetail, viewName, data, filePrefix }) =
         companyName: companyDetail.company_name || "",
         printedAt: moment().format("DD-MM-YYYY HH:mm"),
         fmt,
+        f3,
+        dash,
         pendingOf,
         diffOf,
         duration,
@@ -83,12 +94,26 @@ export const renderPdf = async ({ companyDetail, viewName, data, filePrefix }) =
     };
 };
 
-// kind: "jobCard" (customer, item, required material with stock) or "bom"
-// (just the processes and their materials).
+// The job card prints the web has, by `kind`:
+//   "jobCard"          Print Job Card (customer and item details)
+//   "master"           Print Master Report (materials plus production history)
+//   "requiredMaterial" Required Material Print
+// Anything else is treated as "jobCard".
+const KINDS = {
+    jobCard: { view: "jobCardPrint", prefix: "job_card", name: (id) => `JobCard-${id}` },
+    master: { view: "jobCardMasterPrint", prefix: "job_card_master", name: (id) => `JobCardMaster-${id}` },
+    requiredMaterial: {
+        view: "requiredMaterialPrint",
+        prefix: "required_material",
+        name: (id) => `RequiredMaterial-${id}`,
+    },
+};
+
 export const jobCardPdf = async (req) => {
     try {
         const { a_application_login_id, id } = req.body;
-        const kind = req.body.kind === "bom" ? "bom" : "jobCard";
+        const kindKey = KINDS[req.body.kind] ? req.body.kind : "jobCard";
+        const kind = KINDS[kindKey];
 
         if (!id) {
             return resBadRequest({
@@ -108,27 +133,33 @@ export const jobCardPdf = async (req) => {
             return resError({ ack_msg: "Company not found." });
         }
 
-        const targetQty = req.body.production_qty != null && req.body.production_qty !== ""
-            ? num(req.body.production_qty)
-            : null;
+        // The master report also lists the production entries.
+        let entries = [];
+        if (kindKey === "master") {
+            req.body.job_id = id;
+            const list = await fetchProductionList(req);
+            entries = list && list.ack === 1 && Array.isArray(list.data) ? list.data : [];
+        }
+        const totalProduced = entries.reduce((sum, e) => sum + num(e.produced_qty), 0);
 
         const file = await renderPdf({
             companyDetail,
-            viewName: "jobCardPdf",
-            filePrefix: kind === "bom" ? `bom_${id}` : `job_card_${id}`,
+            viewName: kind.view,
+            filePrefix: `${kind.prefix}_${id}`,
             data: {
-                kind,
-                title: kind === "bom" ? "Bill of Material" : `Job Card #${id}`,
-                contact: contactDetail,
-                item: itemDetail,
-                targetQty,
+                jobCardId: id,
+                contact: contactDetail || {},
+                item: itemDetail || {},
+                itemName: itemDetail?.item_name || "",
                 processes: bomProcesses || [],
+                entries,
+                totalProduced,
             },
         });
 
         return resSuccess({
             ack_msg: "Pdf generated",
-            data: { ...file, title: kind === "bom" ? `BOM-${id}` : `JobCard-${id}` },
+            data: { ...file, title: kind.name(id) },
         });
     } catch (error) {
         console.error("jobCardPdf Error", error);
@@ -139,6 +170,7 @@ export const jobCardPdf = async (req) => {
     }
 };
 
+// The production entry print: "PRODUCTION ENTRY RECEIPT", like the web's.
 export const productionEntryPdf = async (req) => {
     try {
         const { a_application_login_id, id } = req.body;
@@ -156,6 +188,16 @@ export const productionEntryPdf = async (req) => {
         }
         const entry = detail.data;
 
+        // The receipt names the item of the job card the entry belongs to.
+        let itemName = "";
+        try {
+            req.body.id = entry.job_id;
+            const job = await jobCardsDetails(req);
+            itemName = job?.ack === 1 ? job.data?.itemDetail?.item_name || "" : "";
+        } finally {
+            req.body.id = id;
+        }
+
         const companyDetail = await getCompanyDetailByLoginId(a_application_login_id);
         if (!companyDetail?.id) {
             return resError({ ack_msg: "Company not found." });
@@ -163,11 +205,16 @@ export const productionEntryPdf = async (req) => {
 
         const file = await renderPdf({
             companyDetail,
-            viewName: "productionEntryPdf",
+            viewName: "productionEntryReceipt",
             filePrefix: `production_entry_${id}`,
             data: {
-                entry,
-                dateText: entry.entry_date ? moment(entry.entry_date).format("DD-MM-YYYY") : "",
+                jobCardId: entry.job_id,
+                itemName,
+                entry: {
+                    ...entry,
+                    consumption_items: entry.consumption_items || [],
+                    rejection_items: entry.rejection_items || [],
+                },
             },
         });
 

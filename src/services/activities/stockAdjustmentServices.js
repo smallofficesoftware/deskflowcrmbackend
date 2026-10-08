@@ -4,12 +4,79 @@ import { buildSearchQuery } from "../../helpers/searchAlgoV1.js";
 import { cartItemModel } from "../../models/activities/cartItemsModel.js";
 import { cartModel } from "../../models/activities/cartsModel.js";
 import loginModel from "../../models/application_login/loginModel.js";
+import companyModel from "../../models/company_setup/companyModel.js";
 import { wareHouseModel } from "../../models/other_settings/wareHouseModel.js";
 import { getFinancialYear, getFinancialYearRangeWise, isValid, resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { getCompanyByLoginId } from "../commonServices.js";
 
-const checkStockAvailability = async (req, stockDetail, stockItem) => {
-    if (stockDetail.stock_adjustment_type != 3) {
+/**
+ * How strictly to check stock before taking it out, from the company's two
+ * switches (same as the web / sales invoices):
+ *   0 - "Strict Product Stock Check" off: no check, stock may go below zero
+ *   1 - on, "Warehouse Wise" off: check the product's company-wide stock
+ *   2 - on and "Warehouse Wise" on: check the stock of the chosen warehouse
+ */
+export const getStockCheckMode = async (a_application_login_id) => {
+    const company = await getCompanyByLoginId(a_application_login_id);
+    const settings = await companyModel.findOne({
+        where: { id: company?.company_masters_id, isDelete: 0 },
+        attributes: ["is_strict_check_product_stock", "is_strict_wharehouse_wise_product_stock_check"],
+        raw: true,
+    });
+    if (settings?.is_strict_check_product_stock != 2) return 0;
+    return settings?.is_strict_wharehouse_wise_product_stock_check == 2 ? 2 : 1;
+};
+
+/**
+ * Stock of each item in its own warehouse (`warehouse_from`) against the
+ * quantity wanted, adding up rows for the same product and warehouse.
+ */
+export const checkWarehouseWiseStock = async (req, stockItem) => {
+    const wanted = new Map();
+    stockItem.forEach((i) => {
+        const key = `${i.product_id}_${i.warehouse_from}`;
+        const row = wanted.get(key) || { ...i, qty: 0 };
+        row.qty += Math.abs(Number(i.qty) || 0);
+        wanted.set(key, row);
+    });
+    const stockRows = await cartItemModel(req.tenantDB).findAll({
+        where: {
+            isDelete: 0,
+            item_product_id: { [Op.in]: [...new Set(stockItem.map((i) => i.product_id))] },
+            cart_number: { [Op.ne]: null, [Op.not]: "" },
+            stock_type: { [Op.ne]: 0 },
+            [Op.or]: [
+                { cart_type: 4, reference_type: { [Op.ne]: 8 } },
+                { cart_type: 3, reference_type: { [Op.ne]: 9 } },
+                { cart_type: { [Op.in]: [6, 7, 8, 9, 10, 11] } },
+            ],
+        },
+        attributes: [
+            "item_product_id",
+            "item_warehouse_id",
+            [
+                req.tenantDB.literal(`SUM(CASE WHEN cart_type IN (4, 6, 8, 10) THEN item_qty WHEN cart_type IN (3, 7, 9, 11) THEN -item_qty ELSE 0 END)`),
+                "calOpenQty",
+            ],
+        ],
+        group: ["item_product_id", "item_warehouse_id"],
+        raw: true,
+    });
+    const errors = [];
+    wanted.forEach((w) => {
+        const found = stockRows.find((s) => s.item_product_id == w.product_id && s.item_warehouse_id == w.warehouse_from);
+        const available = found ? Number(found.calOpenQty) || 0 : 0;
+        if (available < w.qty) {
+            errors.push(`${w.product_name} has only ${available} in the selected warehouse, requested ${w.qty}`);
+        }
+    });
+    return errors.length ? { status: false, errors } : { status: true };
+};
+
+export const checkStockAvailability = async (req, stockDetail, stockItem) => {
+    // skip_stock_check: the caller (production entry) already checked, following
+    // the company's strict-stock settings.
+    if (stockDetail.stock_adjustment_type != 3 || stockDetail.skip_stock_check) {
         return { status: true };
     }
     const cartItemModelInstance = cartItemModel(req.tenantDB);
@@ -95,7 +162,14 @@ export const inserStockAdjustment = async (req) => {
         if (!isValid(stockDetail.stock_adjustment_type)) {
             return resError({ ack_msg: "Stock adjustment type not find" });
         }
-        const response = await checkStockAvailability(req, stockDetail, stockItem);
+        // Taking stock out (type 3) is checked as strictly as the company's
+        // stock switches ask; transfers and additions are never checked.
+        let response = { status: true };
+        if (stockDetail.stock_adjustment_type == 3 && !stockDetail.skip_stock_check) {
+            const mode = await getStockCheckMode(a_application_login_id);
+            if (mode === 2) response = await checkWarehouseWiseStock(req, stockItem);
+            else if (mode === 1) response = await checkStockAvailability(req, stockDetail, stockItem);
+        }
 
         if (!response?.status) {
             return resError({ ack_msg: response?.errors.join("\n") });
