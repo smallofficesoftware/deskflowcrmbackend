@@ -15,7 +15,7 @@ import { Sequelize as SequelizePkg } from "sequelize";
 //   2. Advance entry   only when carts.advance_payment > 0, amount_type 1, remark "Advance Payment",
 //        opposite type of the invoice entry, created unapproved (approver 0) exactly like the app
 // Entries are linked with reference_table 'carts' / reference_id <cart id>, mode = cart.payment_type
-// (or -1), payment/approve/created date = cart.created_date_time, remark in the app's HTML format.
+// (or -1), payment/approve/created date = cart.update_Date_time, remark in the app's HTML format.
 // Safe to re-run: a cart that already has a non-deleted entry of that kind (amount_type 0 for the
 // invoice entry, amount_type 1 for the advance entry) is skipped.
 //
@@ -96,7 +96,7 @@ const remarkHtml = (typeName, cart) =>
 
     const [carts] = await tenantDB.query(
       `SELECT c.id, c.type, c.to_customer_id, c.to_customer_name, c.cart_number, c.cart_date,
-              c.created_date_time, c.grand_total, c.advance_payment, c.payment_type,
+              c.update_Date_time, c.grand_total, c.advance_payment, c.payment_type,
               c.approve_a_application_login_id AS cart_approver,
               EXISTS (SELECT 1 FROM account_transactions t WHERE t.company_masters_id = c.company_masters_id
                       AND t.isDelete = 0 AND t.reference_table = 'carts' AND t.reference_id = c.id
@@ -163,7 +163,7 @@ const remarkHtml = (typeName, cart) =>
               mode: p.mode,
               amount: p.amount,
               amount_type: p.amount_type,
-              when: p.cart.created_date_time,
+              when: p.cart.update_Date_time,
               remark: p.remark,
               approver: p.approver,
               cart: p.cart.id,
