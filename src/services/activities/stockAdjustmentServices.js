@@ -8,7 +8,7 @@ import { wareHouseModel } from "../../models/other_settings/wareHouseModel.js";
 import { getFinancialYear, getFinancialYearRangeWise, isValid, resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { getCompanyByLoginId } from "../commonServices.js";
 
-const checkStockAvailability = async (req, stockDetail, stockItem) => {
+export const checkStockAvailability = async (req, stockDetail, stockItem) => {
     if (stockDetail.stock_adjustment_type != 3) {
         return { status: true };
     }
