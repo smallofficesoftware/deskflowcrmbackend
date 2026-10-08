@@ -18,6 +18,7 @@ import { productModel } from "../../models/product_settings/productModel.js";
 import { productUnitMasterModel } from "../../models/product_settings/productUnitMasterModel.js";
 import { taxModel } from "../../models/product_settings/taxModel.js";
 import { customFieldFormModel } from "../../models/other_settings/customFieldFormModel.js";
+import { wareHouseModel } from "../../models/other_settings/wareHouseModel.js";
 import { MIRACLE_LEDGER_PDF } from "../../utils/appConstants.js";
 import { createAxiosIntance } from "../../utils/miracleAxiosInstance.js";
 import { cleanHtmlText, parseMiracleRights } from "../../utils/miracleRightsHelper.js";
@@ -356,6 +357,21 @@ export const syncInvoice = async (req) => {
 
                 const productMap = new Map(products.map(p => [p.id, p]));
 
+                // Warehouse names for the items' locnm (Miracle "Location Name"). A real
+                // warehouse only: no warehouse / the default one (-1) sends no locnm.
+                const warehouseIds = [...new Set(
+                    getCartItem.map(i => Number(i.item_warehouse_id)).filter(id => id > 0)
+                )];
+                const warehouseNameMap = new Map();
+                if (warehouseIds.length > 0) {
+                    const warehouses = await wareHouseModel(req.tenantDB).findAll({
+                        where: { isDelete: 0, id: warehouseIds },
+                        attributes: ["id", "warehouse_name"],
+                        raw: true
+                    });
+                    warehouses.forEach(w => warehouseNameMap.set(Number(w.id), String(w.warehouse_name || "").trim()));
+                }
+
                 // Contact & Company Details (using request-level cache for bulk syncs)
                 let getContactDetail = contactCache.get(getCart.to_customer_id);
                 if (!getContactDetail) {
@@ -514,6 +530,12 @@ export const syncInvoice = async (req) => {
                         amt: Number(taxable_amount.toFixed(1)),
                         expdet: itemExpdet,
                     };
+
+                    // Location Name: the item's warehouse (max 50 chars in Miracle).
+                    const locnm = warehouseNameMap.get(Number(item.item_warehouse_id));
+                    if (locnm) {
+                        itemPayload.locnm = locnm.slice(0, 50);
+                    }
 
                     if (Object.keys(itemUfddet).length > 0) {
                         itemPayload.ufddet = itemUfddet;
