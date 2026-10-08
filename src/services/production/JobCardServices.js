@@ -17,7 +17,7 @@ import { productionTransactionProcessTimesModel } from "../../models/production/
 import { productionTransactionsItemsModel } from "../../models/production/productionTransactionsItemsModel.js";
 import { PAGE_ID } from "../../utils/AppEnumeration.js";
 import { isValid, resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
-import { checkStockAvailability, inserStockAdjustment } from "../activities/stockAdjustmentServices.js";
+import { checkStockAvailability, checkWarehouseWiseStock, getStockCheckMode, inserStockAdjustment } from "../activities/stockAdjustmentServices.js";
 import { getCompanyByLoginId } from "../commonServices.js";
 import { fetchJobCardsPerProcess } from "./rawMaterialProcessJobCards.js";
 import { fetchMaterialsWithOwnBom } from "./materialOwnBomLookup.js";
@@ -1213,17 +1213,24 @@ export const submitUnifiedProductionEntry = async (req) => {
         };
 
         // Check the consumption stock up front, before any stock entry is
-        // made, so a shortage leaves nothing behind.
+        // made, so a shortage leaves nothing behind. How strict it is follows
+        // the company's two stock switches (same as the web / sales invoices):
+        //   "Strict Product Stock Check" off              -> no check
+        //   on, "Warehouse Wise" off                      -> company-wide stock
+        //   on and "Warehouse Wise" on                    -> stock of the chosen warehouse
         const consumptionToCheck = consumption_items
             .filter(item => productCache[item.material_id] && item.qty > 0)
             .map(item => ({
                 product_id: item.material_id,
                 product_name: productCache[item.material_id].product_name,
+                warehouse_from: item.warehouse_id,
                 qty: item.qty,
             }));
-        if (consumptionToCheck.length > 0) {
-            const stockCheck = await checkStockAvailability(
-                req, { stock_adjustment_type: "3" }, consumptionToCheck);
+        const stockMode = consumptionToCheck.length > 0 ? await getStockCheckMode(a_application_login_id) : 0;
+        if (stockMode > 0) {
+            const stockCheck = stockMode === 2
+                ? await checkWarehouseWiseStock(req, consumptionToCheck)
+                : await checkStockAvailability(req, { stock_adjustment_type: "3" }, consumptionToCheck);
             if (!stockCheck?.status) {
                 return failEntry("consumption", (stockCheck?.errors || []).join("\n"));
             }
@@ -1318,7 +1325,9 @@ export const submitUnifiedProductionEntry = async (req) => {
                 req.body.stockDetail = {
                     stock_adjustment_type: "3", // Minus
                     stock_date: entry_date,
-                    stock_remark: `Production CONSUMPTION OUTWARD (Job Card #${job_id})`
+                    stock_remark: `Production CONSUMPTION OUTWARD (Job Card #${job_id})`,
+                    // Already checked above, as strictly as the company settings ask.
+                    skip_stock_check: true
                 };
                 req.body.stockItem = consStockItems;
 
