@@ -195,6 +195,14 @@
             </tr>
           </thead>
           <tbody>
+            <% const openingCell = formatBalanceCell(openingBalance); const
+            closingCell = formatBalanceCell(closingBalanceAmount); %>
+            <tr class="totals-row">
+              <td colspan="5">Opening Balance</td>
+              <td class="text-end" style="<%= openingCell.style %>">
+                <%= openingCell.text %>
+              </td>
+            </tr>
             <% if (rowsWithBalance.length === 0) { %>
             <tr>
               <td colspan="6" class="text-center">No transactions found</td>
@@ -222,6 +230,12 @@
               </td>
             </tr>
             <% } %>
+            <tr class="totals-row">
+              <td colspan="5">Closing Balance</td>
+              <td class="text-end" style="<%= closingCell.style %>">
+                <%= closingCell.text %>
+              </td>
+            </tr>
           </tbody>
         </table>
       </div>

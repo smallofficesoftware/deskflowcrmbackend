@@ -1653,8 +1653,19 @@ export const allAccountTransactionOfContactPDF = async (req, res) => {
     const closingBalance = openingBalance + (Number(totalsAgg?.totalCredit) || 0) - (Number(totalsAgg?.totalDebit) || 0);
     const lastRowBalance = rowsWithBalance.length > 0 ? rowsWithBalance[rowsWithBalance.length - 1].balance : openingBalance.toLocaleString("en-IN");
 
-    const fromDate = rowsWithBalance.length > 0 ? rowsWithBalance[0].payment_date : "";
-    const toDate = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+    // The statement header shows the period the user searched for. Only when no
+    // range was given does it fall back to "first entry -> today" (ticket: a
+    // 01-04-2026 to 31-03-2027 search printed the first entry's date and today).
+    const periodLabel = (d) => {
+      const m = moment(d, "YYYY-MM-DD", true);
+      return m.isValid() ? m.format("DD MMM YYYY") : "";
+    };
+    const fromDate =
+      (startDate && periodLabel(startDate)) ||
+      (rowsWithBalance.length > 0 ? rowsWithBalance[0].payment_date : "");
+    const toDate =
+      (endDate && periodLabel(endDate)) ||
+      new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 
     const printSettingModels = printSettingModel(req.tenantDB);
 
