@@ -6,8 +6,11 @@
     body { font-family: sans-serif; color: #000; padding: 20px; margin: 0; }
     h2 { text-align: center; border-bottom: 2px solid #000; padding-bottom: 10px; }
     h5 { font-size: 12px; font-weight: bold; margin: 5px 0; }
-    table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 12px; }
-    th, td { border: 1px solid #000; padding: 6px; text-align: left; }
+    /* Fixed layout: the server's fallback font is wider than the web's, and with
+       auto layout the 7-column materials table ran past the page edge. */
+    table { width: 100%; table-layout: fixed; border-collapse: collapse; margin-bottom: 20px; font-size: 12px; }
+    th, td { border: 1px solid #000; padding: 6px 4px; text-align: left; word-wrap: break-word; overflow-wrap: break-word; word-break: break-word; }
+    tr { page-break-inside: avoid; }
     th { background-color: #f8f9fa; }
     td.center { text-align: center; }
     .short { color: red; }
@@ -43,13 +46,22 @@
     <div style="margin-bottom:15px">
       <h5><%= index + 1 %>. Process: <%= process.process_name %></h5>
       <table>
+        <colgroup>
+          <col style="width: 14%" />
+          <col style="width: 20%" />
+          <col style="width: 12%" />
+          <col style="width: 12%" />
+          <col style="width: 15%" />
+          <col style="width: 12%" />
+          <col style="width: 15%" />
+        </colgroup>
         <thead>
           <tr>
             <th>Type</th>
             <th>Material Name</th>
             <th>Required Qty</th>
             <th>Available Qty</th>
-            <th>Consumed/Rejected</th>
+            <th>Consumed/<wbr>Rejected</th>
             <th>Pending Qty</th>
             <th>Shortage/Diff</th>
           </tr>
@@ -77,6 +89,14 @@
 
   <h4>Production History</h4>
   <table>
+    <colgroup>
+      <col style="width: 12%" />
+      <col style="width: 18%" />
+      <col style="width: 16%" />
+      <col style="width: 20%" />
+      <col style="width: 18%" />
+      <col style="width: 16%" />
+    </colgroup>
     <thead>
       <tr>
         <th>Entry ID</th>
