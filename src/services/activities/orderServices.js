@@ -111,6 +111,13 @@ const paymentModeList = [
 ];
 const symbolCurrency = "INR";
 
+// "Inv Date" in account transaction remarks is the user-editable cart date-time
+// (update_Date_time), falling back to cart_date for carts that never had one.
+const getInvoiceDateForRemark = (cart) => {
+  const resolved = cart?.update_Date_time || cart?.cart_date;
+  return resolved ? moment(resolved).format("YYYY-MM-DD") : "";
+};
+
 export const updateCartStatus = async (req, detail = {}) => {
   try {
     const { target_id, type, a_application_login_id } = detail || {};
@@ -583,7 +590,7 @@ export const orderCreate = async (req, res) => {
     if (is_approve === 1 && [3, 4, 6, 7].includes(Number(cart.type)) && cart.grand_total != 0 && cart.grand_total != null && cart.grand_total != undefined) {
 
       const invoiceNum = resultCart.dataValues.cart_number;
-      const invoiceDate = resultCart.dataValues.cart_date;
+      const invoiceDate = getInvoiceDateForRemark(resultCart.dataValues);
       const customerName = resultCart.dataValues.to_customer_name;
       const createDateTime =
         resultCart.dataValues.created_date_time.toISOString();
@@ -610,7 +617,7 @@ export const orderCreate = async (req, res) => {
       cart.advance_payment != "" && cart.advance_payment != 0 && cart.advance_payment >= 0 && cart.advance_payment != null && cart.advance_payment != undefined
     ) {
       const invoiceNum = resultCart.dataValues.cart_number;
-      const invoiceDate = resultCart.dataValues.cart_date;
+      const invoiceDate = getInvoiceDateForRemark(resultCart.dataValues);
       const customerName = resultCart.dataValues.to_customer_name;
       const createDateTime =
         resultCart.dataValues.created_date_time.toISOString();
@@ -2550,7 +2557,7 @@ export const orderUpdate = async (req, res) => {
 
         // CREATE NEW
         const invoiceNum = findCartData.dataValues.cart_number;
-        const invoiceDate = findCartData.dataValues.cart_date;
+        const invoiceDate = getInvoiceDateForRemark(findCartData.dataValues);
         const customerName = findCartData.dataValues.to_customer_name;
         const createDateTime = new Date(
           findCartData.dataValues.update_Date_time || findCartData.dataValues.cart_date || findCartData.dataValues.created_date_time
@@ -2620,7 +2627,7 @@ export const orderUpdate = async (req, res) => {
           }
 
           const invoiceNum = findCartData.dataValues.cart_number;
-          const invoiceDate = findCartData.dataValues.cart_date;
+          const invoiceDate = getInvoiceDateForRemark(findCartData.dataValues);
           const customerName = findCartData.dataValues.to_customer_name;
           const customerEmail = findCartData.dataValues.to_customer_email;
           const createDateTime =
@@ -2669,7 +2676,7 @@ export const orderUpdate = async (req, res) => {
 
         // RE-CREATE
         const invoiceNum = findCartData.dataValues.cart_number;
-        const invoiceDate = findCartData.dataValues.cart_date;
+        const invoiceDate = getInvoiceDateForRemark(findCartData.dataValues);
         const customerName = findCartData.dataValues.to_customer_name;
         const createDateTime = new Date(
           findCartData.dataValues.update_Date_time || findCartData.dataValues.cart_date || findCartData.dataValues.created_date_time
@@ -2708,7 +2715,7 @@ export const orderUpdate = async (req, res) => {
         }
 
         const invoiceNum = findCartData.dataValues.cart_number;
-        const invoiceDate = findCartData.dataValues.cart_date;
+        const invoiceDate = getInvoiceDateForRemark(findCartData.dataValues);
         const customerName = findCartData.dataValues.to_customer_name;
         const customerEmail = findCartData.dataValues.to_customer_email;
         const createDateTime =
@@ -2894,7 +2901,7 @@ export const orderUpdate = async (req, res) => {
     ) {
 
       const invoiceNum = findCartData.dataValues.cart_number;
-      const invoiceDate = findCartData.dataValues.cart_date;
+      const invoiceDate = getInvoiceDateForRemark(findCartData.dataValues);
       const customerName = findCartData.dataValues.to_customer_name;
       const createDateTime = findCartData.dataValues.created_date_time.toISOString();
 
@@ -2983,7 +2990,7 @@ export const orderUpdate = async (req, res) => {
         );
       }
       const invoiceNum = findCartData.dataValues.cart_number;
-      const invoiceDate = findCartData.dataValues.cart_date;
+      const invoiceDate = getInvoiceDateForRemark(findCartData.dataValues);
       const customerName = findCartData.dataValues.to_customer_name;
       const createDateTime = findCartData.dataValues.created_date_time.toISOString();
 
