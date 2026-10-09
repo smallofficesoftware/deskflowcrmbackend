@@ -28,6 +28,7 @@ import { customFieldFormModel } from "../../models/other_settings/customFieldFor
 import { Op } from "sequelize";
 import { CART_TYPE_TO_PREFIX_FIELD } from "../../utils/AppEnumeration.js";
 import { emitAutomationEvent } from "../automation/emit.js";
+import { buildReceiptRemark } from "./miracleReceiptNumber.js";
 
 /**
  * Miracle invoice numbers arrive as one opaque string (e.g. "RJT1769/26-27")
@@ -801,7 +802,8 @@ export async function handleAccountTransactionAddOrUpdate({ voucherDetail, tenan
         acc,
         oppacc,
         amount,
-        narr
+        narr,
+        vouno
     } = voucherDetail;
 
     const contactModelInstance = contactModel(tenantDB);
@@ -863,7 +865,8 @@ export async function handleAccountTransactionAddOrUpdate({ voucherDetail, tenan
         payment_date_time: paymentDateTime,
         approve_date_time: paymentDateTime,
         created_date_time: paymentDateTime,
-        remark: narr || "",
+        // Miracle's voucher number leads the remark so the receipt shows the same number (ticket #2534).
+        remark: buildReceiptRemark(vouno ?? voucherDetail.VouNo, narr),
         approve_by_a_application_login_id: tenantId,
         miracle_account_ledger: oppacc || "",
         miracle_UniqueId: uniqueId,
