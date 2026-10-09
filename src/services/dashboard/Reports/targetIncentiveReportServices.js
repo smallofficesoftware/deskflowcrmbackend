@@ -184,7 +184,12 @@ export const getTargetIncentiveReport = async (req) => {
                     isDelete: 0,
                     a_application_login_id: { [Op.in]: assignedUserIds },
                     type: { [Op.in]: [1, 2, 3] },
-                    ...dateFilter,
+                    // Only approved carts count: a cart_number is assigned on approval,
+                    // drafts/unapproved ones have none.
+                    cart_number: { [Op.and]: [{ [Op.ne]: null }, { [Op.ne]: "" }] },
+                    // The date the user sees and can set on the cart (update_Date_time),
+                    // not when the row was first saved.
+                    ...(bounds ? { update_Date_time: { [Op.between]: [bounds.start, bounds.end] } } : {}),
                 },
                 group: ["a_application_login_id", "type"],
                 raw: true,
