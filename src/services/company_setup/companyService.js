@@ -1827,7 +1827,7 @@ export const companyEdit = async (req) => {
         watermark_in_print: watermark_in_print,
         is_contact_validation: is_contact_validation,
         is_strict_check_product_stock: is_strict_check_product_stock,
-        is_strict_wharehouse_wise_product_stock_check: is_strict_wharehouse_wise_product_stock_check,
+        is_strict_wharehouse_wise_product_stock_check: warehouseWiseFor(is_strict_check_product_stock, is_strict_wharehouse_wise_product_stock_check),
         view_inquiry_form_in_contact: view_inquiry_form_in_contact,
         same_product_multiple_in_cart: same_product_multiple_in_cart,
 
@@ -4153,6 +4153,15 @@ export const imageSettingsUpdate = async (req) => {
   }
 };
 
+// "Strict Product Stock Check WareHouse Wise" only means something while
+// "Strict Product Stock Check" is on (the stock checks ignore it otherwise), so a
+// save that turns the first off stores the second as off too. If the first is
+// not sent, the second is left as given.
+function warehouseWiseFor(strictCheck, warehouseWise) {
+  if (strictCheck === undefined || strictCheck === null) return warehouseWise;
+  return Number(strictCheck) === 2 ? warehouseWise : 1;
+}
+
 export const moduleSettingsUpdate = async (req) => {
   try {
 
@@ -4174,7 +4183,7 @@ export const moduleSettingsUpdate = async (req) => {
         watermark_in_print: watermark_in_print,
         is_contact_validation: is_contact_validation,
         is_strict_check_product_stock: is_strict_check_product_stock,
-        is_strict_wharehouse_wise_product_stock_check: is_strict_wharehouse_wise_product_stock_check,
+        is_strict_wharehouse_wise_product_stock_check: warehouseWiseFor(is_strict_check_product_stock, is_strict_wharehouse_wise_product_stock_check),
         view_inquiry_form_in_contact: view_inquiry_form_in_contact,
         same_product_multiple_in_cart: same_product_multiple_in_cart,
         order_qty_unit: order_qty_unit,
