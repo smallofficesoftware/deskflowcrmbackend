@@ -5,8 +5,10 @@
   <style>
     body { font-family: sans-serif; color: #000; padding: 20px; margin: 0; }
     h2 { text-align: center; border-bottom: 2px solid #000; padding-bottom: 10px; }
-    table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 12px; }
-    th, td { border: 1px solid #000; padding: 6px; text-align: left; }
+    /* Fixed layout: the server's fallback font is wider than the web's, and with
+       auto layout the 8 columns (Consumed/Rejected can't wrap) ran past the page. */
+    table { width: 100%; table-layout: fixed; border-collapse: collapse; margin-bottom: 20px; font-size: 12px; }
+    th, td { border: 1px solid #000; padding: 6px 4px; text-align: left; word-wrap: break-word; overflow-wrap: break-word; word-break: break-word; }
     th { background-color: #f8f9fa; }
     .short { color: red; }
   </style>
@@ -20,6 +22,16 @@
     <div>
       <h4><%= index + 1 %>. Process: <%= process.process_name %></h4>
       <table>
+        <colgroup>
+          <col style="width: 14%" />
+          <col style="width: 14%" />
+          <col style="width: 6%" />
+          <col style="width: 11%" />
+          <col style="width: 11%" />
+          <col style="width: 15%" />
+          <col style="width: 11%" />
+          <col style="width: 18%" />
+        </colgroup>
         <thead>
           <tr>
             <th>Type</th>
@@ -27,7 +39,7 @@
             <th>Unit</th>
             <th>Required Qty</th>
             <th>Available Qty</th>
-            <th>Consumed/Rejected</th>
+            <th>Consumed/<wbr>Rejected</th>
             <th>Pending Qty</th>
             <th>Shortage/Diff</th>
           </tr>
