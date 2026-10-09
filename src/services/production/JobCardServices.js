@@ -678,7 +678,7 @@ export const jobCardsDetails = async (req) => {
 // already consumed for it (that part is already out of physical stock via
 // the consumption stock adjustment), floored at 0. Returns {} on failure
 // so the job card still loads.
-const fetchOtherOpenJobCardStock = async (req, currentJobCard, materialIds) => {
+export const fetchOtherOpenJobCardStock = async (req, currentJobCard, materialIds) => {
     if (!materialIds.length) return {};
 
     try {

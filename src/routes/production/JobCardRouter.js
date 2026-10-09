@@ -1,7 +1,8 @@
 import { assignLabelToJob, assignStatusToJob, assignTeamToJob, deleteProductionEntryProvider, fetchBomOrderItemsProvider, fetchBomProductsProvider, fetchProductionEntryDetailProvider, fetchWarehouseStockBatchProvider, jobCardDeleteProvider, jobCardsDetailsProvider, jobCardsFetchProductionListProvider, jobCardsFetchProvider, jobCardsSaveProvider, printBomProvider, productionEntryProvider, updateJobCardQtyProvider } from "../../controllers/production/JobCardController.js";
 import { bomPdfProvider, jobCardPdfProvider, productionEntryPdfProvider } from "../../controllers/production/JobCardPdfController.js";
+import { bomHierarchyProvider } from "../../controllers/production/BomHierarchyController.js";
 import { rawMaterialProcessStatusReportProvider } from "../../controllers/production/RawMaterialProcessStatusController.js";
-import { createSubJobCardProvider } from "../../controllers/production/SubJobCardController.js";
+import { createAllSubJobCardsProvider, createSubJobCardProvider } from "../../controllers/production/SubJobCardController.js";
 import { authenticateToken } from "../../middlewares/auth.js";
 import { tenantMiddleware } from "../../middlewares/tenantMiddleware.js";
 
@@ -20,6 +21,8 @@ export default (app) => {
     app.post("/job-card/warehouse-stock-batch", authenticateToken, tenantMiddleware, fetchWarehouseStockBatchProvider);
     app.post("/job-card/raw-material-process-status", authenticateToken, tenantMiddleware, rawMaterialProcessStatusReportProvider);
     app.post("/job-card/sub-job-card/create", authenticateToken, tenantMiddleware, createSubJobCardProvider);
+    app.post("/job-card/sub-job-card/create-all", authenticateToken, tenantMiddleware, createAllSubJobCardsProvider);
+    app.post("/job-card/bom-hierarchy", authenticateToken, tenantMiddleware, bomHierarchyProvider);
 
     app.post("/assign-team-to-job", authenticateToken, tenantMiddleware, assignTeamToJob);
     app.post("/assign-lable-to-job", authenticateToken, tenantMiddleware, assignLabelToJob);

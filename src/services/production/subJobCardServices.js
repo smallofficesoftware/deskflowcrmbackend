@@ -1,3 +1,5 @@
+import { Op, Sequelize } from "sequelize";
+import { productionTransactionModel } from "../../models/production/productionTransactionModel.js";
 import { productBillOfMaterialModel } from "../../models/product_settings/productBillOfMaterialModel.js";
 import { JobCardsModel } from "../../models/production/JobCardsModel.js";
 import { resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
@@ -16,6 +18,13 @@ export const createSubJobCard = async (req) => {
             return resBadRequest({
                 ack_msg: "parent_job_card_id and material_id are required",
                 developer_msg: "missing parent_job_card_id / material_id",
+            });
+        }
+
+        if (!(Number(production_qty) > 0)) {
+            return resBadRequest({
+                ack_msg: "Production qty must be greater than 0",
+                developer_msg: `invalid production_qty ${production_qty}`,
             });
         }
 
@@ -43,6 +52,30 @@ export const createSubJobCard = async (req) => {
             });
         }
 
+        // One open sub job card per parent + material. "Open" = not fully
+        // produced yet (same rule as the job card details screen).
+        const existing = await JobCardsModelInstance.findAll({
+            where: { parent_job_card_id: parentCard.id, parent_material_id: material_id, isDelete: 0 },
+            attributes: ["id", "production_qty"],
+            raw: true,
+        });
+        if (existing.length) {
+            const produced = await productionTransactionModel(req.tenantDB).findAll({
+                where: { isDelete: 0, job_id: { [Op.in]: existing.map((c) => c.id) } },
+                attributes: ["job_id", [Sequelize.fn("SUM", Sequelize.col("production_qty")), "produced"]],
+                group: ["job_id"],
+                raw: true,
+            });
+            const producedMap = new Map(produced.map((p) => [Number(p.job_id), Number(p.produced) || 0]));
+            const open = existing.find((c) => (producedMap.get(Number(c.id)) || 0) < Number(c.production_qty));
+            if (open) {
+                return resError({
+                    ack_msg: `A sub job card (#${open.id}) for this material is already open.`,
+                    developer_msg: `open sub job card ${open.id} exists for parent ${parentCard.id} material ${material_id}`,
+                });
+            }
+        }
+
         // job_card_type 2 = direct product; item_id = the material's own
         // product id. Reuse jobCardsSave's create path unchanged.
         req.body.job_card_type = 2;
@@ -53,10 +86,16 @@ export const createSubJobCard = async (req) => {
             return saveResult;
         }
 
-        await JobCardsModelInstance.update(
-            { parent_job_card_id: parentCard.id, parent_material_id: material_id },
-            { where: { id: saveResult.data.id } },
-        );
+        try {
+            await JobCardsModelInstance.update(
+                { parent_job_card_id: parentCard.id, parent_material_id: material_id },
+                { where: { id: saveResult.data.id } },
+            );
+        } catch (linkError) {
+            // Don't leave an unlinked orphan card behind.
+            await JobCardsModelInstance.update({ isDelete: 1 }, { where: { id: saveResult.data.id } });
+            throw linkError;
+        }
 
         return resSuccess({
             ack_msg: "Sub job card created and linked to parent.",

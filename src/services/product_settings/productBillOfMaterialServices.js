@@ -23,6 +23,13 @@ export const createBomDetails = async (req) => {
         a_application_login_id
     } = req.body;
 
+    if (!(Number(qty) > 0)) {
+        return resBadRequest({
+            ack_msg: "BOM quantity must be greater than 0",
+            developer_msg: `invalid bom qty ${qty}`,
+        });
+    }
+
     const bomDocFile = req.files?.bom_document?.[0];
     const bomDrawingFile = req.files?.bom_drawing?.[0];
 
