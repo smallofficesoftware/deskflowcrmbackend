@@ -303,11 +303,13 @@ export const addPriceListByExcelSheetUpdateData = async (req) => {
 
         // ================= GET PRICE LIST =================
 
+        // No company_masters_id filter: price list rows are not reliably
+        // stamped with one (category-wise creation left it 0), the price list
+        // screen and the export both skip it, and each tenant DB belongs to a
+        // single company. Filtering here made exported rows "not found".
         const existingPriceList =
             await priceListModelIntance.findAll({
                 where: {
-                    company_masters_id:
-                        findCompanyId.company_masters_id,
                     isDelete: 0,
                 },
                 attributes: [
@@ -543,8 +545,6 @@ export const addPriceListByExcelSheetUpdateData = async (req) => {
                     {
                         where: {
                             id,
-                            company_masters_id:
-                                findCompanyId.company_masters_id,
                             isDelete: 0,
                         },
                     }
