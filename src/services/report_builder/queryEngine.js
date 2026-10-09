@@ -2,6 +2,7 @@ import { col, fn, Op, where as sequelizeWhere } from "sequelize";
 import { resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { getCompanyByLoginId } from "../commonServices.js";
 import { buildChainWhere, getReportDataScope } from "./dataScopeService.js";
+import { resolveModelEntry } from "./formModelResolver.js";
 import { getRegisteredModel, resolveDynamicColumns, resolveRelationColumns, resolveRelationRelations } from "./modelRegistry.js";
 
 const HARD_ROW_LIMIT = 5000; // absolute ceiling regardless of what's requested
@@ -146,16 +147,18 @@ export const runQueryReport = async (definition, req) => {
       return resError({ ack_msg: "a_application_login_id is required", developer_msg: "Missing a_application_login_id" });
     }
 
-    const registryEntry = getRegisteredModel(definition.model_key);
-    if (!registryEntry) {
-      return resError({ ack_msg: "Unknown report source", developer_msg: `model_key "${definition.model_key}" is not whitelisted` });
-    }
-
     const findCompanyId = await getCompanyByLoginId(a_application_login_id);
     if (!findCompanyId) {
       return resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" });
     }
     const resolvedCompanyId = findCompanyId.company_masters_id;
+
+    // Static registry first; "form:<id>" keys resolve to a Form Builder form
+    // of THIS company (formModelResolver.js) - same whitelist rules.
+    const registryEntry = await resolveModelEntry(definition.model_key, req.tenantDB, resolvedCompanyId);
+    if (!registryEntry) {
+      return resError({ ack_msg: "Unknown report source", developer_msg: `model_key "${definition.model_key}" is not whitelisted` });
+    }
 
     // IDOR defense in depth — the definition must belong to the resolved
     // company even though the caller already checked this once.
@@ -722,10 +725,23 @@ export const runQueryReport = async (definition, req) => {
 
     // ---- rights-based scope — fail closed, never fall back to unscoped ----
     let rightsWhere = {};
-    if (scope === "all") {
+    if (typeof registryEntry.buildRightsWhere === "function") {
+      // Source that decides row access itself (Form Builder repeater rows,
+      // scoped through their parent entry). null = no access, fail closed.
+      rightsWhere = registryEntry.buildRightsWhere(scope, a_application_login_id);
+      if (!rightsWhere) {
+        return resError({ ack_msg: "No access to this report", developer_msg: "No report_definition_team_rights grant for this login on this report" });
+      }
+    } else if (scope === "all") {
       rightsWhere = { company_masters_id: resolvedCompanyId };
     } else if (scope === "own") {
-      rightsWhere = { company_masters_id: resolvedCompanyId, a_application_login_id };
+      // ownerColumn: a source whose "owner" column is not named
+      // a_application_login_id (Form Builder tables: the submitter).
+      rightsWhere = { company_masters_id: resolvedCompanyId, [registryEntry.ownerColumn || "a_application_login_id"]: a_application_login_id };
+    } else if (scope === "chain" && registryEntry.ownerColumn) {
+      // "chain" is defined through a contact relation a form table does not
+      // have - same documented fallback buildChainWhere uses: behave as "own".
+      rightsWhere = { company_masters_id: resolvedCompanyId, [registryEntry.ownerColumn]: a_application_login_id };
     } else if (scope === "chain") {
       rightsWhere = await buildChainWhere({
         model_key: definition.model_key,
@@ -763,7 +779,11 @@ export const runQueryReport = async (definition, req) => {
     const baseWhere = {
       ...userWhere,
       ...rightsWhere,
-      isDelete: 0,
+      // Fixed extra condition a source always needs (e.g. no draft rows for
+      // Form Builder tables) - injected after user filters like the rest.
+      ...(registryEntry.baseWhere || {}),
+      // noSoftDelete: a source table with no isDelete column of its own.
+      ...(registryEntry.noSoftDelete ? {} : { isDelete: 0 }),
     };
     // csvWhereClauses (sequelize.where(fn(...)) instances) and
     // blankAwareWhereClauses (Op.or fragments) can't merge into a plain

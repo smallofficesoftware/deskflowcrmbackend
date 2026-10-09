@@ -15,6 +15,7 @@ import { getCompanyByLoginId } from "../commonServices.js";
 import { runCompositeReport } from "./compositeEngine.js";
 import { getReportDataScope, setReportTeamRights } from "./dataScopeService.js";
 import { getRegisteredMetric, listMetricsRegistry } from "./metricsRegistry.js";
+import { getFormFilterMeta, isFormModelKey, isModelKeyAllowed, listFormModels, resolveFormModelEntry } from "./formModelResolver.js";
 import { getGeneralFilterMeta, getRegisteredModel, listModelRegistry } from "./modelRegistry.js";
 import { getRegisteredPlugin, listPluginRegistry } from "./pluginRegistry.js";
 import { runQueryReport } from "./queryEngine.js";
@@ -100,8 +101,10 @@ export const getModelRegistry = async (req) => {
   if (!findCompanyId) {
     return resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" });
   }
-  const item = await listModelRegistry(req.tenantDB, findCompanyId.company_masters_id);
-  return resSuccess({ data: { item } });
+  const staticItems = await listModelRegistry(req.tenantDB, findCompanyId.company_masters_id);
+  // Published Form Builder forms of this company, as extra report sources.
+  const formItems = await listFormModels(req.tenantDB, findCompanyId.company_masters_id);
+  return resSuccess({ data: { item: [...staticItems, ...formItems] } });
 };
 
 export const getPluginRegistry = async () => {
@@ -341,7 +344,7 @@ export const previewReportDefinition = async (req) => {
     if (!a_application_login_id || !columns_json) {
       return resError({ developer_msg: "a_application_login_id and columns_json are required" });
     }
-    if (!getRegisteredModel(model_key)) {
+    if (!(await isModelKeyAllowed(model_key, req.tenantDB, a_application_login_id))) {
       return resError({ ack_msg: "Unknown report source", developer_msg: `model_key "${model_key}" is not whitelisted` });
     }
 
@@ -498,7 +501,7 @@ export const createReportDefinition = async (req) => {
       // shares Report Builder's own page/rights, same as query-type.
       page_id = PAGE_ID.REPORT_BUILDER;
     } else {
-      if (!getRegisteredModel(model_key)) {
+      if (!(await isModelKeyAllowed(model_key, req.tenantDB, a_application_login_id))) {
         return resError({ ack_msg: "Unknown report source", developer_msg: `model_key "${model_key}" is not whitelisted` });
       }
       // No existing page makes sense to reuse for an arbitrary ad-hoc query
@@ -844,7 +847,13 @@ export const getGeneralFilterConfig = async (req) => {
     if (!model_key) {
       return resError({ developer_msg: "model_key is required" });
     }
-    const meta = getGeneralFilterMeta(model_key);
+    let meta = getGeneralFilterMeta(model_key);
+    if (!meta && isFormModelKey(model_key)) {
+      const { a_application_login_id } = req.body || {};
+      const company = a_application_login_id ? await getCompanyByLoginId(a_application_login_id) : null;
+      const formEntry = company ? await resolveFormModelEntry(model_key, req.tenantDB, company.company_masters_id) : null;
+      meta = formEntry ? getFormFilterMeta(formEntry) : null;
+    }
     if (!meta) {
       return resError({ ack_msg: "Unknown model_key", developer_msg: `No registry entry for model_key ${model_key}` });
     }
