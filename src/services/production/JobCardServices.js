@@ -21,6 +21,7 @@ import { checkStockAvailability, checkWarehouseWiseStock, getStockCheckMode, ins
 import { getCompanyByLoginId } from "../commonServices.js";
 import { fetchJobCardsPerProcess } from "./rawMaterialProcessJobCards.js";
 import { fetchMaterialsWithOwnBom } from "./materialOwnBomLookup.js";
+import { hasJobCardRight } from "./jobCardRights.js";
 
 export const jobCardsFetch = async (req) => {
     try {
@@ -954,6 +955,12 @@ export const jobCardsSave = async (req) => {
     const jobCardType = Number(req.body.job_card_type) || 1;
     const itemId = req.body.item_id ?? order_item_id;
     try {
+        if (!(await hasJobCardRight({ a_application_login_id, tenantDB: req.tenantDB, flag: "add" }))) {
+            return resError({
+                ack_msg: "You do not have permission to add a job card",
+                developer_msg: "job card add right missing",
+            });
+        }
         if (!itemId) {
             return resError({
                 ack_msg: jobCardType === 1 ? "Please select an order item" : "Please select a product",
@@ -1038,6 +1045,13 @@ export const submitUnifiedProductionEntry = async (req) => {
             rejection_items = [],
             process_times = []
         } = req.body;
+
+        if (!(await hasJobCardRight({ a_application_login_id, tenantDB: req.tenantDB, flag: "add", pageId: PAGE_ID.PRODUCTION }))) {
+            return resError({
+                ack_msg: "You do not have permission to add a production entry",
+                developer_msg: "production add right missing",
+            });
+        }
 
         // Finished-good product id. BUG (client-reported: finished goods entry
         // never gets recorded for order-based job cards): the old code used
@@ -1364,6 +1378,14 @@ export const submitUnifiedProductionEntry = async (req) => {
 export const fetchProductionList = async (req) => {
     try {
         const { a_application_login_id, job_id } = req.body;
+
+        if (!(await hasJobCardRight({ a_application_login_id, tenantDB: req.tenantDB, flag: "view", pageId: PAGE_ID.PRODUCTION }))) {
+            return resError({
+                ack_msg: "You do not have permission to view production entries",
+                developer_msg: "production view right missing",
+            });
+        }
+
         const findCompanyId = await getCompanyByLoginId(a_application_login_id);
 
         // Basic validation
@@ -1468,6 +1490,13 @@ export const deleteProductionEntry = async (req) => {
     try {
         const { a_application_login_id, id } = req.body;
 
+        if (!(await hasJobCardRight({ a_application_login_id, tenantDB: req.tenantDB, flag: "delete", pageId: PAGE_ID.PRODUCTION }))) {
+            return resError({
+                ack_msg: "You do not have permission to delete a production entry",
+                developer_msg: "production delete right missing",
+            });
+        }
+
         if (!id) {
             return resBadRequest({
                 ack_msg: "Production Entry ID is required.",
@@ -1550,6 +1579,13 @@ export const deleteProductionEntry = async (req) => {
 export const deleteJobCard = async (req) => {
     try {
         const { a_application_login_id, id } = req.body;
+
+        if (!(await hasJobCardRight({ a_application_login_id, tenantDB: req.tenantDB, flag: "delete" }))) {
+            return resError({
+                ack_msg: "You do not have permission to delete a job card",
+                developer_msg: "job card delete right missing",
+            });
+        }
 
         if (!id) {
             return resBadRequest({
@@ -1694,6 +1730,12 @@ export const assignTeamMemberToJob = async (req) => {
     } = req.body;
 
     try {
+        if (!(await hasJobCardRight({ a_application_login_id, tenantDB: req.tenantDB, flag: "add", pageId: PAGE_ID.ASSIGN_TO_TEAM_MEMBER }))) {
+            return resError({
+                ack_msg: "You do not have permission to assign team members",
+                developer_msg: "assign team member add right missing",
+            });
+        }
         const JobCardsModelInstance = JobCardsModel(req.tenantDB);
         const isExistData = await JobCardsModelInstance.findOne({
             where: { id: jobId, isDelete: 0 },
@@ -1747,6 +1789,12 @@ export const assignLabelToJobCard = async (req) => {
     } = req.body;
 
     try {
+        if (!(await hasJobCardRight({ a_application_login_id, tenantDB: req.tenantDB, flag: "view", pageId: PAGE_ID.LABEL }))) {
+            return resError({
+                ack_msg: "You do not have permission to assign labels",
+                developer_msg: "label view right missing",
+            });
+        }
         const JobCardsModelInstance = JobCardsModel(req.tenantDB);
         const isExistData = await JobCardsModelInstance.findOne({
             where: { id: jobId, isDelete: 0 },
@@ -1800,6 +1848,12 @@ export const assignStatusToJobCard = async (req) => {
     } = req.body;
 
     try {
+        if (!(await hasJobCardRight({ a_application_login_id, tenantDB: req.tenantDB, flag: "view", pageId: PAGE_ID.STATUS }))) {
+            return resError({
+                ack_msg: "You do not have permission to assign a status",
+                developer_msg: "status view right missing",
+            });
+        }
         const JobCardsModelInstance = JobCardsModel(req.tenantDB);
         const isExistData = await JobCardsModelInstance.findOne({
             where: { id: jobId, isDelete: 0 },
@@ -1848,6 +1902,13 @@ export const assignStatusToJobCard = async (req) => {
 export const updateJobCardQty = async (req) => {
     try {
         const { a_application_login_id, id, product_qty } = req.body;
+
+        if (!(await hasJobCardRight({ a_application_login_id, tenantDB: req.tenantDB, flag: "edit" }))) {
+            return resError({
+                ack_msg: "You do not have permission to edit a job card",
+                developer_msg: "job card edit right missing",
+            });
+        }
 
         // 1. Basic field validation
         if (!id) {
@@ -1904,6 +1965,13 @@ export const updateJobCardQty = async (req) => {
 export const fetchProductionEntryDetail = async (req) => {
     try {
         const { a_application_login_id, id } = req.body;
+
+        if (!(await hasJobCardRight({ a_application_login_id, tenantDB: req.tenantDB, flag: "view", pageId: PAGE_ID.PRODUCTION }))) {
+            return resError({
+                ack_msg: "You do not have permission to view production entries",
+                developer_msg: "production view right missing",
+            });
+        }
 
         if (!id) {
             return resBadRequest({
