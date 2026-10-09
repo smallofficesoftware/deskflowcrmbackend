@@ -166,3 +166,6 @@ export const WP_V2_URL = process.env.WP_V2_URL;
 
 
 export const API_LOG_ENABLE_FLAG = process.env.API_LOG_ENABLE_FLAG;
+// POST /job-card/sub-job-card/create-all (creates a job card's whole sub job
+// card tree). Off unless ENABLE_CREATE_ALL_SUB_JOB_CARDS=true; keep it off on production.
+export const ENABLE_CREATE_ALL_SUB_JOB_CARDS = process.env.ENABLE_CREATE_ALL_SUB_JOB_CARDS === "true";

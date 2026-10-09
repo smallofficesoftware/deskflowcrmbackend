@@ -4,6 +4,7 @@ import { cartItemModel } from "../../models/activities/cartItemsModel.js";
 import { bomVsProcessVsConsAndRejctsModel } from "../../models/product_settings/bomProcessVsConsAndRejctsModel.js";
 import { productBillOfMaterialModel } from "../../models/product_settings/productBillOfMaterialModel.js";
 import { JobCardsModel } from "../../models/production/JobCardsModel.js";
+import { ENABLE_CREATE_ALL_SUB_JOB_CARDS } from "../../utils/appConstants.js";
 import { resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { fetchItemStockBatch, fetchOtherOpenJobCardStock } from "./JobCardServices.js";
 import { createSubJobCard } from "./subJobCardServices.js";
@@ -19,6 +20,12 @@ const MAX_DEPTH = 10;
 // Safe to call again: materials that already have an open sub job card are
 // skipped and reported.
 export const createAllSubJobCards = async (req) => {
+    if (!ENABLE_CREATE_ALL_SUB_JOB_CARDS) {
+        return resError({
+            ack_msg: "Creating all sub job cards is not enabled on this server.",
+            developer_msg: "ENABLE_CREATE_ALL_SUB_JOB_CARDS is not true",
+        });
+    }
     try {
         const { parent_job_card_id, a_application_login_id, preview } = req.body;
         const tenantDB = req.tenantDB;
