@@ -454,8 +454,8 @@ export function getSampleDataForPreview() {
     buyer: { companyName: "Customer Company Name", contactName: "Customer Contact Name", phone: "9876543210", email: "customer@example.com", billingAddress: "123 Street, City, State, PIN", shippingAddress: "123 Street, City, State, PIN", gstin: "00XXXXX0000X0X0", supplyTo: "State - City" },
     order: { number: "SAMPLE/00/2026-2027", dateTime: "01-01-2026 12:00 PM", contactPerson: "Team Member Name" },
     items: [
-      { description: "Sample Item 1\nProduct Code: ABC", hsn: "1234", qty: "1.00 / Nos", rate: "100.00", discount: "0.00", total: "100.00", item_hsn_code: "1234", item_total: "100.00" },
-      { description: "Sample Item 2\nProduct Code: XYZ", hsn: "5678", qty: "2.00 / Nos", rate: "50.00", discount: "0.00", total: "100.00", item_hsn_code: "5678", item_total: "100.00" },
+      { description: "Sample Item 1\nProduct Code: ABC", hsn: "1234", qty: "1.00 / Nos", rate: "100.00", discount: "0.00", total: "100.00", item_hsn_code: "1234", item_total: "100.00", serialNumbers: "SN0001" },
+      { description: "Sample Item 2\nProduct Code: XYZ", hsn: "5678", qty: "2.00 / Nos", rate: "50.00", discount: "0.00", total: "100.00", item_hsn_code: "5678", item_total: "100.00", serialNumbers: "SN0002, SN0003" },
     ],
     cart: { taxable_amt: "200.00", gst_amt: "36.00", packing_forwarding_charge: "0", transport_charge: "0", tcs_amt: "0", round_off: "0", advance_payment: "0", grand_total: "236.00" },
     numberTowords: "Two Hundred Thirty Six Rupees Only",
@@ -500,6 +500,8 @@ export function buildInputsForCart({ company, buyer, order, computed, items, pen
           return num(item.rate);
         case "discount":
           return num(item.discount);
+        case "serial":
+          return item.serialNumbers ?? "";
         case "cgst":
           return num(item.cgst);
         case "sgst":
@@ -545,6 +547,7 @@ export function buildInputsForCart({ company, buyer, order, computed, items, pen
     pendingItemsTable: JSON.stringify(pendingItemsTableRows),
     firstItemName: items?.[0]?.description ?? "",
     firstItemPrice: items?.[0] ? num(items[0].rate) : "",
+    firstItemSerialNumbers: items?.[0]?.serialNumbers ?? "",
 
     subTotal: computed?.subTotal ?? "",
     gstAmount: computed?.gstAmount ?? "",

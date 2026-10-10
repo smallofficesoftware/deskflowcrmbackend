@@ -16,6 +16,12 @@ export const ALL_COLUMNS = [
   { key: "qty", label: "Qty/Unit", widthPct: 12, alignment: "right" },
   { key: "rate", label: "Rate", widthPct: 12, alignment: "right" },
   { key: "discount", label: "Dis(%)", widthPct: 7, alignment: "right", defaultOn: false },
+  // Tracked product serial numbers (cart_vs_serial_numbers) for this item,
+  // comma-separated - opt-in like image/discount/cgst/sgst/igst, since most
+  // companies don't sell serial-tracked products. Mirrors the legacy EJS "SN
+  // No:" block (orderPdfV1.ejs), just as its own column instead of being
+  // folded into the description cell.
+  { key: "serial", label: "Serial No.", widthPct: 12, alignment: "left", defaultOn: false },
   { key: "cgst", label: "CGST", widthPct: 8, alignment: "right", defaultOn: false },
   { key: "sgst", label: "SGST", widthPct: 8, alignment: "right", defaultOn: false },
   { key: "igst", label: "IGST", widthPct: 8, alignment: "right", defaultOn: false },

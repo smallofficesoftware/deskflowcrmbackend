@@ -5065,6 +5065,14 @@ const generateSingleOrderPdf = async (req, res) => {
           total: item.item_total,
           item_hsn_code: item.item_hsn_code,
           item_total: item.item_total,
+          // item.serial_numbers is already populated above (finalData mapping,
+          // same data the legacy EJS "SN No:" block uses) - exposed here as
+          // its own field so the Designer's items-table "Serial No." column
+          // and the standalone "First Item — Serial Numbers" field
+          // (orderInputMapper.js) can both bind to it.
+          serialNumbers: Array.isArray(item.serial_numbers) && item.serial_numbers.length > 0
+            ? item.serial_numbers.join(", ")
+            : "",
         }));
 
         const pdfmeItemImages = resultAllCartItems.map((item) => {
