@@ -32,6 +32,7 @@ const CART_DOC_DICTIONARY = [
   { key: "pendingItemsTable", label: "Pending Items Table", group: "Item" },
   { key: "firstItemName", label: "First Item — Name", group: "Item" },
   { key: "firstItemPrice", label: "First Item — Rate", group: "Item" },
+  { key: "firstItemSerialNumbers", label: "First Item — Serial Numbers", group: "Item" },
   // firstItemImage removed — confirmed via orderInputMapper.js's actual
   // returned object (no such key is ever produced; firstItemName/
   // firstItemPrice are, immediately above them there).
