@@ -226,6 +226,7 @@ const CONTACT_DOC_DICTIONARY = [
   { key: "toEmail", label: "To: Email", group: "Contact" },
   { key: "toLocationLine", label: "To: Area/City/State/Country - Pincode", group: "Contact" },
   { key: "toAddress", label: "To: Address", group: "Contact" },
+  { key: "toShippingAddress", label: "To: Shipping Address", group: "Contact" },
   { key: "fromCompanyName", label: "From: Company Name", group: "Company" },
   { key: "fromLocationLine", label: "From: City, State", group: "Company" },
   { key: "fromPhone", label: "From: Contact No.", group: "Company" },
@@ -285,6 +286,20 @@ const CART_CUSTOM_FIELD_FORM_TYPE_BY_DOC_TYPE = {
   pendingPurchaseOrder: 9,
 };
 const PRODUCT_CUSTOM_FIELD_FORM_TYPE = 4;
+// Contact's own custom fields (same form_type contactService.js's
+// getCustomFormFieldR calls already use) — the first non-cart module wired
+// into this merge. Add further modules (product, account, employee) here
+// the same way as their own tickets need it; each doc_type maps to the
+// form_type(s) its module's custom fields live under.
+const CONTACT_CUSTOM_FIELD_FORM_TYPE = 1;
+const CONTACT_DOC_TYPES = new Set(["contactAddress", "contactEnvelope"]);
+
+function getCustomFieldFormTypesForDocType(doc_type) {
+  const cartCustomFieldFormType = CART_CUSTOM_FIELD_FORM_TYPE_BY_DOC_TYPE[doc_type];
+  if (cartCustomFieldFormType) return [cartCustomFieldFormType, PRODUCT_CUSTOM_FIELD_FORM_TYPE];
+  if (CONTACT_DOC_TYPES.has(doc_type)) return [CONTACT_CUSTOM_FIELD_FORM_TYPE];
+  return null;
+}
 
 // Report Builder's doc_type is dynamic — "report_" + report_definition_id
 // (reportPdfExport.js's reportDocType()), one per report, not a fixed
@@ -316,11 +331,11 @@ export async function buildDataDictionary(req, doc_type) {
   }
 
   const { company_masters_id } = req.body || {};
-  const cartCustomFieldFormType = CART_CUSTOM_FIELD_FORM_TYPE_BY_DOC_TYPE[doc_type];
-  // The 4 non-cart doc types have no cart custom-field form_type mapping —
-  // custom fields are a cart-document concept, so skip the lookup entirely
-  // rather than querying form_type IN (undefined, ...).
-  if (!cartCustomFieldFormType) {
+  const customFieldFormTypes = getCustomFieldFormTypesForDocType(doc_type);
+  // Doc types with no module custom-field mapping yet (product, account,
+  // employee docs) skip the lookup entirely rather than querying
+  // form_type IN (undefined, ...).
+  if (!customFieldFormTypes) {
     return base;
   }
 
@@ -331,7 +346,7 @@ export async function buildDataDictionary(req, doc_type) {
   // point to.
   const customFields = await CustomField.findAll({
     where: {
-      form_type: [cartCustomFieldFormType, PRODUCT_CUSTOM_FIELD_FORM_TYPE],
+      form_type: customFieldFormTypes,
       company_masters_id,
       print_or_not: 1,
       isDelete: 0,
@@ -343,7 +358,12 @@ export async function buildDataDictionary(req, doc_type) {
   const customEntries = customFields.map((f) => ({
     key: f.reference_column_name,
     label: f.title,
-    group: f.form_type === PRODUCT_CUSTOM_FIELD_FORM_TYPE ? "Product Custom Field" : "Cart Custom Field",
+    group:
+      f.form_type === PRODUCT_CUSTOM_FIELD_FORM_TYPE
+        ? "Product Custom Field"
+        : f.form_type === CONTACT_CUSTOM_FIELD_FORM_TYPE
+        ? "Contact Custom Field"
+        : "Cart Custom Field",
   }));
 
   return [...base, ...customEntries];
