@@ -468,6 +468,13 @@ export const MODEL_REGISTRY = {
       // automatically filterable on its own, found while wiring Step 2's
       // general filters (slot 18).
       contact_masters_id: { label: "Contact", type: "lookup", filterable: true, sortable: false, groupable: true },
+      // Real columns added by ticket for serial-tracked service work
+      // (task_managements.product_id/serial_number, migration
+      // 20261007100000-add-product-serial-to-task-managements-and-visits.js)
+      // - optional, only set when the company has a serial-tracked product
+      // and the task was filled in against one (see serialRequirementServices.js).
+      product_id: { label: "Product", type: "lookup", filterable: true, sortable: false, groupable: true },
+      serial_number: { label: "Serial Number", type: "string", filterable: true, sortable: true, groupable: true },
       ...COUNT_COLUMN,
     },
     // 12 (Show Only Template Task) doesn't apply — no "template" concept
@@ -555,6 +562,13 @@ export const MODEL_REGISTRY = {
         columns: {
           username: { label: "Created By", type: "string" },
         },
+      },
+      product: {
+        label: "Product",
+        foreignKey: "product_id",
+        getModel: (tenantDB) => productModel(tenantDB),
+        targetKey: "id",
+        modelKey: "products",
       },
     },
   },
@@ -927,6 +941,14 @@ export const MODEL_REGISTRY = {
       // own foreignKey below — added as its own whitelisted column, the
       // registry gap Step 2 originally flagged (found while wiring slot 18).
       contact_id: { label: "Contact", type: "lookup", filterable: true, sortable: false, groupable: true },
+      // Real columns added by ticket for serial-tracked service work
+      // (visits.product_id/serial_number, migration
+      // 20261007100000-add-product-serial-to-task-managements-and-visits.js)
+      // - optional, only set when the company has a serial-tracked product
+      // and the visit was filled in against one (see serialRequirementServices.js).
+      product_id: { label: "Product", type: "lookup", filterable: true, sortable: false, groupable: true },
+      serial_number: { label: "Serial Number", type: "string", filterable: true, sortable: true, groupable: true },
+      ...COUNT_COLUMN,
     },
     generalFilters: {
       1: "created_date_time",
@@ -939,6 +961,13 @@ export const MODEL_REGISTRY = {
         getModel: (tenantDB) => contactModel(tenantDB),
         targetKey: "id",
         modelKey: "contacts",
+      },
+      product: {
+        label: "Product",
+        foreignKey: "product_id",
+        getModel: (tenantDB) => productModel(tenantDB),
+        targetKey: "id",
+        modelKey: "products",
       },
     },
     // visit_type_id -> visit_type_masters skipped: that table has no real
