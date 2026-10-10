@@ -147,6 +147,23 @@ const fetchContactPrint = async (req, docType, generateFn) => {
       return resBadRequest({ ack_msg: "Document Designer is not enabled for this company" });
     }
 
+    // Contact module's own custom fields (form_type 1 — same as
+    // getCustomFormFieldR elsewhere in this file), same shape/exclusions
+    // pdfOrder already uses for cart custom fields: data_type 11/12/14
+    // (page-type fields) render as extra pages elsewhere, not bindable here.
+    const CustomField = customFieldFormModel(req.tenantDB);
+    const customFieldRows = await CustomField.findAll({
+      where: {
+        form_type: 1,
+        company_masters_id: findCompanyId.company_masters_id,
+        print_or_not: 1,
+        isDelete: 0,
+        data_type: { [Op.notIn]: [11, 12, 14] },
+      },
+      attributes: ["reference_column_name", "data_type"],
+      raw: true,
+    });
+
     const outputDir = `media-folder/ContactPrint/${findCompanyId.company_masters_id}`;
     const uploadDir = path.resolve(process.cwd(), outputDir);
     if (!fs.existsSync(uploadDir)) {
@@ -162,6 +179,7 @@ const fetchContactPrint = async (req, docType, generateFn) => {
       company: { ...company, id: findCompanyId.company_masters_id },
       documentTemplateId: req.body.document_template_id,
       tenantDB: req.tenantDB,
+      customFieldRows,
     });
     fs.writeFileSync(fullPath, buffer);
 
