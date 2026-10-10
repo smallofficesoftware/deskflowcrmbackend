@@ -283,8 +283,11 @@ export async function generateQuotationPdf({
   template = withCompanyHeader(template, company);
   template = injectWatermarkField(template, company);
 
-  const computed = buildComputedFields(cart, numberTowords);
-  computed.hsnSummary = buildHsnSummary(items);
+  // Ticket #2157 - same company_masters.is_grouped_number_format flag the
+  // legacy EJS path's formatNum binding checks (orderServices.js).
+  const groupedNumberFormat = !!company?.groupedNumberFormat;
+  const computed = buildComputedFields(cart, numberTowords, groupedNumberFormat);
+  computed.hsnSummary = buildHsnSummary(items, groupedNumberFormat);
 
   template = await injectPaymentQRField(template, {
     docType: doc_type,
@@ -322,7 +325,7 @@ export async function generateQuotationPdf({
   }
 
   const cashDiscount = buildCashDiscount(cart);
-  const hsnTaxRows = buildHsnTaxRows({ items, cart, isSameState, packingHSN, packingGSTRate, transportHSN, transportGSTRate });
+  const hsnTaxRows = buildHsnTaxRows({ items, cart, isSameState, packingHSN, packingGSTRate, transportHSN, transportGSTRate, grouped: groupedNumberFormat });
 
   const rawInputs = buildInputsForCart({
     company,

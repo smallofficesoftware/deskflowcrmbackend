@@ -4716,7 +4716,11 @@ const generateSingleOrderPdf = async (req, res) => {
         cart_city_name: customerCityName,
         cart_area_name: customerAreaName,
         company_state_name: companyStateName,
-        formatNum: formatNumber,
+        // Ticket #2157: company_masters.is_grouped_number_format gates
+        // Indian-style digit grouping - formatNum keeps its existing
+        // (value, decimals) call shape used throughout the EJS templates.
+        formatNum: (value, decimals) =>
+          formatNumber(value, decimals, !!companyDetail.is_grouped_number_format),
         orderTypesList: orderTypesListPdf,
         numberToword: numberTowords,
         gstnumberToword: gstnumberTowords,
@@ -5107,6 +5111,9 @@ const generateSingleOrderPdf = async (req, res) => {
             paymentQREnabled: !!settingDetails.paymentQR,
             upiId: companyDetail.upi_id,
             upiName: companyDetail.upi_name,
+            // Ticket #2157 - same company_masters.is_grouped_number_format
+            // flag the legacy EJS path's formatNum binding checks above.
+            groupedNumberFormat: !!companyDetail.is_grouped_number_format,
           },
           buyer: {
             companyName: cartData.to_customer_company_name,

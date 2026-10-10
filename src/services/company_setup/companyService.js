@@ -1426,6 +1426,7 @@ export const companyEdit = async (req) => {
     purchase_view_formate,
     in_order_image_view,
     watermark_in_print,
+    is_grouped_number_format,
     view_inquiry_form_in_contact,
     same_product_multiple_in_cart,
     is_contact_validation,
@@ -1828,6 +1829,7 @@ export const companyEdit = async (req) => {
         is_contact_validation: is_contact_validation,
         is_strict_check_product_stock: is_strict_check_product_stock,
         is_strict_wharehouse_wise_product_stock_check: warehouseWiseFor(is_strict_check_product_stock, is_strict_wharehouse_wise_product_stock_check),
+        is_grouped_number_format: is_grouped_number_format,
         view_inquiry_form_in_contact: view_inquiry_form_in_contact,
         same_product_multiple_in_cart: same_product_multiple_in_cart,
 
@@ -4170,6 +4172,7 @@ export const moduleSettingsUpdate = async (req) => {
       order_qty_unit,
       in_order_image_view,
       watermark_in_print,
+      is_grouped_number_format,
       is_contact_validation,
       is_strict_check_product_stock,
       is_strict_wharehouse_wise_product_stock_check,
@@ -4181,6 +4184,7 @@ export const moduleSettingsUpdate = async (req) => {
       {
         in_order_image_view: in_order_image_view,
         watermark_in_print: watermark_in_print,
+        is_grouped_number_format: is_grouped_number_format,
         is_contact_validation: is_contact_validation,
         is_strict_check_product_stock: is_strict_check_product_stock,
         is_strict_wharehouse_wise_product_stock_check: warehouseWiseFor(is_strict_check_product_stock, is_strict_wharehouse_wise_product_stock_check),

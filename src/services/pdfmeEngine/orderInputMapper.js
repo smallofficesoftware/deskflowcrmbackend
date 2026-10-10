@@ -8,6 +8,7 @@
 // transforms, it doesn't reach into raw DB rows itself.
 import QRCode from "qrcode";
 import { resolveColumns } from "./tableColumns.js";
+import { formatNumber } from "../../utils/sharedFunctions.js";
 
 // dataSource defaults to the field's own name (buildTemplate.js's
 // textField/imageField helpers) — a plain field is unaffected. This is what
@@ -303,27 +304,32 @@ export function buildExtraPages(customFieldRows, cartValues) {
 // a pdfme text field's content must be a string (@pdfme/schemas' line-
 // break logic calls .split on it) or generate() throws. Matches the old
 // EJS pipeline's own formatNum(x, 2) (src/utils/sharedFunctions.js).
-export function num(value, decimals = 2) {
+// Delegates to the SAME shared formatter the legacy EJS path uses
+// (sharedFunctions.js's formatNumber, aliased `formatNum` there) - grouped
+// is per-company (ticket #2157's "number_format_grouped" flag), threaded in
+// by the caller (generateDocument.js), not looked up here - this module
+// stays caller-supplied-value-only.
+export function num(value, decimals = 2, grouped = false) {
   if (value === undefined || value === null || value === "") return "";
-  return Number(value).toFixed(decimals);
+  return formatNumber(value, decimals, grouped);
 }
 
-export function buildComputedFields(cart, numberTowords) {
+export function buildComputedFields(cart, numberTowords, grouped = false) {
   const grandTotal = Number(cart?.grand_total) || 0;
   const advancePayment = Number(cart?.advance_payment) || 0;
 
   return {
-    subTotal: num(cart?.total_amt),
-    taxableAmount: num(cart?.taxable_amt),
-    gstAmount: num(cart?.gst_amt),
-    packingCharge: num(cart?.packing_forwarding_charge),
-    transportCharge: num(cart?.transport_charge),
-    tcsAmount: num(cart?.tcs_amt),
-    roundOff: num(cart?.round_off),
-    advancePayment: num(cart?.advance_payment),
-    grandTotal: num(cart?.grand_total),
+    subTotal: num(cart?.total_amt, 2, grouped),
+    taxableAmount: num(cart?.taxable_amt, 2, grouped),
+    gstAmount: num(cart?.gst_amt, 2, grouped),
+    packingCharge: num(cart?.packing_forwarding_charge, 2, grouped),
+    transportCharge: num(cart?.transport_charge, 2, grouped),
+    tcsAmount: num(cart?.tcs_amt, 2, grouped),
+    roundOff: num(cart?.round_off, 2, grouped),
+    advancePayment: num(cart?.advance_payment, 2, grouped),
+    grandTotal: num(cart?.grand_total, 2, grouped),
     grandTotalInWords: numberTowords ?? "",
-    payableAmount: (grandTotal - advancePayment).toFixed(2),
+    payableAmount: formatNumber(grandTotal - advancePayment, 2, grouped),
   };
 }
 
@@ -351,7 +357,7 @@ export function buildCashDiscount(cart) {
 // directly: it has a full CGST/SGST/IGST-rate-and-amount table, not a plain
 // per-HSN text line — an earlier version of this comment claimed no such
 // summary existed in the old EJS at all, which was wrong).
-export function buildHsnSummary(items) {
+export function buildHsnSummary(items, grouped = false) {
   const groups = new Map();
   (items || []).forEach((item) => {
     const hsn = item.item_hsn_code || "—";
@@ -363,7 +369,7 @@ export function buildHsnSummary(items) {
   });
 
   return Array.from(groups.entries())
-    .map(([hsn, { count, amount }]) => `${hsn}: ${count} item(s), ${amount.toFixed(2)}`)
+    .map(([hsn, { count, amount }]) => `${hsn}: ${count} item(s), ${formatNumber(amount, 2, grouped)}`)
     .join("\n");
 }
 
@@ -383,8 +389,8 @@ export function buildHsnSummary(items) {
 // fields have one fixed column count per saved template; conditionally
 // switching column COUNT per transaction isn't compatible with a
 // Designer-saved template the way a per-row visibility toggle is).
-export function buildHsnTaxRows({ items, cart, isSameState, packingHSN, packingGSTRate, transportHSN, transportGSTRate }) {
-  const fmt = (n) => Number(n || 0).toFixed(2);
+export function buildHsnTaxRows({ items, cart, isSameState, packingHSN, packingGSTRate, transportHSN, transportGSTRate, grouped = false }) {
+  const fmt = (n) => formatNumber(n || 0, 2, grouped);
   const taxRow = (hsn, taxable, rate) => {
     const half = rate / 2;
     const cgst = isSameState ? (taxable * half) / 100 : 0;
