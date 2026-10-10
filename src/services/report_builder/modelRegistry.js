@@ -372,6 +372,12 @@ export const MODEL_REGISTRY = {
       item_hsn_code: { label: "HSN Code", type: "string", filterable: true, sortable: false, groupable: true },
       item_gst: { label: "GST %", type: "number", filterable: true, sortable: false, groupable: false, aggregatable: ["avg"] },
       item_discount_pct: { label: "Discount %", type: "number", filterable: true, sortable: false, groupable: false, aggregatable: ["avg", "min", "max"] },
+      // Real scalar INTEGER FK to carts.id (confirmed in cartItemsModel.js).
+      // Previously unwhitelisted - with no way to group item rows back to
+      // their own order, "items per order" / "items per customer" reports
+      // (ticket #1289) were impossible. groupable so a report can bucket one
+      // row per order; pair with the `order` relation below for display.
+      cart_id: { label: "Order", type: "lookup", filterable: true, sortable: false, groupable: true },
       ...COUNT_COLUMN,
     },
     // No date column of its own (inherits the parent cart's) — no slot 1.
@@ -399,6 +405,20 @@ export const MODEL_REGISTRY = {
         columns: {
           category_name: { label: "Category Name", type: "string" },
         },
+      },
+      // Ticket #1289: "contact + order-wise item count" needs a path from an
+      // item row back to its order's customer. Borrows carts' whole
+      // whitelist (incl. carts' own `customer` relation to contacts) via
+      // modelKey, same as carts.customer borrows contacts - so
+      // "order.cart_number" (1 hop) and "order.customer.person_name" /
+      // "order.customer.company_name" (2 hop, the max queryEngine.js allows)
+      // are both valid display columns once this is added.
+      order: {
+        label: "Order",
+        foreignKey: "cart_id",
+        getModel: (tenantDB) => cartModel(tenantDB),
+        targetKey: "id",
+        modelKey: "carts",
       },
     },
   },
