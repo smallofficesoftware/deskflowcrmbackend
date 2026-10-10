@@ -6,7 +6,40 @@ import pdf from "pdf-creator-node";
 import { __dirnameConstant, PDF_LINK_EXTENDED_JOB_CARD } from "../../utils/appConstants.js";
 import { resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { getCompanyDetailByLoginId } from "../commonServices.js";
+import { isFeatureEnabled } from "../company_setup/featureFlagServices.js";
+import { generateJobCardMasterPdf, generateJobCardPdf, generateProductionEntryReceiptPdf, generateRequiredMaterialPdf } from "../pdfmeEngine/jobCardGenerate.js";
 import { fetchProductionEntryDetail, fetchProductionList, jobCardsDetails } from "./JobCardServices.js";
+
+// Ticket #2212: each kind's Document Designer opt-in, same key convention as
+// isFeatureEnabled(companyDetail.id, "shippingLabel_document_designer")
+// (orderServices.js). Default OFF - legacy EJS below is unchanged until a
+// company turns one of these on in Module Settings.
+const DESIGNER_FLAG_BY_KIND = {
+  jobCard: "jobCard_document_designer",
+  master: "jobCardMaster_document_designer",
+  requiredMaterial: "requiredMaterial_document_designer",
+};
+const PRODUCTION_ENTRY_RECEIPT_FLAG = "productionEntryReceipt_document_designer";
+
+// Writes a pdfme-generated Buffer to the same uploadDir/fileName convention
+// renderPdf() below uses for the EJS path, so both paths hand the caller the
+// identical {fileLinkPath, fileName} shape.
+const writePdfBuffer = (companyDetail, buffer, filePrefix) => {
+  const uploadDir = path.resolve(
+    __dirnameConstant,
+    `../../media-folder/jobCardPdf/${companyDetail.id.toString()}`
+  );
+  if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+  }
+  const fileNameOnly = `${filePrefix}_${Date.now()}.pdf`;
+  const filePath = path.join(uploadDir, fileNameOnly);
+  fs.writeFileSync(filePath, buffer);
+  return {
+    fileLinkPath: `${PDF_LINK_EXTENDED_JOB_CARD}${companyDetail.id.toString()}/${fileNameOnly}`,
+    fileName: fileNameOnly,
+  };
+};
 
 // Server-side PDFs for the mobile app (and anything else that wants one): the
 // client asks, gets a link, downloads the file and prints it.
@@ -142,20 +175,45 @@ export const jobCardPdf = async (req) => {
         }
         const totalProduced = entries.reduce((sum, e) => sum + num(e.produced_qty), 0);
 
-        const file = await renderPdf({
-            companyDetail,
-            viewName: kind.view,
-            filePrefix: `${kind.prefix}_${id}`,
-            data: {
+        const designerFlag = DESIGNER_FLAG_BY_KIND[kindKey];
+        const designerOn = designerFlag && (await isFeatureEnabled(companyDetail.id, designerFlag));
+
+        let file;
+        if (designerOn) {
+            const generatorArgs = {
                 jobCardId: id,
-                contact: contactDetail || {},
-                item: itemDetail || {},
+                contactDetail: contactDetail || {},
+                itemDetail: itemDetail || {},
                 itemName: itemDetail?.item_name || "",
-                processes: bomProcesses || [],
+                bomProcesses: bomProcesses || [],
                 entries,
                 totalProduced,
-            },
-        });
+                companyDetail,
+                documentTemplateId: req.body.document_template_id,
+                tenantDB: req.tenantDB,
+            };
+            const buffer = kindKey === "master"
+                ? await generateJobCardMasterPdf(generatorArgs)
+                : kindKey === "requiredMaterial"
+                    ? await generateRequiredMaterialPdf(generatorArgs)
+                    : await generateJobCardPdf(generatorArgs);
+            file = writePdfBuffer(companyDetail, buffer, `${kind.prefix}_${id}`);
+        } else {
+            file = await renderPdf({
+                companyDetail,
+                viewName: kind.view,
+                filePrefix: `${kind.prefix}_${id}`,
+                data: {
+                    jobCardId: id,
+                    contact: contactDetail || {},
+                    item: itemDetail || {},
+                    itemName: itemDetail?.item_name || "",
+                    processes: bomProcesses || [],
+                    entries,
+                    totalProduced,
+                },
+            });
+        }
 
         return resSuccess({
             ack_msg: "Pdf generated",
@@ -203,20 +261,37 @@ export const productionEntryPdf = async (req) => {
             return resError({ ack_msg: "Company not found." });
         }
 
-        const file = await renderPdf({
-            companyDetail,
-            viewName: "productionEntryReceipt",
-            filePrefix: `production_entry_${id}`,
-            data: {
+        const entryWithLists = {
+            ...entry,
+            consumption_items: entry.consumption_items || [],
+            rejection_items: entry.rejection_items || [],
+        };
+
+        const designerOn = await isFeatureEnabled(companyDetail.id, PRODUCTION_ENTRY_RECEIPT_FLAG);
+
+        let file;
+        if (designerOn) {
+            const buffer = await generateProductionEntryReceiptPdf({
                 jobCardId: entry.job_id,
                 itemName,
-                entry: {
-                    ...entry,
-                    consumption_items: entry.consumption_items || [],
-                    rejection_items: entry.rejection_items || [],
+                entry: entryWithLists,
+                companyDetail,
+                documentTemplateId: req.body.document_template_id,
+                tenantDB: req.tenantDB,
+            });
+            file = writePdfBuffer(companyDetail, buffer, `production_entry_${id}`);
+        } else {
+            file = await renderPdf({
+                companyDetail,
+                viewName: "productionEntryReceipt",
+                filePrefix: `production_entry_${id}`,
+                data: {
+                    jobCardId: entry.job_id,
+                    itemName,
+                    entry: entryWithLists,
                 },
-            },
-        });
+            });
+        }
 
         return resSuccess({
             ack_msg: "Pdf generated",
