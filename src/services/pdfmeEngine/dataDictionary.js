@@ -234,6 +234,67 @@ const CONTACT_DOC_DICTIONARY = [
   { key: "fromAddress", label: "From: Address", group: "Company" },
 ];
 
+// Job Card documents (ticket #2212) — 4 kinds, same tier as
+// taskDueList/shippingLabel. jobCardMaster/requiredMaterial flatten their
+// per-BOM-process materials into one bindable table (see jobCardTemplate.js
+// for why), so only one "materialsTable" entry each rather than per-process
+// fields.
+const JOB_CARD_DICTIONARY = [
+  { key: "companyName", label: "Company Name", group: "Company" },
+  { key: "companyAddress", label: "Company Address", group: "Company" },
+  { key: "companyContactLine", label: "Company Contact Line", group: "Company" },
+  { key: "companyGSTIN", label: "Company GSTIN", group: "Company" },
+  { key: "jobCardNoText", label: "Job Card Number", group: "Job Card" },
+  { key: "customerName", label: "Customer Name", group: "Customer" },
+  { key: "customerPhone", label: "Customer Phone", group: "Customer" },
+  { key: "customerEmail", label: "Customer Email", group: "Customer" },
+  { key: "customerGSTIN", label: "Customer GST No.", group: "Customer" },
+  { key: "customerAddress", label: "Customer Address", group: "Customer" },
+  { key: "itemName", label: "Item Name", group: "Item" },
+  { key: "itemCode", label: "Item Code", group: "Item" },
+  { key: "orderNo", label: "Order Number", group: "Item" },
+  { key: "deliveryDate", label: "Delivery Date", group: "Item" },
+  { key: "orderQtyLine", label: "Order Quantity", group: "Item" },
+];
+const JOB_CARD_MASTER_DICTIONARY = [
+  { key: "companyName", label: "Company Name", group: "Company" },
+  { key: "companyAddress", label: "Company Address", group: "Company" },
+  { key: "companyContactLine", label: "Company Contact Line", group: "Company" },
+  { key: "companyGSTIN", label: "Company GSTIN", group: "Company" },
+  { key: "jobCardNoText", label: "Job Card Number", group: "Job Card" },
+  { key: "customerName", label: "Customer Name", group: "Customer" },
+  { key: "customerPhone", label: "Customer Phone", group: "Customer" },
+  { key: "itemLine", label: "Item", group: "Item" },
+  { key: "orderNo", label: "Order Number", group: "Item" },
+  { key: "targetQtyLine", label: "Target Quantity", group: "Item" },
+  { key: "totalProducedLine", label: "Total Produced", group: "Item" },
+  { key: "materialsTable", label: "Required Materials Table", group: "Materials" },
+  { key: "historyTable", label: "Production History Table", group: "Production" },
+];
+const REQUIRED_MATERIAL_DICTIONARY = [
+  { key: "companyName", label: "Company Name", group: "Company" },
+  { key: "companyAddress", label: "Company Address", group: "Company" },
+  { key: "companyContactLine", label: "Company Contact Line", group: "Company" },
+  { key: "companyGSTIN", label: "Company GSTIN", group: "Company" },
+  { key: "jobCardNoText", label: "Job Card Number", group: "Job Card" },
+  { key: "itemLine", label: "Item", group: "Item" },
+  { key: "materialsTable", label: "Required Materials Table", group: "Materials" },
+];
+const PRODUCTION_ENTRY_RECEIPT_DICTIONARY = [
+  { key: "companyName", label: "Company Name", group: "Company" },
+  { key: "companyAddress", label: "Company Address", group: "Company" },
+  { key: "companyContactLine", label: "Company Contact Line", group: "Company" },
+  { key: "companyGSTIN", label: "Company GSTIN", group: "Company" },
+  { key: "jobCardNoText", label: "Job Card Number", group: "Job Card" },
+  { key: "entryIdText", label: "Entry ID", group: "Entry" },
+  { key: "itemName", label: "Item Name", group: "Entry" },
+  { key: "entryDateText", label: "Entry Date", group: "Entry" },
+  { key: "producedQtyText", label: "Produced Quantity", group: "Entry" },
+  { key: "remarkText", label: "Remark", group: "Entry" },
+  { key: "consumedTable", label: "Consumed Materials Table", group: "Materials" },
+  { key: "rejectedTable", label: "Rejected Materials Table", group: "Materials" },
+];
+
 // doc_type -> which base dictionary applies. All 10 cart-shaped doc_types
 // point at the same array (same pattern as templates.js's titleById).
 const DICTIONARY_BY_DOC_TYPE = {
@@ -261,6 +322,10 @@ const DICTIONARY_BY_DOC_TYPE = {
   contactEnvelope: CONTACT_DOC_DICTIONARY,
   employeeAccountStatement: EMPLOYEE_ACCOUNT_STATEMENT_DICTIONARY,
   employeeAccountTransaction: EMPLOYEE_ACCOUNT_TRANSACTION_DICTIONARY,
+  jobCard: JOB_CARD_DICTIONARY,
+  jobCardMaster: JOB_CARD_MASTER_DICTIONARY,
+  requiredMaterial: REQUIRED_MATERIAL_DICTIONARY,
+  productionEntryReceipt: PRODUCTION_ENTRY_RECEIPT_DICTIONARY,
 };
 
 // Cart custom fields (carts_column_*) use a DIFFERENT form_type per doc
