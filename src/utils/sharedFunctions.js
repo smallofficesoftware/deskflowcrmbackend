@@ -565,8 +565,16 @@ export const getNetworkDetails = async () => {
   return { macAddress: "Not found", ipAddress: "Not found" };
 };
 
-export const formatNumber = (number, decimals = 2) => {
-  return Number(number).toFixed(decimals);
+// grouped=true applies Indian-style digit grouping (1,50,000.00) via
+// toLocaleString - gated per-company behind the "number_format_grouped"
+// feature flag (ticket #2157); grouped=false (the default) keeps every
+// existing caller's plain toFixed() output unchanged.
+export const formatNumber = (number, decimals = 2, grouped = false) => {
+  if (!grouped) return Number(number).toFixed(decimals);
+  return Number(number).toLocaleString("en-IN", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
 };
 const currencyConfigs = {
   INR: { scales: ["", "Thousand", "Lakh", "Crore"], suffix: "Rupees" },
