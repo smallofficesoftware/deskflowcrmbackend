@@ -2326,7 +2326,6 @@ export const demoBook = async (req, res) => {
 
     }
     if (isNewContact) emitAutomationEvent({ company_masters_id: tenantDBFind.company_masters_id }, "contact.created", { id: contactCreate.dataValues.id });
-    emitAutomationEvent({ company_masters_id: tenantDBFind.company_masters_id }, "website.book_demo", { standalone: true, data: bookDemoBody, contact_id: contactCreate.dataValues.id });
     // return
 
     const messageBody = {
@@ -2458,7 +2457,6 @@ export const addContactUsData = async (req) => {
 
     }
     if (isNewContact) emitAutomationEvent({ company_masters_id: tenantDBFind.company_masters_id }, "contact.created", { id: contactCreate.dataValues.id });
-    emitAutomationEvent({ company_masters_id: tenantDBFind.company_masters_id }, "website.contact_us", { standalone: true, data: contactUsBody, contact_id: contactCreate.dataValues.id });
     // return
 
     const messageBody = {
