@@ -9,7 +9,7 @@ export default (app) => {
     app.post("/view-attendance", authenticateToken, tenantMiddleware, viewAttendance);
     app.post("/delete-attendance", authenticateToken, tenantMiddleware, deleteAttendance);
     app.post("/update-attendance", authenticateToken, tenantMiddleware, updateAttendance);
-    app.post("/create-attendance", authenticateToken, tenantMiddleware, createAttendance);
+    app.post("/create-attendance", authenticateToken, attendanceImageUpload, tenantMiddleware, createAttendance);
     app.post("/view-attendance-date", authenticateToken, tenantMiddleware, viewAttendanceByDate);
     app.post("/generate-attendance-sheet", authenticateToken, tenantMiddleware, generateAttendanceSampleSheetProvider);
 

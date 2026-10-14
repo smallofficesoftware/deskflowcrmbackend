@@ -19,6 +19,8 @@ export const updateAttendance = async (req, res) => {
     await callServiceMethod(req, res, attendanceUpdate(req), "updateAttendance");
 }
 export const createAttendance = async (req, res) => {
+    // Multipart (with a photo) may be encrypted; JSON bodies are untouched.
+    decryptRequestForMultipart(req);
     await callServiceMethod(req, res, createManualAttendance(req), "createManualAttendance");
 }
 export const viewAttendanceByDate = async (req, res) => {
