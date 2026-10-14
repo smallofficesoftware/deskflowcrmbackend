@@ -2,6 +2,7 @@ import sequelize from "../../config/sequelize.js";
 import companyModel from "../../models/company_setup/companyModel.js";
 import { resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { WORKSPACE_PAGE_SLUG, decideWorkspaceCreate, parseWorkspaceLimit } from "./workspaceLimitRules.js";
+import { getWorkspaceRightsLimit } from "./workspaceRightsLimit.js";
 
 const STORAGE_PAGE_SLUG = "data_stored_on_a_secure_cloud";
 
@@ -55,14 +56,19 @@ export const getWorkspaceAddonQty = async (company_masters_id) => {
 export const countWorkspaces = (parent_company_id) =>
   companyModel.count({ where: { parent_company_id, isDelete: 0 } });
 
-/** Full check for createWorkspace: { allowed, limit, used }. */
-export const checkWorkspaceLimit = async (parent_company_id) => {
-  const [planInfo, used, extraWorkspaces] = await Promise.all([
+/**
+ * Full check for createWorkspace: { allowed, limit, used }.
+ * With a tenantDB the base limit is read from the rights JSON like the contact check does; without one
+ * (or when it holds no usable limit) the plan lookup applies.
+ */
+export const checkWorkspaceLimit = async (parent_company_id, tenantDB) => {
+  const [planInfo, used, extraWorkspaces, rightsLimit] = await Promise.all([
     getWorkspaceLimit(parent_company_id),
     countWorkspaces(parent_company_id),
     getWorkspaceAddonQty(parent_company_id),
+    getWorkspaceRightsLimit(tenantDB, parent_company_id),
   ]);
-  return decideWorkspaceCreate({ ...planInfo, used, extraWorkspaces });
+  return decideWorkspaceCreate({ ...planInfo, used, extraWorkspaces, rightsLimit });
 };
 
 /** Plan usage extras for the Manage Workspaces screen / company list: { limit (null = unlimited), used, storage_limit_gb (plan limit only) }. */
@@ -72,7 +78,7 @@ export const getWorkspaceLimitInfo = async (req) => {
     return resError({ ack_msg: "Parent company ID is required", developer_msg: "Required fields missing" });
   }
   try {
-    const { limit, used } = await checkWorkspaceLimit(parent_company_id);
+    const { limit, used } = await checkWorkspaceLimit(parent_company_id, req.tenantDB);
     const storage = await getPlanPageLimit(parent_company_id, STORAGE_PAGE_SLUG);
     return resSuccess({
       data: { item: { limit, used, storage_limit_gb: storage.hasPlanEntry ? parseWorkspaceLimit(storage.rawDataLimit) : null } },

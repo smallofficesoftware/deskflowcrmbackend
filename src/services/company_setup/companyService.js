@@ -4897,7 +4897,7 @@ export const createWorkspace = async (req) => {
       });
     }
 
-    const workspaceCheck = await checkWorkspaceLimit(parent_company_id);
+    const workspaceCheck = await checkWorkspaceLimit(parent_company_id, req.tenantDB);
     if (!workspaceCheck.allowed) {
       return resError({
         ack_msg: `Your plan allows ${workspaceCheck.limit} workspace${workspaceCheck.limit === 1 ? "" : "s"}. Please upgrade your plan to add more.`,
