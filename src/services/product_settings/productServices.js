@@ -808,6 +808,28 @@ export const productUpdate = async (req) => {
     const existingProduct = await product.findOne({
       where: { id: product_id },
     });
+
+    // A serial-tracked product (2) that already holds serial numbers can't be
+    // switched Off - its serials would be orphaned. Same rule as the product
+    // update-by-excel importer.
+    if (
+      Number(existingProduct?.is_serial_number) === 2 &&
+      is_serial_number !== undefined &&
+      is_serial_number !== null &&
+      Number(is_serial_number) !== 2
+    ) {
+      const serialCount = await cartSerialNumberModel(req.tenantDB).count({
+        where: { product_id, isDelete: 0 },
+      });
+      if (serialCount > 0) {
+        return resError({
+          ack_msg:
+            "Serial number tracking can't be turned off: this product already has serial numbers.",
+          developer_msg: `Product ${product_id} has ${serialCount} serial number rows`,
+        });
+      }
+    }
+
     let convertPath = existingProduct?.product_img || ""; // Use existing image if no new image is uploaded
     let mediaName = "";
 
@@ -1337,6 +1359,7 @@ export const generateProductSampleSheet = async (req) => {
       "purchase_rate": "50",
       "purchase_gst_label": "GST 18%",
       "hsn_code": "",
+      "serial_number_tracking": "No",
     };
 
     /** Merge dynamic fields **/
@@ -1647,6 +1670,7 @@ export const getExportsProductsForUpdateData = async (req) => {
       gst_id: "sales_gst_label",
       purchase_rate: "purchase_rate",
       purchase_gst_id: "purchase_gst_label",
+      is_serial_number: "serial_number_tracking",
       ...(innerQtyActive && {
         product_inner_qty: "product_inner_qty",
         product_inner_unit: "product_inner_unit",
@@ -1736,6 +1760,8 @@ export const getExportsProductsForUpdateData = async (req) => {
       sanitized['purchase_gst_id'] = sanitized['purchase_gst_id'] ? taxMasterIdGroupSet.get(Number(sanitized['purchase_gst_id'])) : ''
       sanitized['product_group'] = sanitized['group_name'] || ''
       sanitized['product_category'] = sanitized['category_name'] || ''
+      // products.is_serial_number: 1 => Off, 2 => On
+      sanitized['is_serial_number'] = Number(sanitized['is_serial_number']) === 2 ? 'Yes' : 'No'
       if (innerQtyActive) {
         sanitized['product_inner_unit'] = sanitized['product_inner_unit'] ? unitMasterIdGroupSet.get(Number(sanitized['product_inner_unit'])) || '' : ''
       }

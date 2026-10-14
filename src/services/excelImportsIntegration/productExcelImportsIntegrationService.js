@@ -1,5 +1,6 @@
 import moment from "moment";
 import XLSX from "xlsx";
+import { cartSerialNumberModel } from "../../models/activities/cartSerialNumberModel.js";
 import { applicationLoginTypeRightModel } from "../../models/application_login/applicationLoginTypeRightModel.js";
 import companyModel from "../../models/company_setup/companyModel.js";
 import { customFieldDatavaluesModel } from "../../models/other_settings/customfieldDatavaluesModel.js";
@@ -277,6 +278,7 @@ export const addProductByExcelSheetV2 = async (req) => {
             "purchase_rate": "purchase_rate",
             "purchase_gst_label": "purchase_gst_id",
             "hsn_code": "hsn_code",
+            "serial_number_tracking": "is_serial_number",
         };
 
         const customFormFieldModelIntance = customFieldFormModel(req.tenantDB);
@@ -504,6 +506,7 @@ export const addProductByExcelSheetV2 = async (req) => {
             let productTypesInvalidNames = [];
             let invalidUnitName = [];
             let rateGstInvalidRows = [];
+            let invalidSerialTrackingRows = [];
             const sanitizedData = [];
 
             for (let i = 0; i < filterdData.length; i++) {
@@ -696,6 +699,19 @@ export const addProductByExcelSheetV2 = async (req) => {
                 product_outer_unit_id = isValid(product_outer_unit) ? unitMasterListSet.get(String(product_outer_unit).trim().toLowerCase()) || unit_id : unit_id;
 
 
+                // ================= SERIAL NUMBER TRACKING =================
+                // products.is_serial_number: 1 => Off, 2 => On. Blank = Off.
+
+                const serialKey = isValid(v.is_serial_number) ? v.is_serial_number.toString().trim().toLowerCase() : "";
+                let is_serial_number = 1;
+
+                if (["yes", "y", "on", "2"].includes(serialKey)) {
+                    is_serial_number = 2;
+                } else if (serialKey !== "" && !["no", "n", "off", "1"].includes(serialKey)) {
+                    invalidSerialTrackingRows.push(rowNumber);
+                    continue;
+                }
+
                 // ================= RATE & GST =================
 
                 const rateFloat = parseFloat(rate) || 0;
@@ -742,6 +758,7 @@ export const addProductByExcelSheetV2 = async (req) => {
                     product_outer_unit: product_outer_unit_id,
                     product_inner_qty: product_inner_qty_int,
                     product_outer_qty: product_outer_qty_int,
+                    is_serial_number,
                 };
 
                 const sanitizedRow = processRowDynamic(
@@ -773,6 +790,7 @@ export const addProductByExcelSheetV2 = async (req) => {
                 { rows: productTypesInvalidNames, text: "Invalid product type." },
                 { rows: invalidUnitName, text: "Invalid unit." },
                 { rows: rateGstInvalidRows, text: "Invalid rate or GST." },
+                { rows: invalidSerialTrackingRows, text: "Invalid serial number tracking (use Yes or No)." },
             ];
 
             // Build message
@@ -1012,6 +1030,7 @@ export const addProductByExcelSheetUpdateData = async (req) => {
             "sales_gst_label": "gst_id",
             "purchase_rate": "purchase_rate",
             "purchase_gst_label": "purchase_gst_id",
+            "serial_number_tracking": "is_serial_number",
             ...(innerQtyActive && {
                 "product_inner_qty": "product_inner_qty",
                 "product_inner_unit": "product_inner_unit",
@@ -1212,7 +1231,7 @@ export const addProductByExcelSheetUpdateData = async (req) => {
                         findCompanyId.company_masters_id,
                     isDelete: 0,
                 },
-                attributes: ["id"],
+                attributes: ["id", "is_serial_number"],
                 raw: true,
             }),
             taxModelInstance.findAll({
@@ -1230,6 +1249,22 @@ export const addProductByExcelSheetUpdateData = async (req) => {
                 attributes: ["unit", "id"],
             }),
         ]);
+
+        // Products that are serial-tracked (2) and already hold serial numbers
+        // can't be switched Off from the sheet - their serials would be orphaned.
+        const serialOnProductIds = existingProducts
+            .filter((p) => Number(p.is_serial_number) === 2)
+            .map((p) => Number(p.id));
+        const serialLockedProductIds = new Set();
+        if (serialOnProductIds.length > 0) {
+            const serialRows = await cartSerialNumberModel(req.tenantDB).findAll({
+                where: { product_id: serialOnProductIds, isDelete: 0 },
+                attributes: ["product_id"],
+                group: ["product_id"],
+                raw: true,
+            });
+            serialRows.forEach((r) => serialLockedProductIds.add(Number(r.product_id)));
+        }
 
         // Same lookup addProductByExcelSheetV2 (create sheet) builds for
         // resolving product_inner_unit/product_outer_unit's typed unit name
@@ -1276,6 +1311,8 @@ export const addProductByExcelSheetUpdateData = async (req) => {
         let invalidProductGroupRows = [];
         let invalidCategoryRows = [];
         let categoryGroupMismatchRows = [];
+        let invalidSerialTrackingRows = [];
+        let serialTrackingLockedRows = [];
 
         const sanitizedData = [];
 
@@ -1412,6 +1449,28 @@ export const addProductByExcelSheetUpdateData = async (req) => {
                 purchase_gst_per = taxMasterValueGroupSet.get(String(purchase_gst_id).toLowerCase()) || 0;
             }
 
+            // ================= SERIAL NUMBER TRACKING =================
+            // products.is_serial_number: 1 => Off, 2 => On. Blank / column
+            // missing = leave the product's current setting unchanged.
+
+            const serialKey = isValid(v.is_serial_number)
+                ? v.is_serial_number.toString().trim().toLowerCase()
+                : "";
+            let is_serial_number = undefined;
+
+            if (["yes", "y", "on", "2"].includes(serialKey)) {
+                is_serial_number = 2;
+            } else if (["no", "n", "off", "1"].includes(serialKey)) {
+                if (serialLockedProductIds.has(id)) {
+                    serialTrackingLockedRows.push(rowNumber);
+                    continue;
+                }
+                is_serial_number = 1;
+            } else if (serialKey !== "") {
+                invalidSerialTrackingRows.push(rowNumber);
+                continue;
+            }
+
             // ================= NEGATIVE VALIDATION =================
 
             if (
@@ -1462,6 +1521,12 @@ export const addProductByExcelSheetUpdateData = async (req) => {
                 ...(product_group_id !== undefined && { product_group_id }),
                 ...(category_id !== undefined && { category_id }),
             };
+            // `...v` carries the raw sheet text ("Yes"/"No"); replace with 1/2 or drop.
+            if (is_serial_number !== undefined) {
+                objCreated.is_serial_number = is_serial_number;
+            } else {
+                delete objCreated.is_serial_number;
+            }
             delete objCreated.product_group;
             delete objCreated.category_name;
             delete objCreated.product_category;
@@ -1514,6 +1579,14 @@ export const addProductByExcelSheetUpdateData = async (req) => {
             {
                 rows: categoryGroupMismatchRows,
                 text: "Product Category does not belong to the given Product Group."
+            },
+            {
+                rows: invalidSerialTrackingRows,
+                text: "Invalid serial number tracking (use Yes or No)."
+            },
+            {
+                rows: serialTrackingLockedRows,
+                text: "Serial number tracking can't be turned off: this product already has serial numbers."
             },
         ];
 
