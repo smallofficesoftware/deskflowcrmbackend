@@ -1053,15 +1053,39 @@ export const listSubmissions = async (req) => {
     }
 
     if (search) {
-      const searchCols = ["submitter_name", "submitter_email", "submitter_phone", ...filterableFields
-        .filter((f) => ["text", "textarea", "phone", "email", "url", "auto-number"].includes(f.type))
-        .map((f) => f.key)];
+      // Search covers every readable value field, not just the ones ticked
+      // "Filterable" (that flag is for the column filters) - a serial number
+      // or customer typed into any text / number / choice / lookup field
+      // must be findable. Hidden / masked / encrypted fields stay excluded.
+      const SEARCHABLE_TYPES = [
+        "text", "textarea", "phone", "email", "url", "auto-number",
+        "number", "currency", "percentage", "calculation", "barcode",
+        "dropdown", "radio", "multi-select",
+      ];
+      const searchableFields = fields.filter(
+        (f) => f.key && !NO_COLUMN_TYPES.has(f.type) && !isEncryptedAadhaarField(f) && !noRead.has(f.key),
+      );
+      const searchCols = [
+        "submitter_name", "submitter_email", "submitter_phone",
+        ...searchableFields.filter((f) => SEARCHABLE_TYPES.includes(f.type)).map((f) => f.key),
+      ];
       // Stored "fbenc:" values (encrypted Aadhaar, including fields since
       // switched to another mode) are never matched.
       const likeClauses = searchCols.map((col, i) => {
         replacements[`search_${i}`] = `%${search}%`;
         return `(${q(col)} LIKE :search_${i} AND ${q(col)} NOT LIKE 'fbenc:%')`;
       });
+      // Customer lookup fields store a contact id - match on the contact's
+      // name / company / mobile, the same fields the lookup itself searches.
+      const customerCols = searchableFields.filter((f) => f.type === "customer-lookup").map((f) => f.key);
+      if (customerCols.length > 0) {
+        replacements.search_customer = `%${search}%`;
+        for (const col of customerCols) {
+          likeClauses.push(
+            `${q(col)} IN (SELECT id FROM \`contact_masters\` WHERE isDelete = 0 AND (person_name LIKE :search_customer OR company_name LIKE :search_customer OR mobile_number LIKE :search_customer OR raw_mobile_number LIKE :search_customer))`,
+          );
+        }
+      }
       whereClauses.push(`(${likeClauses.join(" OR ")})`);
     }
 
