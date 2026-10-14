@@ -32,6 +32,7 @@ const CART_DOC_DICTIONARY = [
   { key: "pendingItemsTable", label: "Pending Items Table", group: "Item" },
   { key: "firstItemName", label: "First Item — Name", group: "Item" },
   { key: "firstItemPrice", label: "First Item — Rate", group: "Item" },
+  { key: "firstItemSerialNumbers", label: "First Item — Serial Numbers", group: "Item" },
   // firstItemImage removed — confirmed via orderInputMapper.js's actual
   // returned object (no such key is ever produced; firstItemName/
   // firstItemPrice are, immediately above them there).
@@ -226,11 +227,73 @@ const CONTACT_DOC_DICTIONARY = [
   { key: "toEmail", label: "To: Email", group: "Contact" },
   { key: "toLocationLine", label: "To: Area/City/State/Country - Pincode", group: "Contact" },
   { key: "toAddress", label: "To: Address", group: "Contact" },
+  { key: "toShippingAddress", label: "To: Shipping Address", group: "Contact" },
   { key: "fromCompanyName", label: "From: Company Name", group: "Company" },
   { key: "fromLocationLine", label: "From: City, State", group: "Company" },
   { key: "fromPhone", label: "From: Contact No.", group: "Company" },
   { key: "fromEmail", label: "From: Email", group: "Company" },
   { key: "fromAddress", label: "From: Address", group: "Company" },
+];
+
+// Job Card documents (ticket #2212) — 4 kinds, same tier as
+// taskDueList/shippingLabel. jobCardMaster/requiredMaterial flatten their
+// per-BOM-process materials into one bindable table (see jobCardTemplate.js
+// for why), so only one "materialsTable" entry each rather than per-process
+// fields.
+const JOB_CARD_DICTIONARY = [
+  { key: "companyName", label: "Company Name", group: "Company" },
+  { key: "companyAddress", label: "Company Address", group: "Company" },
+  { key: "companyContactLine", label: "Company Contact Line", group: "Company" },
+  { key: "companyGSTIN", label: "Company GSTIN", group: "Company" },
+  { key: "jobCardNoText", label: "Job Card Number", group: "Job Card" },
+  { key: "customerName", label: "Customer Name", group: "Customer" },
+  { key: "customerPhone", label: "Customer Phone", group: "Customer" },
+  { key: "customerEmail", label: "Customer Email", group: "Customer" },
+  { key: "customerGSTIN", label: "Customer GST No.", group: "Customer" },
+  { key: "customerAddress", label: "Customer Address", group: "Customer" },
+  { key: "itemName", label: "Item Name", group: "Item" },
+  { key: "itemCode", label: "Item Code", group: "Item" },
+  { key: "orderNo", label: "Order Number", group: "Item" },
+  { key: "deliveryDate", label: "Delivery Date", group: "Item" },
+  { key: "orderQtyLine", label: "Order Quantity", group: "Item" },
+];
+const JOB_CARD_MASTER_DICTIONARY = [
+  { key: "companyName", label: "Company Name", group: "Company" },
+  { key: "companyAddress", label: "Company Address", group: "Company" },
+  { key: "companyContactLine", label: "Company Contact Line", group: "Company" },
+  { key: "companyGSTIN", label: "Company GSTIN", group: "Company" },
+  { key: "jobCardNoText", label: "Job Card Number", group: "Job Card" },
+  { key: "customerName", label: "Customer Name", group: "Customer" },
+  { key: "customerPhone", label: "Customer Phone", group: "Customer" },
+  { key: "itemLine", label: "Item", group: "Item" },
+  { key: "orderNo", label: "Order Number", group: "Item" },
+  { key: "targetQtyLine", label: "Target Quantity", group: "Item" },
+  { key: "totalProducedLine", label: "Total Produced", group: "Item" },
+  { key: "materialsTable", label: "Required Materials Table", group: "Materials" },
+  { key: "historyTable", label: "Production History Table", group: "Production" },
+];
+const REQUIRED_MATERIAL_DICTIONARY = [
+  { key: "companyName", label: "Company Name", group: "Company" },
+  { key: "companyAddress", label: "Company Address", group: "Company" },
+  { key: "companyContactLine", label: "Company Contact Line", group: "Company" },
+  { key: "companyGSTIN", label: "Company GSTIN", group: "Company" },
+  { key: "jobCardNoText", label: "Job Card Number", group: "Job Card" },
+  { key: "itemLine", label: "Item", group: "Item" },
+  { key: "materialsTable", label: "Required Materials Table", group: "Materials" },
+];
+const PRODUCTION_ENTRY_RECEIPT_DICTIONARY = [
+  { key: "companyName", label: "Company Name", group: "Company" },
+  { key: "companyAddress", label: "Company Address", group: "Company" },
+  { key: "companyContactLine", label: "Company Contact Line", group: "Company" },
+  { key: "companyGSTIN", label: "Company GSTIN", group: "Company" },
+  { key: "jobCardNoText", label: "Job Card Number", group: "Job Card" },
+  { key: "entryIdText", label: "Entry ID", group: "Entry" },
+  { key: "itemName", label: "Item Name", group: "Entry" },
+  { key: "entryDateText", label: "Entry Date", group: "Entry" },
+  { key: "producedQtyText", label: "Produced Quantity", group: "Entry" },
+  { key: "remarkText", label: "Remark", group: "Entry" },
+  { key: "consumedTable", label: "Consumed Materials Table", group: "Materials" },
+  { key: "rejectedTable", label: "Rejected Materials Table", group: "Materials" },
 ];
 
 // doc_type -> which base dictionary applies. All 10 cart-shaped doc_types
@@ -260,6 +323,10 @@ const DICTIONARY_BY_DOC_TYPE = {
   contactEnvelope: CONTACT_DOC_DICTIONARY,
   employeeAccountStatement: EMPLOYEE_ACCOUNT_STATEMENT_DICTIONARY,
   employeeAccountTransaction: EMPLOYEE_ACCOUNT_TRANSACTION_DICTIONARY,
+  jobCard: JOB_CARD_DICTIONARY,
+  jobCardMaster: JOB_CARD_MASTER_DICTIONARY,
+  requiredMaterial: REQUIRED_MATERIAL_DICTIONARY,
+  productionEntryReceipt: PRODUCTION_ENTRY_RECEIPT_DICTIONARY,
 };
 
 // Cart custom fields (carts_column_*) use a DIFFERENT form_type per doc
@@ -285,6 +352,20 @@ export const CART_CUSTOM_FIELD_FORM_TYPE_BY_DOC_TYPE = {
   pendingPurchaseOrder: 9,
 };
 const PRODUCT_CUSTOM_FIELD_FORM_TYPE = 4;
+// Contact's own custom fields (same form_type contactService.js's
+// getCustomFormFieldR calls already use) — the first non-cart module wired
+// into this merge. Add further modules (product, account, employee) here
+// the same way as their own tickets need it; each doc_type maps to the
+// form_type(s) its module's custom fields live under.
+const CONTACT_CUSTOM_FIELD_FORM_TYPE = 1;
+const CONTACT_DOC_TYPES = new Set(["contactAddress", "contactEnvelope"]);
+
+function getCustomFieldFormTypesForDocType(doc_type) {
+  const cartCustomFieldFormType = CART_CUSTOM_FIELD_FORM_TYPE_BY_DOC_TYPE[doc_type];
+  if (cartCustomFieldFormType) return [cartCustomFieldFormType, PRODUCT_CUSTOM_FIELD_FORM_TYPE];
+  if (CONTACT_DOC_TYPES.has(doc_type)) return [CONTACT_CUSTOM_FIELD_FORM_TYPE];
+  return null;
+}
 
 // Report Builder's doc_type is dynamic — "report_" + report_definition_id
 // (reportPdfExport.js's reportDocType()), one per report, not a fixed
@@ -316,11 +397,11 @@ export async function buildDataDictionary(req, doc_type) {
   }
 
   const { company_masters_id } = req.body || {};
-  const cartCustomFieldFormType = CART_CUSTOM_FIELD_FORM_TYPE_BY_DOC_TYPE[doc_type];
-  // The 4 non-cart doc types have no cart custom-field form_type mapping —
-  // custom fields are a cart-document concept, so skip the lookup entirely
-  // rather than querying form_type IN (undefined, ...).
-  if (!cartCustomFieldFormType) {
+  const customFieldFormTypes = getCustomFieldFormTypesForDocType(doc_type);
+  // Doc types with no module custom-field mapping yet (product, account,
+  // employee docs) skip the lookup entirely rather than querying
+  // form_type IN (undefined, ...).
+  if (!customFieldFormTypes) {
     return base;
   }
 
@@ -331,7 +412,7 @@ export async function buildDataDictionary(req, doc_type) {
   // point to.
   const customFields = await CustomField.findAll({
     where: {
-      form_type: [cartCustomFieldFormType, PRODUCT_CUSTOM_FIELD_FORM_TYPE],
+      form_type: customFieldFormTypes,
       company_masters_id,
       print_or_not: 1,
       isDelete: 0,
@@ -343,7 +424,12 @@ export async function buildDataDictionary(req, doc_type) {
   const customEntries = customFields.map((f) => ({
     key: f.reference_column_name,
     label: f.title,
-    group: f.form_type === PRODUCT_CUSTOM_FIELD_FORM_TYPE ? "Product Custom Field" : "Cart Custom Field",
+    group:
+      f.form_type === PRODUCT_CUSTOM_FIELD_FORM_TYPE
+        ? "Product Custom Field"
+        : f.form_type === CONTACT_CUSTOM_FIELD_FORM_TYPE
+        ? "Contact Custom Field"
+        : "Cart Custom Field",
   }));
 
   return [...base, ...customEntries];

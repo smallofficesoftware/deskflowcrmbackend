@@ -4716,7 +4716,11 @@ const generateSingleOrderPdf = async (req, res) => {
         cart_city_name: customerCityName,
         cart_area_name: customerAreaName,
         company_state_name: companyStateName,
-        formatNum: formatNumber,
+        // Ticket #2157: company_masters.is_grouped_number_format gates
+        // Indian-style digit grouping - formatNum keeps its existing
+        // (value, decimals) call shape used throughout the EJS templates.
+        formatNum: (value, decimals) =>
+          formatNumber(value, decimals, !!companyDetail.is_grouped_number_format),
         orderTypesList: orderTypesListPdf,
         numberToword: numberTowords,
         gstnumberToword: gstnumberTowords,
@@ -5061,6 +5065,14 @@ const generateSingleOrderPdf = async (req, res) => {
           total: item.item_total,
           item_hsn_code: item.item_hsn_code,
           item_total: item.item_total,
+          // item.serial_numbers is already populated above (finalData mapping,
+          // same data the legacy EJS "SN No:" block uses) - exposed here as
+          // its own field so the Designer's items-table "Serial No." column
+          // and the standalone "First Item — Serial Numbers" field
+          // (orderInputMapper.js) can both bind to it.
+          serialNumbers: Array.isArray(item.serial_numbers) && item.serial_numbers.length > 0
+            ? item.serial_numbers.join(", ")
+            : "",
         }));
 
         const pdfmeItemImages = resultAllCartItems.map((item) => {
@@ -5107,6 +5119,9 @@ const generateSingleOrderPdf = async (req, res) => {
             paymentQREnabled: !!settingDetails.paymentQR,
             upiId: companyDetail.upi_id,
             upiName: companyDetail.upi_name,
+            // Ticket #2157 - same company_masters.is_grouped_number_format
+            // flag the legacy EJS path's formatNum binding checks above.
+            groupedNumberFormat: !!companyDetail.is_grouped_number_format,
           },
           buyer: {
             companyName: cartData.to_customer_company_name,

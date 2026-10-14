@@ -31,17 +31,18 @@ async function resolveContactTemplate(tenantDB, companyId, docType, documentTemp
   return template || fallbackBuilder();
 }
 
-function buildContactRawInputs({ contact, company }) {
+function buildContactRawInputs({ contact, company, customFieldRows }) {
   const toLocationParts = [contact?.area_name, contact?.city_name, contact?.state_name, contact?.country_name].filter(Boolean).join(", ");
   const toLocationLine = contact?.pincode ? `${toLocationParts} - ${contact.pincode}` : toLocationParts;
 
-  return {
+  const rawInputs = {
     toName: contact?.person_name ? `Name: ${contact.person_name}` : "",
     toCompanyName: contact?.company_name ? `Company: ${contact.company_name}` : "",
     toPhone: contact?.mobile_number ? `Contact No.: ${contact.mobile_number}` : "",
     toEmail: contact?.email_id ? `Email: ${contact.email_id}` : "",
     toLocationLine,
     toAddress: contact?.address ? `Address: ${contact.address}` : "",
+    toShippingAddress: contact?.shipping_address ? `Shipping Address: ${contact.shipping_address}` : "",
 
     fromCompanyName: company?.company_name ? `Company: ${company.company_name}` : "",
     fromLocationLine: [company?.city_name, company?.state_name].filter(Boolean).join(", "),
@@ -49,14 +50,25 @@ function buildContactRawInputs({ contact, company }) {
     fromEmail: company?.company_email ? `Email: ${company.company_email}` : "",
     fromAddress: company?.address ? `Address: ${company.address}` : "",
   };
+
+  // Contact custom-field values, keyed by their own reference_column_name —
+  // same dictionary keys dataDictionary.js's buildDataDictionary() now offers
+  // as token chips for the contact module (mirrors generateDocument.js's
+  // identical pattern for cart custom fields, reading off `contact` instead
+  // of `cartValues`).
+  (customFieldRows || []).forEach((field) => {
+    rawInputs[field.reference_column_name] = contact?.[field.reference_column_name] ?? "";
+  });
+
+  return rawInputs;
 }
 
-async function generateContactPdf(docType, fallbackBuilder, { contact, company, documentTemplateId, tenantDB, templateOverride = null }) {
+async function generateContactPdf(docType, fallbackBuilder, { contact, company, documentTemplateId, tenantDB, templateOverride = null, customFieldRows }) {
   // templateOverride (an unsaved draft, e.g. from Document Designer's
   // "Generate Preview"/test-run) short-circuits the saved-template lookup,
   // same as every other generator's templateOverride.
   const template = templateOverride || (await resolveContactTemplate(tenantDB, company?.id, docType, documentTemplateId, fallbackBuilder));
-  const rawInputs = buildContactRawInputs({ contact, company });
+  const rawInputs = buildContactRawInputs({ contact, company, customFieldRows });
 
   return renderPdf(template, rawInputs);
 }

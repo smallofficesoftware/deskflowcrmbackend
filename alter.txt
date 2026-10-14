@@ -4032,3 +4032,9 @@ ALTER TABLE `attendance_batch_process` MODIFY `late_in` VARCHAR(100) NULL DEFAUL
 -- Task / Support Ticket / Visit store an optional serial number (entry shown when the company has a product with is_serial_number = 2); product_id is derived from the serial. Also apply on smalloffice_sample_tenant.
 ALTER TABLE `task_managements` ADD COLUMN `product_id` INT(11) NULL DEFAULT NULL, ADD COLUMN `serial_number` VARCHAR(100) NULL DEFAULT NULL;
 ALTER TABLE `visits` ADD COLUMN `product_id` INT(11) NULL DEFAULT NULL, ADD COLUMN `serial_number` VARCHAR(100) NULL DEFAULT NULL;
+
+
+10-10-2026 Ravi
+-- migration: migration/tenant/migrations/20261010150000-add-is-grouped-number-format-to-company-masters.js
+-- Company-wide print preference (ticket #2157): Indian-style digit grouping (1,50,000.00) on order/quotation PDF amounts when enabled, plain decimal (150000.00) when not. Also apply on smalloffice_sample_tenant.
+ALTER TABLE `company_masters` ADD COLUMN `is_grouped_number_format` INT(11) NULL DEFAULT 0;
