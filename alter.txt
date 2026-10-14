@@ -4045,3 +4045,10 @@ ALTER TABLE `company_masters` ADD COLUMN `is_grouped_number_format` INT(11) NULL
 -- Form Builder "Save as template" / starter forms were removed; the company templates table is no longer used. Every tenant DB + smalloffice_sample_tenant. Destroys any templates a company saved.
 -- Also removed its LIKE line from new_company_creation_sql/SQL/create-company/create_company_copy.sql.
 DROP TABLE IF EXISTS `form_builder_templates`;
+
+
+14-10-2026 Dhaval
+-- migration: migration/tenant/migrations/20261014160000-drop-form-builder-drafts.js
+-- Form Builder "Save draft" on the fill screen and the My drafts box were removed; the per-person drafts table is no longer used. Every tenant DB + smalloffice_sample_tenant. Destroys any unfinished drafts people saved.
+-- Also removed its LIKE line from new_company_creation_sql/SQL/create-company/create_company_copy.sql.
+DROP TABLE IF EXISTS `form_builder_drafts`;

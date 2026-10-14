@@ -153,7 +153,6 @@ CREATE TABLE `form_builder_custom_list_items` LIKE smalloffice_sample_tenant.for
 CREATE TABLE `form_builder_stage_log` LIKE smalloffice_sample_tenant.form_builder_stage_log;
 CREATE TABLE `form_builder_schedules` LIKE smalloffice_sample_tenant.form_builder_schedules;
 CREATE TABLE `form_builder_schedule_entries` LIKE smalloffice_sample_tenant.form_builder_schedule_entries;
-CREATE TABLE `form_builder_drafts` LIKE smalloffice_sample_tenant.form_builder_drafts;
 
 CREATE TABLE `adjustment_types` LIKE smalloffice_sample_tenant.adjustment_types;
 ALTER TABLE `adjustment_types`  DISABLE KEYS;

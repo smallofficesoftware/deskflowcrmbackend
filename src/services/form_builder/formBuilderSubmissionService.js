@@ -57,7 +57,6 @@ import { isDateField, resolveDateValue, checkDateLimits, sameStoredDate } from "
 import { hasFormPermission, getMyFormPermissions } from "./formBuilderPermissions.js";
 import { assignAutoNumber, validateManualAutoNumber } from "./formBuilderAutoNumber.js";
 import { linkScheduleEntry } from "./formBuilderScheduleService.js";
-import { deleteFinishedDraft } from "./formBuilderDraftService.js";
 import loginModel from "../../models/application_login/loginModel.js";
 import { getCompanyByLoginId } from "../commonServices.js";
 import { normalizeToTenDigit } from "../../utils/sharedFunctions.js";
@@ -925,15 +924,6 @@ export const createInternalSubmissionEntry = async (req) => {
         files: req.files,
         skipFieldKeys: result.hiddenUploadKeys,
       });
-    }
-
-    // The entry came from a saved draft (plan M7): the draft has done its job.
-    if (req.body?.draft_id) {
-      try {
-        await deleteFinishedDraft({ tenantDB: req.tenantDB, company_masters_id, form_id: form.id, loginId: a_application_login_id, draftId: req.body.draft_id });
-      } catch (draftError) {
-        console.error("deleteFinishedDraft error:", draftError);
-      }
     }
 
     // A form set up as a recurring schedule (plan Q1): this entry answers the person's due day.
