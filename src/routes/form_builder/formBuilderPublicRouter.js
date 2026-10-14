@@ -2,6 +2,7 @@ import {
   getPublicFormSchemaController,
   submitPublicFormController,
   getPublicReferenceOptionsController,
+  getPublicProductFillValuesController,
   sendPublicFormOtpController,
 } from "../../controllers/form_builder/formBuilderPublicController.js";
 import { publicFormRateLimit } from "../../middlewares/publicFormRateLimit.js";
@@ -14,6 +15,7 @@ export default (app) => {
   // via qrCode, not tenantMiddleware at the route layer.
   app.post("/public-form/schema", getPublicFormSchemaController);
   app.post("/public-form/reference-options", getPublicReferenceOptionsController);
+  app.post("/public-form/product-fill-values", getPublicProductFillValuesController);
   app.post("/public-form/submit", publicFormRateLimit, formBuilderUpload, submitPublicFormController);
   // Same rate limiter as submit (plan M5) — an OTP send is cheap to abuse otherwise.
   app.post("/public-form/send-otp", publicFormRateLimit, sendPublicFormOtpController);
