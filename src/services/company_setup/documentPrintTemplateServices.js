@@ -35,6 +35,7 @@ import { generateEmployeeAccountTransactionPdf } from "../pdfmeEngine/employeeAc
 import { generateQuotationPdf } from "../pdfmeEngine/generateDocument.js";
 import { sniffImageMime } from "../pdfmeEngine/imageOverlay.js";
 import { getSampleDataForPreview } from "../pdfmeEngine/orderInputMapper.js";
+import { loadPreviewCustomFieldRows } from "../pdfmeEngine/previewCustomFields.js";
 import { generateShippingLabelPdf } from "../pdfmeEngine/shippingLabelGenerate.js";
 import { generateTaskDueListPdf } from "../pdfmeEngine/taskDueListGenerate.js";
 import { applyTemplateOptions } from "../pdfmeEngine/templates.js";
@@ -1437,7 +1438,7 @@ const renderTemplateAsPdf = async ({ req, company_masters_id, draftTemplate, car
       numberTowords,
       columnOptions: null,
       itemImages,
-      customFieldRows: [],
+      customFieldRows: await loadPreviewCustomFieldRows(req.tenantDB, company_masters_id, doc_type),
       cartValues: cart,
       tenantDB: req.tenantDB,
     });

@@ -267,7 +267,7 @@ const DICTIONARY_BY_DOC_TYPE = {
 // customFieldsWhere.form_type assignment exactly (~line 4202-4230); a
 // dictionary built with the wrong form_type here silently returns some
 // OTHER doc type's custom fields (or none) as "Cart Custom Field" entries.
-const CART_CUSTOM_FIELD_FORM_TYPE_BY_DOC_TYPE = {
+export const CART_CUSTOM_FIELD_FORM_TYPE_BY_DOC_TYPE = {
   quotation: 5,
   salesOrder: 6,
   salesInvoice: 7,
