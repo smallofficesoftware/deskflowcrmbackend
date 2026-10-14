@@ -58,7 +58,9 @@ export function isInternalOnlyField(field) {
     field.type === "customer-lookup" ||
     (field.type === "reference" && isUserMaster(field.master)) ||
     // A field restricted to certain staff (plan O8) is never asked of an anonymous visitor.
-    (field.restriction != null && field.restriction !== "none")
+    // A field with a per-user access list (formBuilderUserAccess.js) is the exception: there
+    // the "Show on the public link" toggle (visible_to above) alone decides.
+    (field.restriction != null && field.restriction !== "none" && !(Array.isArray(field.user_access) && field.user_access.length > 0))
   );
 }
 

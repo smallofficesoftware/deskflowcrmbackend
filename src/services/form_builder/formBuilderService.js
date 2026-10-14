@@ -167,7 +167,7 @@ export const getForm = async (req) => {
           can_change_dates: my_form_permissions.change_dates,
           my_form_permissions,
           // Fields this user may not fully see or change (plan O8) — the fill screen hides / locks them.
-          restricted: computeRestrictions(parseSchema(form.published_schema_json), my_form_permissions.see_masked_fields),
+          restricted: computeRestrictions(parseSchema(form.published_schema_json), my_form_permissions.see_masked_fields, a_application_login_id),
         },
       },
     });

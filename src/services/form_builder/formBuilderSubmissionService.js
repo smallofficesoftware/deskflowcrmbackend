@@ -1007,7 +1007,7 @@ export const listSubmissions = async (req) => {
     const perms = await getMyFormPermissions({ form, loginId: a_application_login_id, company_masters_id, tenantDB: req.tenantDB });
     // Restricted fields (plan O8): hidden / masked for this user, and never
     // searched or filtered on — that would leak the value they can't see.
-    const restricted = computeRestrictions(fields, perms.see_masked_fields);
+    const restricted = computeRestrictions(fields, perms.see_masked_fields, a_application_login_id);
     const noRead = new Set([...restricted.hidden, ...restricted.masked]);
     // Encrypted Aadhaar columns hold ciphertext — never filtered or
     // searched on (a LIKE could otherwise hit random ciphertext bytes).
@@ -1248,7 +1248,7 @@ export const getSubmission = async (req) => {
       order: [["id", "ASC"]],
       raw: true,
     });
-    const restricted = computeRestrictions(fields, perms.see_masked_fields);
+    const restricted = computeRestrictions(fields, perms.see_masked_fields, a_application_login_id);
 
     // Approval stages: where the entry is, what this person may do with it, and its history.
     let approval = { enabled: false };

@@ -14,6 +14,7 @@
 // resolveRestrictions is the small DB-side wrapper.
 
 import { hasFormPermission } from "./formBuilderPermissions.js";
+import { findUserAccessProblems, hasUserAccess, userAccessModeFor } from "./formBuilderUserAccess.js";
 
 export const RESTRICTION_MODES = ["none", "readonly", "mask", "hide"];
 export const MASK_TEXT = "••••";
@@ -22,16 +23,20 @@ export function restrictionOf(field) {
   return RESTRICTION_MODES.includes(field?.restriction) ? field.restriction : "none";
 }
 
-export const isRestricted = (field) => restrictionOf(field) !== "none";
+// A field is restricted by the older `restriction` mode, or by a per-user
+// access list (formBuilderUserAccess.js).
+export const isRestricted = (field) => restrictionOf(field) !== "none" || hasUserAccess(field);
 
 // What this user may not fully see / change. `canSeeRestricted` = owner or
 // holder of the see_masked_fields permission — then nothing is restricted.
-export function computeRestrictions(fields, canSeeRestricted) {
+// `loginId` picks this user's entry on fields that carry a per-user access list
+// (not listed = hidden); fields without a list keep their `restriction` mode.
+export function computeRestrictions(fields, canSeeRestricted, loginId) {
   const out = { hidden: [], masked: [], readonly: [] };
   if (canSeeRestricted) return out;
   for (const f of Array.isArray(fields) ? fields : []) {
     if (!f || !f.key) continue;
-    const mode = restrictionOf(f);
+    const mode = hasUserAccess(f) ? userAccessModeFor(f, loginId) : restrictionOf(f);
     if (mode === "hide") out.hidden.push(f.key);
     else if (mode === "mask") out.masked.push(f.key);
     else if (mode === "readonly") out.readonly.push(f.key);
@@ -95,12 +100,13 @@ export function findRestrictionProblems(fields) {
       return `${name}: a heading or note can't be restricted. Restrict the fields under it instead.`;
     }
   }
-  return null;
+  // Per-user see / edit lists.
+  return findUserAccessProblems(fields);
 }
 
 // The user's restrictions on this form (owner and see_masked_fields holders: none).
 export async function resolveRestrictions({ form, fields, loginId, company_masters_id, tenantDB }) {
   if (!fields.some(isRestricted)) return { hidden: [], masked: [], readonly: [] };
   const canSee = await hasFormPermission({ form, permissionKey: "see_masked_fields", loginId, company_masters_id, tenantDB });
-  return computeRestrictions(fields, canSee);
+  return computeRestrictions(fields, canSee, loginId);
 }
