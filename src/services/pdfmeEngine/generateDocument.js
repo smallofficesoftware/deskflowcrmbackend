@@ -286,7 +286,8 @@ export async function generateQuotationPdf({
 
   // Ticket #2157 - same company_masters.is_grouped_number_format flag the
   // legacy EJS path's formatNum binding checks (orderServices.js).
-  const groupedNumberFormat = !!company?.groupedNumberFormat;
+  // 0 plain, 1 Indian, 2 International, 3 European (sharedFunctions.js formatNumber).
+  const groupedNumberFormat = Number(company?.groupedNumberFormat) || 0;
   const computed = buildComputedFields(cart, numberTowords, groupedNumberFormat);
   computed.hsnSummary = buildHsnSummary(items, groupedNumberFormat);
 
