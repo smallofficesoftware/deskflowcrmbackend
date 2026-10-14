@@ -33,7 +33,6 @@ import { findConsentProblems, findPublicSettingsProblems } from "./formBuilderPu
 import { findProductLookupProblems } from "./formBuilderProductLookup.js";
 import { countPendingForMe, ensureStageColumns, loadActorContext } from "./formBuilderApprovalService.js";
 import { loadFormForFill } from "./formBuilderFillAccess.js";
-import { resolveTemplateForCreate } from "./formBuilderTemplates.js";
 import { normalizePermissionChanges } from "./formBuilderPermissionKeys.js";
 import {
   getMyFormPermissions,
@@ -189,22 +188,18 @@ export const createForm = async (req) => {
       return resError({ code: 403, ack_msg: "You don't have permission to create forms" });
     }
 
-    const { title, description, related_module, category, template } = req.body || {};
+    const { title, description, related_module, category } = req.body || {};
     if (!title) return resError({ ack_msg: "Please enter a form title" });
 
-    // Starting from a starter form or a saved template (plan L1): its fields (and
-    // form settings) become this form's first draft.
-    const fromTemplate = await resolveTemplateForCreate({ tenantDB: req.tenantDB, company_masters_id, template });
-    if (fromTemplate?.error) return resError({ ack_msg: fromTemplate.error });
-
+    // A new form always starts blank (starter forms and saved templates were removed).
     const FormModel = formBuilderFormModel(req.tenantDB);
     const created = await FormModel.create({
       company_masters_id,
       a_application_login_id,
       title,
-      description: description || fromTemplate?.description || null,
-      schema_json: fromTemplate?.schema_json || JSON.stringify([]),
-      settings_json: fromTemplate?.settings_json || null,
+      description: description || null,
+      schema_json: JSON.stringify([]),
+      settings_json: null,
       related_module: related_module || null,
       category: category || null,
       version: 1,

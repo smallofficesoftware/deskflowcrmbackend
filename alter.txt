@@ -4038,3 +4038,10 @@ ALTER TABLE `visits` ADD COLUMN `product_id` INT(11) NULL DEFAULT NULL, ADD COLU
 -- migration: migration/tenant/migrations/20261010150000-add-is-grouped-number-format-to-company-masters.js
 -- Company-wide print preference (ticket #2157): Indian-style digit grouping (1,50,000.00) on order/quotation PDF amounts when enabled, plain decimal (150000.00) when not. Also apply on smalloffice_sample_tenant.
 ALTER TABLE `company_masters` ADD COLUMN `is_grouped_number_format` INT(11) NULL DEFAULT 0;
+
+
+14-10-2026 Dhaval
+-- migration: migration/tenant/migrations/20261014150000-drop-form-builder-templates.js
+-- Form Builder "Save as template" / starter forms were removed; the company templates table is no longer used. Every tenant DB + smalloffice_sample_tenant. Destroys any templates a company saved.
+-- Also removed its LIKE line from new_company_creation_sql/SQL/create-company/create_company_copy.sql.
+DROP TABLE IF EXISTS `form_builder_templates`;

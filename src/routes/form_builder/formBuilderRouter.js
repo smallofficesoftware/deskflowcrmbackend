@@ -36,9 +36,6 @@ import {
   exportSubmissionPdfEndpointController,
   exportBlankFormPdfEndpointController,
   stageActionController,
-  listTemplatesController,
-  saveTemplateFromFormController,
-  deleteTemplateController,
   exportSubmissionsBulkPdfController,
   exportSubmissionsExcelController,
   listSchedulesController,
@@ -108,9 +105,6 @@ export default (app) => {
   app.post("/form-builder/submissions/export-pdf", authenticateToken, tenantMiddleware, exportSubmissionPdfEndpointController);
   app.post("/form-builder/export-blank-pdf", authenticateToken, tenantMiddleware, exportBlankFormPdfEndpointController);
   app.post("/form-builder/submissions/stage-action", authenticateToken, tenantMiddleware, stageActionController);
-  app.post("/form-builder/templates/list", authenticateToken, tenantMiddleware, listTemplatesController);
-  app.post("/form-builder/templates/save-from-form", authenticateToken, tenantMiddleware, saveTemplateFromFormController);
-  app.post("/form-builder/templates/delete", authenticateToken, tenantMiddleware, deleteTemplateController);
   app.post("/form-builder/submissions/export-bulk-pdf", authenticateToken, tenantMiddleware, exportSubmissionsBulkPdfController);
   app.post("/form-builder/submissions/export-excel", authenticateToken, tenantMiddleware, exportSubmissionsExcelController);
   app.post("/form-builder/schedules/list", authenticateToken, tenantMiddleware, listSchedulesController);
