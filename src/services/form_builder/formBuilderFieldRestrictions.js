@@ -64,8 +64,11 @@ export function applyReadRestrictions(row, restrictions) {
     delete out[key];
     if (out._reference_labels) out._reference_labels = omit(out._reference_labels, key);
     if (out._repeaters) out._repeaters = omit(out._repeaters, key);
+    if (out._file_counts) out._file_counts = omit(out._file_counts, key);
   }
   for (const key of masked) {
+    // A masked field's attachments are not counted either (the count would hint they exist).
+    if (out._file_counts) out._file_counts = omit(out._file_counts, key);
     if (key in out) out[key] = out[key] == null || out[key] === "" ? out[key] : MASK_TEXT;
     if (out._reference_labels && key in out._reference_labels) {
       out._reference_labels = { ...out._reference_labels, [key]: out._reference_labels[key] == null ? null : MASK_TEXT };

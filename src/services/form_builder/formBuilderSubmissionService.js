@@ -3,6 +3,7 @@ import companyModel from "../../models/company_setup/companyModel.js";
 import { contactModel } from "../../models/activities/contactModel.js";
 import { formBuilderFormModel } from "../../models/form_builder/formBuilderFormModel.js";
 import { formBuilderSubmissionFileModel } from "../../models/form_builder/formBuilderSubmissionFileModel.js";
+import { loadFileCounts, withFileCounts } from "./formBuilderFileCounts.js";
 import { stagestatusModel } from "../../models/masters/stagestatusModel.js";
 import { statusAndStagesLogsModel } from "../../models/common/statusAndStagesLogsModel.js";
 import { emitAutomationEvent } from "../automation/emit.js";
@@ -1104,9 +1105,11 @@ export const listSubmissions = async (req) => {
     );
 
     const enriched = await enrichSubmissionRows({ tenantDB: req.tenantDB, form, fields, rows });
+    // Attachment counts per File / Image / Signature field (the grid's paperclip column).
+    const fileCounts = await loadFileCounts({ tenantDB: req.tenantDB, form_id: form.id, submissionIds: enriched.map((r) => r.id) });
     return resSuccess({
       data: {
-        item: enriched.map((r) => applyReadRestrictions(r, restricted)),
+        item: enriched.map((r) => applyReadRestrictions(withFileCounts(r, fileCounts), restricted)),
         total: Number(totalCount) || 0,
         restricted,
         approval: approvalSummary(actorCtx),
