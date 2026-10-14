@@ -19,7 +19,11 @@ export const MASTER_REGISTRY = {
   state: { table: "a_states", label: "state_name", parentColumn: "country_id" },
   city: { table: "a_cities", label: "city_name", parentColumn: "state_id" },
   category: { table: "categories", label: "category_name" },
-  product: { table: "products", label: "product_name", parentColumn: "category_id" },
+  // parentOptional: a product can also be picked with no category chosen - a
+  // product column in a repeater (ProductCellSelect) and a plain product
+  // Reference field both ask for "product" with no parentId, which used to
+  // return an empty list (so a public form showed no products at all).
+  product: { table: "products", label: "product_name", parentColumn: "category_id", parentOptional: true },
 };
 
 // related_module -> table, for the related_record_id existence-check and
@@ -65,18 +69,18 @@ export async function getReferenceOptions({ tenantDB, master, parentId, company_
     throw new Error(`formBuilderMasterRegistry: unknown master "${master}"`);
   }
 
-  const where = { isDelete: 0 };
-  if (entry.parentColumn) {
-    if (parentId == null) return [];
-    where[entry.parentColumn] = parentId;
-  }
+  // A cascading master (state<-country, city<-state) with no parent picked has
+  // nothing to offer, except one marked parentOptional (product), which lists
+  // every record when no parent is given.
+  const filterByParent = !!entry.parentColumn && parentId != null;
+  if (entry.parentColumn && parentId == null && !entry.parentOptional) return [];
 
   const rows = await tenantDB.query(
     `SELECT id, \`${entry.label}\` AS label FROM \`${entry.table}\` WHERE isDelete = 0${
-      entry.parentColumn ? ` AND \`${entry.parentColumn}\` = :parentId` : ""
+      filterByParent ? ` AND \`${entry.parentColumn}\` = :parentId` : ""
     } ORDER BY \`${entry.label}\` ASC`,
     {
-      replacements: entry.parentColumn ? { parentId } : {},
+      replacements: filterByParent ? { parentId } : {},
       type: QueryTypes.SELECT,
     },
   );
