@@ -2431,8 +2431,13 @@ export const addContactUsData = async (req) => {
     const contactModels = contactModel(tenantDB);
     const CTMModel = contactMessageHistory(tenantDB);
 
+    // Contacts are stored as the normalized 91 + 10 digits (see create below and demoBook),
+    // so the lookup must use that form too - the raw form field is usually 10 digits and
+    // never matched, which made every repeat website lead a new duplicate contact.
+    const normalizedMobile = normalizeToTenDigit(contact_number);
+
     let contactCreate = await contactModels.findOne({
-      where: { mobile_number: contact_number },
+      where: { mobile_number: normalizedMobile },
     });
 
     let isNewContact = false;
@@ -2443,7 +2448,7 @@ export const addContactUsData = async (req) => {
         person_name: name,
         email_id: email,
         company_name: company_name,
-        mobile_number: normalizeToTenDigit(contact_number),
+        mobile_number: normalizedMobile,
         contact_status: -1,
         a_application_login_id: tenantDBFind.a_application_login_id,
         company_masters_id: tenantDBFind.company_masters_id,
