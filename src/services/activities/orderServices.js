@@ -22,6 +22,7 @@ import { isFeatureEnabled } from "../company_setup/featureFlagServices.js";
 import { generateQuotationPdf } from "../pdfmeEngine/generateDocument.js";
 import { generateShippingLabelPdf } from "../pdfmeEngine/shippingLabelGenerate.js";
 import { sniffImageMime } from "../pdfmeEngine/imageOverlay.js";
+import { pickProductCustomValues } from "../pdfmeEngine/productCustomValues.js";
 import { tenantMiddleware } from "../../middlewares/tenantMiddleware.js";
 import { accountTransactionsModel } from "../../models/activities/accountTransactionsModel.js";
 import { cartSerialNumberModel } from "../../models/activities/cartSerialNumberModel.js";
@@ -5073,6 +5074,8 @@ const generateSingleOrderPdf = async (req, res) => {
           serialNumbers: Array.isArray(item.serial_numbers) && item.serial_numbers.length > 0
             ? item.serial_numbers.join(", ")
             : "",
+          // Product Custom Field columns on the Designer's items table.
+          productCustom: pickProductCustomValues(item),
         }));
 
         const pdfmeItemImages = resultAllCartItems.map((item) => {

@@ -510,8 +510,15 @@ export function buildInputsForCart({ company, buyer, order, computed, items, pen
           return num(item.igst);
         case "total":
           return num(item.total);
-        default:
+        default: {
+          // Product Custom Field column (tableColumns.js customColumns): the
+          // value of that product custom column on this cart item.
+          if (c.custom) {
+            const value = item.productCustom?.[c.key];
+            return value === undefined || value === null ? "" : String(value);
+          }
           return "";
+        }
       }
     }),
   );

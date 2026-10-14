@@ -36,6 +36,7 @@ import { generateQuotationPdf } from "../pdfmeEngine/generateDocument.js";
 import { sniffImageMime } from "../pdfmeEngine/imageOverlay.js";
 import { getSampleDataForPreview } from "../pdfmeEngine/orderInputMapper.js";
 import { loadPreviewCustomFieldRows } from "../pdfmeEngine/previewCustomFields.js";
+import { pickProductCustomValues } from "../pdfmeEngine/productCustomValues.js";
 import { generateShippingLabelPdf } from "../pdfmeEngine/shippingLabelGenerate.js";
 import { generateTaskDueListPdf } from "../pdfmeEngine/taskDueListGenerate.js";
 import { applyTemplateOptions } from "../pdfmeEngine/templates.js";
@@ -1390,6 +1391,7 @@ const renderTemplateAsPdf = async ({ req, company_masters_id, draftTemplate, car
         total: item.item_total,
         item_hsn_code: item.item_hsn_code,
         item_total: item.item_total,
+        productCustom: pickProductCustomValues(item),
       }));
       itemImages = cartItems.map((item) => encodeProductImage(productMap[item.item_product_id]?.product_img));
       buyer = {
