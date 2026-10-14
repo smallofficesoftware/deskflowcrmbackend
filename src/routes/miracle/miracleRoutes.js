@@ -1,4 +1,5 @@
 import { bulkSyncMiracleModulesProvider, clearMiracleLogsProvider, createMiracleConfig, fetchContactProvider, fetchProductProvider, generateLedgerProvider, generateMiracleTokenProvider, generateOutstandingProvider, getAccountLedger, getMiracleConfig, getMiracleLogsProvider, getMiracleUnsyncedCountsProvider, processContactProvider, processProductProvider, syncCaseBankPrProvider, syncInvoiceProvider, syncProductProvider, webhookProvider } from "../../controllers/miracle/miracleControlles.js";
+import { generateInvoicePdfProvider } from "../../controllers/miracle/miracleInvoicePdfController.js";
 import { authenticateToken } from "../../middlewares/auth.js";
 import { checkMiracleAuth } from "../../middlewares/miracleAuth.js";
 import { tenantMiddleware } from "../../middlewares/tenantMiddleware.js";
@@ -9,6 +10,7 @@ export default (app) => {
     app.post("/sync-case-bank-pr", authenticateToken, tenantMiddleware, checkMiracleAuth, syncCaseBankPrProvider);
     app.post("/generate-ledger", authenticateToken, tenantMiddleware, checkMiracleAuth, generateLedgerProvider);
     app.post("/generate-outstanding", authenticateToken, tenantMiddleware, checkMiracleAuth, generateOutstandingProvider);
+    app.post("/generate-invoice-pdf", authenticateToken, tenantMiddleware, checkMiracleAuth, generateInvoicePdfProvider);
     app.post("/webhookmiracle/:companyCode", webhookProvider);
     app.post("/create-miracle-config", authenticateToken, tenantMiddleware, createMiracleConfig);
     app.post("/get-miracle-config", authenticateToken, tenantMiddleware, getMiracleConfig);
