@@ -2,9 +2,9 @@
 // Same basePdf/company-header zone every other doc type gets via
 // buildDocTemplate() (buildTemplate.js), so a form submission PDF looks
 // consistent with the rest of this app's PDF output, not a bespoke layout.
-import { buildDocTemplate, tableField, textField } from "./buildTemplate.js";
+import { buildDocTemplate, imageField, tableField, textField } from "./buildTemplate.js";
 import { NO_COLUMN_NON_REPEATER_TYPES } from "../form_builder/formBuilderDdlBuilder.js";
-import { LAYOUT_TAG_PREFIX, layoutSignature, planPages, printBlocks } from "../form_builder/formBuilderPrintLayout.js";
+import { IMAGE_CELL, LAYOUT_TAG_PREFIX, layoutSignature, planPages, printBlocks } from "../form_builder/formBuilderPrintLayout.js";
 
 const A4_HEIGHT = 297;
 
@@ -109,6 +109,33 @@ export function buildDefaultSubmissionTemplate(formTitle, fields) {
             content: JSON.stringify([head.map(() => "")]),
           }),
         );
+      } else if (block.kind === "images") {
+        // Caption over the picture; both stay out of the PDF when the field has no file.
+        block.fields.forEach((field, i) => {
+          const x = 10 + i * (IMAGE_CELL.width + IMAGE_CELL.gap);
+          row.push(
+            textField({
+              name: `${field.key}_image_label`,
+              dataSource: `${field.key}_image_label`,
+              position: { x, y },
+              width: IMAGE_CELL.width,
+              height: IMAGE_CELL.captionHeight,
+              fontSize: 9,
+              fontName: "Poppins Bold",
+              content: field.label || field.key,
+              visibilityCondition: { mode: "hideIfEmpty" },
+            }),
+            imageField({
+              name: `${field.key}_image`,
+              dataSource: `${field.key}_image`,
+              position: { x, y: y + IMAGE_CELL.captionHeight + 1 },
+              width: IMAGE_CELL.width,
+              height: IMAGE_CELL.imageHeight,
+              content: "",
+              visibilityCondition: { mode: "hideIfEmpty" },
+            }),
+          );
+        });
       } else if (block.kind === "repeater") {
         const repeater = block.field;
         const columns = (repeater.columns || []).filter((c) => !NO_COLUMN_NON_REPEATER_TYPES.has(c.type));
