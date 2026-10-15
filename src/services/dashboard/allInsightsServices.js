@@ -196,6 +196,9 @@ export const getCrmInsight = async (req) => {
         });
         const whereClauseContact = {
             isDelete: "0",
+            // The contact list's "All" leaves archived contacts out, so Total
+            // Contact must too, otherwise the two counts differ.
+            is_archive: "0",
             [Op.and]: [...contactAnd, dateAnd("created_date_time", start, end)],
         };
         const totalContactCount = await COTModel.count({ where: whereClauseContact });
