@@ -16,6 +16,8 @@ import { tenantMiddleware } from "../../middlewares/tenantMiddleware.js";
 import { formBuilderFormModel } from "../../models/form_builder/formBuilderFormModel.js";
 import { mainTableName } from "./formBuilderDdlBuilder.js";
 import { getReferenceOptions } from "./formBuilderMasterRegistry.js";
+import { getProductFillValues } from "./formBuilderProductLookup.js";
+import { allowedProductFillColumns, pickAllowedValues } from "./formBuilderPublicProductFill.js";
 import { createFormSubmission, attachUploadedFiles, parseSchema } from "./formBuilderSubmissionService.js";
 import { ClaudeOfficeWhatsAppOtp } from "../company_setup/thirdPartyIntegrationService.js";
 import { normalizeToTenDigit } from "../../utils/sharedFunctions.js";
@@ -242,6 +244,26 @@ export const getPublicReferenceOptions = async (req) => {
     return resSuccess({ data: { item: options } });
   } catch (e) {
     console.error("getPublicReferenceOptions error:", e);
+    return resError({ developer_msg: `Failed to Catch ${e}` });
+  }
+};
+
+// Public twin of form-builder/product-fill-values: rate / unit / code of the
+// picked product for a repeater product column. Only works on a form that
+// really has such a column mapped, and only returns the mapped details.
+export const getPublicProductFillValues = async (req) => {
+  try {
+    const { form, company_masters_id, error } = await resolvePublicForm(req);
+    if (error) return error;
+    const { productId } = req.body || {};
+    const fields = parseSchema(form.published_schema_json).filter((f) => !isInternalOnlyField(f));
+    const allowed = allowedProductFillColumns(fields);
+    if (allowed.size === 0) return resError({ code: 403, ack_msg: "This list isn't available on a public form" });
+    const values = await getProductFillValues({ tenantDB: req.tenantDB, company_masters_id, productId });
+    if (!values) return resError({ ack_msg: "Product not found" });
+    return resSuccess({ data: { item: pickAllowedValues(values, allowed) } });
+  } catch (e) {
+    console.error("getPublicProductFillValues error:", e);
     return resError({ developer_msg: `Failed to Catch ${e}` });
   }
 };

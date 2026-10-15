@@ -334,7 +334,7 @@ const DICTIONARY_BY_DOC_TYPE = {
 // customFieldsWhere.form_type assignment exactly (~line 4202-4230); a
 // dictionary built with the wrong form_type here silently returns some
 // OTHER doc type's custom fields (or none) as "Cart Custom Field" entries.
-const CART_CUSTOM_FIELD_FORM_TYPE_BY_DOC_TYPE = {
+export const CART_CUSTOM_FIELD_FORM_TYPE_BY_DOC_TYPE = {
   quotation: 5,
   salesOrder: 6,
   salesInvoice: 7,
@@ -362,7 +362,9 @@ const CONTACT_DOC_TYPES = new Set(["contactAddress", "contactEnvelope"]);
 
 function getCustomFieldFormTypesForDocType(doc_type) {
   const cartCustomFieldFormType = CART_CUSTOM_FIELD_FORM_TYPE_BY_DOC_TYPE[doc_type];
-  if (cartCustomFieldFormType) return [cartCustomFieldFormType, PRODUCT_CUSTOM_FIELD_FORM_TYPE];
+  // Cart docs also offer the buyer contact's custom fields (values come from
+  // contactCustomValues.js at print time).
+  if (cartCustomFieldFormType) return [cartCustomFieldFormType, PRODUCT_CUSTOM_FIELD_FORM_TYPE, CONTACT_CUSTOM_FIELD_FORM_TYPE];
   if (CONTACT_DOC_TYPES.has(doc_type)) return [CONTACT_CUSTOM_FIELD_FORM_TYPE];
   return null;
 }

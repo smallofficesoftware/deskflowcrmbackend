@@ -94,8 +94,6 @@ export const TRIGGERS = {
   "whatsapp.received":      { group: "WhatsApp", label: "WhatsApp message received", source: "event", record: "whatsapp", phase: 1 },
   "form.submitted":         { group: "Forms", label: "Form submitted", source: "event", record: "form", phase: 1 },
   "form.status_changed":    { group: "Forms", label: "Form submission status changed", source: "event", record: "form", phase: 2 },
-  "website.contact_us":     { group: "Website", label: "Website contact us (Deskflow only)", source: "event", record: "website", phase: 1 },
-  "website.book_demo":      { group: "Website", label: "Website book demo (Deskflow only)", source: "event", record: "website", phase: 1 },
   "reminder.due":           { group: "Reminders", label: "Reminder due", source: "cron", record: "reminder", phase: 1 },
 
   "schedule":               { group: "Time", label: "Schedule", source: "cron", record: null, phase: 1 },

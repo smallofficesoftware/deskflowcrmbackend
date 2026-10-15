@@ -296,6 +296,7 @@ export function buildItemsTableField(columnOptions) {
         if (c.key === "discount") return "0.00";
         if (c.key === "serial") return "SN0001, SN0002";
         if (c.key === "cgst" || c.key === "sgst" || c.key === "igst") return "9.00";
+        if (c.custom) return "Sample";
         return "100.00";
       }),
     ]),

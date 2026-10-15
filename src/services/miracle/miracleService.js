@@ -26,6 +26,7 @@ import { getFinancialYearRangeWise, isValid, resBadRequest, resError, resSuccess
 import { getCompanyByLoginId } from "../commonServices.js";
 import { insertMiracleLog } from "../activities/miracleLogService.js";
 import { emitAutomationEvent } from "../automation/emit.js";
+import { parseReceiptRemark } from "./miracleReceiptNumber.js";
 
 export const getMiracleUfdDet = async (tenantDB, companyId, formType, entityData) => {
     try {
@@ -1380,16 +1381,20 @@ export const syncCaseBankPr = async (req) => {
                 const voutyp = voucherType[`${prFlag}_${transaction_mode}`]
                 const voudt = moment(getAcc.payment_date_time).format('YYYY-MM-DD');
 
+                // A voucher that came from Miracle keeps its own number (kept in the remark);
+                // anything made in Deskflow still goes out with the row id (ticket #2534).
+                const { voucherNo, narr: remarkNarr } = parseReceiptRemark(getAcc.remark);
+
                 const payload = {
                     action: getAcc.miracle_UniqueId ? "E" : "A",
                     uniqueId: getAcc.miracle_UniqueId || undefined,
                     voutyp: voutyp,
                     voudt: voudt,
-                    vouno: String(getAcc.id),
+                    vouno: voucherNo || String(getAcc.id),
                     acc: con_acc_id,
                     oppacc: getAcc.miracle_account_ledger,
                     amount: Number(getAcc.amount || 0),
-                    narr: cleanHtmlText(getAcc.remark || ""),
+                    narr: cleanHtmlText(remarkNarr || ""),
                     taxtyp: "O"
                 };
 

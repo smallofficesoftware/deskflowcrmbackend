@@ -22,6 +22,7 @@ import { isFeatureEnabled } from "../company_setup/featureFlagServices.js";
 import { generateQuotationPdf } from "../pdfmeEngine/generateDocument.js";
 import { generateShippingLabelPdf } from "../pdfmeEngine/shippingLabelGenerate.js";
 import { sniffImageMime } from "../pdfmeEngine/imageOverlay.js";
+import { pickProductCustomValues } from "../pdfmeEngine/productCustomValues.js";
 import { tenantMiddleware } from "../../middlewares/tenantMiddleware.js";
 import { accountTransactionsModel } from "../../models/activities/accountTransactionsModel.js";
 import { cartSerialNumberModel } from "../../models/activities/cartSerialNumberModel.js";
@@ -4716,11 +4717,12 @@ const generateSingleOrderPdf = async (req, res) => {
         cart_city_name: customerCityName,
         cart_area_name: customerAreaName,
         company_state_name: companyStateName,
-        // Ticket #2157: company_masters.is_grouped_number_format gates
-        // Indian-style digit grouping - formatNum keeps its existing
-        // (value, decimals) call shape used throughout the EJS templates.
+        // Ticket #2157: company_masters.is_grouped_number_format picks the
+        // digit grouping (0 plain, 1 Indian, 2 International, 3 European) -
+        // formatNum keeps its existing (value, decimals) call shape used
+        // throughout the EJS templates.
         formatNum: (value, decimals) =>
-          formatNumber(value, decimals, !!companyDetail.is_grouped_number_format),
+          formatNumber(value, decimals, Number(companyDetail.is_grouped_number_format) || 0),
         orderTypesList: orderTypesListPdf,
         numberToword: numberTowords,
         gstnumberToword: gstnumberTowords,
@@ -5073,6 +5075,8 @@ const generateSingleOrderPdf = async (req, res) => {
           serialNumbers: Array.isArray(item.serial_numbers) && item.serial_numbers.length > 0
             ? item.serial_numbers.join(", ")
             : "",
+          // Product Custom Field columns on the Designer's items table.
+          productCustom: pickProductCustomValues(item),
         }));
 
         const pdfmeItemImages = resultAllCartItems.map((item) => {
@@ -5121,7 +5125,7 @@ const generateSingleOrderPdf = async (req, res) => {
             upiName: companyDetail.upi_name,
             // Ticket #2157 - same company_masters.is_grouped_number_format
             // flag the legacy EJS path's formatNum binding checks above.
-            groupedNumberFormat: !!companyDetail.is_grouped_number_format,
+            groupedNumberFormat: Number(companyDetail.is_grouped_number_format) || 0,
           },
           buyer: {
             companyName: cartData.to_customer_company_name,

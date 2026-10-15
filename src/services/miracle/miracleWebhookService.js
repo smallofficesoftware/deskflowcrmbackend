@@ -28,6 +28,7 @@ import { customFieldFormModel } from "../../models/other_settings/customFieldFor
 import { Op } from "sequelize";
 import { CART_TYPE_TO_PREFIX_FIELD } from "../../utils/AppEnumeration.js";
 import { emitAutomationEvent } from "../automation/emit.js";
+import { buildReceiptRemark } from "./miracleReceiptNumber.js";
 
 /**
  * Miracle invoice numbers arrive as one opaque string (e.g. "RJT1769/26-27")
@@ -801,7 +802,8 @@ export async function handleAccountTransactionAddOrUpdate({ voucherDetail, tenan
         acc,
         oppacc,
         amount,
-        narr
+        narr,
+        vouno
     } = voucherDetail;
 
     const contactModelInstance = contactModel(tenantDB);
@@ -863,7 +865,8 @@ export async function handleAccountTransactionAddOrUpdate({ voucherDetail, tenan
         payment_date_time: paymentDateTime,
         approve_date_time: paymentDateTime,
         created_date_time: paymentDateTime,
-        remark: narr || "",
+        // Miracle's voucher number leads the remark so the receipt shows the same number (ticket #2534).
+        remark: buildReceiptRemark(vouno ?? voucherDetail.VouNo, narr),
         approve_by_a_application_login_id: tenantId,
         miracle_account_ledger: oppacc || "",
         miracle_UniqueId: uniqueId,
@@ -918,7 +921,9 @@ export async function handleVoucherAddOrUpdate({ payload, context }) {
         narr,
         items,
         billdt,
-        ufddet
+        ufddet,
+        cpacc,
+        cpdet
     } = voucherDetail;
 
     const VOUCHER_TYPE_TO_CART_TYPE = {
@@ -984,14 +989,21 @@ export async function handleVoucherAddOrUpdate({ payload, context }) {
     let customerCompanyName = "";
     let customerGstNumber = "";
 
-    if (acc) {
+    // Cash voucher (flgcd C): `acc` is the cash ledger and the real party is the
+    // Cash Party Account `cpacc` (API guide 8.2), or the inline `cpdet` block
+    // when the party isn't an account. Debit vouchers keep `acc` as the party.
+    const isCashVoucher = flgcd === "C";
+    const partyAcc = isCashVoucher && cpacc ? cpacc : acc;
+    const cashPartyDetail = isCashVoucher && cpdet && typeof cpdet === "object" ? cpdet : null;
+
+    if (partyAcc) {
         let customer = await contactModelInstance.findOne({
-            where: { miracle_UniqueId: acc, company_masters_id: companyId, isDelete: "0" }
+            where: { miracle_UniqueId: partyAcc, company_masters_id: companyId, isDelete: "0" }
         });
 
         if (!customer) {
             try {
-                const contactDetail = await fetchContactDetail(req, acc);
+                const contactDetail = await fetchContactDetail(req, partyAcc);
                 if (contactDetail) {
                     const res = await createOrUpdateContactFromDetail(tenantDB, companyId, tenantId, contactDetail);
                     customer = res.contact;
@@ -1010,6 +1022,29 @@ export async function handleVoucherAddOrUpdate({ payload, context }) {
             customerGstNumber = customer.gst_number || "";
         }
     }
+
+    // Cash party captured inline (no account): use its name / mobile / GSTN.
+    if (!customerId && cashPartyDetail) {
+        customerName = String(cashPartyDetail.cpname || "").trim();
+        customerPhone = String(cashPartyDetail.cpmob || "").trim();
+        customerGstNumber = String(cashPartyDetail.cpgstn || "").trim();
+    }
+
+    // Every cash party entry goes into the remark so nothing from Miracle is lost.
+    const CASH_PARTY_LABELS = [
+        ["cpname", "Name"], ["cpregtyp", "Registration Type"], ["cpmob", "Mobile"],
+        ["cpadd1", "Address 1"], ["cpadd2", "Address 2"], ["cpadd3", "Address 3"],
+        ["cpcitynm", "City"], ["cpstatenm", "State"], ["cppin", "Pincode"],
+        ["cppan", "PAN"], ["cpgstn", "GSTN"], ["cpcin", "CIN"], ["cpemail", "Email"],
+        ["cpudyamno", "Udyam No"], ["cpudyamtyp", "Udyam Type"], ["cpudyamact", "Udyam Activity"],
+    ];
+    const cashPartyRemark = cashPartyDetail
+        ? "Cash Party: " + CASH_PARTY_LABELS
+            .filter(([key]) => cashPartyDetail[key] !== undefined && cashPartyDetail[key] !== null && String(cashPartyDetail[key]).trim() !== "")
+            .map(([key, label]) => `${label}: ${String(cashPartyDetail[key]).trim()}`)
+            .join(", ")
+        : "";
+    const remarkText = [narr, cashPartyRemark].filter((s) => s && String(s).trim() !== "").join("\n");
 
     // Process items
     let totalQty = 0;
@@ -1129,7 +1164,7 @@ export async function handleVoucherAddOrUpdate({ payload, context }) {
         to_customer_company_name: customerCompanyName,
         to_customer_gst_number: customerGstNumber,
         transaction_mode: transactionMode,
-        cart_remark: narr || "",
+        cart_remark: remarkText,
         total_amt: taxableAmt,
         total_qty: totalQty,
         taxable_amt: taxableAmt,

@@ -3,6 +3,7 @@ import {
   getPublicFormSchema,
   submitPublicForm,
   getPublicReferenceOptions,
+  getPublicProductFillValues,
   sendPublicFormOtp,
 } from "../../services/form_builder/formBuilderPublicService.js";
 
@@ -14,6 +15,9 @@ export const submitPublicFormController = async (req, res) => {
 };
 export const getPublicReferenceOptionsController = async (req, res) => {
   await callServiceMethod(req, res, getPublicReferenceOptions(req), "getPublicReferenceOptions");
+};
+export const getPublicProductFillValuesController = async (req, res) => {
+  await callServiceMethod(req, res, getPublicProductFillValues(req), "getPublicProductFillValues");
 };
 export const sendPublicFormOtpController = async (req, res) => {
   await callServiceMethod(req, res, sendPublicFormOtp(req), "sendPublicFormOtp");

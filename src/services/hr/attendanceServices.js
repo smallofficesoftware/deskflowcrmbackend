@@ -1108,6 +1108,23 @@ export const createManualAttendance = async (req, res) => {
       }
     }
 
+    // Optional photo (taken by the person adding the entry, e.g. when the
+    // employee's attendance image is compulsory). Stored like a check-in photo.
+    let manualImagePath = "";
+    if (req.file?.path) {
+      const directoryPath = path.join(
+        process.cwd(),
+        "media-folder",
+        "attendance_images",
+        companyInfo.company_masters_id.toString(),
+        String(a_application_login_id)
+      );
+      await fs.promises.mkdir(directoryPath, { recursive: true });
+      const fileName = path.basename(req.file.path);
+      await fs.promises.rename(req.file.path, path.join(directoryPath, fileName));
+      manualImagePath = `${a_application_login_id}/${fileName}`;
+    }
+
     // 2. Create the manual attendance record
     const newAttendance = await AMmodel.create({
       company_masters_id: companyInfo.company_masters_id,
@@ -1117,7 +1134,7 @@ export const createManualAttendance = async (req, res) => {
       total_working_hour,
       created_date_time: moment().format("YYYY-MM-DD HH:mm:ss"),
       attendance_entry_flag: 3,           // Manual entry
-      image_url: "",                      // No image for manual entry (or null if allowed)
+      image_url: manualImagePath,         // "" when no photo was sent
       isDelete: 0,
       isActive: 1,
       remark: remark || "",

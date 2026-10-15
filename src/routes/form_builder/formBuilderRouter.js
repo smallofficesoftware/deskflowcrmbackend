@@ -36,9 +36,6 @@ import {
   exportSubmissionPdfEndpointController,
   exportBlankFormPdfEndpointController,
   stageActionController,
-  listTemplatesController,
-  saveTemplateFromFormController,
-  deleteTemplateController,
   exportSubmissionsBulkPdfController,
   exportSubmissionsExcelController,
   listSchedulesController,
@@ -48,10 +45,6 @@ import {
   scheduleReportController,
   getImportColumnsController,
   runImportController,
-  saveDraftController,
-  listDraftsController,
-  getDraftController,
-  deleteDraftController,
 } from "../../controllers/form_builder/formBuilderController.js";
 import { authenticateToken } from "../../middlewares/auth.js";
 import { tenantMiddleware } from "../../middlewares/tenantMiddleware.js";
@@ -108,9 +101,6 @@ export default (app) => {
   app.post("/form-builder/submissions/export-pdf", authenticateToken, tenantMiddleware, exportSubmissionPdfEndpointController);
   app.post("/form-builder/export-blank-pdf", authenticateToken, tenantMiddleware, exportBlankFormPdfEndpointController);
   app.post("/form-builder/submissions/stage-action", authenticateToken, tenantMiddleware, stageActionController);
-  app.post("/form-builder/templates/list", authenticateToken, tenantMiddleware, listTemplatesController);
-  app.post("/form-builder/templates/save-from-form", authenticateToken, tenantMiddleware, saveTemplateFromFormController);
-  app.post("/form-builder/templates/delete", authenticateToken, tenantMiddleware, deleteTemplateController);
   app.post("/form-builder/submissions/export-bulk-pdf", authenticateToken, tenantMiddleware, exportSubmissionsBulkPdfController);
   app.post("/form-builder/submissions/export-excel", authenticateToken, tenantMiddleware, exportSubmissionsExcelController);
   app.post("/form-builder/schedules/list", authenticateToken, tenantMiddleware, listSchedulesController);
@@ -120,8 +110,4 @@ export default (app) => {
   app.post("/form-builder/schedules/report", authenticateToken, tenantMiddleware, scheduleReportController);
   app.post("/form-builder/import/columns", authenticateToken, tenantMiddleware, getImportColumnsController);
   app.post("/form-builder/import/run", authenticateToken, tenantMiddleware, runImportController);
-  app.post("/form-builder/drafts/save", authenticateToken, tenantMiddleware, saveDraftController);
-  app.post("/form-builder/drafts/list", authenticateToken, tenantMiddleware, listDraftsController);
-  app.post("/form-builder/drafts/get", authenticateToken, tenantMiddleware, getDraftController);
-  app.post("/form-builder/drafts/delete", authenticateToken, tenantMiddleware, deleteDraftController);
 };

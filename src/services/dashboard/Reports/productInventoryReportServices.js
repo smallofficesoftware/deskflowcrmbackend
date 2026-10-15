@@ -73,14 +73,26 @@ export const productInventoryReport = async (req, res) => {
     const categoryModels = categoryModel(req.tenantDB);
 
     // assemble where clauses for product query
-    const whereForProduct = {};
-    const whereForcategory = {};
-    if (selectedProduct) {
-      whereForProduct[Op.and] = [Sequelize.literal(`FIND_IN_SET('${selectedProduct.value}',id)`)];
-    }
-    if (selectedCategory) {
-      whereForcategory[Op.and] = [Sequelize.literal(`FIND_IN_SET('${selectedCategory.value}',category_id)`)];
-    }
+    // Product and category both go into ONE Op.and list. They used to be two objects
+    // that each set [Op.and] and were spread together, so the second one overwrote
+    // the first - with both picked, the category filter was lost. The ids are also
+    // forced to integers before they reach the SQL literal (they came straight from
+    // the request).
+    const idOf = (selected) => {
+      const raw = selected && typeof selected === "object" ? selected.value : selected;
+      const n = Number(raw);
+      return Number.isInteger(n) && n > 0 ? n : null;
+    };
+    const andClauses = [];
+    const productFilterId = idOf(selectedProduct);
+    const categoryFilterId = idOf(selectedCategory);
+    if (productFilterId) andClauses.push(Sequelize.literal(`id = ${productFilterId}`));
+    if (categoryFilterId) andClauses.push(Sequelize.literal(`category_id = ${categoryFilterId}`));
+    // The global search clause may carry its own Op.and: keep it.
+    const searchAnd = fullTextSearchConditionForProduct?.[Op.and];
+    const whereAnd = andClauses.length || searchAnd
+      ? { [Op.and]: [...andClauses, ...(Array.isArray(searchAnd) ? searchAnd : searchAnd ? [searchAnd] : [])] }
+      : {};
 
     // Use findAndCountAll so we can return totalRecords + paged rows
     /* Sorting and ordering */
@@ -93,9 +105,8 @@ export const productInventoryReport = async (req, res) => {
       where: {
         isDelete: 0,
         company_masters_id: findCompanyId.company_masters_id,
-        ...whereForcategory,
-        ...whereForProduct,
         ...fullTextSearchConditionForProduct,
+        ...whereAnd,
       },
       attributes: [
         "id",
