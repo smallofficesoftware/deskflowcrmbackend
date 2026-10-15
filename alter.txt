@@ -4038,3 +4038,378 @@ ALTER TABLE `visits` ADD COLUMN `product_id` INT(11) NULL DEFAULT NULL, ADD COLU
 -- migration: migration/tenant/migrations/20261010150000-add-is-grouped-number-format-to-company-masters.js
 -- Company-wide print preference (ticket #2157): Indian-style digit grouping (1,50,000.00) on order/quotation PDF amounts when enabled, plain decimal (150000.00) when not. Also apply on smalloffice_sample_tenant.
 ALTER TABLE `company_masters` ADD COLUMN `is_grouped_number_format` INT(11) NULL DEFAULT 0;
+
+
+13-10-2026 Dhaval
+-- MASTER DB only. New Customer Panel feature (adminpanel): product/plan/add-on catalog and per-company
+-- assignment + bookkeeping-only permission matrix, fully independent of superadmin_products/AddonMaster.
+-- Applied via adminpanel's own Sequelize migrations (not this repo's migration/master), since adminpanel
+-- connects to this same master DB -- see adminpanel/backend/src/database/migrations/20261013100000..20261013100600
+-- and adminpanel/docs/superpowers/specs/2026-10-13-customer-panel-design.md.
+CREATE TABLE `customer_panel_products` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `product_code` VARCHAR(50) NOT NULL,
+  `product_name` VARCHAR(100) NOT NULL,
+  `description` TEXT NULL DEFAULT NULL,
+  `display_order` INT(11) NOT NULL DEFAULT 0,
+  `created_date_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `modified_date` DATETIME NULL DEFAULT NULL,
+  `isActive` TINYINT NOT NULL DEFAULT 1,
+  `isDelete` TINYINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_customer_panel_products_code` (`product_code`)
+);
+INSERT INTO `customer_panel_products` (`id`, `product_code`, `product_name`, `display_order`, `created_date_time`, `isActive`, `isDelete`) VALUES
+  (1, 'crm', 'CRM', 1, NOW(), 1, 0),
+  (2, 'whatsapp', 'WhatsApp', 2, NOW(), 1, 0);
+ALTER TABLE `customer_panel_products` AUTO_INCREMENT = 3;
+
+CREATE TABLE `customer_panel_plans` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `customer_panel_product_id` INT(11) NOT NULL COMMENT 'customer_panel_products.id',
+  `plan_name` VARCHAR(100) NOT NULL,
+  `list_price` DOUBLE NOT NULL DEFAULT 0,
+  `current_price` DOUBLE NOT NULL DEFAULT 0,
+  `billing_cycle` VARCHAR(20) NOT NULL DEFAULT 'yearly',
+  `limits_json` LONGTEXT NULL DEFAULT NULL COMMENT 'JSON: flexible per-product limit fields, e.g. {"contacts":10000,"users":3}',
+  `display_order` INT(11) NOT NULL DEFAULT 0,
+  `created_date_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `modified_date` DATETIME NULL DEFAULT NULL,
+  `isActive` TINYINT NOT NULL DEFAULT 1,
+  `isDelete` TINYINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  KEY `idx_customer_panel_plans_product` (`customer_panel_product_id`)
+);
+INSERT INTO `customer_panel_plans` (`id`, `customer_panel_product_id`, `plan_name`, `list_price`, `current_price`, `billing_cycle`, `display_order`, `created_date_time`, `isActive`, `isDelete`, `limits_json`) VALUES
+  (1, 1, 'Silver', 4999, 3999, 'yearly', 1, NOW(), 1, 0, '{"contacts":10000,"included_users":3,"category_product_master":1000,"cloud_storage_gb":1}'),
+  (2, 1, 'Gold', 9999, 7999, 'yearly', 2, NOW(), 1, 0, '{"contacts":50000,"included_users":10,"category_product_master":10000,"cloud_storage_gb":3}'),
+  (3, 1, 'Diamond', 16999, 14999, 'yearly', 3, NOW(), 1, 0, '{"contacts":100000,"included_users":20,"category_product_master":20000,"cloud_storage_gb":5}'),
+  (4, 2, 'Light', 6999, 3999, 'yearly', 1, NOW(), 1, 0, '{"channels":1,"contacts":10000,"team_members":1,"templates":20}'),
+  (5, 2, 'Premium', 12999, 9999, 'yearly', 2, NOW(), 1, 0, '{"channels":2,"contacts":100000,"team_members":3,"templates":100}'),
+  (6, 2, 'Advanced', 22999, 19999, 'yearly', 3, NOW(), 1, 0, '{"channels":4,"contacts":250000,"team_members":5,"templates":100}');
+ALTER TABLE `customer_panel_plans` AUTO_INCREMENT = 7;
+
+CREATE TABLE `customer_panel_addons` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `customer_panel_product_id` INT(11) NULL DEFAULT NULL COMMENT 'customer_panel_products.id: product this add-on is sold from',
+  `addon_code` VARCHAR(50) NOT NULL,
+  `addon_name` VARCHAR(150) NOT NULL,
+  `description` TEXT NULL DEFAULT NULL,
+  `price` DOUBLE NOT NULL DEFAULT 0,
+  `is_qty_enable` TINYINT NOT NULL DEFAULT 0,
+  `default_qty` INT(11) NULL DEFAULT NULL,
+  `grants_customer_panel_plan_id` INT(11) NULL DEFAULT NULL COMMENT 'customer_panel_plans.id: cross-product plan grant, e.g. "Basic CRM" -> CRM Silver',
+  `display_order` INT(11) NOT NULL DEFAULT 0,
+  `created_date_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `modified_date` DATETIME NULL DEFAULT NULL,
+  `isActive` TINYINT NOT NULL DEFAULT 1,
+  `isDelete` TINYINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  KEY `idx_customer_panel_addons_product` (`customer_panel_product_id`)
+);
+INSERT INTO `customer_panel_addons` (`id`, `customer_panel_product_id`, `addon_code`, `addon_name`, `price`, `is_qty_enable`, `default_qty`, `grants_customer_panel_plan_id`, `display_order`, `created_date_time`, `isActive`, `isDelete`) VALUES
+  (1, 1, 'visiting_card_scan_app', 'Visiting Card Scan (Mobile App)', 999, 0, NULL, NULL, 1, NOW(), 1, 0),
+  (2, 1, 'visiting_card_scan_whatsapp', 'Visiting Card Scan (WhatsApp) -- AI Card Scan', 999, 0, NULL, NULL, 2, NOW(), 1, 0),
+  (3, 1, 'web_form_api', 'Web Form and API', 1000, 0, NULL, NULL, 3, NOW(), 1, 0),
+  (4, 1, 'voice_control', 'Voice Control', 1000, 0, NULL, NULL, 4, NOW(), 1, 0),
+  (5, 1, 'whatsapp_api_integration_light', 'Official WhatsApp API Integration (Light Plan)', 4000, 0, NULL, 4, 5, NOW(), 1, 0),
+  (6, 1, 'miracle_accounting_integration', 'Cloud Miracle Accounting Integration', 4000, 0, NULL, NULL, 6, NOW(), 1, 0),
+  (7, 1, 'ecommerce_b2b_b2c', 'Ecommerce for Customers (B2B/B2C)', 4500, 0, NULL, NULL, 7, NOW(), 1, 0),
+  (8, 1, 'multi_company_login', 'Multi-Company Login', 3500, 1, 1, NULL, 8, NOW(), 1, 0),
+  (9, 2, 'whatsapp_voice', 'Voice', 2999, 0, NULL, NULL, 9, NOW(), 1, 0),
+  (10, 2, 'basic_crm', 'Basic CRM', 3999, 0, NULL, 1, 10, NOW(), 1, 0);
+ALTER TABLE `customer_panel_addons` AUTO_INCREMENT = 11;
+
+CREATE TABLE `customer_panel_company_subscriptions` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `company_masters_id` INT(11) NOT NULL COMMENT 'company_masters.id',
+  `customer_panel_product_id` INT(11) NOT NULL,
+  `customer_panel_plan_id` INT(11) NOT NULL,
+  `granted_date` DATE NULL DEFAULT NULL,
+  `revoked_date` DATE NULL DEFAULT NULL,
+  `created_by_super_admin_user_id` INT(11) NULL DEFAULT NULL,
+  `created_date_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `modified_date` DATETIME NULL DEFAULT NULL,
+  `isActive` TINYINT NOT NULL DEFAULT 1,
+  `isDelete` TINYINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  KEY `idx_customer_panel_company_subscriptions_company_product` (`company_masters_id`, `customer_panel_product_id`)
+);
+
+CREATE TABLE `customer_panel_company_addons` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `company_masters_id` INT(11) NOT NULL COMMENT 'company_masters.id',
+  `customer_panel_addon_id` INT(11) NOT NULL,
+  `qty` INT(11) NOT NULL DEFAULT 1,
+  `granted_date` DATE NULL DEFAULT NULL,
+  `revoked_date` DATE NULL DEFAULT NULL,
+  `created_by_super_admin_user_id` INT(11) NULL DEFAULT NULL,
+  `created_date_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `modified_date` DATETIME NULL DEFAULT NULL,
+  `isActive` TINYINT NOT NULL DEFAULT 1,
+  `isDelete` TINYINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  KEY `idx_customer_panel_company_addons_company_addon` (`company_masters_id`, `customer_panel_addon_id`)
+);
+
+CREATE TABLE `customer_panel_company_product_permissions` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `company_masters_id` INT(11) NOT NULL COMMENT 'company_masters.id',
+  `customer_panel_product_id` INT(11) NOT NULL,
+  `rights_json` LONGTEXT NOT NULL COMMENT 'JSON: {"view":0|1,"add":0|1,"edit":0|1,"delete":0|1}',
+  `created_date_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `modified_date` DATETIME NULL DEFAULT NULL,
+  `isActive` TINYINT NOT NULL DEFAULT 1,
+  `isDelete` TINYINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  KEY `idx_cp_company_product_permissions_company_product` (`company_masters_id`, `customer_panel_product_id`)
+);
+
+CREATE TABLE `customer_panel_company_addon_permissions` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `company_masters_id` INT(11) NOT NULL COMMENT 'company_masters.id',
+  `customer_panel_addon_id` INT(11) NOT NULL,
+  `rights_json` LONGTEXT NOT NULL COMMENT 'JSON: {"view":0|1,"add":0|1,"edit":0|1,"delete":0|1}',
+  `created_date_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `modified_date` DATETIME NULL DEFAULT NULL,
+  `isActive` TINYINT NOT NULL DEFAULT 1,
+  `isDelete` TINYINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  KEY `idx_cp_company_addon_permissions_company_addon` (`company_masters_id`, `customer_panel_addon_id`)
+);
+
+
+13-10-2026 Dhaval
+-- MASTER DB only. Customer Panel redesign: replaces the company_masters_id-keyed tables above
+-- (customer_panel_company_subscriptions/company_addons/company_product_permissions/company_addon_permissions --
+-- dropped, never held real data) with a customer_masters -> customer_workspaces hierarchy: a customer
+-- is independent of company_masters, and can have many workspaces (each one product+plan). On-Premise is a
+-- deployment attribute of a plan (cloud vs on_premise), not a separate product; Custom Software is a third
+-- distinct product alongside CRM and WhatsApp. Applied via adminpanel's own Sequelize migrations -- see
+-- adminpanel/backend/src/database/migrations/20261013120000..20261013120700.
+DROP TABLE IF EXISTS `customer_panel_company_product_permissions`;
+DROP TABLE IF EXISTS `customer_panel_company_addon_permissions`;
+DROP TABLE IF EXISTS `customer_panel_company_addons`;
+DROP TABLE IF EXISTS `customer_panel_company_subscriptions`;
+
+CREATE TABLE `customer_masters` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `customer_name` VARCHAR(200) NOT NULL,
+  `customer_code` VARCHAR(50) NULL DEFAULT NULL,
+  `contact_email` VARCHAR(150) NULL DEFAULT NULL,
+  `contact_phone` VARCHAR(30) NULL DEFAULT NULL,
+  `address` TEXT NULL DEFAULT NULL,
+  `created_date_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `modified_date` DATETIME NULL DEFAULT NULL,
+  `isActive` TINYINT NOT NULL DEFAULT 1,
+  `isDelete` TINYINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  KEY `idx_customer_masters_name` (`customer_name`)
+);
+
+CREATE TABLE `customer_workspaces` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `customer_master_id` INT(11) NOT NULL COMMENT 'customer_masters.id',
+  `workspace_name` VARCHAR(150) NOT NULL,
+  `customer_panel_product_id` INT(11) NOT NULL COMMENT 'customer_panel_products.id',
+  `customer_panel_plan_id` INT(11) NOT NULL COMMENT 'customer_panel_plans.id',
+  `granted_date` DATE NULL DEFAULT NULL,
+  `revoked_date` DATE NULL DEFAULT NULL,
+  `created_by_super_admin_user_id` INT(11) NULL DEFAULT NULL,
+  `created_date_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `modified_date` DATETIME NULL DEFAULT NULL,
+  `isActive` TINYINT NOT NULL DEFAULT 1,
+  `isDelete` TINYINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  KEY `idx_customer_workspaces_customer` (`customer_master_id`)
+);
+
+CREATE TABLE `customer_workspace_addons` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `customer_workspace_id` INT(11) NOT NULL COMMENT 'customer_workspaces.id',
+  `customer_panel_addon_id` INT(11) NOT NULL COMMENT 'customer_panel_addons.id',
+  `qty` INT(11) NOT NULL DEFAULT 1,
+  `granted_date` DATE NULL DEFAULT NULL,
+  `revoked_date` DATE NULL DEFAULT NULL,
+  `created_by_super_admin_user_id` INT(11) NULL DEFAULT NULL,
+  `created_date_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `modified_date` DATETIME NULL DEFAULT NULL,
+  `isActive` TINYINT NOT NULL DEFAULT 1,
+  `isDelete` TINYINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  KEY `idx_customer_workspace_addons_workspace_addon` (`customer_workspace_id`, `customer_panel_addon_id`)
+);
+
+CREATE TABLE `customer_workspace_permissions` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `customer_workspace_id` INT(11) NOT NULL COMMENT 'customer_workspaces.id',
+  `rights_json` LONGTEXT NOT NULL COMMENT 'JSON: {"view":0|1,"add":0|1,"edit":0|1,"delete":0|1}',
+  `created_date_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `modified_date` DATETIME NULL DEFAULT NULL,
+  `isActive` TINYINT NOT NULL DEFAULT 1,
+  `isDelete` TINYINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  KEY `idx_customer_workspace_permissions_workspace` (`customer_workspace_id`)
+);
+
+CREATE TABLE `customer_workspace_addon_permissions` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `customer_workspace_id` INT(11) NOT NULL COMMENT 'customer_workspaces.id',
+  `customer_panel_addon_id` INT(11) NOT NULL COMMENT 'customer_panel_addons.id',
+  `rights_json` LONGTEXT NOT NULL COMMENT 'JSON: {"view":0|1,"add":0|1,"edit":0|1,"delete":0|1}',
+  `created_date_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `modified_date` DATETIME NULL DEFAULT NULL,
+  `isActive` TINYINT NOT NULL DEFAULT 1,
+  `isDelete` TINYINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  KEY `idx_cw_addon_permissions_workspace_addon` (`customer_workspace_id`, `customer_panel_addon_id`)
+);
+
+ALTER TABLE `customer_panel_plans` ADD COLUMN `deployment_type` VARCHAR(20) NOT NULL DEFAULT 'cloud' COMMENT "'cloud' or 'on_premise'";
+
+INSERT INTO `customer_panel_products` (`id`, `product_code`, `product_name`, `display_order`, `created_date_time`, `isActive`, `isDelete`) VALUES
+  (3, 'custom_software', 'Custom Software', 3, NOW(), 1, 0);
+ALTER TABLE `customer_panel_products` AUTO_INCREMENT = 4;
+
+
+13-10-2026 Dhaval
+-- MASTER DB only. Removed the Customer Panel's bookkeeping-only permission matrix feature (decided
+-- against keeping it -- recorded no real access control, just UI noise). Dropped both tables, never
+-- held real data. Applied via adminpanel's own Sequelize migrations -- see
+-- adminpanel/backend/src/database/migrations/20261013130000-drop-customer-workspace-permission-tables.js.
+DROP TABLE IF EXISTS `customer_workspace_addon_permissions`;
+DROP TABLE IF EXISTS `customer_workspace_permissions`;
+
+
+13-10-2026 Dhaval
+-- MASTER DB only. Removed the Customer Panel's "workspace" layer -- a customer now directly has
+-- products/plans and add-ons, no intermediate workspace concept. Replaced with a billing-driven model:
+-- customer_invoices/customer_invoice_items is the source of truth (one bill per customer, one line item
+-- per product+plan or add-on, each with its own billed period); customer_subscriptions/customer_addons
+-- is a fast-lookup current-state cache (product/add-on + expiry_date) kept in sync whenever a bill is
+-- saved. customer_workspaces/customer_workspace_addons dropped (test data only, see 20261013140000).
+-- Applied via adminpanel's own Sequelize migrations -- see
+-- adminpanel/backend/src/database/migrations/20261013140000..20261013140400.
+DROP TABLE IF EXISTS `customer_workspace_addons`;
+DROP TABLE IF EXISTS `customer_workspaces`;
+
+CREATE TABLE `customer_subscriptions` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `customer_master_id` INT(11) NOT NULL COMMENT 'customer_masters.id',
+  `customer_panel_product_id` INT(11) NOT NULL COMMENT 'customer_panel_products.id',
+  `customer_panel_plan_id` INT(11) NOT NULL COMMENT 'customer_panel_plans.id',
+  `expiry_date` DATE NULL DEFAULT NULL COMMENT 'latest billed period_end for this product',
+  `created_date_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `modified_date` DATETIME NULL DEFAULT NULL,
+  `isActive` TINYINT NOT NULL DEFAULT 1,
+  `isDelete` TINYINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  KEY `idx_customer_subscriptions_customer_product` (`customer_master_id`, `customer_panel_product_id`)
+);
+
+CREATE TABLE `customer_addons` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `customer_master_id` INT(11) NOT NULL COMMENT 'customer_masters.id',
+  `customer_panel_addon_id` INT(11) NOT NULL COMMENT 'customer_panel_addons.id',
+  `qty` INT(11) NOT NULL DEFAULT 1,
+  `expiry_date` DATE NULL DEFAULT NULL COMMENT 'latest billed period_end for this add-on',
+  `created_date_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `modified_date` DATETIME NULL DEFAULT NULL,
+  `isActive` TINYINT NOT NULL DEFAULT 1,
+  `isDelete` TINYINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  KEY `idx_customer_addons_customer_addon` (`customer_master_id`, `customer_panel_addon_id`)
+);
+
+CREATE TABLE `customer_invoices` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `customer_master_id` INT(11) NOT NULL COMMENT 'customer_masters.id',
+  `invoice_number` VARCHAR(50) NOT NULL,
+  `invoice_date` DATE NOT NULL,
+  `subtotal_amount` DOUBLE NOT NULL DEFAULT 0,
+  `discount_amount` DOUBLE NOT NULL DEFAULT 0,
+  `gst_rate` DOUBLE NOT NULL DEFAULT 18,
+  `gst_amount` DOUBLE NOT NULL DEFAULT 0,
+  `total_amount` DOUBLE NOT NULL DEFAULT 0,
+  `payment_mode` VARCHAR(30) NULL DEFAULT NULL,
+  `payment_reference` VARCHAR(100) NULL DEFAULT NULL,
+  `payment_date` DATE NULL DEFAULT NULL,
+  `notes` TEXT NULL DEFAULT NULL,
+  `created_by_super_admin_user_id` INT(11) NULL DEFAULT NULL,
+  `created_date_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `modified_date` DATETIME NULL DEFAULT NULL,
+  `isDelete` TINYINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  KEY `idx_customer_invoices_customer` (`customer_master_id`),
+  UNIQUE KEY `idx_customer_invoices_number` (`invoice_number`)
+);
+
+CREATE TABLE `customer_invoice_items` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `customer_invoice_id` INT(11) NOT NULL COMMENT 'customer_invoices.id',
+  `item_type` VARCHAR(20) NOT NULL COMMENT "'product' or 'addon'",
+  `customer_panel_product_id` INT(11) NULL DEFAULT NULL COMMENT 'set when item_type = product',
+  `customer_panel_plan_id` INT(11) NULL DEFAULT NULL COMMENT 'set when item_type = product',
+  `customer_panel_addon_id` INT(11) NULL DEFAULT NULL COMMENT 'set when item_type = addon',
+  `qty` INT(11) NOT NULL DEFAULT 1,
+  `rate` DOUBLE NOT NULL DEFAULT 0,
+  `amount` DOUBLE NOT NULL DEFAULT 0,
+  `period_start` DATE NOT NULL,
+  `period_end` DATE NOT NULL,
+  `created_date_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_customer_invoice_items_invoice` (`customer_invoice_id`)
+);
+
+
+13-10-2026 Dhaval
+-- MASTER DB only. Customer Panel: supports multiple independent instances of the same product for one
+-- customer (e.g. 2 CRM + 1 WhatsApp), each with its own plan/expiry, instead of one row per
+-- (customer, product). `label` lets staff tell instances apart; `granted_by_addon_id` marks an instance
+-- created by a cross-product add-on grant, tracked separately from directly-billed instances.
+-- customer_invoice_items.customer_subscription_id says which instance a product line item renews (null =
+-- creates a new instance). Applied via adminpanel's own Sequelize migrations -- see
+-- adminpanel/backend/src/database/migrations/20261013150000 and 20261013150100.
+ALTER TABLE `customer_subscriptions`
+  ADD COLUMN `label` VARCHAR(150) NULL DEFAULT NULL COMMENT 'friendly name to distinguish multiple instances of the same product, e.g. "Branch 1"',
+  ADD COLUMN `granted_by_addon_id` INT(11) NULL DEFAULT NULL COMMENT 'customer_panel_addons.id: set when this instance exists from a grant-addon purchase, not direct billing';
+
+ALTER TABLE `customer_invoice_items`
+  ADD COLUMN `customer_subscription_id` INT(11) NULL DEFAULT NULL COMMENT 'customer_subscriptions.id: which instance this product line item renews/creates',
+  ADD INDEX `idx_customer_invoice_items_subscription` (`customer_subscription_id`);
+
+
+13-10-2026 Dhaval
+-- MASTER DB only. Add-ons now support independent instances too, mirroring products ("License" in the
+-- UI): a customer can have the same add-on billed multiple times as separate instances, each with its own
+-- label/qty/expiry, instead of one shared row per (customer, add-on). customer_invoice_items.customer_addon_id
+-- says which add-on instance a line item renews/creates (null = new instance). A grant (e.g. "Basic CRM" ->
+-- CRM Silver) is now tied to the SPECIFIC add-on instance that created it
+-- (customer_subscriptions.granted_by_addon_id renamed/repurposed to granted_by_customer_addon_id, now
+-- pointing at customer_addons.id instead of customer_panel_addons.id) so two separate purchases of the
+-- same grant-add-on don't collide into one grant. Applied via adminpanel's own Sequelize migrations -- see
+-- adminpanel/backend/src/database/migrations/20261013160000..20261013160200.
+ALTER TABLE `customer_addons`
+  ADD COLUMN `label` VARCHAR(150) NULL DEFAULT NULL COMMENT 'friendly name to distinguish multiple instances of the same add-on, e.g. "Branch 2"';
+
+ALTER TABLE `customer_invoice_items`
+  ADD COLUMN `customer_addon_id` INT(11) NULL DEFAULT NULL COMMENT 'customer_addons.id: which add-on instance this line item renews/creates',
+  ADD INDEX `idx_customer_invoice_items_addon_instance` (`customer_addon_id`);
+
+ALTER TABLE `customer_subscriptions`
+  CHANGE COLUMN `granted_by_addon_id` `granted_by_customer_addon_id` INT(11) NULL DEFAULT NULL
+    COMMENT 'customer_addons.id: set when this instance exists from a specific add-on instance purchase, not direct billing';
+
+
+13-10-2026 Dhaval
+-- MASTER DB only. Every license (a customer_subscriptions or customer_addons row, "License" in the UI)
+-- gets a unique, system-generated license_number (e.g. "CRM-000001"), alongside the free-text `label`.
+-- Generated in the service layer once the row's own id is known. Applied via adminpanel's own Sequelize
+-- migrations -- see adminpanel/backend/src/database/migrations/20261013170000.
+ALTER TABLE `customer_subscriptions`
+  ADD COLUMN `license_number` VARCHAR(50) NULL DEFAULT NULL COMMENT 'unique, system-generated license identifier, e.g. "CRM-000001"',
+  ADD UNIQUE INDEX `idx_customer_subscriptions_license_number` (`license_number`);
+
+ALTER TABLE `customer_addons`
+  ADD COLUMN `license_number` VARCHAR(50) NULL DEFAULT NULL COMMENT 'unique, system-generated license identifier, e.g. "CRM-000001"',
+  ADD UNIQUE INDEX `idx_customer_addons_license_number` (`license_number`);
