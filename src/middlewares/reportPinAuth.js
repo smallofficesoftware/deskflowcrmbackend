@@ -110,6 +110,34 @@ export const requireReportPin = async (req, res, next) => {
   }
 };
 
+// Owner-only gate WITHOUT the PIN: same company-owner check as
+// requireReportPin (company_flag = 1), minus the x-report-pin-token step.
+// Used by the Document Designer's author routes, which no longer ask for
+// the shared build PIN.
+export const requireCompanyOwner = async (req, res, next) => {
+  try {
+    const { a_application_login_id } = req.body || {};
+    if (!a_application_login_id) {
+      return res.status(200).send(resError({ ack_msg: "a_application_login_id is required", developer_msg: "Missing a_application_login_id" }));
+    }
+
+    const findCompanyId = await getCompanyByLoginId(a_application_login_id);
+    if (!findCompanyId) {
+      return res.status(200).send(resError({ ack_msg: "Company not found for login ID", developer_msg: "No company associated with the provided login ID" }));
+    }
+
+    const owner = await isCompanyOwner(a_application_login_id, findCompanyId.company_masters_id);
+    if (!owner) {
+      return res.status(200).send(resError({ code: 403, ack_msg: "Only the company owner can access this", developer_msg: "company_flag != 1 for this login" }));
+    }
+
+    next();
+  } catch (error) {
+    console.error("requireCompanyOwner error:", error);
+    return res.status(200).send(resError({ developer_msg: `Failed to Catch ${error}` }));
+  }
+};
+
 // Gate for the ONE service-to-service route in this file's territory —
 // adminpanel's system-report-gallery editor test-running a draft
 // definition (testRunReportDefinition). There is no CRM user session on
