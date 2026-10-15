@@ -469,6 +469,36 @@ export const getTeamAllCarts = async (req) => {
       })
     );
 
+    // Per-column grid filters (contains match, applied on Enter in the grid).
+    // Applied before pagination and the grand totals, so they cover the
+    // whole result set. Only the columns the report shows are matched.
+    const columnFilters = req.body.column_filters;
+    if (columnFilters && typeof columnFilters === "object") {
+      const FIXED_COLUMN_KEYS = ["cart_number", "username", "cart_status", "to_customer_name", "to_customer_phone", "grand_total"];
+      const activeFilters = Object.entries(columnFilters)
+        .map(([key, value]) => [key, String(value ?? "").trim().toLowerCase()])
+        .filter(([, value]) => value !== "");
+
+      if (activeFilters.length > 0) {
+        const textOf = (row, key) => {
+          if (key === "to_customer_name") {
+            return `${row.to_customer_name || ""} ${row.to_customer_phone || ""} ${row.to_customer_company_name || ""}`;
+          }
+          if (key === "is_approve") return row.is_approve?.name || "";
+          return row[key] === null || row[key] === undefined ? "" : String(row[key]);
+        };
+        allCartsWithUser = allCartsWithUser.filter((row) =>
+          activeFilters.every(([key, value]) => {
+            const isCustomField =
+              Array.isArray(row.customForm) &&
+              row.customForm.some((cf) => cf.reference_column_name === key);
+            if (!FIXED_COLUMN_KEYS.includes(key) && key !== "is_approve" && !isCustomField) return true;
+            return textOf(row, key).toLowerCase().includes(value);
+          }),
+        );
+      }
+    }
+
     // Final sort by sr_by_number (in case multiple users have same sr_by_number)
     allCartsWithUser.sort((a, b) => b.sr_by_number - a.sr_by_number);
 
