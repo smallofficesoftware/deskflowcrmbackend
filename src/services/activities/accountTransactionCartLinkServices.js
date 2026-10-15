@@ -133,13 +133,39 @@ const getPaidAmountByCartId = async (
   if (excludeTransactionId) where.id = { [Op.ne]: excludeTransactionId };
   const rows = await accountTransactionsModel(tenantDB).findAll({
     where,
-    attributes: ["reference_id", "amount"],
+    attributes: ["reference_id", "amount", "type"],
     raw: true,
   });
+
+  // Only entries of the settling kind count as paid / received: Credit
+  // (Receipt) entries for sales-side carts, Debit (Payment) entries for
+  // purchase-side carts. The cart's own auto entry is the opposite kind (an
+  // invoice's auto Debit), so counting it made a 23 invoice with 20 received
+  // look like 43 settled (available -20).
+  const cartTypeRows = await cartModel(tenantDB).findAll({
+    where: { id: { [Op.in]: cartIds } },
+    attributes: ["id", "type"],
+    raw: true,
+  });
+  const settlingTypeByCart = new Map(
+    cartTypeRows.map((c) => [Number(c.id), settlingTransactionTypeFor(c.type)])
+  );
+
   for (const r of rows) {
+    const settlingType = settlingTypeByCart.get(Number(r.reference_id));
+    // Unknown cart type: keep counting every linked entry, as before.
+    if (settlingType != null && Number(r.type) !== settlingType) continue;
     paidMap.set(Number(r.reference_id), (paidMap.get(Number(r.reference_id)) || 0) + (Number(r.amount) || 0));
   }
   return paidMap;
+};
+
+// account_transactions.type that settles a cart of this carts.type, or null.
+const settlingTransactionTypeFor = (cartType) => {
+  for (const [transactionType, cartTypes] of Object.entries(CART_TYPES_BY_TRANSACTION_TYPE)) {
+    if (cartTypes.includes(Number(cartType))) return Number(transactionType);
+  }
+  return null;
 };
 
 // { reference_id -> { cart_number, cart_type_name } } for list screens.
