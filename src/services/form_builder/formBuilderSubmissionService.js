@@ -1,4 +1,4 @@
-import { QueryTypes } from "sequelize";
+import { Op, QueryTypes } from "sequelize";
 import companyModel from "../../models/company_setup/companyModel.js";
 import { contactModel } from "../../models/activities/contactModel.js";
 import { formBuilderFormModel } from "../../models/form_builder/formBuilderFormModel.js";
@@ -1078,6 +1078,54 @@ export const listSubmissions = async (req) => {
         }
       }
       whereClauses.push(`(${likeClauses.join(" OR ")})`);
+    }
+
+    // Per-column grid filters (contains match, applied on Enter in the grid).
+    // Same readable-field rules as the global search: hidden / masked /
+    // encrypted / non-column fields are ignored, never matched.
+    const columnFilters = req.body?.column_filters;
+    if (columnFilters && typeof columnFilters === "object") {
+      const COLUMN_FILTER_TYPES = [
+        "text", "textarea", "phone", "email", "url", "auto-number",
+        "number", "currency", "percentage", "calculation", "barcode",
+        "dropdown", "radio", "multi-select", "customer-lookup",
+      ];
+      let cfIndex = 0;
+      for (const [key, rawValue] of Object.entries(columnFilters)) {
+        const value = String(rawValue ?? "").trim();
+        if (!value) continue;
+        if (key === "_status") {
+          // The Status column shows the status name; the row stores its id.
+          const statusRows = await stagestatusModel(req.tenantDB).findAll({
+            where: { isDelete: 0, name: { [Op.like]: `%${value}%` } },
+            attributes: ["id"],
+            raw: true,
+          });
+          const statusIds = statusRows.map((s) => Number(s.id));
+          if (statusIds.length > 0) {
+            const param = `colf_status_${cfIndex++}`;
+            whereClauses.push(`submission_status_id IN (:${param})`);
+            replacements[param] = statusIds;
+          } else {
+            whereClauses.push("1 = 0");
+          }
+          continue;
+        }
+        const field = fields.find(
+          (f) => f.key === key && COLUMN_FILTER_TYPES.includes(f.type) && !NO_COLUMN_TYPES.has(f.type) && !isEncryptedAadhaarField(f) && !noRead.has(f.key),
+        );
+        if (!field) continue;
+        const param = `colf_${cfIndex++}`;
+        replacements[param] = `%${value}%`;
+        if (field.type === "customer-lookup") {
+          // Stores a contact id - match on the contact's name / company / mobile.
+          whereClauses.push(
+            `${q(key)} IN (SELECT id FROM \`contact_masters\` WHERE isDelete = 0 AND (person_name LIKE :${param} OR company_name LIKE :${param} OR mobile_number LIKE :${param} OR raw_mobile_number LIKE :${param}))`,
+          );
+        } else {
+          whereClauses.push(`(${q(key)} LIKE :${param} AND ${q(key)} NOT LIKE 'fbenc:%')`);
+        }
+      }
     }
 
     const finalLimit = Math.min(Number(limit) || 50, 500);
