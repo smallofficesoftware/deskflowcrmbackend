@@ -28,7 +28,7 @@ import { resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { generateAccountStatementPdf } from "../pdfmeEngine/accountStatementGenerate.js";
 import { generateContactAddressPdf, generateContactEnvelopePdf } from "../pdfmeEngine/contactPrintGenerate.js";
 import { defaultTemplateForDocType } from "../pdfmeEngine/defaultTemplateForDocType.js";
-import { buildFormDefaultTemplate, parseFormDocTypeId } from "../pdfmeEngine/formDocTypeTemplate.js";
+import { buildFormCatalogTemplate, parseFormDocTypeId } from "../pdfmeEngine/formDocTypeTemplate.js";
 import { buildCompactTotalsTableField } from "../pdfmeEngine/buildTemplate.js";
 import { generateAccountTransactionPdf } from "../pdfmeEngine/accountTransactionGenerate.js";
 import { generateEmployeeAccountStatementPdf } from "../pdfmeEngine/employeeAccountStatementGenerate.js";
@@ -1574,7 +1574,7 @@ export const getDefaultTemplateForDocType = async (req) => {
     }
     // Custom Form Maker print design: built from the form's schema.
     if (parseFormDocTypeId(doc_type) !== null) {
-      const formTemplate = await buildFormDefaultTemplate(req, doc_type);
+      const formTemplate = await buildFormCatalogTemplate(req, doc_type);
       return resSuccess({ data: { item: { template: formTemplate } } });
     }
     const template = defaultTemplateForDocType(doc_type);

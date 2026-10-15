@@ -35,6 +35,7 @@ import { formBuilderSubmissionFileModel } from "../../models/form_builder/formBu
 import { formBuilderFormModel } from "../../models/form_builder/formBuilderFormModel.js";
 import { sniffImageMime } from "./imageOverlay.js";
 import { appendAttachmentPages, MAX_IMAGES_PER_FIELD } from "./formAttachmentPages.js";
+import { formFieldInputName, isPlainValueField } from "./formDocTypeTemplate.js";
 
 export const formSubmissionDocType = (formId) => `form_${formId}`;
 
@@ -205,6 +206,15 @@ async function buildSubmissionInputs({ tenantDB, form, fields, row: storedRow, c
 
   const rawInputs = { submissionTitle: form.title };
   const legacyLines = []; // the single "details" text older, hand-made templates use
+
+  // Every simple field's own value on its own input (field_<key>), so a
+  // template can place Project name, Time, ... individually. Empty when blank,
+  // not allowed, or unanswered.
+  for (const field of schemaFields) {
+    if (!isPlainValueField(field)) continue;
+    const printed = blank || !isAllowed(field) ? "" : displayValueFor(field, row[field.key], labelMaps);
+    rawInputs[formFieldInputName(field.key)] = printed == null ? "" : String(printed);
+  }
 
   // Photos / signatures: the picture goes to <key>_image, its caption to
   // <key>_image_label; both stay empty (and so are left out of the PDF) when
