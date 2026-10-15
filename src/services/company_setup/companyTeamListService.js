@@ -11,16 +11,19 @@ import { getByIdTeam } from "./companyVsApplicationLoginService.js";
 // else sees themself plus the logins whose reporting_member points at them.
 export const getCompanyTeamList = async (req) => {
   try {
-    const { a_application_login_id } = req.body;
+    // Who is asking: the id in the body, else the logged-in user from the
+    // token. A call without a_application_login_id used to make this NaN and
+    // fail with "Unknown column 'NaN' in 'WHERE'".
+    const me = Number(req.body?.a_application_login_id) || Number(req.user?.id);
+    if (!me) return resBadRequest({ ack_msg: "Login id not found" });
 
     const response = await getByIdTeam(req);
     const items = response?.data?.item;
     if (response?.ack !== 1 || !Array.isArray(items)) return response;
 
-    const requester = await getCompanyByLoginId(a_application_login_id);
+    const requester = await getCompanyByLoginId(me);
     if (Number(requester?.company_flag) === 1) return response;
 
-    const me = Number(a_application_login_id);
     const directReports = await loginModel.findAll({
       where: {
         isDelete: "0",
