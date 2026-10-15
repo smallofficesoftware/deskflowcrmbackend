@@ -624,12 +624,13 @@ export const syncInvoice = async (req) => {
                     results.push({ cart_id: singleCartId, status: "fail", msg: "Transaction Mode is required for Miracle sync" });
                     continue;
                 }
-                if (getCart.transaction_mode == 1 && !isValid(getCart.miracle_account_legder)) {
+                if (getCart.type !== 9 && getCart.transaction_mode == 1 && !isValid(getCart.miracle_account_legder)) {
                     results.push({ cart_id: singleCartId, status: "fail", msg: "Miracle Account Ledger is required for cash transactions" });
                     continue;
                 }
 
-                const transactionAcc = getCart.transaction_mode == 1 ? getCart.miracle_account_legder : acc_id;
+                // Dispatch challan has no account ledger: always post against the customer account.
+                const transactionAcc = (getCart.transaction_mode == 1 && getCart.type !== 9) ? getCart.miracle_account_legder : acc_id;
                 const transactionModeFlag = getCart.transaction_mode == 1 ? "C" : getCart.transaction_mode == 2 ? "D" : "";
                 const invTyp = isSameState ? "GST" : "IGST";
                 const taxtyp = taxTypeFlag;
