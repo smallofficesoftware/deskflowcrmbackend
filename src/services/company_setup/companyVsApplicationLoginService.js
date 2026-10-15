@@ -356,13 +356,7 @@ const companyPlaneCreateWayJoin = async ({
 
 export const getByIdTeam = async (req) => {
   try {
-    const { searchTerm } = req.body;
-    // Body may omit a_application_login_id; fall back to the authenticated
-    // user / tenant header so the reporting-chain filter never gets undefined.
-    const a_application_login_id =
-      req.body.a_application_login_id ||
-      req.user?.id ||
-      req.headers["x-tenant-id"];
+    const { a_application_login_id, searchTerm } = req.body;
 
     const findAllApplicationLogin = await getCompanyByLoginId(
       a_application_login_id
@@ -442,34 +436,10 @@ export const getByIdTeam = async (req) => {
       })
     );
 
-    // Who this screen shows (ticket #2529): owner sees everyone in scope
-    // (company + chain, resolved above); anyone else sees only themself
-    // plus their own reporting chain (whoever's reporting_member points
-    // at them) - same rule getTeamChainWise already applies for the
-    // dashboard team-member pickers, now applied here too so the actual
-    // Team List screen matches it instead of showing the whole company.
-    const requesterIsOwner = Number(findAllApplicationLogin?.company_flag) === 1;
-    let visibleApplicationIds = findApplicationId;
-    if (!requesterIsOwner) {
-      const directReports = await loginModel.findAll({
-        where: {
-          isDelete: "0",
-          reporting_member: a_application_login_id,
-          id: { [Op.in]: findApplicationId },
-        },
-        attributes: ["id"],
-        raw: true,
-      });
-      visibleApplicationIds = [
-        a_application_login_id,
-        ...directReports.map((r) => r.id),
-      ];
-    }
-
     if (companyVsApplicationLoginResult) {
       const result = await loginModel.findAll({
         where: {
-          id: visibleApplicationIds,
+          id: findApplicationId,
           isDelete: "0",
           username: {
             [Op.like]: `%${searchTerm ? searchTerm : ""}%`,
@@ -540,7 +510,7 @@ export const getByIdTeam = async (req) => {
     }
   } catch (e) {
     console.error("ERROR IN getByIdTeam:", e);
-    return resBadRequest({ developer_msg: e?.message || `${e}` });
+    return resBadRequest({ developer_msg: e });
     throw e;
   }
 };
@@ -790,17 +760,6 @@ export const companyPlanVsStatistics = async (req) => {
         ack_msg: "something went wrong",
         developer_msg:
           "application login is not there or company id is not there ",
-      });
-    }
-
-    // Plan usage counters are owner-only.
-    if (
-      !findOwnerDetails ||
-      Number(findOwnerDetails.a_application_login_id) !== Number(a_application_login_id)
-    ) {
-      return resError({
-        ack_msg: "Only the company owner can view plan statistics",
-        developer_msg: "requesting login is not the company owner (company_flag 1)",
       });
     }
     const findCountTeamMember = await companyVsApplicationLoginModel.count({

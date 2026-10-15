@@ -1426,6 +1426,7 @@ export const companyEdit = async (req) => {
     purchase_view_formate,
     in_order_image_view,
     watermark_in_print,
+    is_grouped_number_format,
     view_inquiry_form_in_contact,
     same_product_multiple_in_cart,
     is_contact_validation,
@@ -1827,7 +1828,8 @@ export const companyEdit = async (req) => {
         watermark_in_print: watermark_in_print,
         is_contact_validation: is_contact_validation,
         is_strict_check_product_stock: is_strict_check_product_stock,
-        is_strict_wharehouse_wise_product_stock_check: is_strict_wharehouse_wise_product_stock_check,
+        is_strict_wharehouse_wise_product_stock_check: warehouseWiseFor(is_strict_check_product_stock, is_strict_wharehouse_wise_product_stock_check),
+        is_grouped_number_format: is_grouped_number_format,
         view_inquiry_form_in_contact: view_inquiry_form_in_contact,
         same_product_multiple_in_cart: same_product_multiple_in_cart,
 
@@ -2326,7 +2328,6 @@ export const demoBook = async (req, res) => {
 
     }
     if (isNewContact) emitAutomationEvent({ company_masters_id: tenantDBFind.company_masters_id }, "contact.created", { id: contactCreate.dataValues.id });
-    emitAutomationEvent({ company_masters_id: tenantDBFind.company_masters_id }, "website.book_demo", { standalone: true, data: bookDemoBody, contact_id: contactCreate.dataValues.id });
     // return
 
     const messageBody = {
@@ -2431,8 +2432,13 @@ export const addContactUsData = async (req) => {
     const contactModels = contactModel(tenantDB);
     const CTMModel = contactMessageHistory(tenantDB);
 
+    // Contacts are stored as the normalized 91 + 10 digits (see create below and demoBook),
+    // so the lookup must use that form too - the raw form field is usually 10 digits and
+    // never matched, which made every repeat website lead a new duplicate contact.
+    const normalizedMobile = normalizeToTenDigit(contact_number);
+
     let contactCreate = await contactModels.findOne({
-      where: { mobile_number: contact_number },
+      where: { mobile_number: normalizedMobile },
     });
 
     let isNewContact = false;
@@ -2443,7 +2449,7 @@ export const addContactUsData = async (req) => {
         person_name: name,
         email_id: email,
         company_name: company_name,
-        mobile_number: normalizeToTenDigit(contact_number),
+        mobile_number: normalizedMobile,
         contact_status: -1,
         a_application_login_id: tenantDBFind.a_application_login_id,
         company_masters_id: tenantDBFind.company_masters_id,
@@ -2453,7 +2459,6 @@ export const addContactUsData = async (req) => {
 
     }
     if (isNewContact) emitAutomationEvent({ company_masters_id: tenantDBFind.company_masters_id }, "contact.created", { id: contactCreate.dataValues.id });
-    emitAutomationEvent({ company_masters_id: tenantDBFind.company_masters_id }, "website.contact_us", { standalone: true, data: contactUsBody, contact_id: contactCreate.dataValues.id });
     // return
 
     const messageBody = {
@@ -4153,6 +4158,15 @@ export const imageSettingsUpdate = async (req) => {
   }
 };
 
+// "Strict Product Stock Check WareHouse Wise" only means something while
+// "Strict Product Stock Check" is on (the stock checks ignore it otherwise), so a
+// save that turns the first off stores the second as off too. If the first is
+// not sent, the second is left as given.
+function warehouseWiseFor(strictCheck, warehouseWise) {
+  if (strictCheck === undefined || strictCheck === null) return warehouseWise;
+  return Number(strictCheck) === 2 ? warehouseWise : 1;
+}
+
 export const moduleSettingsUpdate = async (req) => {
   try {
 
@@ -4161,6 +4175,7 @@ export const moduleSettingsUpdate = async (req) => {
       order_qty_unit,
       in_order_image_view,
       watermark_in_print,
+      is_grouped_number_format,
       is_contact_validation,
       is_strict_check_product_stock,
       is_strict_wharehouse_wise_product_stock_check,
@@ -4172,9 +4187,10 @@ export const moduleSettingsUpdate = async (req) => {
       {
         in_order_image_view: in_order_image_view,
         watermark_in_print: watermark_in_print,
+        is_grouped_number_format: is_grouped_number_format,
         is_contact_validation: is_contact_validation,
         is_strict_check_product_stock: is_strict_check_product_stock,
-        is_strict_wharehouse_wise_product_stock_check: is_strict_wharehouse_wise_product_stock_check,
+        is_strict_wharehouse_wise_product_stock_check: warehouseWiseFor(is_strict_check_product_stock, is_strict_wharehouse_wise_product_stock_check),
         view_inquiry_form_in_contact: view_inquiry_form_in_contact,
         same_product_multiple_in_cart: same_product_multiple_in_cart,
         order_qty_unit: order_qty_unit,
@@ -4888,7 +4904,7 @@ export const createWorkspace = async (req) => {
       });
     }
 
-    const workspaceCheck = await checkWorkspaceLimit(parent_company_id);
+    const workspaceCheck = await checkWorkspaceLimit(parent_company_id, req.tenantDB);
     if (!workspaceCheck.allowed) {
       return resError({
         ack_msg: `Your plan allows ${workspaceCheck.limit} workspace${workspaceCheck.limit === 1 ? "" : "s"}. Please upgrade your plan to add more.`,

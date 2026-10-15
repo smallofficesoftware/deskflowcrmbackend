@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #212529; margin: 0; padding: 0; }
+    h1 { font-size: 18px; margin: 0 0 4px 0; }
+    h2 { font-size: 13px; margin: 14px 0 6px 0; }
+    h3 { font-size: 12px; margin: 10px 0 4px 0; }
+    .company { font-size: 12px; color: #55616a; margin-bottom: 8px; }
+    .meta td { padding: 2px 8px 2px 0; vertical-align: top; }
+    .meta td.k { width: 110px; color: #55616a; }
+    table.grid { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+    table.grid th, table.grid td { border: 1px solid #ced4da; padding: 4px 6px; text-align: left; }
+    table.grid th { background: #f0f2f5; }
+    table.grid.rej th { background: #fff3e0; }
+    td.n, th.n { text-align: right !important; }
+    .box { border: 1px solid #ced4da; padding: 6px 8px; margin-bottom: 6px; }
+    .neg { color: #c0392b; font-weight: bold; }
+    .foot { margin-top: 12px; font-size: 9px; color: #6c757d; }
+  </style>
+</head>
+<body>
+  <div class="company"><%= companyName %></div>
+  <h1>Bill Of Material</h1>
+
+  <h2>Product Details</h2>
+  <table class="meta">
+    <tr><td class="k">Item Name</td><td><b><%= product.product_name || "" %></b></td></tr>
+    <tr><td class="k">Item Code</td><td><b><%= product.product_code || "" %></b></td></tr>
+    <tr><td class="k">Item Category</td><td><b><%= product.category_name || "" %></b></td></tr>
+    <tr><td class="k">Item Group</td><td><b><%= product.group_name || "" %></b></td></tr>
+  </table>
+
+  <h2>BOM Details</h2>
+  <table class="meta">
+    <tr><td class="k">BOM</td><td><b><%= bom.bom_number || "" %> <%= bom.bom_name || "" %></b></td></tr>
+    <tr><td class="k">Qty</td><td><b><%= fmt(bom.qty) %> <%= bom.unit_name || "" %></b></td></tr>
+    <tr><td class="k">Review Frequency</td><td><b><%= frequency %></b></td></tr>
+  </table>
+
+  <h2>Costing</h2>
+  <table class="meta">
+    <tr><td class="k">Total Process Cost</td><td><b><%= currency %> <%= money(costing.process_grand_total) %></b></td></tr>
+    <tr><td class="k">Total Consumption Cost</td><td><b><%= currency %> <%= money(costing.total_cons_cost) %></b></td></tr>
+    <tr><td class="k">Total Rejection Cost</td><td><b><%= currency %> <%= money(costing.total_reject_cost) %></b></td></tr>
+    <tr><td class="k">Extra Charges 1</td><td><b><%= currency %> <%= money(costing.extra_charges_1) %></b></td></tr>
+    <tr><td class="k">Extra Charges 2</td><td><b><%= currency %> <%= money(costing.extra_charges_2) %></b></td></tr>
+    <tr><td class="k">Total Cost</td><td><b><%= currency %> <%= money(totalCost) %></b></td></tr>
+    <tr><td class="k">Sales Rate</td><td><b><%= currency %> <%= money(costing.sales_rate) %></b></td></tr>
+    <tr><td class="k">Profit Amount</td><td><b class="<%= profit < 0 ? 'neg' : '' %>"><%= currency %> <%= money(profit) %></b></td></tr>
+    <tr><td class="k">Profit %</td><td><b class="<%= profit < 0 ? 'neg' : '' %>"><%= money(profitPercent) %> %</b></td></tr>
+  </table>
+
+  <h2>BOM Process</h2>
+  <% if (!processes.length) { %><div>No processes.</div><% } %>
+  <% processes.forEach(function (p, idx) { %>
+    <div class="box">
+      <b><%= idx + 1 %>. <%= p.process_name || "Process" %></b><br />
+      Workstation: <%= p.machine_name || "-" %> &nbsp;|&nbsp;
+      Required time: <%= hms(p.required_time) %> &nbsp;|&nbsp;
+      Process cost: <%= money(p.process_cost) %> &nbsp;|&nbsp;
+      Manpower cost: <%= money(p.manpower_cost) %>
+    </div>
+
+    <% if (p.consumption.length) { %>
+      <h3>Consumption</h3>
+      <table class="grid">
+        <tr><th>Product</th><th class="n">Qty</th><th>Unit</th><th class="n">Rate</th><th class="n">Total</th><th>Remark</th></tr>
+        <% p.consumption.forEach(function (i) { %>
+          <tr>
+            <td><%= i.product_name || "" %></td>
+            <td class="n"><%= fmt(i.qty) %></td>
+            <td><%= i.unit_name || "" %></td>
+            <td class="n"><%= money(i.purchase_rate) %></td>
+            <td class="n"><%= money(Number(i.qty || 0) * Number(i.purchase_rate || 0)) %></td>
+            <td><%= i.remark || "" %></td>
+          </tr>
+        <% }); %>
+      </table>
+    <% } %>
+
+    <% if (p.rejection.length) { %>
+      <h3>Rejection</h3>
+      <table class="grid rej">
+        <tr><th>Product</th><th class="n">Qty</th><th>Unit</th><th class="n">Rate</th><th class="n">Total</th><th>Reusable</th><th>Remark</th></tr>
+        <% p.rejection.forEach(function (i) { %>
+          <tr>
+            <td><%= i.product_name || "" %></td>
+            <td class="n"><%= fmt(i.qty) %></td>
+            <td><%= i.unit_name || "" %></td>
+            <td class="n"><%= money(i.rate) %></td>
+            <td class="n"><%= money(Number(i.qty || 0) * Number(i.rate || 0)) %></td>
+            <td><%= Number(i.is_reusable) === 1 ? "Yes" : "No" %></td>
+            <td><%= i.remark || "" %></td>
+          </tr>
+        <% }); %>
+      </table>
+    <% } %>
+  <% }); %>
+
+  <div class="foot">Printed <%= printedAt %></div>
+</body>
+</html>

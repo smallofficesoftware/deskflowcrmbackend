@@ -30,6 +30,7 @@ import {
 import { getCompanyByLoginId } from "../commonServices.js";
 import { autoAssignmentContactIdsGet, prepareMailAndWhatsappSenderToTheContact } from "../other_settings/wrkflwAutoAssignmentContactService.js";
 import { emitAutomationEvent } from "../automation/emit.js";
+import { mobileNumberVariants } from "./contactMobileMatch.js";
 
 
 
@@ -1158,6 +1159,8 @@ export const addContactByExcelSheetV2 = async (req) => {
                 let filtertedData = {};
                 columns.map((v, j) => {
                     filtertedData[definedColumn[v]] = onlyData[i][j] || "";
+                    // A sheet downloaded from Bulk Update Contacts carries the contact's id.
+                    if (String(v).trim() === "contact_id") filtertedData.contact_id = onlyData[i][j] || "";
                 })
                 filterdData.push(filtertedData)
             }
@@ -1297,8 +1300,9 @@ export const addContactByExcelSheetV2 = async (req) => {
                 if (byCodeOrGst) return byCodeOrGst;
 
                 if (isValid(mobile_number)) {
+                    // The same number may be saved as 91 + 10 digits or as the plain 10 digits.
                     const byMobile = await CTcontactModel.findOne({
-                        where: { isDelete: 0, mobile_number },
+                        where: { isDelete: 0, mobile_number: { [Op.in]: mobileNumberVariants(mobile_number) } },
                         raw: true,
                     });
                     if (byMobile && isDuplicateContact(companyData?.is_contact_validation, byMobile.person_name, person_name)) {
@@ -1351,7 +1355,14 @@ export const addContactByExcelSheetV2 = async (req) => {
                    many duplicate rows exist in the file), UNLESS this exact description already
                    exists for that contact, in which case only the inquiry is skipped. */
 
-                const existingContact = await findExistingContact(mobile_number, client_code, gst_number, person_name);
+                // contact_id (when the sheet has it) is checked first: that exact contact is the
+                // existing one, even if its number is shared with other contacts. Otherwise the
+                // usual client_code / gst / mobile check applies.
+                const sheetContactId = Number(v?.contact_id);
+                const byContactId = sheetContactId > 0
+                    ? await CTcontactModel.findOne({ where: { isDelete: 0, id: sheetContactId }, raw: true })
+                    : null;
+                const existingContact = byContactId || await findExistingContact(mobile_number, client_code, gst_number, person_name);
 
                 if (existingContact) {
                     if (isValid(v?.description)) {

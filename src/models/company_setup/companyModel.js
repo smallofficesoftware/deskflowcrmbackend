@@ -305,6 +305,11 @@ const companyModel = sequelize.define("company_masters", {
   is_strict_wharehouse_wise_product_stock_check: {
     type: INTEGER,
   },
+  // Ticket #2157 - Indian-style digit grouping (1,50,000.00) on order/
+  // quotation PDF amounts when enabled; plain decimal (150000.00) when not.
+  is_grouped_number_format: {
+    type: INTEGER,
+  },
 
   workorder_prefix: {
     type: STRING,

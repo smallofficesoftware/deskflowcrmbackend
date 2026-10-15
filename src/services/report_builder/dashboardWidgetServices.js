@@ -10,7 +10,7 @@ import { resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { logAuditEvent } from "../company_setup/auditLogServices.js";
 import { getCompanyByLoginId } from "../commonServices.js";
 import { resolveDashboardRights } from "./dashboardRights.js";
-import { getRegisteredModel } from "./modelRegistry.js";
+import { resolveModelEntry } from "./formModelResolver.js";
 
 const now = () => moment(new Date()).format("YYYY-MM-DD HH:mm:ss");
 const asJsonString = (value) => (typeof value === "string" ? value : JSON.stringify(value));
@@ -164,7 +164,11 @@ export const addQuickCounterWidget = async (req) => {
       return resError({ ack_msg: "Unknown aggregate", developer_msg: `aggregate "${aggregate}" is not allowed` });
     }
 
-    const registryEntry = getRegisteredModel(model_key);
+    const { dashboard, company_masters_id, error } = await loadOwnedDashboard(req, dashboardId);
+    if (error) return error;
+
+    // Static registry first; "form:<id>" keys resolve to a Form Builder form of this company.
+    const registryEntry = await resolveModelEntry(model_key, req.tenantDB, company_masters_id);
     if (!registryEntry) {
       return resError({ ack_msg: "Unknown report source", developer_msg: `model_key "${model_key}" is not whitelisted` });
     }
@@ -175,9 +179,6 @@ export const addQuickCounterWidget = async (req) => {
     if (columnDef.aggregatable && !columnDef.aggregatable.includes(aggregate)) {
       return resError({ ack_msg: "Aggregate not supported", developer_msg: `column "${column}" does not support aggregate "${aggregate}"` });
     }
-
-    const { dashboard, company_masters_id, error } = await loadOwnedDashboard(req, dashboardId);
-    if (error) return error;
 
     const Widget = dashboardWidgetModel(req.tenantDB);
     const existingCount = await Widget.count({ where: { dashboard_id: dashboard.id, isDelete: 0 } });

@@ -31,8 +31,92 @@ import { answersFromStoredRow, emptyModeOf, lineForField, printableFields, print
 import { evaluateVisibility } from "../form_builder/formBuilderConditions.js";
 import { visibleQuestionIds } from "../form_builder/formBuilderQuestionTable.js";
 import { QueryTypes } from "sequelize";
+import { formBuilderSubmissionFileModel } from "../../models/form_builder/formBuilderSubmissionFileModel.js";
+import { formBuilderFormModel } from "../../models/form_builder/formBuilderFormModel.js";
+import { sniffImageMime } from "./imageOverlay.js";
+import { appendAttachmentPages, MAX_IMAGES_PER_FIELD } from "./formAttachmentPages.js";
+import { formFieldInputName, isPlainValueField } from "./formDocTypeTemplate.js";
 
 export const formSubmissionDocType = (formId) => `form_${formId}`;
+
+// Photo / signature files print as pictures. A file bigger than this is left
+// out rather than bloating (or failing) the whole PDF.
+const MAX_PRINT_IMAGE_BYTES = 6 * 1024 * 1024;
+const MEDIA_ROOT = () => path.resolve(process.cwd(), "media-folder");
+
+// field_key -> "data:image/...;base64,..." for the image / signature fields of
+// one submission. Unreadable, missing, oversize or non-PNG/JPEG files are
+// skipped (the field then prints nothing, never an error).
+async function loadSubmissionImages({ tenantDB, formId, submissionId, fieldKeys }) {
+  const out = {};
+  if (!submissionId || fieldKeys.length === 0) return out;
+  let rows = [];
+  try {
+    rows = await formBuilderSubmissionFileModel(tenantDB).findAll({
+      where: { submission_id: submissionId, form_id: formId, isDelete: 0 },
+      order: [["id", "ASC"]],
+      raw: true,
+    });
+  } catch {
+    return out;
+  }
+  const wanted = new Set(fieldKeys);
+  for (const file of rows) {
+    if (!wanted.has(file.field_key)) continue;
+    const image = readStoredImage(file.file_path);
+    if (image) out[file.field_key] = `data:${image.mime};base64,${image.bytes.toString("base64")}`; // newest file of the field wins
+  }
+  return out;
+}
+
+// A stored upload as { bytes, mime } when it is a readable PNG / JPEG inside
+// media-folder and not oversize; otherwise null.
+function readStoredImage(filePath) {
+  if (!filePath) return null;
+  const root = MEDIA_ROOT();
+  const abs = path.resolve(process.cwd(), filePath);
+  if (abs !== root && !abs.startsWith(root + path.sep)) return null; // never read outside media-folder
+  try {
+    const bytes = fs.readFileSync(abs);
+    if (bytes.length === 0 || bytes.length > MAX_PRINT_IMAGE_BYTES) return null;
+    const mime = sniffImageMime(bytes);
+    return mime === "image/png" || mime === "image/jpeg" ? { bytes, mime } : null;
+  } catch {
+    return null; // file gone from disk
+  }
+}
+
+// Attachment ("file") fields of one submission, for the pages appended to the
+// PDF: every readable picture (up to MAX_IMAGES_PER_FIELD) and the names of the
+// other files. Fields hidden by a rule or restriction are left out.
+async function loadAttachmentGroups({ tenantDB, form, fields, row }) {
+  if (!row?.id) return [];
+  const fileFields = printableFields(fields, row).filter((f) => f.type === "file" && f.key);
+  if (fileFields.length === 0) return [];
+  let rows = [];
+  try {
+    rows = await formBuilderSubmissionFileModel(tenantDB).findAll({
+      where: { submission_id: row.id, form_id: form.id, isDelete: 0, field_key: fileFields.map((f) => f.key) },
+      order: [["id", "ASC"]],
+      raw: true,
+    });
+  } catch {
+    return [];
+  }
+  return fileFields.map((field) => {
+    const images = [];
+    const others = [];
+    let extra = 0;
+    for (const file of rows.filter((r) => r.field_key === field.key)) {
+      const name = file.original_file_name || file.stored_file_name || "file";
+      const image = readStoredImage(file.file_path);
+      if (!image) others.push(name);
+      else if (images.length < MAX_IMAGES_PER_FIELD) images.push({ name, mime: image.mime, bytes: image.bytes });
+      else extra += 1;
+    }
+    return { label: field.label || field.key, images, others, extra };
+  });
+}
 
 function parseSchema(json) {
   if (!json) return [];
@@ -84,6 +168,23 @@ async function ensureDefaultFormTemplate(req, form, company_masters_id) {
   return doc_type;
 }
 
+// The Document Designer opens a form's print design (doc_type form_<id>) before
+// any PDF was ever printed, when the form has no template row yet. Create the
+// default one then, so the designer has a template to work on (otherwise its
+// Add Field / Save / Publish stay disabled on a blank canvas). Returns true
+// when a template was created.
+export async function ensureFormTemplateForDocType(req, doc_type, company_masters_id) {
+  const formId = Number(String(doc_type).replace(/^form_/, ""));
+  if (!Number.isInteger(formId) || formId <= 0) return false;
+  const form = await formBuilderFormModel(req.tenantDB).findOne({
+    where: { id: formId, company_masters_id, isDelete: 0 },
+  });
+  if (!form || !form.published_schema_json) return false; // not published yet: nothing to print
+  const withUser = { ...req, body: { ...req.body, a_application_login_id: req.body?.a_application_login_id || req.user?.id } };
+  await ensureDefaultFormTemplate(withUser, form, company_masters_id);
+  return true;
+}
+
 // Label/value text block + repeater tables, resolving reference/status ids
 // to labels the same batched way the submissions list does (plan §1) —
 // never a raw id in the exported PDF.
@@ -105,6 +206,33 @@ async function buildSubmissionInputs({ tenantDB, form, fields, row: storedRow, c
 
   const rawInputs = { submissionTitle: form.title };
   const legacyLines = []; // the single "details" text older, hand-made templates use
+
+  // Every simple field's own value on its own input (field_<key>), so a
+  // template can place Project name, Time, ... individually. Empty when blank,
+  // not allowed, or unanswered.
+  for (const field of schemaFields) {
+    if (!isPlainValueField(field)) continue;
+    const printed = blank || !isAllowed(field) ? "" : displayValueFor(field, row[field.key], labelMaps);
+    rawInputs[formFieldInputName(field.key)] = printed == null ? "" : String(printed);
+  }
+
+  // Photos / signatures: the picture goes to <key>_image, its caption to
+  // <key>_image_label; both stay empty (and so are left out of the PDF) when
+  // the field has no readable file, is not allowed, or this is a blank form.
+  const imageFields = blocks.filter((b) => b.kind === "images").flatMap((b) => b.fields);
+  const images = blank
+    ? {}
+    : await loadSubmissionImages({
+        tenantDB,
+        formId: form.id,
+        submissionId: row.id,
+        fieldKeys: imageFields.filter(isAllowed).map((f) => f.key),
+      });
+  for (const field of imageFields) {
+    const picture = isAllowed(field) ? images[field.key] || "" : "";
+    rawInputs[`${field.key}_image`] = picture;
+    rawInputs[`${field.key}_image_label`] = picture ? field.label || field.key : "";
+  }
 
   for (const block of blocks) {
     if (block.kind === "text") {
@@ -216,6 +344,18 @@ export async function generateSubmissionPdf({ req, form, row, company_masters_id
   const visibleTemplate = applyConditionalVisibility(template, resolvedInputs);
 
   const pdfBytes = await generate({ template: visibleTemplate, inputs: [resolvedInputs], plugins: pluginMap, options: { font: fontMap } });
+
+  // Attachment fields: their pictures go on extra pages after the form. A
+  // failure here must never lose the PDF itself.
+  if (!blank) {
+    try {
+      const groups = await loadAttachmentGroups({ tenantDB: req.tenantDB, form, fields, row });
+      const withAttachments = await appendAttachmentPages(pdfBytes, { title: form.title, groups });
+      return Buffer.from(withAttachments);
+    } catch (error) {
+      console.error("form PDF: attachment pages skipped:", error?.message);
+    }
+  }
   return Buffer.from(pdfBytes);
 }
 

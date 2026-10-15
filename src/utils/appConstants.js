@@ -77,6 +77,7 @@ export const VISITING_CARD_VIEW = `${BACKEND_OF_SMALL_OFFICE_CRM_END_POINT}/visi
 export const COMPANY_IMG_LINK_EXTENDED = `${BACKEND_OF_SMALL_OFFICE_CRM_END_POINT}/companyImg/`;
 export const PDF_LINK_EXTENDED = `${BACKEND_OF_SMALL_OFFICE_CRM_END_POINT}/order_view/`;
 export const PDF_LINK_EXTENDED_Account_TRANSACTION = `${BACKEND_OF_SMALL_OFFICE_CRM_END_POINT}/accountTransactions/`;
+export const PDF_LINK_EXTENDED_JOB_CARD = `${BACKEND_OF_SMALL_OFFICE_CRM_END_POINT}/jobCardPdf/`;
 export const PDF_LINK_EXTENDED_EMP_Account_TRANSACTION = `${BACKEND_OF_SMALL_OFFICE_CRM_END_POINT}/empAccountTransactions/`;
 export const PDF_LINK_EXTENDED_TASK_CRONE = `${BACKEND_OF_SMALL_OFFICE_CRM_END_POINT}/task_cron/`;
 export const PDF_FOR_NEW_PLAN_PARCHASE_BY_CUSTOMER = `${BACKEND_OF_SMALL_OFFICE_CRM_END_POINT}/newPlanInvoice/`;
@@ -165,3 +166,6 @@ export const WP_V2_URL = process.env.WP_V2_URL;
 
 
 export const API_LOG_ENABLE_FLAG = process.env.API_LOG_ENABLE_FLAG;
+// POST /job-card/sub-job-card/create-all (creates a job card's whole sub job
+// card tree). Off unless ENABLE_CREATE_ALL_SUB_JOB_CARDS=true; keep it off on production.
+export const ENABLE_CREATE_ALL_SUB_JOB_CARDS = process.env.ENABLE_CREATE_ALL_SUB_JOB_CARDS === "true";

@@ -113,6 +113,12 @@ export const taskManagementModel = (sequelize) => {
     reference_id: {
       type: INTEGER,
     },
+    product_id: {
+      type: INTEGER,
+    },
+    serial_number: {
+      type: STRING,
+    },
 
     company_masters_id: {
       type: INTEGER,

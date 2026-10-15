@@ -620,7 +620,17 @@ export const syncInvoice = async (req) => {
                     }
                 }
 
-                const transactionAcc = getCart.transaction_mode == 1 ? getCart.miracle_account_legder : acc_id;
+                if (![6, 7].includes(getCart.type) && !isValid(getCart.transaction_mode)) {
+                    results.push({ cart_id: singleCartId, status: "fail", msg: "Transaction Mode is required for Miracle sync" });
+                    continue;
+                }
+                if (getCart.type !== 9 && getCart.transaction_mode == 1 && !isValid(getCart.miracle_account_legder)) {
+                    results.push({ cart_id: singleCartId, status: "fail", msg: "Miracle Account Ledger is required for cash transactions" });
+                    continue;
+                }
+
+                // Dispatch challan has no account ledger: always post against the customer account.
+                const transactionAcc = (getCart.transaction_mode == 1 && getCart.type !== 9) ? getCart.miracle_account_legder : acc_id;
                 const transactionModeFlag = getCart.transaction_mode == 1 ? "C" : getCart.transaction_mode == 2 ? "D" : "";
                 const invTyp = isSameState ? "GST" : "IGST";
                 const taxtyp = taxTypeFlag;
@@ -1242,12 +1252,21 @@ export const miracleConfigGet = async (req) => {
             raw: true
         });
 
+        // Company code used in the inbound webhook URL: /webhookmiracle/:companyCode
+        const companyRow = await companyModel.findOne({
+            where: { id: findCompanyId.company_masters_id, isDelete: "0" },
+            attributes: ["qr_code"],
+            raw: true
+        });
+        const webhookCompanyCode = companyRow?.qr_code || "";
+
         if (result) {
             const safeRights = parseMiracleRights(result.rights_config);
             return resSuccess({
                 data: {
                     item: {
                         ...result,
+                        webhook_company_code: webhookCompanyCode,
                         rights_config: safeRights
                     }
                 },
@@ -1259,6 +1278,7 @@ export const miracleConfigGet = async (req) => {
                 developer_msg: "Data not found",
                 data: {
                     item: {
+                        webhook_company_code: webhookCompanyCode,
                         rights_config: safeRights
                     }
                 }

@@ -618,7 +618,9 @@ export const getAllProducts = async (req) => {
                 const whereClauseOpen = {
                     isDelete: 0,
                     item_product_id: p.id,
-                    cart_type: { [Op.in]: [4, 3, 6, 7, 8, 9] },
+                    // 10 / 11 = Stock Inward / Outward (stock adjustments), same
+                    // set stockAdjustmentServices.js counts.
+                    cart_type: { [Op.in]: [4, 3, 6, 7, 8, 9, 10, 11] },
                     cart_number: { [Op.ne]: null, [Op.not]: "" },
                     stock_type: { [Op.ne]: 0 },
                     [Op.or]: [
@@ -630,7 +632,7 @@ export const getAllProducts = async (req) => {
                             [Op.or]: [
                                 { cart_type: 4, reference_type: { [Op.ne]: 8 } },
                                 { cart_type: 3, reference_type: { [Op.ne]: 9 } },
-                                { cart_type: { [Op.in]: [6, 7, 8, 9] } },
+                                { cart_type: { [Op.in]: [6, 7, 8, 9, 10, 11] } },
                             ],
                         },
                     ],
@@ -642,13 +644,15 @@ export const getAllProducts = async (req) => {
                     if (
                         (item.cart_type == 4 && item.reference_type != 8) ||
                         item.cart_type == 6 ||
-                        item.cart_type == 8
+                        item.cart_type == 8 ||
+                        item.cart_type == 10
                     ) {
                         return total + item.item_qty;
                     } else if (
                         (item.cart_type == 3 && item.reference_type != 9) ||
                         item.cart_type == 7 ||
-                        item.cart_type == 9
+                        item.cart_type == 9 ||
+                        item.cart_type == 11
                     ) {
                         return total - item.item_qty;
                     }

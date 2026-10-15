@@ -273,6 +273,9 @@ app.use("/contact_print_view", express.static(findContactPrintView));
 const findAccountTransactionView = path.join(process.cwd(), "media-folder/accountTransaction");
 app.use("/accountTransactions", express.static(findAccountTransactionView));
 
+const findJobCardPdfView = path.join(process.cwd(), "media-folder/jobCardPdf");
+app.use("/jobCardPdf", express.static(findJobCardPdfView));
+
 const findEmpAccountTransactionView = path.join(process.cwd(), "media-folder/empAccountTransaction");
 app.use("/empAccountTransactions", express.static(findEmpAccountTransactionView));
 

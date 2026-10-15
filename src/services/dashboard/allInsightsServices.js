@@ -81,7 +81,7 @@ const buildAccessAnd = ({
     };
 
     if (rights?.showAllData) {
-        andList.push({ company_masters_id: companyId });
+        // No company_masters_id filter: each company has its own tenant DB.
         if (teamIds.length) andList.push(ownerOrAssigned(teamIds));
     } else if (rights?.showPersonalData) {
         const me = safeInt(myUserId);
@@ -95,7 +95,6 @@ const buildAccessAnd = ({
         if (!allowedIds.length) {
             andList.push(Sequelize.literal("1 = 0"));
         } else {
-            andList.push({ company_masters_id: companyId });
             andList.push(ownerOrAssigned(allowedIds));
         }
     } else {
@@ -197,6 +196,9 @@ export const getCrmInsight = async (req) => {
         });
         const whereClauseContact = {
             isDelete: "0",
+            // The contact list's "All" leaves archived contacts out, so Total
+            // Contact must too, otherwise the two counts differ.
+            is_archive: "0",
             [Op.and]: [...contactAnd, dateAnd("created_date_time", start, end)],
         };
         const totalContactCount = await COTModel.count({ where: whereClauseContact });
@@ -461,7 +463,7 @@ export const getCrmInsight = async (req) => {
         const stockScopedAnd = (extraAnd = []) => [...stockAnd, ...extraAnd];
 
         const products = await ProductModel.findAll({
-            where: { isDelete: 0, company_masters_id: companyId },
+            where: { isDelete: 0 },
             attributes: ["id", "product_name", "min_stock_quantity"],
             raw: true,
         });

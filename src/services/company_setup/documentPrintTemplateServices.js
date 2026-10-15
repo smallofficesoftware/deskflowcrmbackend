@@ -28,6 +28,7 @@ import { resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { generateAccountStatementPdf } from "../pdfmeEngine/accountStatementGenerate.js";
 import { generateContactAddressPdf, generateContactEnvelopePdf } from "../pdfmeEngine/contactPrintGenerate.js";
 import { defaultTemplateForDocType } from "../pdfmeEngine/defaultTemplateForDocType.js";
+import { buildFormCatalogTemplate, parseFormDocTypeId } from "../pdfmeEngine/formDocTypeTemplate.js";
 import { buildCompactTotalsTableField } from "../pdfmeEngine/buildTemplate.js";
 import { generateAccountTransactionPdf } from "../pdfmeEngine/accountTransactionGenerate.js";
 import { generateEmployeeAccountStatementPdf } from "../pdfmeEngine/employeeAccountStatementGenerate.js";
@@ -35,6 +36,8 @@ import { generateEmployeeAccountTransactionPdf } from "../pdfmeEngine/employeeAc
 import { generateQuotationPdf } from "../pdfmeEngine/generateDocument.js";
 import { sniffImageMime } from "../pdfmeEngine/imageOverlay.js";
 import { getSampleDataForPreview } from "../pdfmeEngine/orderInputMapper.js";
+import { loadPreviewCustomFieldRows } from "../pdfmeEngine/previewCustomFields.js";
+import { pickProductCustomValues } from "../pdfmeEngine/productCustomValues.js";
 import { generateShippingLabelPdf } from "../pdfmeEngine/shippingLabelGenerate.js";
 import { generateTaskDueListPdf } from "../pdfmeEngine/taskDueListGenerate.js";
 import { applyTemplateOptions } from "../pdfmeEngine/templates.js";
@@ -130,17 +133,32 @@ export const listDocumentTemplates = async (req) => {
     }
 
     const Template = documentPrintTemplateModel(req.tenantDB);
-    const rows = await Template.findAll({
-      // template_purpose 'extra_page' rows (Document Designer Page custom
-      // field sources) are deliberately excluded — this same list backs
-      // both /document-designer's own sidebar AND the real print-time
-      // template picker (orderPrintController.ts's fetchPdfmeTemplatesFor
-      // Picker hits this identical endpoint), so an extra_page row showing
-      // here would be selectable as an actual order's print layout.
-      where: { company_masters_id, doc_type, template_purpose: "main", isDelete: 0 },
-      attributes: ["id", "template_name", "is_default", "display_order", "has_unpublished_changes"],
-      order: [["display_order", "ASC"], ["id", "ASC"]],
-    });
+    const findRows = () =>
+      Template.findAll({
+        // template_purpose 'extra_page' rows (Document Designer Page custom
+        // field sources) are deliberately excluded — this same list backs
+        // both /document-designer's own sidebar AND the real print-time
+        // template picker (orderPrintController.ts's fetchPdfmeTemplatesFor
+        // Picker hits this identical endpoint), so an extra_page row showing
+        // here would be selectable as an actual order's print layout.
+        where: { company_masters_id, doc_type, template_purpose: "main", isDelete: 0 },
+        attributes: ["id", "template_name", "is_default", "display_order", "has_unpublished_changes"],
+        order: [["display_order", "ASC"], ["id", "ASC"]],
+      });
+    let rows = await findRows();
+
+    // A custom form that was never printed has no template yet: create its
+    // default one so the designer opens on a real template (Add Field / Save
+    // Draft / Publish need one). Loaded lazily - formSubmissionGenerate.js
+    // imports this module.
+    if (rows.length === 0 && parseFormDocTypeId(doc_type) !== null) {
+      try {
+        const { ensureFormTemplateForDocType } = await import("../pdfmeEngine/formSubmissionGenerate.js");
+        if (await ensureFormTemplateForDocType(req, doc_type, company_masters_id)) rows = await findRows();
+      } catch (e) {
+        console.error("listDocumentTemplates: default form template not created:", e?.message);
+      }
+    }
 
     return resSuccess({ data: { item: rows } });
   } catch (e) {
@@ -1389,6 +1407,7 @@ const renderTemplateAsPdf = async ({ req, company_masters_id, draftTemplate, car
         total: item.item_total,
         item_hsn_code: item.item_hsn_code,
         item_total: item.item_total,
+        productCustom: pickProductCustomValues(item),
       }));
       itemImages = cartItems.map((item) => encodeProductImage(productMap[item.item_product_id]?.product_img));
       buyer = {
@@ -1437,7 +1456,7 @@ const renderTemplateAsPdf = async ({ req, company_masters_id, draftTemplate, car
       numberTowords,
       columnOptions: null,
       itemImages,
-      customFieldRows: [],
+      customFieldRows: await loadPreviewCustomFieldRows(req.tenantDB, company_masters_id, doc_type),
       cartValues: cart,
       tenantDB: req.tenantDB,
     });
@@ -1552,6 +1571,11 @@ export const getDefaultTemplateForDocType = async (req) => {
     const doc_type = req.body?.doc_type || req.query?.doc_type;
     if (!doc_type) {
       return resError({ developer_msg: "doc_type is required" });
+    }
+    // Custom Form Maker print design: built from the form's schema.
+    if (parseFormDocTypeId(doc_type) !== null) {
+      const formTemplate = await buildFormCatalogTemplate(req, doc_type);
+      return resSuccess({ data: { item: { template: formTemplate } } });
     }
     const template = defaultTemplateForDocType(doc_type);
     // This response only feeds the Document Designer's "Add Field" picker

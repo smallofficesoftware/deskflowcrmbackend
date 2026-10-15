@@ -565,8 +565,26 @@ export const getNetworkDetails = async () => {
   return { macAddress: "Not found", ipAddress: "Not found" };
 };
 
-export const formatNumber = (number, decimals = 2) => {
-  return Number(number).toFixed(decimals);
+// grouped=true applies Indian-style digit grouping (1,50,000.00) via
+// toLocaleString - gated per-company behind the "number_format_grouped"
+// feature flag (ticket #2157); grouped=false (the default) keeps every
+// existing caller's plain toFixed() output unchanged.
+//
+// `grouped` is the company's company_masters.is_grouped_number_format code:
+//   false / 0  plain             150000.00
+//   true  / 1  Indian            1,50,000.00   (what the old on/off flag meant)
+//   2          International/US  150,000.00
+//   3          European          150.000,00
+export const NUMBER_FORMAT_LOCALES = { 1: "en-IN", 2: "en-US", 3: "de-DE" };
+
+export const formatNumber = (number, decimals = 2, grouped = false) => {
+  const code = grouped === true ? 1 : Number(grouped) || 0;
+  const locale = NUMBER_FORMAT_LOCALES[code];
+  if (!locale) return Number(number).toFixed(decimals);
+  return Number(number).toLocaleString(locale, {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
 };
 const currencyConfigs = {
   INR: { scales: ["", "Thousand", "Lakh", "Crore"], suffix: "Rupees" },

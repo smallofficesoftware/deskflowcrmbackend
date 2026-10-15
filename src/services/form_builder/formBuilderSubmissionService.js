@@ -1,8 +1,9 @@
-import { QueryTypes } from "sequelize";
+import { Op, QueryTypes } from "sequelize";
 import companyModel from "../../models/company_setup/companyModel.js";
 import { contactModel } from "../../models/activities/contactModel.js";
 import { formBuilderFormModel } from "../../models/form_builder/formBuilderFormModel.js";
 import { formBuilderSubmissionFileModel } from "../../models/form_builder/formBuilderSubmissionFileModel.js";
+import { loadFileCounts, withFileCounts } from "./formBuilderFileCounts.js";
 import { stagestatusModel } from "../../models/masters/stagestatusModel.js";
 import { statusAndStagesLogsModel } from "../../models/common/statusAndStagesLogsModel.js";
 import { emitAutomationEvent } from "../automation/emit.js";
@@ -56,7 +57,6 @@ import { isDateField, resolveDateValue, checkDateLimits, sameStoredDate } from "
 import { hasFormPermission, getMyFormPermissions } from "./formBuilderPermissions.js";
 import { assignAutoNumber, validateManualAutoNumber } from "./formBuilderAutoNumber.js";
 import { linkScheduleEntry } from "./formBuilderScheduleService.js";
-import { deleteFinishedDraft } from "./formBuilderDraftService.js";
 import loginModel from "../../models/application_login/loginModel.js";
 import { getCompanyByLoginId } from "../commonServices.js";
 import { normalizeToTenDigit } from "../../utils/sharedFunctions.js";
@@ -926,15 +926,6 @@ export const createInternalSubmissionEntry = async (req) => {
       });
     }
 
-    // The entry came from a saved draft (plan M7): the draft has done its job.
-    if (req.body?.draft_id) {
-      try {
-        await deleteFinishedDraft({ tenantDB: req.tenantDB, company_masters_id, form_id: form.id, loginId: a_application_login_id, draftId: req.body.draft_id });
-      } catch (draftError) {
-        console.error("deleteFinishedDraft error:", draftError);
-      }
-    }
-
     // A form set up as a recurring schedule (plan Q1): this entry answers the person's due day.
     try {
       await linkScheduleEntry({
@@ -1007,7 +998,7 @@ export const listSubmissions = async (req) => {
     const perms = await getMyFormPermissions({ form, loginId: a_application_login_id, company_masters_id, tenantDB: req.tenantDB });
     // Restricted fields (plan O8): hidden / masked for this user, and never
     // searched or filtered on — that would leak the value they can't see.
-    const restricted = computeRestrictions(fields, perms.see_masked_fields);
+    const restricted = computeRestrictions(fields, perms.see_masked_fields, a_application_login_id);
     const noRead = new Set([...restricted.hidden, ...restricted.masked]);
     // Encrypted Aadhaar columns hold ciphertext — never filtered or
     // searched on (a LIKE could otherwise hit random ciphertext bytes).
@@ -1053,16 +1044,88 @@ export const listSubmissions = async (req) => {
     }
 
     if (search) {
-      const searchCols = ["submitter_name", "submitter_email", "submitter_phone", ...filterableFields
-        .filter((f) => ["text", "textarea", "phone", "email", "url", "auto-number"].includes(f.type))
-        .map((f) => f.key)];
+      // Search covers every readable value field, not just the ones ticked
+      // "Filterable" (that flag is for the column filters) - a serial number
+      // or customer typed into any text / number / choice / lookup field
+      // must be findable. Hidden / masked / encrypted fields stay excluded.
+      const SEARCHABLE_TYPES = [
+        "text", "textarea", "phone", "email", "url", "auto-number",
+        "number", "currency", "percentage", "calculation", "barcode",
+        "dropdown", "radio", "multi-select",
+      ];
+      const searchableFields = fields.filter(
+        (f) => f.key && !NO_COLUMN_TYPES.has(f.type) && !isEncryptedAadhaarField(f) && !noRead.has(f.key),
+      );
+      const searchCols = [
+        "submitter_name", "submitter_email", "submitter_phone",
+        ...searchableFields.filter((f) => SEARCHABLE_TYPES.includes(f.type)).map((f) => f.key),
+      ];
       // Stored "fbenc:" values (encrypted Aadhaar, including fields since
       // switched to another mode) are never matched.
       const likeClauses = searchCols.map((col, i) => {
         replacements[`search_${i}`] = `%${search}%`;
         return `(${q(col)} LIKE :search_${i} AND ${q(col)} NOT LIKE 'fbenc:%')`;
       });
+      // Customer lookup fields store a contact id - match on the contact's
+      // name / company / mobile, the same fields the lookup itself searches.
+      const customerCols = searchableFields.filter((f) => f.type === "customer-lookup").map((f) => f.key);
+      if (customerCols.length > 0) {
+        replacements.search_customer = `%${search}%`;
+        for (const col of customerCols) {
+          likeClauses.push(
+            `${q(col)} IN (SELECT id FROM \`contact_masters\` WHERE isDelete = 0 AND (person_name LIKE :search_customer OR company_name LIKE :search_customer OR mobile_number LIKE :search_customer OR raw_mobile_number LIKE :search_customer))`,
+          );
+        }
+      }
       whereClauses.push(`(${likeClauses.join(" OR ")})`);
+    }
+
+    // Per-column grid filters (contains match, applied on Enter in the grid).
+    // Same readable-field rules as the global search: hidden / masked /
+    // encrypted / non-column fields are ignored, never matched.
+    const columnFilters = req.body?.column_filters;
+    if (columnFilters && typeof columnFilters === "object") {
+      const COLUMN_FILTER_TYPES = [
+        "text", "textarea", "phone", "email", "url", "auto-number",
+        "number", "currency", "percentage", "calculation", "barcode",
+        "dropdown", "radio", "multi-select", "customer-lookup",
+      ];
+      let cfIndex = 0;
+      for (const [key, rawValue] of Object.entries(columnFilters)) {
+        const value = String(rawValue ?? "").trim();
+        if (!value) continue;
+        if (key === "_status") {
+          // The Status column shows the status name; the row stores its id.
+          const statusRows = await stagestatusModel(req.tenantDB).findAll({
+            where: { isDelete: 0, name: { [Op.like]: `%${value}%` } },
+            attributes: ["id"],
+            raw: true,
+          });
+          const statusIds = statusRows.map((s) => Number(s.id));
+          if (statusIds.length > 0) {
+            const param = `colf_status_${cfIndex++}`;
+            whereClauses.push(`submission_status_id IN (:${param})`);
+            replacements[param] = statusIds;
+          } else {
+            whereClauses.push("1 = 0");
+          }
+          continue;
+        }
+        const field = fields.find(
+          (f) => f.key === key && COLUMN_FILTER_TYPES.includes(f.type) && !NO_COLUMN_TYPES.has(f.type) && !isEncryptedAadhaarField(f) && !noRead.has(f.key),
+        );
+        if (!field) continue;
+        const param = `colf_${cfIndex++}`;
+        replacements[param] = `%${value}%`;
+        if (field.type === "customer-lookup") {
+          // Stores a contact id - match on the contact's name / company / mobile.
+          whereClauses.push(
+            `${q(key)} IN (SELECT id FROM \`contact_masters\` WHERE isDelete = 0 AND (person_name LIKE :${param} OR company_name LIKE :${param} OR mobile_number LIKE :${param} OR raw_mobile_number LIKE :${param}))`,
+          );
+        } else {
+          whereClauses.push(`(${q(key)} LIKE :${param} AND ${q(key)} NOT LIKE 'fbenc:%')`);
+        }
+      }
     }
 
     const finalLimit = Math.min(Number(limit) || 50, 500);
@@ -1080,9 +1143,11 @@ export const listSubmissions = async (req) => {
     );
 
     const enriched = await enrichSubmissionRows({ tenantDB: req.tenantDB, form, fields, rows });
+    // Attachment counts per File / Image / Signature field (the grid's paperclip column).
+    const fileCounts = await loadFileCounts({ tenantDB: req.tenantDB, form_id: form.id, submissionIds: enriched.map((r) => r.id) });
     return resSuccess({
       data: {
-        item: enriched.map((r) => applyReadRestrictions(r, restricted)),
+        item: enriched.map((r) => applyReadRestrictions(withFileCounts(r, fileCounts), restricted)),
         total: Number(totalCount) || 0,
         restricted,
         approval: approvalSummary(actorCtx),
@@ -1224,7 +1289,7 @@ export const getSubmission = async (req) => {
       order: [["id", "ASC"]],
       raw: true,
     });
-    const restricted = computeRestrictions(fields, perms.see_masked_fields);
+    const restricted = computeRestrictions(fields, perms.see_masked_fields, a_application_login_id);
 
     // Approval stages: where the entry is, what this person may do with it, and its history.
     let approval = { enabled: false };

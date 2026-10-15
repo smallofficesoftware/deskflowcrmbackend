@@ -17,6 +17,7 @@ import {
   sanitizeObjectOfNull
 } from "../../utils/sharedFunctions.js";
 import { getCompanyByLoginId, insertStagesAndStatusLogs } from "../commonServices.js";
+import { pickSerial, resolveSerial } from "../serial_requirement/serialRequirementServices.js";
 import { isFeatureEnabled } from "../company_setup/featureFlagServices.js";
 import { generateTaskDueListPdf } from "../pdfmeEngine/taskDueListGenerate.js";
 
@@ -577,11 +578,15 @@ export const buildAllTaskWhere = ({
     order.push(Sequelize.literal("position IS NULL, position ASC"));
   }
 
-  order.push(["task_priority", "DESC"], ["id", "DESC"]);
-
+  // When searching, best match first (exact ticket id, then id/title/remark
+  // prefix, then contains). It used to come after id DESC, which already
+  // decides every tie, so searching "2529" listed #2719 (its text mentions
+  // 2529) before ticket #2529 itself.
   if (relevanceOrder && relevanceOrder.length > 0) {
     order.push(...relevanceOrder);
   }
+
+  order.push(["task_priority", "DESC"], ["id", "DESC"]);
 
   return {
     whereClauseForDueTask,
@@ -1152,6 +1157,18 @@ export const createAllTask = async (req) => {
     const files = req.files || {};
     const companyId = findCompanyId.company_masters_id;
 
+    const resolvedSerial = await resolveSerial(req.tenantDB, {
+      serial_number: pickSerial(req.body),
+      required: false,
+    });
+    if (resolvedSerial.error) {
+      return resError({
+        ack_msg: resolvedSerial.error,
+        developer_msg: "Serial number validation failed",
+      });
+    }
+    const { product_id, serial_number } = resolvedSerial;
+
     // let convertPathVisitImage = null;
 
     // if (isValid(task_attechment) && task_attechment.path) {
@@ -1313,6 +1330,8 @@ export const createAllTask = async (req) => {
             reference_id,
             reference_table,
             contact_masters_id: finalContactId,
+            product_id,
+            serial_number,
             team_task_assignement_type,
             task_attechment: task_attechment || "",
 
@@ -1408,6 +1427,8 @@ export const createAllTask = async (req) => {
           reference_id,
           reference_table,
           contact_masters_id: finalContactId,
+          product_id,
+          serial_number,
           team_task_assignement_type,
           task_attechment: task_attechment || "",
 
@@ -1909,6 +1930,19 @@ export const AllTaskUpdate = async (req) => {
       });
     }
     const companyId = findCompanyId.company_masters_id;
+
+    // Editing an older task that never had a serial must not force one.
+    const updateProductSerial = await resolveSerial(req.tenantDB, {
+      serial_number: pickSerial(req.body),
+      required: false,
+    });
+    if (updateProductSerial.error) {
+      return resError({
+        ack_msg: updateProductSerial.error,
+        developer_msg: "Serial number validation failed",
+      });
+    }
+
     const files = req.files || {};
     const taskAttachment =
       await processTaskFile(files?.task_attechment?.[0], companyId);
@@ -2031,6 +2065,11 @@ export const AllTaskUpdate = async (req) => {
         is_notification_sand_email,
         is_support_ticket,
         contact_masters_id: finalContactId,
+        // Clients that never send serial_number must not wipe a saved one.
+        ...(req.body.serial_number !== undefined && {
+          product_id: updateProductSerial.product_id,
+          serial_number: updateProductSerial.serial_number,
+        }),
         task_column_number_1: req.body.task_column_number_1 || "",
         task_column_number_2: req.body.task_column_number_2 || "",
         task_column_number_3: req.body.task_column_number_3 || "",

@@ -22,6 +22,7 @@ import { isFeatureEnabled } from "../company_setup/featureFlagServices.js";
 import { generateQuotationPdf } from "../pdfmeEngine/generateDocument.js";
 import { generateShippingLabelPdf } from "../pdfmeEngine/shippingLabelGenerate.js";
 import { sniffImageMime } from "../pdfmeEngine/imageOverlay.js";
+import { pickProductCustomValues } from "../pdfmeEngine/productCustomValues.js";
 import { tenantMiddleware } from "../../middlewares/tenantMiddleware.js";
 import { accountTransactionsModel } from "../../models/activities/accountTransactionsModel.js";
 import { cartSerialNumberModel } from "../../models/activities/cartSerialNumberModel.js";
@@ -110,6 +111,13 @@ const paymentModeList = [
   { id: "7", type: "Debit" },
 ];
 const symbolCurrency = "INR";
+
+// "Inv Date" in account transaction remarks is the user-editable cart date-time
+// (update_Date_time), falling back to cart_date for carts that never had one.
+const getInvoiceDateForRemark = (cart) => {
+  const resolved = cart?.update_Date_time || cart?.cart_date;
+  return resolved ? moment(resolved).format("YYYY-MM-DD") : "";
+};
 
 export const updateCartStatus = async (req, detail = {}) => {
   try {
@@ -583,7 +591,7 @@ export const orderCreate = async (req, res) => {
     if (is_approve === 1 && [3, 4, 6, 7].includes(Number(cart.type)) && cart.grand_total != 0 && cart.grand_total != null && cart.grand_total != undefined) {
 
       const invoiceNum = resultCart.dataValues.cart_number;
-      const invoiceDate = resultCart.dataValues.cart_date;
+      const invoiceDate = getInvoiceDateForRemark(resultCart.dataValues);
       const customerName = resultCart.dataValues.to_customer_name;
       const createDateTime =
         resultCart.dataValues.created_date_time.toISOString();
@@ -610,7 +618,7 @@ export const orderCreate = async (req, res) => {
       cart.advance_payment != "" && cart.advance_payment != 0 && cart.advance_payment >= 0 && cart.advance_payment != null && cart.advance_payment != undefined
     ) {
       const invoiceNum = resultCart.dataValues.cart_number;
-      const invoiceDate = resultCart.dataValues.cart_date;
+      const invoiceDate = getInvoiceDateForRemark(resultCart.dataValues);
       const customerName = resultCart.dataValues.to_customer_name;
       const createDateTime =
         resultCart.dataValues.created_date_time.toISOString();
@@ -1433,32 +1441,26 @@ export const orderById = async (req, res) => {
         });
         state_name = state ? state.dataValues.state_name : null;
       }
-      // else {
-      //   const companyDetail = await getCompanyDetailByLoginId(
-      //     resultCartById.dataValues.a_application_login_id
-      //   );
-      //   if (companyDetail && companyDetail.state_id > 0) {
-      //     const state = await stateModel(req.tenantDB).findOne({
-      //       where: {
-      //         id: companyDetail.state_id,
-      //         isDelete: 0,
-      //       },
-      //       attributes: ["state_name"],
-      //     });
-      //     state_name = state ? state.dataValues.state_name : null;
-      //     // Assign company's state_id to cart's state_id
-      //     cart_state_id = companyDetail.state_id;
-      //     resultCartById.dataValues.state_id = companyDetail.state_id;
-      //   }
-      //   if (!state_name) {
-      //     console.warn(
-      //       `Invalid state_id: ${resultCartById.dataValues.state_id} for cart_id: ${cart_id} and no valid company state_id`
-      //     );
-      //     return resError({
-      //       ack_msg: "please Select Company State"
-      //     })
-      //   }
-      // }
+      else {
+        // Customer has no state: treat the supply as local (company's own state)
+        // so the invoice splits into CGST + SGST instead of defaulting to IGST.
+        // If the company has no state either, leave it empty (unchanged behaviour).
+        const companyDetail = await getCompanyDetailByLoginId(
+          resultCartById.dataValues.a_application_login_id
+        );
+        if (companyDetail && companyDetail.state_id > 0) {
+          const state = await stateModel(req.tenantDB).findOne({
+            where: {
+              id: companyDetail.state_id,
+              isDelete: 0,
+            },
+            attributes: ["state_name"],
+          });
+          state_name = state ? state.dataValues.state_name : null;
+          cart_state_id = companyDetail.state_id;
+          resultCartById.dataValues.state_id = companyDetail.state_id;
+        }
+      }
 
       resultCartById.dataValues.state_name = state_name;
 
@@ -1995,6 +1997,8 @@ export const orderUpdate = async (req, res) => {
         };
         console.log("whereClauseStockwhereClauseStock", whereClauseStock);
 
+        let warehouseName = "total stock";
+
         if (
           fatchStrickProductCheckOrNot[0]?.is_strict_wharehouse_wise_product_stock_check == 2 &&
           item.item_warehouse_id &&
@@ -2015,7 +2019,6 @@ export const orderUpdate = async (req, res) => {
             warehouseName = warehouseData.warehouse_name;
           }
         }
-        let warehouseName = "total stock";
 
 
         const stockItems = await CartItem.findAll({
@@ -2556,7 +2559,7 @@ export const orderUpdate = async (req, res) => {
 
         // CREATE NEW
         const invoiceNum = findCartData.dataValues.cart_number;
-        const invoiceDate = findCartData.dataValues.cart_date;
+        const invoiceDate = getInvoiceDateForRemark(findCartData.dataValues);
         const customerName = findCartData.dataValues.to_customer_name;
         const createDateTime = new Date(
           findCartData.dataValues.update_Date_time || findCartData.dataValues.cart_date || findCartData.dataValues.created_date_time
@@ -2626,7 +2629,7 @@ export const orderUpdate = async (req, res) => {
           }
 
           const invoiceNum = findCartData.dataValues.cart_number;
-          const invoiceDate = findCartData.dataValues.cart_date;
+          const invoiceDate = getInvoiceDateForRemark(findCartData.dataValues);
           const customerName = findCartData.dataValues.to_customer_name;
           const customerEmail = findCartData.dataValues.to_customer_email;
           const createDateTime =
@@ -2675,7 +2678,7 @@ export const orderUpdate = async (req, res) => {
 
         // RE-CREATE
         const invoiceNum = findCartData.dataValues.cart_number;
-        const invoiceDate = findCartData.dataValues.cart_date;
+        const invoiceDate = getInvoiceDateForRemark(findCartData.dataValues);
         const customerName = findCartData.dataValues.to_customer_name;
         const createDateTime = new Date(
           findCartData.dataValues.update_Date_time || findCartData.dataValues.cart_date || findCartData.dataValues.created_date_time
@@ -2714,7 +2717,7 @@ export const orderUpdate = async (req, res) => {
         }
 
         const invoiceNum = findCartData.dataValues.cart_number;
-        const invoiceDate = findCartData.dataValues.cart_date;
+        const invoiceDate = getInvoiceDateForRemark(findCartData.dataValues);
         const customerName = findCartData.dataValues.to_customer_name;
         const customerEmail = findCartData.dataValues.to_customer_email;
         const createDateTime =
@@ -2900,7 +2903,7 @@ export const orderUpdate = async (req, res) => {
     ) {
 
       const invoiceNum = findCartData.dataValues.cart_number;
-      const invoiceDate = findCartData.dataValues.cart_date;
+      const invoiceDate = getInvoiceDateForRemark(findCartData.dataValues);
       const customerName = findCartData.dataValues.to_customer_name;
       const createDateTime = findCartData.dataValues.created_date_time.toISOString();
 
@@ -2989,7 +2992,7 @@ export const orderUpdate = async (req, res) => {
         );
       }
       const invoiceNum = findCartData.dataValues.cart_number;
-      const invoiceDate = findCartData.dataValues.cart_date;
+      const invoiceDate = getInvoiceDateForRemark(findCartData.dataValues);
       const customerName = findCartData.dataValues.to_customer_name;
       const createDateTime = findCartData.dataValues.created_date_time.toISOString();
 
@@ -4429,8 +4432,11 @@ const generateSingleOrderPdf = async (req, res) => {
     const stateModels = stateModel(req.tenantDB);
     const cityModels = cityModel(req.tenantDB);
 
-    // Only use cart state_id
-    const stateIdToUse = resultCartById.dataValues.state_id;
+    // Cart state_id; a customer with no state falls back to the company state
+    // (local supply -> CGST + SGST, not IGST)
+    const stateIdToUse = resultCartById.dataValues.state_id > 0
+      ? resultCartById.dataValues.state_id
+      : companyDetail.state_id;
 
     // Get State Name
     let customerStateName = "";
@@ -4712,7 +4718,12 @@ const generateSingleOrderPdf = async (req, res) => {
         cart_city_name: customerCityName,
         cart_area_name: customerAreaName,
         company_state_name: companyStateName,
-        formatNum: formatNumber,
+        // Ticket #2157: company_masters.is_grouped_number_format picks the
+        // digit grouping (0 plain, 1 Indian, 2 International, 3 European) -
+        // formatNum keeps its existing (value, decimals) call shape used
+        // throughout the EJS templates.
+        formatNum: (value, decimals) =>
+          formatNumber(value, decimals, Number(companyDetail.is_grouped_number_format) || 0),
         orderTypesList: orderTypesListPdf,
         numberToword: numberTowords,
         gstnumberToword: gstnumberTowords,
@@ -5057,6 +5068,16 @@ const generateSingleOrderPdf = async (req, res) => {
           total: item.item_total,
           item_hsn_code: item.item_hsn_code,
           item_total: item.item_total,
+          // item.serial_numbers is already populated above (finalData mapping,
+          // same data the legacy EJS "SN No:" block uses) - exposed here as
+          // its own field so the Designer's items-table "Serial No." column
+          // and the standalone "First Item — Serial Numbers" field
+          // (orderInputMapper.js) can both bind to it.
+          serialNumbers: Array.isArray(item.serial_numbers) && item.serial_numbers.length > 0
+            ? item.serial_numbers.join(", ")
+            : "",
+          // Product Custom Field columns on the Designer's items table.
+          productCustom: pickProductCustomValues(item),
         }));
 
         const pdfmeItemImages = resultAllCartItems.map((item) => {
@@ -5103,6 +5124,9 @@ const generateSingleOrderPdf = async (req, res) => {
             paymentQREnabled: !!settingDetails.paymentQR,
             upiId: companyDetail.upi_id,
             upiName: companyDetail.upi_name,
+            // Ticket #2157 - same company_masters.is_grouped_number_format
+            // flag the legacy EJS path's formatNum binding checks above.
+            groupedNumberFormat: Number(companyDetail.is_grouped_number_format) || 0,
           },
           buyer: {
             companyName: cartData.to_customer_company_name,

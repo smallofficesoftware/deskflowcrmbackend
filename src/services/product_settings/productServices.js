@@ -8,6 +8,8 @@ import { buildSearchQuery } from "../../helpers/searchAlgoV1.js";
 import { cartItemModel } from "../../models/activities/cartItemsModel.js";
 import { cartSerialNumberModel } from "../../models/activities/cartSerialNumberModel.js";
 import { contactModel } from "../../models/activities/contactModel.js";
+import { taskManagementModel } from "../../models/activities/taskManagementModel.js";
+import { visitsModel } from "../../models/activities/visitModel.js";
 import { applicationLoginTypeRightModel } from "../../models/application_login/applicationLoginTypeRightModel.js";
 import companyModel from "../../models/company_setup/companyModel.js";
 import { customFieldFormModel } from "../../models/other_settings/customFieldFormModel.js";
@@ -806,6 +808,28 @@ export const productUpdate = async (req) => {
     const existingProduct = await product.findOne({
       where: { id: product_id },
     });
+
+    // A serial-tracked product (2) that already holds serial numbers can't be
+    // switched Off - its serials would be orphaned. Same rule as the product
+    // update-by-excel importer.
+    if (
+      Number(existingProduct?.is_serial_number) === 2 &&
+      is_serial_number !== undefined &&
+      is_serial_number !== null &&
+      Number(is_serial_number) !== 2
+    ) {
+      const serialCount = await cartSerialNumberModel(req.tenantDB).count({
+        where: { product_id, isDelete: 0 },
+      });
+      if (serialCount > 0) {
+        return resError({
+          ack_msg:
+            "Serial number tracking can't be turned off: this product already has serial numbers.",
+          developer_msg: `Product ${product_id} has ${serialCount} serial number rows`,
+        });
+      }
+    }
+
     let convertPath = existingProduct?.product_img || ""; // Use existing image if no new image is uploaded
     let mediaName = "";
 
@@ -1335,6 +1359,7 @@ export const generateProductSampleSheet = async (req) => {
       "purchase_rate": "50",
       "purchase_gst_label": "GST 18%",
       "hsn_code": "",
+      "serial_number_tracking": "No",
     };
 
     /** Merge dynamic fields **/
@@ -1645,6 +1670,7 @@ export const getExportsProductsForUpdateData = async (req) => {
       gst_id: "sales_gst_label",
       purchase_rate: "purchase_rate",
       purchase_gst_id: "purchase_gst_label",
+      is_serial_number: "serial_number_tracking",
       ...(innerQtyActive && {
         product_inner_qty: "product_inner_qty",
         product_inner_unit: "product_inner_unit",
@@ -1734,6 +1760,8 @@ export const getExportsProductsForUpdateData = async (req) => {
       sanitized['purchase_gst_id'] = sanitized['purchase_gst_id'] ? taxMasterIdGroupSet.get(Number(sanitized['purchase_gst_id'])) : ''
       sanitized['product_group'] = sanitized['group_name'] || ''
       sanitized['product_category'] = sanitized['category_name'] || ''
+      // products.is_serial_number: 1 => Off, 2 => On
+      sanitized['is_serial_number'] = Number(sanitized['is_serial_number']) === 2 ? 'Yes' : 'No'
       if (innerQtyActive) {
         sanitized['product_inner_unit'] = sanitized['product_inner_unit'] ? unitMasterIdGroupSet.get(Number(sanitized['product_inner_unit'])) || '' : ''
       }
@@ -2280,6 +2308,83 @@ export const SerialNumberWiseStockCheck = async (req) => {
       );
 
     // =========================
+    // TASK / VISIT HISTORY
+    // (task_managements.serial_number / visits.serial_number, added by
+    // 20261007100000-add-product-serial-to-task-managements-and-visits.js -
+    // same serial, so queried directly off this table's own column rather
+    // than re-deriving it through cart_item_id like the order movements above.)
+    // =========================
+
+    const taskManagements =
+      taskManagementModel(req.tenantDB);
+
+    const visits =
+      visitsModel(req.tenantDB);
+
+    const [
+      taskHistoryRaw,
+      visitHistoryRaw,
+    ] = await Promise.all([
+      taskManagements.findAll({
+        where: {
+          isDelete: 0,
+          serial_number: serial_number.trim(),
+        },
+        attributes: [
+          "id",
+          "task_title",
+          "is_support_ticket",
+          "contact_masters_id",
+          "task_fromdate",
+          "completed_date",
+        ],
+        raw: true,
+      }),
+      visits.findAll({
+        where: {
+          isDelete: 0,
+          serial_number: serial_number.trim(),
+        },
+        attributes: [
+          "id",
+          "remark",
+          "contact_id",
+          "start_date",
+          "end_date",
+        ],
+        raw: true,
+      }),
+    ]);
+
+    const taskHistory = await Promise.all(
+      taskHistoryRaw.map(async (item) => {
+        let contact_name = "";
+        if (item.contact_masters_id) {
+          const findContact = await contactMasters.findOne({
+            where: { id: item.contact_masters_id },
+            attributes: ["person_name", "company_name"],
+          });
+          contact_name = findContact?.person_name || findContact?.company_name || "";
+        }
+        return { ...item, contact_name };
+      })
+    );
+
+    const visitHistory = await Promise.all(
+      visitHistoryRaw.map(async (item) => {
+        let contact_name = "";
+        if (item.contact_id) {
+          const findContact = await contactMasters.findOne({
+            where: { id: item.contact_id },
+            attributes: ["person_name", "company_name"],
+          });
+          contact_name = findContact?.person_name || findContact?.company_name || "";
+        }
+        return { ...item, contact_name };
+      })
+    );
+
+    // =========================
     // RESPONSE
     // =========================
 
@@ -2299,6 +2404,10 @@ export const SerialNumberWiseStockCheck = async (req) => {
           findIndiaMartApiKey
             ?.dataValues
             ?.order_qty_unit,
+
+        task_history: taskHistory,
+
+        visit_history: visitHistory,
       },
     });
 

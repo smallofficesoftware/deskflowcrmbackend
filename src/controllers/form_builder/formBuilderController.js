@@ -5,8 +5,6 @@ import { searchCustomers } from "../../services/form_builder/formBuilderCustomer
 import { stageAction } from "../../services/form_builder/formBuilderApprovalService.js";
 import { listSchedules, saveSchedule, deleteSchedule, listMyDueForms, scheduleReport } from "../../services/form_builder/formBuilderScheduleService.js";
 import { getImportColumns, runImport } from "../../services/form_builder/formBuilderImportService.js";
-import { saveDraft, listDrafts, getDraft, deleteDraft } from "../../services/form_builder/formBuilderDraftService.js";
-import { listTemplates, saveTemplateFromForm, deleteTemplate } from "../../services/form_builder/formBuilderTemplates.js";
 import {
   listForms,
   previewAutoNumberFormat,
@@ -153,15 +151,6 @@ export const getSubmissionAuditLogController = async (req, res) => {
 export const revealSensitiveFieldController = async (req, res) => {
   await callServiceMethod(req, res, revealSensitiveField(req), "revealSensitiveField");
 };
-export const listTemplatesController = async (req, res) => {
-  await callServiceMethod(req, res, listTemplates(req), "listTemplates");
-};
-export const saveTemplateFromFormController = async (req, res) => {
-  await callServiceMethod(req, res, saveTemplateFromForm(req), "saveTemplateFromForm");
-};
-export const deleteTemplateController = async (req, res) => {
-  await callServiceMethod(req, res, deleteTemplate(req), "deleteTemplate");
-};
 export const stageActionController = async (req, res) => {
   await callServiceMethod(req, res, stageAction(req), "stageAction");
 };
@@ -202,17 +191,3 @@ export const runImportController = async (req, res) => {
   await callServiceMethod(req, res, runImport(req), "runImport");
 };
 
-// ---------- Save and continue later (plan M7) ----------
-
-export const saveDraftController = async (req, res) => {
-  await callServiceMethod(req, res, saveDraft(req), "saveDraft");
-};
-export const listDraftsController = async (req, res) => {
-  await callServiceMethod(req, res, listDrafts(req), "listDrafts");
-};
-export const getDraftController = async (req, res) => {
-  await callServiceMethod(req, res, getDraft(req), "getDraft");
-};
-export const deleteDraftController = async (req, res) => {
-  await callServiceMethod(req, res, deleteDraft(req), "deleteDraft");
-};

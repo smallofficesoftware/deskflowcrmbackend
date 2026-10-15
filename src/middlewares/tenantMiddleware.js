@@ -7,6 +7,20 @@ import companyVsApplicationLoginModel from "../models/company_setup/companyVsApp
 import logger from "../utils/logger.js";
 import { parseSession, resError } from "../utils/sharedFunctions.js";
 
+// [tenant-guard] warnings fire for every request from a stale client, so log each distinct
+// situation once per hour (and only the route path, never the query string) instead.
+const GUARD_LOG_REPEAT_MS = 60 * 60 * 1000;
+const GUARD_LOG_MAX_KEYS = 5000;
+const guardLogSeen = new Map();
+const guardWarnOnce = (key, message) => {
+  const now = Date.now();
+  const last = guardLogSeen.get(key);
+  if (last && now - last < GUARD_LOG_REPEAT_MS) return;
+  if (guardLogSeen.size >= GUARD_LOG_MAX_KEYS) guardLogSeen.clear();
+  guardLogSeen.set(key, now);
+  logger.warn(message);
+};
+
 export const tenantMiddleware = async (req, res, next) => {
   try {
     // Extract from sessionName (e.g. a3055_c606 used in WhatsApp webhooks)
@@ -29,6 +43,35 @@ export const tenantMiddleware = async (req, res, next) => {
       req.body?.company_id ||
       req.query?.company_masters_id ||
       req.query?.company_id;
+
+    // Tenant guard. On authenticated requests the verified JWT (and the application_sessions
+    // company merged into it by authenticateToken) is the source of truth for who is calling
+    // and which company they act in - never the x-tenant-id / x-company-id headers, which a
+    // stale or tampered client can send. The login must also be mapped to the company (below).
+    // Public / webhook routes carry no token, so they keep resolving from companyCode,
+    // sessionName and body as before. Violations are logged as `[tenant-guard]`.
+    const verifiedLoginId = req.user?.id ?? req.user?.a_application_login_id;
+    const headerLoginId = req.headers["x-tenant-id"];
+    const headerCompanyId = req.headers["x-company-id"];
+    const routePath = String(req.originalUrl || "").split("?")[0];
+    if (verifiedLoginId && headerLoginId && String(headerLoginId) !== String(verifiedLoginId)) {
+      guardWarnOnce(
+        `login:${headerLoginId}:${verifiedLoginId}`,
+        `[tenant-guard] x-tenant-id ${headerLoginId} differs from token login ${verifiedLoginId}, using token login path=${routePath}`
+      );
+      tenantId = verifiedLoginId;
+    }
+    if (req.user && !req.user.companyId) {
+      guardWarnOnce(
+        `nosession:${verifiedLoginId}`,
+        `[tenant-guard] token has no session company (login ${verifiedLoginId}), company taken from request path=${routePath}`
+      );
+    } else if (req.user?.companyId && headerCompanyId && String(headerCompanyId) !== String(req.user.companyId)) {
+      guardWarnOnce(
+        `company:${verifiedLoginId}:${headerCompanyId}:${req.user.companyId}`,
+        `[tenant-guard] x-company-id ${headerCompanyId} differs from session company ${req.user.companyId} (login ${verifiedLoginId}) path=${routePath}`
+      );
+    }
 
     // If companyCode is in params or body, resolve company & tenant
     const companyCode = req.params?.companyCode || req.body?.companyCode;
@@ -101,7 +144,9 @@ export const tenantMiddleware = async (req, res, next) => {
         });
         if (isDirectOwner) {
           mapping = isDirectOwner;
-        } else {
+        } else if (!req.user) {
+          // Tokenless public / webhook request: there is no verified login to check against a
+          // company, so accept a company that has a tenant DB (resolved from companyCode etc.).
           const tenantMasterExists = await globalSequelize.query(
             "SELECT id FROM tenant_masters WHERE company_masters_id = ? AND isDelete = 0 LIMIT 1",
             { replacements: [companyId], type: sequelize.QueryTypes.SELECT }
@@ -109,6 +154,13 @@ export const tenantMiddleware = async (req, res, next) => {
           if (tenantMasterExists && tenantMasterExists.length > 0) {
             mapping = tenantMasterExists[0];
           }
+        } else {
+          // Authenticated request: the login must be mapped (directly or via parent) to the
+          // company, or be its owner. No "company merely has a tenant DB" grant.
+          guardWarnOnce(
+            `denied:${tenantId}:${companyId}`,
+            `[tenant-guard] denied: login ${tenantId} is not mapped to company ${companyId} path=${routePath}`
+          );
         }
       }
     } else {

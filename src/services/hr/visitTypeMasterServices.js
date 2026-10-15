@@ -26,6 +26,7 @@ import companyVsApplicationLoginModel from "../../models/company_setup/companyVs
 import { visitTypeModel } from "../../models/hr/visitTypeModel.js";
 import { customFieldFormModel } from "../../models/other_settings/customFieldFormModel.js";
 import { VISIT_IMG_LINK_EXTENDED } from "../../utils/appConstants.js";
+import { pickSerial, resolveSerial } from "../serial_requirement/serialRequirementServices.js";
 
 export const getAllVisitMaster = async (req) => {
   try {
@@ -334,7 +335,17 @@ export const visitMasterCreate = async (req) => {
         developer_msg: "Company not found for the given login ID",
       });
     }
-    console.log("frfrfrfrfrfrfrfr", req.body);
+    const resolvedSerial = await resolveSerial(req.tenantDB, {
+      serial_number: pickSerial(req.body),
+      required: false,
+    });
+    if (resolvedSerial.error) {
+      return resError({
+        ack_msg: resolvedSerial.error,
+        developer_msg: "Serial number validation failed",
+      });
+    }
+    const { product_id, serial_number } = resolvedSerial;
 
     // Create visit
     const visitTypeMaster = visitsModel(req.tenantDB);
@@ -372,6 +383,8 @@ export const visitMasterCreate = async (req) => {
       company_masters_id: findCompanyId.company_masters_id,
       contact_id,
       person_name,
+      product_id,
+      serial_number,
       created_date_time: formattedDate,
       visit_column_number_1: req.body.visit_column_number_1 || "",
       visit_column_number_2: req.body.visit_column_number_2 || "",
@@ -822,6 +835,22 @@ export const visitMasterUpdate = async (req) => {
       stop_longitude: req.body.stop_longitude || "",
       stop_address: req.body.stop_address || "",
     };
+
+    // Stop-visit callers that never send a product must not wipe the one saved at start.
+    if (req.body.serial_number !== undefined) {
+      const productSerial = await resolveSerial(req.tenantDB, {
+        serial_number: pickSerial(req.body),
+        required: false,
+      });
+      if (productSerial.error) {
+        return resError({
+          ack_msg: productSerial.error,
+          developer_msg: "Serial number validation failed",
+        });
+      }
+      updateData.product_id = productSerial.product_id;
+      updateData.serial_number = productSerial.serial_number;
+    }
 
     const visitTable = await visitTypeMaster.findOne({
       where: {

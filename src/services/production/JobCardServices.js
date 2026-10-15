@@ -17,10 +17,11 @@ import { productionTransactionProcessTimesModel } from "../../models/production/
 import { productionTransactionsItemsModel } from "../../models/production/productionTransactionsItemsModel.js";
 import { PAGE_ID } from "../../utils/AppEnumeration.js";
 import { isValid, resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
-import { inserStockAdjustment } from "../activities/stockAdjustmentServices.js";
+import { checkStockAvailability, checkWarehouseWiseStock, getStockCheckMode, inserStockAdjustment } from "../activities/stockAdjustmentServices.js";
 import { getCompanyByLoginId } from "../commonServices.js";
 import { fetchJobCardsPerProcess } from "./rawMaterialProcessJobCards.js";
 import { fetchMaterialsWithOwnBom } from "./materialOwnBomLookup.js";
+import { hasJobCardRight } from "./jobCardRights.js";
 
 export const jobCardsFetch = async (req) => {
     try {
@@ -677,7 +678,7 @@ export const jobCardsDetails = async (req) => {
 // already consumed for it (that part is already out of physical stock via
 // the consumption stock adjustment), floored at 0. Returns {} on failure
 // so the job card still loads.
-const fetchOtherOpenJobCardStock = async (req, currentJobCard, materialIds) => {
+export const fetchOtherOpenJobCardStock = async (req, currentJobCard, materialIds) => {
     if (!materialIds.length) return {};
 
     try {
@@ -954,6 +955,12 @@ export const jobCardsSave = async (req) => {
     const jobCardType = Number(req.body.job_card_type) || 1;
     const itemId = req.body.item_id ?? order_item_id;
     try {
+        if (!(await hasJobCardRight({ a_application_login_id, tenantDB: req.tenantDB, flag: "add" }))) {
+            return resError({
+                ack_msg: "You do not have permission to add a job card",
+                developer_msg: "job card add right missing",
+            });
+        }
         if (!itemId) {
             return resError({
                 ack_msg: jobCardType === 1 ? "Please select an order item" : "Please select a product",
@@ -1038,6 +1045,13 @@ export const submitUnifiedProductionEntry = async (req) => {
             rejection_items = [],
             process_times = []
         } = req.body;
+
+        if (!(await hasJobCardRight({ a_application_login_id, tenantDB: req.tenantDB, flag: "add", pageId: PAGE_ID.PRODUCTION }))) {
+            return resError({
+                ack_msg: "You do not have permission to add a production entry",
+                developer_msg: "production add right missing",
+            });
+        }
 
         // Finished-good product id. BUG (client-reported: finished goods entry
         // never gets recorded for order-based job cards): the old code used
@@ -1179,6 +1193,63 @@ export const submitUnifiedProductionEntry = async (req) => {
         let rejStockId = null;
         let consStockId = null;
 
+        // The master row, items and process times are already saved above. If
+        // a stock step below fails, undo them (and any stock entry already
+        // made) the way deleteProductionEntry does, and tell the caller -
+        // otherwise the entry stays saved with its stock never updated and the
+        // user is still told it succeeded.
+        const rollbackEntry = async () => {
+            const stockIds = [fgStockId, rejStockId, consStockId].filter(Boolean);
+            const now = new Date();
+            if (stockIds.length > 0) {
+                await cartModel(req.tenantDB).update(
+                    { isDelete: 1, modified_date: now },
+                    { where: { id: stockIds } }
+                );
+                await cartItemModel(req.tenantDB).update(
+                    { isDelete: 1, modified_date: now },
+                    { where: { cart_id: stockIds } }
+                );
+            }
+            await productionTransactionModelInstance.update(
+                { isDelete: 1, modified_date: now }, { where: { id: productionId } });
+            await productionTransactionsItemsModelInstance.update(
+                { isDelete: 1, modified_date: now }, { where: { production_id: productionId } });
+            await productionTransactionProcessTimesModelInstance.update(
+                { isDelete: 1, modified_date: now }, { where: { production_id: productionId } });
+        };
+        const failEntry = async (stepName, ackMsg) => {
+            await rollbackEntry();
+            return resError({
+                ack_msg: ackMsg || `Stock update failed (${stepName}). The production entry was not saved.`,
+                developer_msg: `production entry rolled back: ${stepName} stock step failed`,
+            });
+        };
+
+        // Check the consumption stock up front, before any stock entry is
+        // made, so a shortage leaves nothing behind. How strict it is follows
+        // the company's two stock switches (same as the web / sales invoices):
+        //   "Strict Product Stock Check" off              -> no check
+        //   on, "Warehouse Wise" off                      -> company-wide stock
+        //   on and "Warehouse Wise" on                    -> stock of the chosen warehouse
+        const consumptionToCheck = consumption_items
+            .filter(item => productCache[item.material_id] && item.qty > 0)
+            .map(item => ({
+                product_id: item.material_id,
+                product_name: productCache[item.material_id].product_name,
+                warehouse_from: item.warehouse_id,
+                qty: item.qty,
+            }));
+        const stockMode = consumptionToCheck.length > 0 ? await getStockCheckMode(a_application_login_id) : 0;
+        if (stockMode > 0) {
+            const stockCheck = stockMode === 2
+                ? await checkWarehouseWiseStock(req, consumptionToCheck)
+                : await checkStockAvailability(req, { stock_adjustment_type: "3" }, consumptionToCheck);
+            if (!stockCheck?.status) {
+                return failEntry("consumption", (stockCheck?.errors || []).join("\n"));
+            }
+        }
+
         // ==========================================
         // 3A. FINISHED GOODS STOCK ADJUSTMENT (INWARD)
         // ==========================================
@@ -1202,7 +1273,8 @@ export const submitUnifiedProductionEntry = async (req) => {
             }];
 
             const fgInsert = await inserStockAdjustment(req);
-            if (fgInsert && fgInsert.ack === 1) fgStockId = fgInsert.inserted_id;
+            if (!fgInsert || fgInsert.ack !== 1) return failEntry("finished goods", fgInsert?.ack_msg);
+            fgStockId = fgInsert.data?.inserted_id;
         }
 
         // ==========================================
@@ -1236,7 +1308,8 @@ export const submitUnifiedProductionEntry = async (req) => {
                 req.body.stockItem = rejStockItems;
 
                 const rejInsert = await inserStockAdjustment(req);
-                if (rejInsert && rejInsert.ack === 1) rejStockId = rejInsert.inserted_id;
+                if (!rejInsert || rejInsert.ack !== 1) return failEntry("rejection", rejInsert?.ack_msg);
+                rejStockId = rejInsert.data?.inserted_id;
             }
         }
 
@@ -1266,12 +1339,15 @@ export const submitUnifiedProductionEntry = async (req) => {
                 req.body.stockDetail = {
                     stock_adjustment_type: "3", // Minus
                     stock_date: entry_date,
-                    stock_remark: `Production CONSUMPTION OUTWARD (Job Card #${job_id})`
+                    stock_remark: `Production CONSUMPTION OUTWARD (Job Card #${job_id})`,
+                    // Already checked above, as strictly as the company settings ask.
+                    skip_stock_check: true
                 };
                 req.body.stockItem = consStockItems;
 
                 const consInsert = await inserStockAdjustment(req);
-                if (consInsert && consInsert.ack === 1) consStockId = consInsert.inserted_id;
+                if (!consInsert || consInsert.ack !== 1) return failEntry("consumption", consInsert?.ack_msg);
+                consStockId = consInsert.data?.inserted_id;
             }
         }
 
@@ -1302,6 +1378,14 @@ export const submitUnifiedProductionEntry = async (req) => {
 export const fetchProductionList = async (req) => {
     try {
         const { a_application_login_id, job_id } = req.body;
+
+        if (!(await hasJobCardRight({ a_application_login_id, tenantDB: req.tenantDB, flag: "view", pageId: PAGE_ID.PRODUCTION }))) {
+            return resError({
+                ack_msg: "You do not have permission to view production entries",
+                developer_msg: "production view right missing",
+            });
+        }
+
         const findCompanyId = await getCompanyByLoginId(a_application_login_id);
 
         // Basic validation
@@ -1406,6 +1490,13 @@ export const deleteProductionEntry = async (req) => {
     try {
         const { a_application_login_id, id } = req.body;
 
+        if (!(await hasJobCardRight({ a_application_login_id, tenantDB: req.tenantDB, flag: "delete", pageId: PAGE_ID.PRODUCTION }))) {
+            return resError({
+                ack_msg: "You do not have permission to delete a production entry",
+                developer_msg: "production delete right missing",
+            });
+        }
+
         if (!id) {
             return resBadRequest({
                 ack_msg: "Production Entry ID is required.",
@@ -1488,6 +1579,13 @@ export const deleteProductionEntry = async (req) => {
 export const deleteJobCard = async (req) => {
     try {
         const { a_application_login_id, id } = req.body;
+
+        if (!(await hasJobCardRight({ a_application_login_id, tenantDB: req.tenantDB, flag: "delete" }))) {
+            return resError({
+                ack_msg: "You do not have permission to delete a job card",
+                developer_msg: "job card delete right missing",
+            });
+        }
 
         if (!id) {
             return resBadRequest({
@@ -1632,6 +1730,12 @@ export const assignTeamMemberToJob = async (req) => {
     } = req.body;
 
     try {
+        if (!(await hasJobCardRight({ a_application_login_id, tenantDB: req.tenantDB, flag: "add", pageId: PAGE_ID.ASSIGN_TO_TEAM_MEMBER }))) {
+            return resError({
+                ack_msg: "You do not have permission to assign team members",
+                developer_msg: "assign team member add right missing",
+            });
+        }
         const JobCardsModelInstance = JobCardsModel(req.tenantDB);
         const isExistData = await JobCardsModelInstance.findOne({
             where: { id: jobId, isDelete: 0 },
@@ -1685,6 +1789,12 @@ export const assignLabelToJobCard = async (req) => {
     } = req.body;
 
     try {
+        if (!(await hasJobCardRight({ a_application_login_id, tenantDB: req.tenantDB, flag: "view", pageId: PAGE_ID.LABEL }))) {
+            return resError({
+                ack_msg: "You do not have permission to assign labels",
+                developer_msg: "label view right missing",
+            });
+        }
         const JobCardsModelInstance = JobCardsModel(req.tenantDB);
         const isExistData = await JobCardsModelInstance.findOne({
             where: { id: jobId, isDelete: 0 },
@@ -1738,6 +1848,12 @@ export const assignStatusToJobCard = async (req) => {
     } = req.body;
 
     try {
+        if (!(await hasJobCardRight({ a_application_login_id, tenantDB: req.tenantDB, flag: "view", pageId: PAGE_ID.STATUS }))) {
+            return resError({
+                ack_msg: "You do not have permission to assign a status",
+                developer_msg: "status view right missing",
+            });
+        }
         const JobCardsModelInstance = JobCardsModel(req.tenantDB);
         const isExistData = await JobCardsModelInstance.findOne({
             where: { id: jobId, isDelete: 0 },
@@ -1786,6 +1902,13 @@ export const assignStatusToJobCard = async (req) => {
 export const updateJobCardQty = async (req) => {
     try {
         const { a_application_login_id, id, product_qty } = req.body;
+
+        if (!(await hasJobCardRight({ a_application_login_id, tenantDB: req.tenantDB, flag: "edit" }))) {
+            return resError({
+                ack_msg: "You do not have permission to edit a job card",
+                developer_msg: "job card edit right missing",
+            });
+        }
 
         // 1. Basic field validation
         if (!id) {
@@ -1842,6 +1965,13 @@ export const updateJobCardQty = async (req) => {
 export const fetchProductionEntryDetail = async (req) => {
     try {
         const { a_application_login_id, id } = req.body;
+
+        if (!(await hasJobCardRight({ a_application_login_id, tenantDB: req.tenantDB, flag: "view", pageId: PAGE_ID.PRODUCTION }))) {
+            return resError({
+                ack_msg: "You do not have permission to view production entries",
+                developer_msg: "production view right missing",
+            });
+        }
 
         if (!id) {
             return resBadRequest({

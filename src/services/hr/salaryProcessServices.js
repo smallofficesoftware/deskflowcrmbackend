@@ -10,6 +10,10 @@ import { PROCESS_TYPE } from "../../utils/AppEnumeration.js";
 import { numberToWordsCurrency } from "../../utils/numberToWordsCurrency.js";
 import { resBadRequest, resSuccess } from "../../utils/sharedFunctions.js";
 import { getCompanyByLoginId } from "../commonServices.js";
+import { getCompanySignDataUrl } from "./salarySlipCompanySign.js";
+import { calcRateBasedBasic } from "./salaryRatePay.js";
+import { buildSalaryProcessResult } from "./salarySkippedNotice.js";
+import { collectSalaryWarnings } from "./salaryWarnings.js";
 
 // ── Constants ────────────────────────────────────────────────────────────
 
@@ -336,7 +340,11 @@ const calculateDays = resolveCalculateDays(year, month, payroll);
     const perDaySalary = calcPerDaySalary(grossSalary, calculateDays);
 
     const fxs = calcFixedSalary(payroll);
-    const dws = calcDaysWorkedSalary(fxs, totalDay, calculateDays);
+    // Hour-wise / day-wise staff with only a rate (no Basic+DA structure) are paid from that rate.
+    const rateBasedBasic = calcRateBasedBasic({ payroll, salaryType, totalDay, netWorkingMins, regularOtMins, extraOtMins });
+    const dws = rateBasedBasic === null
+        ? calcDaysWorkedSalary(fxs, totalDay, calculateDays)
+        : { dws_basic: rateBasedBasic, dws_hra: 0, dws_other: 0, dws_total_earning: rateBasedBasic };
 
     const { regularOtPayableAmt, extraOtPayableAmt, earnOtPayableAmt } = calcOvertimePayable(
         payroll, regularOtMins, extraOtMins, num(payroll.basic_da), calculateDays
@@ -499,13 +507,22 @@ export const salaryCalculate = async (req) => {
         // ── 4. Build salary rows (pure CPU, no awaits) ──────────────────────
         const CurrentDate = moment().format("YYYY-MM-DD");
         const upsertValues = [];
+        const skippedEmployees = []; // no Employee Payroll row -> no salary can be calculated
+        const nameById = new Map(activeTeamList.map(e => [e.id, e.username]));
+        const employeeWarnings = []; // calculated, but pay is 0 or attendance is not ready - with the reasons
 
         for (const empId of employeeIds) {
             const payroll = employeePayrollMap.get(empId);
-            if (!payroll) continue;
+            if (!payroll) {
+                skippedEmployees.push({ id: empId, name: nameById.get(empId) });
+                continue;
+            }
 
             const batchRows = attendanceByEmp[empId] ?? [];
             const calculated = calculateEmployeeSalary(year, month, payroll, batchRows);
+
+            const reasons = collectSalaryWarnings({ payroll, salaryType: parseInt(payroll.salary_type, 10), calculated, batchRows });
+            if (reasons.length) employeeWarnings.push({ id: empId, name: nameById.get(empId), reasons });
 
             upsertValues.push({
                 year: String(year),
@@ -525,7 +542,7 @@ export const salaryCalculate = async (req) => {
 
         await salaryRegisterModelInstance.bulkCreate(upsertValues, { updateOnDuplicate });
 
-        return resSuccess({ ack_msg: "salary calculation success" });
+        return resSuccess(buildSalaryProcessResult(upsertValues.length, skippedEmployees, employeeWarnings));
 
     } catch (error) {
         console.error("salaryCalculate:", error);
@@ -652,7 +669,8 @@ export const getSalaryDetail = async (req) => {
             const dedThird = num(row.ded_third);
             const othersDeduction = dedFirst + dedSecond + dedThird
 
-            const totalDeduction = dedEmpPf + dedPt + dedPradhanMantriPf + dedEsiEmployee + dedInsurance + dedFirst + dedSecond + dedThird + othersDeduction
+            // othersDeduction already is dedFirst + dedSecond + dedThird; adding both double counted it.
+            const totalDeduction = dedEmpPf + dedPt + dedPradhanMantriPf + dedEsiEmployee + dedInsurance + othersDeduction
 
             const salaryToBePaid = Math.round(num(row.net_bank_pay));
 
@@ -687,7 +705,7 @@ export const getSalaryDetail = async (req) => {
             };
         }
 
-        return resSuccess({ data: { salary } });
+        return resSuccess({ data: { salary, company_sign: await getCompanySignDataUrl(req) } });
 
     } catch (error) {
         console.error("getSalaryDetail:", error);

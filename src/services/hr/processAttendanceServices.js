@@ -12,6 +12,9 @@ import { AttendanceBatchProcess } from "../../models/hr/processAttendanceModel.j
 import { PROCESS_TYPE } from "../../utils/AppEnumeration.js";
 import { generateDateRange, resBadRequest, resSuccess } from "../../utils/sharedFunctions.js";
 import { getCompanyByLoginId } from "../commonServices.js";
+import { rejectTodayOrFutureDates } from "./processAttendanceDateGuard.js";
+import { toJoinDateIso } from "./attendanceJoinDate.js";
+import { hasShiftTime } from "./attendanceShiftTime.js";
 
 export const misPunchList = async (req) => {
     const { a_application_login_id, from_date, to_date } = req.body;
@@ -156,6 +159,8 @@ export const misPunchList = async (req) => {
 export const initializing = async (req) => {
 
     const { a_application_login_id, from_date, to_date } = req.body;
+    const blockedDate = rejectTodayOrFutureDates(from_date, to_date);
+    if (blockedDate) return blockedDate;
     const findCompanyId = await getCompanyByLoginId(a_application_login_id);
 
     const lockAcquired = await acquireProcessLock(
@@ -451,6 +456,8 @@ export const fetchProcessList = async (req) => {
 
 export const attendanceDetailUpdate = async (req) => {
     const { a_application_login_id, from_date, to_date } = req.body;
+    const blockedDate = rejectTodayOrFutureDates(from_date, to_date);
+    if (blockedDate) return blockedDate;
     const findCompanyId = await getCompanyByLoginId(a_application_login_id);
     const lockAcquired = await acquireProcessLock(
         findCompanyId.company_masters_id,
@@ -491,7 +498,7 @@ export const attendanceDetailUpdate = async (req) => {
 
         const employeeIds = activeTeamList.map(e => e.id);
         const employeeJoinDateMap = new Map(
-            activeTeamList.map(e => [e.id, e.date_of_joining ? moment(e.date_of_joining).format("YYYY-MM-DD") : null])
+            activeTeamList.map(e => [e.id, toJoinDateIso(e.date_of_joining)])
         );
 
         const dateRange = generateDateRange(from_date, to_date);
@@ -556,7 +563,6 @@ export const attendanceDetailUpdate = async (req) => {
             holidayModelInstance.findAll({
                 where: {
                     isDelete: 0,
-                    a_application_login_id: { [Op.in]: employeeIds },
                     [Op.and]: [
                         Sequelize.where(
                             Sequelize.fn('DATE', Sequelize.col('holiday_date')),
@@ -609,13 +615,12 @@ export const attendanceDetailUpdate = async (req) => {
             groupedLeavesData[empId][date].push(record);
         }
 
-        const groupedHolidayData = {};
+        // Holidays are company-wide (a_application_login_id is only the creator), so key by date.
+        const groupedHolidayByDate = {};
         for (const record of holidayData) {
-            const empId = record.a_application_login_id;
             const date = moment(record.holiday_date).format("YYYY-MM-DD");
-            if (!groupedHolidayData[empId]) groupedHolidayData[empId] = {};
-            if (!groupedHolidayData[empId][date]) groupedHolidayData[empId][date] = [];
-            groupedHolidayData[empId][date].push(record);
+            if (!groupedHolidayByDate[date]) groupedHolidayByDate[date] = [];
+            groupedHolidayByDate[date].push(record);
         }
 
         // ── 4. Build upsert payload ──────────────────────────────────────────
@@ -636,7 +641,7 @@ export const attendanceDetailUpdate = async (req) => {
                 const records = grouped[empId]?.[date] ?? [];
                 const compensation_list = groupedProcessAttendance[empId]?.[date] ?? [];
                 const leave_list = groupedLeavesData[empId]?.[date] ?? [];
-                const holiday_list = groupedHolidayData[empId]?.[date] ?? [];
+                const holiday_list = groupedHolidayByDate[date] ?? [];
 
                 const isWeekOffDay = isWeekOff(date, payroll);
                 const isHolidayDay = holiday_list.length > 0;
@@ -1138,7 +1143,7 @@ function calcDayStatus(date, first_in, last_out, total_working_hour, payroll, co
         day_status === DAY_STATUS.WOPH;
 
     let late_in = null;
-    if (firstInStr && !skipLateEarly) {
+    if (firstInStr && !skipLateEarly && hasShiftTime(payroll.daily_in_time)) {
         const datePrefix = firstInStr.slice(0, 10);
         const scheduledIn = moment(`${datePrefix} ${payroll.daily_in_time}`, "YYYY-MM-DD HH:mm:ss");
         const graceIn = scheduledIn.clone().add(gracePeriodMins, "minutes");
@@ -1149,7 +1154,7 @@ function calcDayStatus(date, first_in, last_out, total_working_hour, payroll, co
     }
 
     let early_out = null;
-    if (lastOutStr && !skipLateEarly) {
+    if (lastOutStr && !skipLateEarly && hasShiftTime(payroll.daily_out_time)) {
         const datePrefix = lastOutStr.slice(0, 10);
         const scheduledOut = moment(`${datePrefix} ${payroll.daily_out_time}`, "YYYY-MM-DD HH:mm:ss");
         const graceOut = scheduledOut.clone().subtract(gracePeriodMins, "minutes");

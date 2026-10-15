@@ -9,6 +9,27 @@ import { productModel } from "../../../models/product_settings/productModel.js";
 import { resError, resSuccess } from "../../../utils/sharedFunctions.js";
 import { getCompanyByLoginId } from "../../commonServices.js";
 
+// A warehouse-to-warehouse transfer is stored as two stock carts: an OUT
+// (cart type 11) and an IN (cart type 10) that share one sr_by_number, date and
+// company. It moves stock between warehouses without changing the product's
+// total, so it must not count as a "Stock Adjustment Inward/Outward" (a 100
+// adjustment + a 20 transfer showed 120 inward / 20 outward). A real
+// adjustment is a single cart, so it never pairs up.
+const NOT_A_WAREHOUSE_TRANSFER = Sequelize.literal(`\`cart_items\`.\`cart_id\` NOT IN (
+  SELECT tc.id FROM \`carts\` tc
+  JOIN (
+    SELECT sr_by_number, cart_date, company_masters_id
+    FROM \`carts\`
+    WHERE isDelete = 0 AND type IN (10, 11) AND sr_by_number IS NOT NULL
+    GROUP BY sr_by_number, cart_date, company_masters_id
+    HAVING COUNT(DISTINCT type) = 2
+  ) pair
+    ON tc.sr_by_number = pair.sr_by_number
+   AND tc.cart_date = pair.cart_date
+   AND tc.company_masters_id = pair.company_masters_id
+  WHERE tc.isDelete = 0 AND tc.type IN (10, 11)
+)`);
+
 // server/controller.js (or wherever productInventoryReport lives)
 export const productInventoryReport = async (req, res) => {
   try {
@@ -73,14 +94,26 @@ export const productInventoryReport = async (req, res) => {
     const categoryModels = categoryModel(req.tenantDB);
 
     // assemble where clauses for product query
-    const whereForProduct = {};
-    const whereForcategory = {};
-    if (selectedProduct) {
-      whereForProduct[Op.and] = [Sequelize.literal(`FIND_IN_SET('${selectedProduct.value}',id)`)];
-    }
-    if (selectedCategory) {
-      whereForcategory[Op.and] = [Sequelize.literal(`FIND_IN_SET('${selectedCategory.value}',category_id)`)];
-    }
+    // Product and category both go into ONE Op.and list. They used to be two objects
+    // that each set [Op.and] and were spread together, so the second one overwrote
+    // the first - with both picked, the category filter was lost. The ids are also
+    // forced to integers before they reach the SQL literal (they came straight from
+    // the request).
+    const idOf = (selected) => {
+      const raw = selected && typeof selected === "object" ? selected.value : selected;
+      const n = Number(raw);
+      return Number.isInteger(n) && n > 0 ? n : null;
+    };
+    const andClauses = [];
+    const productFilterId = idOf(selectedProduct);
+    const categoryFilterId = idOf(selectedCategory);
+    if (productFilterId) andClauses.push(Sequelize.literal(`id = ${productFilterId}`));
+    if (categoryFilterId) andClauses.push(Sequelize.literal(`category_id = ${categoryFilterId}`));
+    // The global search clause may carry its own Op.and: keep it.
+    const searchAnd = fullTextSearchConditionForProduct?.[Op.and];
+    const whereAnd = andClauses.length || searchAnd
+      ? { [Op.and]: [...andClauses, ...(Array.isArray(searchAnd) ? searchAnd : searchAnd ? [searchAnd] : [])] }
+      : {};
 
     // Use findAndCountAll so we can return totalRecords + paged rows
     /* Sorting and ordering */
@@ -93,9 +126,8 @@ export const productInventoryReport = async (req, res) => {
       where: {
         isDelete: 0,
         company_masters_id: findCompanyId.company_masters_id,
-        ...whereForcategory,
-        ...whereForProduct,
         ...fullTextSearchConditionForProduct,
+        ...whereAnd,
       },
       attributes: [
         "id",
@@ -303,6 +335,7 @@ export const productInventoryReport = async (req, res) => {
               cart_date: { [Op.between]: [start, end] },
               item_product_id: productId,
               stock_type: { [Op.ne]: 0 },
+              [Op.and]: [NOT_A_WAREHOUSE_TRANSFER],
             },
             attributes: [[sequelize.fn("SUM", sequelize.col("item_qty")), "stockAdjustmentInward"]],
             raw: true,
@@ -315,6 +348,7 @@ export const productInventoryReport = async (req, res) => {
               cart_date: { [Op.between]: [start, end] },
               item_product_id: productId,
               stock_type: { [Op.ne]: 0 },
+              [Op.and]: [NOT_A_WAREHOUSE_TRANSFER],
             },
             attributes: [[sequelize.fn("SUM", sequelize.col("item_qty")), "stockAdjustmentOutward"]],
             raw: true,

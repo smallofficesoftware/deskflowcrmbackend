@@ -612,6 +612,67 @@ export const getAllContactReport = async (req) => {
       );
     }
 
+    // Per-column grid filters (contains match, applied on Enter in the grid).
+    // Name columns are resolved to ids in their master tables first, so the
+    // filter runs on the whole result set before pagination.
+    const columnFilters = req.body.column_filters;
+    if (columnFilters && typeof columnFilters === "object") {
+      const idsByName = async (model, nameAttr, value, extraWhere = {}) =>
+        (
+          await model.findAll({
+            where: { ...extraWhere, [nameAttr]: { [Op.like]: `%${value}%` } },
+            attributes: ["id"],
+            raw: true,
+          })
+        ).map((r) => Number(r.id));
+
+      const findInSetAny = (ids, column) =>
+        ids.length > 0
+          ? Sequelize.literal(
+              `(${ids.map((id) => `FIND_IN_SET(${Number(id)}, ${column}) > 0`).join(" OR ")})`
+            )
+          : Sequelize.literal("1 = 0");
+
+      const DIRECT_COLUMNS = ["person_name", "mobile_number", "company_name", "address"];
+
+      for (const [key, rawValue] of Object.entries(columnFilters)) {
+        const value = String(rawValue ?? "").trim();
+        if (!value) continue;
+
+        if (DIRECT_COLUMNS.includes(key)) {
+          andConditions.push({ [key]: { [Op.like]: `%${value}%` } });
+        } else if (key === "source_name") {
+          const ids = await idsByName(await sourceTypesModel(req.tenantDB), "source_name", value, { isDelete: 0 });
+          andConditions.push({ source_type_id: { [Op.in]: ids } });
+        } else if (key === "status_name") {
+          const ids = await idsByName(await stagestatusModel(req.tenantDB), "name", value, { isDelete: 0 });
+          andConditions.push({ contact_status: { [Op.in]: ids } });
+        } else if (key === "country_name") {
+          const ids = await idsByName(await countryModel(req.tenantDB), "country_name", value);
+          andConditions.push({ country: { [Op.in]: ids } });
+        } else if (key === "state_name") {
+          const ids = await idsByName(await stateModel(req.tenantDB), "state_name", value);
+          andConditions.push({ state: { [Op.in]: ids } });
+        } else if (key === "city_name") {
+          const ids = await idsByName(await cityModel(req.tenantDB), "city_name", value);
+          andConditions.push({ city: { [Op.in]: ids } });
+        } else if (key === "area_name") {
+          const ids = await idsByName(await areaModel(req.tenantDB), "area_name", value);
+          andConditions.push({ area: { [Op.in]: ids } });
+        } else if (key === "lable_name") {
+          const ids = await idsByName(await labelModel(req.tenantDB), "lable_name", value, { isDelete: 0 });
+          andConditions.push(findInSetAny(ids, "lable"));
+        } else if (key === "created_by") {
+          const ids = await idsByName(loginModel, "username", value);
+          andConditions.push({ a_application_login_id: { [Op.in]: ids } });
+        } else if (key === "assigned_to") {
+          const ids = await idsByName(loginModel, "username", value);
+          andConditions.push(findInSetAny(ids, "assinged_to_work_a_application_id"));
+        }
+        // Any other key (cart columns, custom fields) is not filtered here.
+      }
+    }
+
     const contactWhere = {
       isDelete: 0,
       ...whereClause,

@@ -28,6 +28,7 @@ import {
   resolveDataSources,
 } from "./orderInputMapper.js";
 import { pluginMap } from "./pluginMap.js";
+import { loadBuyerContactCustomValues } from "./contactCustomValues.js";
 
 // Builds one tiny single-field template sized to match the main document's
 // basePdf, for a pageText/pageURL extra page — same technique the POC's
@@ -283,8 +284,12 @@ export async function generateQuotationPdf({
   template = withCompanyHeader(template, company);
   template = injectWatermarkField(template, company);
 
-  const computed = buildComputedFields(cart, numberTowords);
-  computed.hsnSummary = buildHsnSummary(items);
+  // Ticket #2157 - same company_masters.is_grouped_number_format flag the
+  // legacy EJS path's formatNum binding checks (orderServices.js).
+  // 0 plain, 1 Indian, 2 International, 3 European (sharedFunctions.js formatNumber).
+  const groupedNumberFormat = Number(company?.groupedNumberFormat) || 0;
+  const computed = buildComputedFields(cart, numberTowords, groupedNumberFormat);
+  computed.hsnSummary = buildHsnSummary(items, groupedNumberFormat);
 
   template = await injectPaymentQRField(template, {
     docType: doc_type,
@@ -322,7 +327,7 @@ export async function generateQuotationPdf({
   }
 
   const cashDiscount = buildCashDiscount(cart);
-  const hsnTaxRows = buildHsnTaxRows({ items, cart, isSameState, packingHSN, packingGSTRate, transportHSN, transportGSTRate });
+  const hsnTaxRows = buildHsnTaxRows({ items, cart, isSameState, packingHSN, packingGSTRate, transportHSN, transportGSTRate, grouped: groupedNumberFormat });
 
   const rawInputs = buildInputsForCart({
     company,
@@ -365,6 +370,10 @@ export async function generateQuotationPdf({
     if (dataType === 11 || dataType === 12 || dataType === 14) return;
     rawInputs[field.reference_column_name] = cartValues?.[field.reference_column_name] ?? "";
   });
+
+  // The buyer contact's own custom fields (cntc_column_*), offered by the
+  // dictionary under "Contact Custom Field".
+  Object.assign(rawInputs, await loadBuyerContactCustomValues(tenantDB, company?.id, cart));
 
   let resolvedInputs = resolveDataSources(template, rawInputs);
   resolvedInputs = fillMissingInputsFromContent(template, resolvedInputs);

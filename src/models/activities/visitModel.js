@@ -50,6 +50,12 @@ export const visitsModel = (sequelize) => {
     contact_id: {
       type: INTEGER,
     },
+    product_id: {
+      type: INTEGER,
+    },
+    serial_number: {
+      type: STRING,
+    },
     person_name: {
       type: STRING,
     },

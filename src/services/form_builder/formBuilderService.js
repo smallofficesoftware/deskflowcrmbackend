@@ -32,7 +32,7 @@ import { approvalOf, findApprovalProblems } from "./formBuilderApproval.js";
 import { findConsentProblems, findPublicSettingsProblems } from "./formBuilderPublicSettings.js";
 import { findProductLookupProblems } from "./formBuilderProductLookup.js";
 import { countPendingForMe, ensureStageColumns, loadActorContext } from "./formBuilderApprovalService.js";
-import { resolveTemplateForCreate } from "./formBuilderTemplates.js";
+import { loadFormForFill } from "./formBuilderFillAccess.js";
 import { normalizePermissionChanges } from "./formBuilderPermissionKeys.js";
 import {
   getMyFormPermissions,
@@ -142,8 +142,13 @@ export const listForms = async (req) => {
 
 export const getForm = async (req) => {
   try {
-    const { form, company_masters_id, a_application_login_id, error } = await loadOwnedForm(req);
-    if (error) return error;
+    let { form, company_masters_id, a_application_login_id, error } = await loadOwnedForm(req);
+    if (error) {
+      // No Form Builder rights: still open the form if this user may fill it.
+      const fill = await loadFormForFill(req);
+      if (!fill) return error;
+      ({ form, company_masters_id, a_application_login_id } = fill);
+    }
     const company_qr_code = await getCompanyQrCode(company_masters_id);
     // This user's per-form permissions (section 3) — the fill screen locks
     // "permission" date fields when can_change_dates is false.
@@ -161,7 +166,7 @@ export const getForm = async (req) => {
           can_change_dates: my_form_permissions.change_dates,
           my_form_permissions,
           // Fields this user may not fully see or change (plan O8) — the fill screen hides / locks them.
-          restricted: computeRestrictions(parseSchema(form.published_schema_json), my_form_permissions.see_masked_fields),
+          restricted: computeRestrictions(parseSchema(form.published_schema_json), my_form_permissions.see_masked_fields, a_application_login_id),
         },
       },
     });
@@ -183,22 +188,18 @@ export const createForm = async (req) => {
       return resError({ code: 403, ack_msg: "You don't have permission to create forms" });
     }
 
-    const { title, description, related_module, category, template } = req.body || {};
+    const { title, description, related_module, category } = req.body || {};
     if (!title) return resError({ ack_msg: "Please enter a form title" });
 
-    // Starting from a starter form or a saved template (plan L1): its fields (and
-    // form settings) become this form's first draft.
-    const fromTemplate = await resolveTemplateForCreate({ tenantDB: req.tenantDB, company_masters_id, template });
-    if (fromTemplate?.error) return resError({ ack_msg: fromTemplate.error });
-
+    // A new form always starts blank (starter forms and saved templates were removed).
     const FormModel = formBuilderFormModel(req.tenantDB);
     const created = await FormModel.create({
       company_masters_id,
       a_application_login_id,
       title,
-      description: description || fromTemplate?.description || null,
-      schema_json: fromTemplate?.schema_json || JSON.stringify([]),
-      settings_json: fromTemplate?.settings_json || null,
+      description: description || null,
+      schema_json: JSON.stringify([]),
+      settings_json: null,
       related_module: related_module || null,
       category: category || null,
       version: 1,

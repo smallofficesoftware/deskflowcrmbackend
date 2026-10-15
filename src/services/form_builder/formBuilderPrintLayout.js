@@ -33,6 +33,11 @@ const TITLE_HEIGHT = 7;
 const BLOCK_GAP = 3;
 const TABLE_ROW_MM = 8;
 const TABLE_HEAD_MM = 9;
+// Picture fields: two side by side, each a caption line over the image.
+export const IMAGE_PRINT_TYPES = new Set(["image", "signature"]);
+export const IMAGES_PER_ROW = 2;
+export const IMAGE_CELL = { width: 92, gap: 6, captionHeight: 5, imageHeight: 58 };
+const IMAGE_ROW_MM = IMAGE_CELL.captionHeight + 1 + IMAGE_CELL.imageHeight + 2;
 
 export function emptyModeOf(settingsJson) {
   let parsed = settingsJson;
@@ -77,6 +82,15 @@ export function printBlocks(fields) {
       blocks.push({ kind: "repeater", field });
       continue;
     }
+    // Photos / signatures print as pictures, grouped when they follow each
+    // other (two per row, see planPages) - not as a "label: value" line.
+    if (IMAGE_PRINT_TYPES.has(field.type)) {
+      flush();
+      const last = blocks[blocks.length - 1];
+      if (last && last.kind === "images") last.fields.push(field);
+      else blocks.push({ kind: "images", fields: [field] });
+      continue;
+    }
     if (!current) textBlock(null);
     current.fields.push(field);
   }
@@ -92,6 +106,7 @@ export function layoutSignature(fields) {
     if (b.kind === "qtable") {
       return ["q", b.field.key, b.field.label, (b.field.questions || []).length, (b.field.answer_columns || []).map((c) => c.label || c.key)];
     }
+    if (b.kind === "images") return ["i", b.fields.map((f) => `${f.key}:${f.type}:${f.label}`)];
     return ["r", b.field.key, b.field.label, (b.field.columns || []).map((c) => `${c.key}:${c.type}:${c.label}`)];
   });
   return crypto.createHash("md5").update(JSON.stringify(parts)).digest("hex").slice(0, 10);
@@ -132,13 +147,16 @@ export function planPages(blocks, { top, bottom, firstTop = top }) {
   };
   const usable = bottom - top;
 
-  for (const block of blocks) {
+  for (const [blockIndex, block] of blocks.entries()) {
     if (block.kind === "text") {
       const titleHeight = block.title ? TITLE_HEIGHT : 0;
       const bodyHeight = block.fixedHeight ? block.fixedHeight : block.fields.length ? estimateTextLines(block) * TEXT_LINE_MM + 2 : 0;
       const total = titleHeight + bodyHeight;
       if (total === 0) continue;
-      if (y + total > bottom && page().items.length > 0) newPage();
+      // A heading with nothing under it but pictures stays with its first
+      // picture row instead of being left alone at the bottom of a page.
+      const keepWithImages = block.title && bodyHeight === 0 && blocks[blockIndex + 1]?.kind === "images" ? IMAGE_ROW_MM : 0;
+      if (y + total + keepWithImages > bottom && page().items.length > 0) newPage();
       const height = Math.min(total, usable);
       page().items.push({ block, y, height, titleHeight, bodyHeight: Math.max(height - titleHeight, 0) });
       y += height + BLOCK_GAP;
@@ -148,6 +166,14 @@ export function planPages(blocks, { top, bottom, firstTop = top }) {
       if (y + 8 + height > bottom && page().items.length > 0) newPage();
       page().items.push({ block, y, height, titleHeight: 8 });
       y += 8 + height + BLOCK_GAP;
+    } else if (block.kind === "images") {
+      // A row of up to two pictures; each row moves to the next page when it does not fit.
+      for (let i = 0; i < block.fields.length; i += IMAGES_PER_ROW) {
+        if (y + IMAGE_ROW_MM > bottom && page().items.length > 0) newPage();
+        page().items.push({ block: { kind: "images", fields: block.fields.slice(i, i + IMAGES_PER_ROW) }, y, height: IMAGE_ROW_MM });
+        y += IMAGE_ROW_MM;
+      }
+      y += BLOCK_GAP;
     } else if (block.kind === "repeater") {
       if (repeaterSeen && page().items.length > 0) newPage();
       else if (bottom - y < 40 && page().items.length > 0) newPage();

@@ -16,6 +16,12 @@ export const ALL_COLUMNS = [
   { key: "qty", label: "Qty/Unit", widthPct: 12, alignment: "right" },
   { key: "rate", label: "Rate", widthPct: 12, alignment: "right" },
   { key: "discount", label: "Dis(%)", widthPct: 7, alignment: "right", defaultOn: false },
+  // Tracked product serial numbers (cart_vs_serial_numbers) for this item,
+  // comma-separated - opt-in like image/discount/cgst/sgst/igst, since most
+  // companies don't sell serial-tracked products. Mirrors the legacy EJS "SN
+  // No:" block (orderPdfV1.ejs), just as its own column instead of being
+  // folded into the description cell.
+  { key: "serial", label: "Serial No.", widthPct: 12, alignment: "left", defaultOn: false },
   { key: "cgst", label: "CGST", widthPct: 8, alignment: "right", defaultOn: false },
   { key: "sgst", label: "SGST", widthPct: 8, alignment: "right", defaultOn: false },
   { key: "igst", label: "IGST", widthPct: 8, alignment: "right", defaultOn: false },
@@ -29,11 +35,29 @@ export const ALL_COLUMNS = [
 // (intra vs inter-state) or aren't needed by every doc type.
 export function resolveColumns(columnOptions) {
   const opts = columnOptions || {};
-  const kept = ALL_COLUMNS.filter((c) => {
+  const builtIn = ALL_COLUMNS.filter((c) => {
     if (c.required) return true;
     if (c.defaultOn === false) return opts[c.key] === true;
     return opts[c.key] !== false;
   });
+
+  // opts.customColumns: [{ key, label }] - Product Custom Fields added from
+  // the Designer's Add Field dropdown. `key` is the product custom field's
+  // reference_column_name (products_column_*), which is also the cart item
+  // column the row value is read from (orderInputMapper.js). Placed just
+  // before the "total" column so the amount stays last. They live in
+  // columnOptions (saved on the template) so every resolveColumns caller -
+  // template build, input rows, image overlay - sees the same set.
+  const takenKeys = new Set(builtIn.map((c) => c.key));
+  const custom = (Array.isArray(opts.customColumns) ? opts.customColumns : [])
+    .filter((c) => c && c.key && !takenKeys.has(String(c.key)) && takenKeys.add(String(c.key)))
+    .map((c) => ({ key: String(c.key), label: String(c.label ?? c.key), widthPct: 12, alignment: "left", custom: true }));
+  const totalAt = builtIn.findIndex((c) => c.key === "total");
+  const kept =
+    totalAt === -1 || !custom.length
+      ? [...builtIn, ...custom]
+      : [...builtIn.slice(0, totalAt), ...custom, ...builtIn.slice(totalAt)];
+
   const widthSum = kept.reduce((sum, c) => sum + c.widthPct, 0);
   // Rescale so widths still sum to 100 after dropping columns, otherwise the
   // table leaves dead whitespace on the right for whatever % was removed.

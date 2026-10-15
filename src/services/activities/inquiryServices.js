@@ -353,12 +353,22 @@ export const getAllInquiry = async (req) => {
         .split(",")
         .map((id) => id.trim())
         .filter(Boolean)
-        .forEach((id) => allProductIds.add(Number(id)));
+        .forEach((id) => {
+          // A stray token ("undefined", "null", text) would become NaN and be
+          // written into the IN (...) below as a column name, failing the whole
+          // list with "Unknown column 'NaN'" (ticket #2756). Skip it; the row
+          // just shows no name for that token.
+          const n = Number(id);
+          if (Number.isFinite(n)) allProductIds.add(n);
+        });
       String(item.category_id || "")
         .split(",")
         .map((id) => id.trim())
         .filter(Boolean)
-        .forEach((id) => allCategoryIds.add(Number(id)));
+        .forEach((id) => {
+          const n = Number(id);
+          if (Number.isFinite(n)) allCategoryIds.add(n);
+        });
     }
 
     const [productRows, categoryRows] = await Promise.all([
