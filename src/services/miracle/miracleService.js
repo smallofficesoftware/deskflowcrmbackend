@@ -620,6 +620,15 @@ export const syncInvoice = async (req) => {
                     }
                 }
 
+                if (![6, 7].includes(getCart.type) && !isValid(getCart.transaction_mode)) {
+                    results.push({ cart_id: singleCartId, status: "fail", msg: "Transaction Mode is required for Miracle sync" });
+                    continue;
+                }
+                if (getCart.transaction_mode == 1 && !isValid(getCart.miracle_account_legder)) {
+                    results.push({ cart_id: singleCartId, status: "fail", msg: "Miracle Account Ledger is required for cash transactions" });
+                    continue;
+                }
+
                 const transactionAcc = getCart.transaction_mode == 1 ? getCart.miracle_account_legder : acc_id;
                 const transactionModeFlag = getCart.transaction_mode == 1 ? "C" : getCart.transaction_mode == 2 ? "D" : "";
                 const invTyp = isSameState ? "GST" : "IGST";

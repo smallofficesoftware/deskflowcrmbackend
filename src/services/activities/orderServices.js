@@ -1997,6 +1997,8 @@ export const orderUpdate = async (req, res) => {
         };
         console.log("whereClauseStockwhereClauseStock", whereClauseStock);
 
+        let warehouseName = "total stock";
+
         if (
           fatchStrickProductCheckOrNot[0]?.is_strict_wharehouse_wise_product_stock_check == 2 &&
           item.item_warehouse_id &&
@@ -2017,7 +2019,6 @@ export const orderUpdate = async (req, res) => {
             warehouseName = warehouseData.warehouse_name;
           }
         }
-        let warehouseName = "total stock";
 
 
         const stockItems = await CartItem.findAll({
