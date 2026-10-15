@@ -578,11 +578,15 @@ export const buildAllTaskWhere = ({
     order.push(Sequelize.literal("position IS NULL, position ASC"));
   }
 
-  order.push(["task_priority", "DESC"], ["id", "DESC"]);
-
+  // When searching, best match first (exact ticket id, then id/title/remark
+  // prefix, then contains). It used to come after id DESC, which already
+  // decides every tie, so searching "2529" listed #2719 (its text mentions
+  // 2529) before ticket #2529 itself.
   if (relevanceOrder && relevanceOrder.length > 0) {
     order.push(...relevanceOrder);
   }
+
+  order.push(["task_priority", "DESC"], ["id", "DESC"]);
 
   return {
     whereClauseForDueTask,
