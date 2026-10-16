@@ -976,7 +976,9 @@ export const supportChatUpload = multer({
 // runs (multer parses fields in stream order — the frontend sends them first).
 const formBuilderStorage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const companyId = req.body?.company_masters_id || "unknown";
+    // The internal fill form never sends company_masters_id in the body; the
+    // session/header company is already resolved by authenticateToken.
+    const companyId = req.body?.company_masters_id || req.user?.companyId || req.headers["x-company-id"] || "unknown";
     const formId = req.body?.form_id || "unknown";
     const dir = path.join(process.cwd(), "media-folder", "form_builder", String(companyId), String(formId));
     fs.ensureDirSync(dir);
