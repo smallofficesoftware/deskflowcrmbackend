@@ -3,6 +3,7 @@ import loginModel from "../../models/application_login/loginModel.js";
 import { resBadRequest } from "../../utils/sharedFunctions.js";
 import { getCompanyByLoginId } from "../commonServices.js";
 import { getByIdTeam } from "./companyVsApplicationLoginService.js";
+import { applyPayrollAttendanceFlags } from "./teamPayrollAttendanceFlags.js";
 
 // My Company > Team List only (ticket #2529). /my-team is shared by many
 // pickers and filters that need the whole roster, so it is left alone; this
@@ -18,11 +19,13 @@ export const getCompanyTeamList = async (req) => {
     if (!me) return resBadRequest({ ack_msg: "Login id not found" });
 
     const response = await getByIdTeam(req);
-    const items = response?.data?.item;
-    if (response?.ack !== 1 || !Array.isArray(items)) return response;
+    const rawItems = response?.data?.item;
+    if (response?.ack !== 1 || !Array.isArray(rawItems)) return response;
+
+    const items = await applyPayrollAttendanceFlags(req, rawItems);
 
     const requester = await getCompanyByLoginId(me);
-    if (Number(requester?.company_flag) === 1) return response;
+    if (Number(requester?.company_flag) === 1) return { ...response, data: { ...response.data, item: items } };
 
     const directReports = await loginModel.findAll({
       where: {
