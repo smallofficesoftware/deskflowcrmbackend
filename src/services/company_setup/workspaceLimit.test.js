@@ -30,18 +30,6 @@ test("already above the limit stays blocked, existing ones untouched", () => {
   assert.equal(decideWorkspaceCreate({ hasPlanEntry: true, rawDataLimit: "2", used: 5 }).allowed, false);
 });
 
-test("add-on workspaces raise the plan limit", () => {
-  assert.deepEqual(decideWorkspaceCreate({ hasPlanEntry: true, rawDataLimit: "1", used: 1, extraWorkspaces: 2 }), { allowed: true, limit: 3, used: 1 });
-  assert.equal(decideWorkspaceCreate({ hasPlanEntry: true, rawDataLimit: "1", used: 3, extraWorkspaces: 2 }).allowed, false);
-  assert.equal(decideWorkspaceCreate({ hasPlanEntry: false, rawDataLimit: null, used: 1, extraWorkspaces: 1 }).allowed, true);
-});
-
-test("add-ons do not change an unlimited plan; junk extras ignored", () => {
-  assert.equal(decideWorkspaceCreate({ hasPlanEntry: true, rawDataLimit: "0", used: 9, extraWorkspaces: 3 }).limit, null);
-  assert.equal(decideWorkspaceCreate({ hasPlanEntry: true, rawDataLimit: "1", used: 1, extraWorkspaces: "x" }).allowed, false);
-  assert.equal(decideWorkspaceCreate({ hasPlanEntry: true, rawDataLimit: "1", used: 1, extraWorkspaces: -5 }).limit, 1);
-});
-
 test("pickRightsLimit: smallest positive limit across users, like the contact check", () => {
   assert.equal(pickRightsLimit([{ limit: 3 }, { limit: 2 }, { limit: "5" }]), 2);
   assert.equal(pickRightsLimit([{ limit: "1,00,000" }]), 100000);
@@ -55,10 +43,9 @@ test("pickRightsLimit: 0 = unlimited, empty / missing = nothing usable", () => {
   }
 });
 
-test("rights limit wins over the plan lookup; undefined falls back; add-ons stay on top", () => {
+test("rights limit wins over the plan lookup; undefined falls back", () => {
   assert.deepEqual(decideWorkspaceCreate({ hasPlanEntry: true, rawDataLimit: "1", used: 1, rightsLimit: 3 }), { allowed: true, limit: 3, used: 1 });
   assert.equal(decideWorkspaceCreate({ hasPlanEntry: true, rawDataLimit: "0", used: 9, rightsLimit: 2 }).allowed, false);
   assert.equal(decideWorkspaceCreate({ hasPlanEntry: false, rawDataLimit: null, used: 7, rightsLimit: null }).limit, null);
   assert.equal(decideWorkspaceCreate({ hasPlanEntry: false, rawDataLimit: null, used: 1, rightsLimit: undefined }).allowed, false);
-  assert.equal(decideWorkspaceCreate({ hasPlanEntry: true, rawDataLimit: "1", used: 2, rightsLimit: 2, extraWorkspaces: 1 }).allowed, true);
 });

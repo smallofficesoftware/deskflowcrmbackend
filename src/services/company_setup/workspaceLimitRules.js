@@ -32,11 +32,9 @@ export const pickRightsLimit = (rightsJsonList) => {
   return sawZero ? null : undefined;
 };
 
-/** { allowed, limit, used } - limit null = unlimited. extraWorkspaces = quantity bought as Admin Panel add-ons; ignored when the plan is unlimited. rightsLimit (see pickRightsLimit) wins over the plan lookup when it is not undefined. */
-export const decideWorkspaceCreate = ({ hasPlanEntry, rawDataLimit, used, extraWorkspaces = 0, rightsLimit }) => {
+/** { allowed, limit, used } - limit null = unlimited. rightsLimit (see pickRightsLimit) wins over the plan lookup when it is not undefined. */
+export const decideWorkspaceCreate = ({ hasPlanEntry, rawDataLimit, used, rightsLimit }) => {
   const planBase = hasPlanEntry ? parseWorkspaceLimit(rawDataLimit) : DEFAULT_WORKSPACE_LIMIT;
-  const base = rightsLimit !== undefined ? rightsLimit : planBase;
-  const extra = Number.isFinite(Number(extraWorkspaces)) && Number(extraWorkspaces) > 0 ? Math.floor(Number(extraWorkspaces)) : 0;
-  const limit = base == null ? null : base + extra;
+  const limit = rightsLimit !== undefined ? rightsLimit : planBase;
   return { allowed: limit == null || used < limit, limit, used };
 };
