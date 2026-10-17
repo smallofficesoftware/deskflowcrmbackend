@@ -274,6 +274,15 @@ const BODY_VARIABLE_DEFINITIONS = [
                 valueField: "voucher_number",
                 method: (req) => ordWvFetch(req)
             },
+            {
+                // account transaction: its voucher number (an old entry without one: # id)
+                module: "account_transaction",
+                endpoint: "/acc-wvfetch/:acc_id",
+                params: ["acc_id"],
+                fetchType: null,
+                valueField: "voucher_number",
+                method: (req) => accWvFetch(req)
+            },
         ],
     },
     {
