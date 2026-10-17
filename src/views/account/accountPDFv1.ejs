@@ -181,9 +181,9 @@
               <table border="0" style="width: 100%; border: 0">
                 <tbody>
                   <tr>
-                    <td style="width: 48%; vertical-align: top; padding: 4px 6px 4px 0; font-weight: bold;">Transaction ID:</td>
+                    <td style="width: 48%; vertical-align: top; padding: 4px 6px 4px 0; font-weight: bold;"><%= accountTransactions.voucher_number ? 'Voucher No.:' : 'Transaction ID:' %></td>
                     <td style="width: 52%; text-align: right; vertical-align: top; padding: 4px 0;">
-                      <span class="bolde-style"># <%= accountTransactions.id %></span>
+                      <span class="bolde-style"><%= accountTransactions.voucher_number || ('# ' + accountTransactions.id) %></span>
                     </td>
                   </tr>
 

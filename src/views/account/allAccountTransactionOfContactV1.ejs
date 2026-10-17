@@ -210,7 +210,7 @@
             <% } else { %> <% rowsWithBalance.forEach((tx, idx) => { const
             balCell = formatBalanceCell(tx.balance); %>
             <tr>
-              <td>#<%= tx.id %></td>
+              <td><%= tx.voucher_number || ('#' + tx.id) %></td>
               <td><%= tx.payment_date %></td>
               <td class="remark-cell"><%- tx.remark %></td>
               <td class="text-end"><%= tx.credit || '-' %></td>
