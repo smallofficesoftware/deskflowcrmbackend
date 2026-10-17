@@ -18,7 +18,7 @@ import {
   SERVER_OWNED_TYPES,
 } from "./formBuilderDdlBuilder.js";
 import { validateFormatPreset } from "./formBuilderFormatPresets.js";
-import { isInternalOnlyField } from "./formBuilderLookups.js";
+import { isInternalOnlyField, withoutInternalColumns } from "./formBuilderLookups.js";
 import { validateExtraFieldValue } from "./formBuilderExtraFieldValues.js";
 import { applyReadRestrictions, computeRestrictions, resolveRestrictions, writeLockedKeys } from "./formBuilderFieldRestrictions.js";
 import { approvalOf, approvalWriteState, editableKeysAt, initialStageState } from "./formBuilderApproval.js";
@@ -332,7 +332,7 @@ function buildValidatedAnswers({
   // Public: internal-only fields are dropped before anything else runs, so
   // a rule pointing at one behaves exactly as on the public fill screen
   // (which never receives those fields).
-  const scopeFields = isPublic ? fields.filter((f) => !isInternalOnlyField(f)) : fields;
+  const scopeFields = isPublic ? withoutInternalColumns(fields.filter((f) => !isInternalOnlyField(f)), { keepCalculations: true }) : fields;
   const visible = evaluateVisibility(scopeFields, safeAnswers);
   const outer = { fields: scopeFields, answers: safeAnswers, visible };
 

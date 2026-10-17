@@ -64,6 +64,18 @@ export function isInternalOnlyField(field) {
   );
 }
 
+// A column of a repeating table marked "staff only" (visible_to "internal") is
+// not shown on the public link and any value sent for it is ignored. Calculation
+// columns stay when `keepCalculations` is set: the server works them out itself
+// (a staff-only Amount still gets calculated on a public entry).
+export function withoutInternalColumns(fields, { keepCalculations = false } = {}) {
+  return fields.map((f) =>
+    f && f.type === "repeater" && Array.isArray(f.columns)
+      ? { ...f, columns: f.columns.filter((c) => c.visible_to !== "internal" || (keepCalculations && c.type === "calculation")) }
+      : f,
+  );
+}
+
 function nameOf(field) {
   return `“${field.label || field.key || "Untitled field"}”`;
 }

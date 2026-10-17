@@ -8,7 +8,7 @@
 // composite unique index).
 import { QueryTypes } from "sequelize";
 import { approvalOf, fieldStageId } from "./formBuilderApproval.js";
-import { isInternalOnlyField, isUserMaster } from "./formBuilderLookups.js";
+import { isInternalOnlyField, isUserMaster, withoutInternalColumns } from "./formBuilderLookups.js";
 import { parsePublicSettings, publicFormStatus } from "./formBuilderPublicSettings.js";
 import { createOtpChallenge, verifyOtpChallenge } from "./formBuilderPublicOtp.js";
 import companyModel from "../../models/company_setup/companyModel.js";
@@ -91,7 +91,7 @@ export const getPublicFormSchema = async (req) => {
     // Strip internal-only fields before ever sending schema to an
     // anonymous client (plan §1 visible_to / §2) — not just hidden by the
     // frontend.
-    let fields = parseSchema(form.published_schema_json).filter((f) => !isInternalOnlyField(f));
+    let fields = withoutInternalColumns(parseSchema(form.published_schema_json).filter((f) => !isInternalOnlyField(f)));
     // A form with approval stages: the public filler is stage 1 — fields of later stages are not shown.
     const approval = approvalOf(form.published_settings_json);
     if (approval.enabled) fields = fields.filter((f) => fieldStageId(f, approval.stages) === approval.stages[0].id);
