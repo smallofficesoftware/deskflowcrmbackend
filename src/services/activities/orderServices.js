@@ -2996,27 +2996,55 @@ export const orderUpdate = async (req, res) => {
       const customerName = findCartData.dataValues.to_customer_name;
       const createDateTime = findCartData.dataValues.created_date_time.toISOString();
 
-      await createAccountTransaction({
-        mode: update_cart.payment_type ? update_cart.payment_type : -1,
-        type: Number(update_cart.type) == 2 || Number(update_cart.type) == 3 || Number(update_cart.type) == 7 ? 1 : 2,
-        amount: update_cart.advance_payment,
-        referenceId: cart_id,
-        referenceTable: update_cart.account_transactions_ref_table || "carts",
-        remarkDetails: {
-          type_name: "Advance Payment",
-          invoiceNum: invoiceNum,
-          invoiceDate: invoiceDate,
-          customerName: customerName,
+      // The order's advance entry (if it has one) is updated, as for the invoice types
+      // above; a new one is only created when there is none yet (or the series number
+      // changed and the old entries were just removed).
+      const existingAdvance = await ATModel.findOne({
+        where: {
+          reference_id: cart_id,
+          reference_table: update_cart.account_transactions_ref_table || "carts",
+          isDelete: 0,
+          remark: { [Op.like]: "%Advance Payment%" },
         },
-        paymentDateTime: createDateTime,
-        approvedBy: 0,
-        contactMasterId: findCartData.dataValues.to_customer_id,
-        applicationLoginId: a_application_login_id,
-        companyMasterId: findCompanyId.company_masters_id,
-        miracle_account_legder: update_cart.miracle_account_ledger_adv ? update_cart.miracle_account_ledger_adv : "",
-        amount_type: 1,
-        req,
       });
+
+      if (existingAdvance) {
+        await ATModel.update(
+          {
+            amount: update_cart.advance_payment,
+            mode: update_cart.payment_type ? update_cart.payment_type : -1,
+            miracle_account_ledger: update_cart.miracle_account_ledger_adv ? update_cart.miracle_account_ledger_adv : "",
+          },
+          {
+            where: {
+              id: existingAdvance.id,
+              isDelete: 0,
+            },
+          }
+        );
+      } else {
+        await createAccountTransaction({
+          mode: update_cart.payment_type ? update_cart.payment_type : -1,
+          type: Number(update_cart.type) == 2 || Number(update_cart.type) == 3 || Number(update_cart.type) == 7 ? 1 : 2,
+          amount: update_cart.advance_payment,
+          referenceId: cart_id,
+          referenceTable: update_cart.account_transactions_ref_table || "carts",
+          remarkDetails: {
+            type_name: "Advance Payment",
+            invoiceNum: invoiceNum,
+            invoiceDate: invoiceDate,
+            customerName: customerName,
+          },
+          paymentDateTime: createDateTime,
+          approvedBy: 0,
+          contactMasterId: findCartData.dataValues.to_customer_id,
+          applicationLoginId: a_application_login_id,
+          companyMasterId: findCompanyId.company_masters_id,
+          miracle_account_legder: update_cart.miracle_account_ledger_adv ? update_cart.miracle_account_ledger_adv : "",
+          amount_type: 1,
+          req,
+        });
+      }
     }
 
     const cartItems = update_cart_items;

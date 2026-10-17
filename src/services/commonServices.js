@@ -8,6 +8,7 @@ import { requestContext } from "../config/context.js";
 import sequelize from "../config/sequelize.js";
 import { statusLogsMessageConfig } from "../helpers/statusLogsMessageConfig.js";
 import { accountTransactionsModel } from "../models/activities/accountTransactionsModel.js";
+import { resolveAccountTransactionSeries } from "./activities/accountTransactionSeries.js";
 import { cartItemModel } from "../models/activities/cartItemsModel.js";
 import { cartSerialNumberModel } from "../models/activities/cartSerialNumberModel.js";
 import { cartModel } from "../models/activities/cartsModel.js";
@@ -3295,6 +3296,20 @@ export const createAccountTransaction = async ({
       miracle_account_ledger: miracle_account_legder,
       amount_type: amount_type,
     };
+
+    // An advance payment is real money received / paid, so it gets a voucher number
+    // from its payment mode's series; the invoice's own ledger entry (amount_type 0)
+    // is identified by the invoice number and stays without one. A mode set to manual
+    // entry has nobody to type the number here, so that advance is saved without one.
+    if (Number(amount_type) === 1) {
+      const series = await resolveAccountTransactionSeries(req.tenantDB, {
+        company_masters_id: companyMasterId,
+        mode,
+        type,
+        payment_date_time: paymentDateTime,
+      });
+      Object.assign(transactionData, series.fields);
+    }
 
     // return transactionData;
     const accountHistoryMSG = accountTransactionsModel(req.tenantDB);

@@ -44,6 +44,7 @@ import { sendMultipleNotification } from "../company_setup/thirdPartyIntegration
 import { generateAccountStatementPdf } from "../pdfmeEngine/accountStatementGenerate.js";
 import { generateAccountTransactionPdf } from "../pdfmeEngine/accountTransactionGenerate.js";
 import { emitAutomationEvent } from "../automation/emit.js";
+import { resolveAccountTransactionSeries } from "./accountTransactionSeries.js";
 import { CART_LINK_REFERENCE_TABLE, checkCartLinkRules, getCartInfoMap, getCartLinkSettings, resolveCartIdByNumber } from "./accountTransactionCartLinkServices.js";
 
 // Loads a company's own pdfme template JSON for accountStatement/
@@ -282,6 +283,7 @@ export const getAllAccountTransactions = async (req, res) => {
     if (searchTerm) {
       whereClause[Op.or] = [
         { remark: { [Op.like]: `%${searchTerm}%` } },
+        { voucher_number: { [Op.like]: `%${searchTerm}%` } },
       ];
     }
 
@@ -968,7 +970,7 @@ export const updateAccountTransaction = async (req, res) => {
         msg_account_transaction_id: updatedTransaction.id,
         description:
           `<b>Account History</b><br>` +
-          `# ${updatedTransaction.id}<br>` +
+          `${updatedTransaction.voucher_number || `# ${updatedTransaction.id}`}<br>` +
           `Payment Type: ${transactionTypeLabel}<br>` +
           `<b>₹${updatedTransaction.amount.toFixed(2) || "0.00"
           } By ${paymentTypeName}</b><br>` +
@@ -1024,7 +1026,7 @@ export const updateAccountTransaction = async (req, res) => {
             if (tokens.length > 0) {
               await sendMultipleNotification({
                 deviceTokens: tokens,
-                title: `Transaction #${updatedTransaction.id} Approved by ${approverUsername || "Someone"}`,
+                title: `Transaction ${updatedTransaction.voucher_number || `#${updatedTransaction.id}`} Approved by ${approverUsername || "Someone"}`,
                 body: `${approverUsername || "Someone"} approved a ${transactionTypeLabel} of ₹${updatedTransaction.amount.toFixed(2)} via ${paymentTypeMap.get(Number(updatedTransaction.mode)) || "Unknown"}.`,
               });
             }
@@ -1059,7 +1061,11 @@ export const createAccountTransaction = async (req, res) => {
       remark,
       payment_date_time,
       auto_reverse_entry,
-      cart_id
+      cart_id,
+      sr_by_prifix,
+      entered_series_number,
+      reverse_sr_by_prifix,
+      reverse_entered_series_number
     } = req.body;
 
     // Validation
@@ -1150,9 +1156,35 @@ export const createAccountTransaction = async (req, res) => {
 
     let createdItems = [];
 
+    // Voucher number of each entry; both are worked out before anything is saved
+    const firstSeries = await resolveAccountTransactionSeries(tenantDB, {
+      company_masters_id: baseData.company_masters_id,
+      mode: baseData.mode,
+      type,
+      payment_date_time,
+      sr_by_prifix,
+      entered_series_number,
+    });
+    if (firstSeries.error) return resError({ ack_msg: firstSeries.error });
+
+    const oppositeType = Number(type) === 1 ? 2 : 1;
+    let secondSeries = { fields: {} };
+    if (auto_reverse_entry === 1) {
+      secondSeries = await resolveAccountTransactionSeries(tenantDB, {
+        company_masters_id: baseData.company_masters_id,
+        mode: baseData.mode,
+        type: oppositeType,
+        payment_date_time,
+        sr_by_prifix: reverse_sr_by_prifix,
+        entered_series_number: reverse_entered_series_number,
+      });
+      if (secondSeries.error) return resError({ ack_msg: secondSeries.error });
+    }
+
     // === Normal Entry ===
     const firstEntry = await accountTransaction.create({
       ...baseData,
+      ...firstSeries.fields,
       type: Number(type),
       ...(cart_id ? { reference_table: CART_LINK_REFERENCE_TABLE, reference_id: cart_id } : {})
     });
@@ -1161,10 +1193,9 @@ export const createAccountTransaction = async (req, res) => {
 
     if (auto_reverse_entry === 1) {
       // === Auto Create Opposite Type Entry ===
-      const oppositeType = Number(type) === 1 ? 2 : 1;
-
       const secondEntry = await accountTransaction.create({
         ...baseData,
+        ...secondSeries.fields,
         type: oppositeType
       });
 
@@ -1630,6 +1661,7 @@ export const allAccountTransactionOfContactPDF = async (req, res) => {
       if (Number(tx.type) === 2) running -= amt;
       return {
         id: tx.id,
+        voucher_number: tx.voucher_number || "",
         payment_date: new Date(tx.payment_date_time).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }),
         remark: tx.remark,
         reference: tx.reference_table ? `${tx.reference_table} #${tx.reference_id || ""}` : "-",
@@ -2180,7 +2212,20 @@ export const importAccountTransactionByExcel = async (req) => {
     }
 
     for (const item of finalData) {
+      // Auto series of the mode; a mode set to manual entry has no number in the sheet
+      const series = await resolveAccountTransactionSeries(tenantDB, {
+        company_masters_id: item.company_masters_id,
+        mode: item.mode,
+        type: item.type,
+        payment_date_time: item.payment_date_time,
+      });
+      if (series.error) {
+        errorRows.push(`${item.payment_type_name} ${item.type === 1 ? "credit" : "debit"} on ${item.payment_date_time}: ${series.error}`);
+        continue;
+      }
+
       const createdEntry = await accountTransaction.create({
+        ...series.fields,
         contact_masters_id: item.contact_masters_id,
         a_application_login_id: item.a_application_login_id,
         company_masters_id: item.company_masters_id,
@@ -2204,7 +2249,7 @@ export const importAccountTransactionByExcel = async (req) => {
           msg_account_transaction_id: createdEntry.id,
           description:
             `<b>Account History</b><br>` +
-            `# ${createdEntry.id}<br>` +
+            `${createdEntry.voucher_number || `# ${createdEntry.id}`}<br>` +
             `Payment Type: ${transactionTypeLabel}<br>` +
             `<b>₹${item.amount.toFixed(2)} By ${item.payment_type_name}</b><br>` +
             `${item.payment_date_time}<br>` +

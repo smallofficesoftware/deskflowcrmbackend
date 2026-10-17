@@ -66,7 +66,7 @@ export async function generateAccountStatementPdf({
     STATEMENT_COLUMNS.map((c) => {
       switch (c.key) {
         case "no":
-          return `#${tx.id}`;
+          return tx.voucher_number || `#${tx.id}`;
         case "date":
           return tx.payment_date ?? "";
         case "remark":
