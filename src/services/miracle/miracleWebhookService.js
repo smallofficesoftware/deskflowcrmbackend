@@ -1228,6 +1228,7 @@ export async function handleVoucherAddOrUpdate({ payload, context }) {
             applicationLoginId: tenantId,
             companyMasterId: companyId,
             miracle_account_legder: "",
+            skipVoucherSeries: true,
             req,
         });
     }

@@ -21,7 +21,7 @@ const splitPrefixes = (value) =>
     .map((prefix) => prefix.trim())
     .filter(Boolean);
 
-const renderVoucherNumber = (pattern, prefix, number, date) => {
+export const renderVoucherNumber = (pattern, prefix, number, date) => {
   const padded = String(number).padStart(2, "0");
   if (isValid(pattern) && pattern !== "0") {
     const parts = {

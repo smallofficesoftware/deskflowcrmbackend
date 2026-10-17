@@ -9,6 +9,7 @@ import sequelize from "../config/sequelize.js";
 import { statusLogsMessageConfig } from "../helpers/statusLogsMessageConfig.js";
 import { accountTransactionsModel } from "../models/activities/accountTransactionsModel.js";
 import { resolveAccountTransactionSeries } from "./activities/accountTransactionSeries.js";
+import { resolveInvoiceEntrySeries } from "./activities/invoiceEntrySeries.js";
 import { cartItemModel } from "../models/activities/cartItemsModel.js";
 import { cartSerialNumberModel } from "../models/activities/cartSerialNumberModel.js";
 import { cartModel } from "../models/activities/cartsModel.js";
@@ -3272,6 +3273,7 @@ export const createAccountTransaction = async ({
   companyMasterId,
   miracle_account_legder,
   amount_type,
+  skipVoucherSeries = false,
   req,
 }) => {
 
@@ -3297,17 +3299,37 @@ export const createAccountTransaction = async ({
       amount_type: amount_type,
     };
 
-    // An advance payment is real money received / paid, so it gets a voucher number
-    // from its payment mode's series; the invoice's own ledger entry (amount_type 0)
-    // is identified by the invoice number and stays without one. A mode set to manual
-    // entry has nobody to type the number here, so that advance is saved without one.
-    if (Number(amount_type) === 1) {
-      const series = await resolveAccountTransactionSeries(req.tenantDB, {
-        company_masters_id: companyMasterId,
-        mode,
-        type,
-        payment_date_time: paymentDateTime,
-      });
+    // Voucher number of the entry. An advance payment is real money received / paid,
+    // so it comes from its payment mode's series (the first prefix, no choice here;
+    // a mode set to manual entry has nobody to type it, so it is saved without one).
+    // The invoice's own debit / credit entry comes from the company's series for
+    // that cart type (Invoice Account Entry Series), if one is set. Entries made for
+    // a Miracle-origin invoice (skipVoucherSeries) keep Miracle's numbering and are
+    // re-created on every re-sync, so they take none.
+    if (!skipVoucherSeries) {
+      let series = { fields: {} };
+      if (Number(amount_type) === 1) {
+        series = await resolveAccountTransactionSeries(req.tenantDB, {
+          company_masters_id: companyMasterId,
+          mode,
+          type,
+          payment_date_time: paymentDateTime,
+        });
+      } else if (referenceTable === "carts" && referenceId) {
+        const cart = await cartModel(req.tenantDB).findOne({
+          where: { id: referenceId },
+          attributes: ["type"],
+          raw: true,
+        });
+        if (cart) {
+          series = await resolveInvoiceEntrySeries(req.tenantDB, {
+            company_masters_id: companyMasterId,
+            cartType: cart.type,
+            type,
+            payment_date_time: paymentDateTime,
+          });
+        }
+      }
       Object.assign(transactionData, series.fields);
     }
 
