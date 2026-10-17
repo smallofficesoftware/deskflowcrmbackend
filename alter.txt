@@ -4085,3 +4085,9 @@ UPDATE `payment_types` SET
 `credit_series_prefix` = CASE LOWER(TRIM(`payment_type_name`)) WHEN 'kasar account' THEN 'KR' WHEN 'other' THEN 'OR' WHEN 'cash' THEN 'CR' WHEN 'cheque' THEN 'QR' WHEN 'online portal' THEN 'PR' WHEN 'upi' THEN 'UR' WHEN 'bank transfer by neft' THEN 'NR' WHEN 'bank transfer by rtgs' THEN 'RR' WHEN 'bank transfer by imps' THEN 'IR' END,
 `debit_series_prefix` = CASE LOWER(TRIM(`payment_type_name`)) WHEN 'kasar account' THEN 'KP' WHEN 'other' THEN 'OP' WHEN 'cash' THEN 'CP' WHEN 'cheque' THEN 'QP' WHEN 'online portal' THEN 'PP' WHEN 'upi' THEN 'UP' WHEN 'bank transfer by neft' THEN 'NP' WHEN 'bank transfer by rtgs' THEN 'RP' WHEN 'bank transfer by imps' THEN 'IP' END
 WHERE `credit_series_prefix` = 'BR' AND `debit_series_prefix` = 'BP' AND LOWER(TRIM(`payment_type_name`)) IN ('kasar account','other','cash','cheque','online portal','upi','bank transfer by neft','bank transfer by rtgs','bank transfer by imps');
+
+
+17-10-2026 Dhaval
+-- migration: migration/master/migrations/20261017120000-add-invoice-entry-series-to-company-masters.js
+-- MASTER DB only (company_masters). Default series of the debit / credit entry an invoice creates in Account Transaction: one prefix + one pattern per cart type (sales invoice, purchase invoice, sales return, purchase return). A blank prefix = that entry gets no voucher number.
+ALTER TABLE `company_masters` ADD `invoice_entry_prefix` VARCHAR(50) NULL, ADD `invoice_entry_series_pattern` VARCHAR(100) NULL, ADD `purchase_entry_prefix` VARCHAR(50) NULL, ADD `purchase_entry_series_pattern` VARCHAR(100) NULL, ADD `return_sales_entry_prefix` VARCHAR(50) NULL, ADD `return_sales_entry_series_pattern` VARCHAR(100) NULL, ADD `return_purchase_entry_prefix` VARCHAR(50) NULL, ADD `return_purchase_entry_series_pattern` VARCHAR(100) NULL;
