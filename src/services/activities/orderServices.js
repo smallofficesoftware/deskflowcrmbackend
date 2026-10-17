@@ -59,6 +59,7 @@ import {
 } from "../../utils/appConstants.js";
 import { PAGE_ID, SALES_DEFINED_IDS_FOR_STATUS, STOCK_IN_OUT_ACCESSIBILITY } from "../../utils/AppEnumeration.js";
 import { numberToWordsCurrency } from "../../utils/numberToWordsCurrency.js";
+import { checkAdvanceSeries } from "./advancePaymentSeries.js";
 import {
   formatDateAndTimeCreateDateTime,
   formatDateCustom,
@@ -262,6 +263,18 @@ export const orderCreate = async (req, res) => {
           ack_msg: "Please select sr number date",
           developer_msg: "series date not entered",
         });
+      }
+    }
+
+    // Series / typed voucher number picked for the advance payment entry
+    if (is_approve == 1 && [2, 3, 4, 5, 6, 7].includes(Number(cart.type))) {
+      const advanceSeriesError = await checkAdvanceSeries(req, {
+        cart,
+        companyMasterId: findCompanyId.company_masters_id,
+        referenceTable: cart.account_transactions_ref_table,
+      });
+      if (advanceSeriesError) {
+        return resError({ ack_msg: advanceSeriesError, developer_msg: "advance series" });
       }
     }
 
@@ -641,6 +654,8 @@ export const orderCreate = async (req, res) => {
         applicationLoginId: a_application_login_id,
         companyMasterId: findCompanyId.company_masters_id,
         miracle_account_legder: cart.miracle_account_ledger_adv ? cart.miracle_account_ledger_adv : "",
+        advanceSeriesPrefix: cart.advance_series_prefix,
+        advanceEnteredSeriesNumber: cart.advance_entered_series_number,
         amount_type: 1,
         req,
       });
@@ -1930,6 +1945,19 @@ export const orderUpdate = async (req, res) => {
       }
     }
 
+    // Series / typed voucher number picked for the advance payment entry
+    if (is_approve == 1 && [2, 3, 4, 5, 6, 7].includes(Number(update_cart.type))) {
+      const advanceSeriesError = await checkAdvanceSeries(req, {
+        cart: update_cart,
+        companyMasterId: findCompanyId.company_masters_id,
+        cartId: cart_id,
+        referenceTable: update_cart.account_transactions_ref_table,
+      });
+      if (advanceSeriesError) {
+        return resError({ ack_msg: advanceSeriesError, developer_msg: "advance series" });
+      }
+    }
+
     let reference_cart_type;
 
     if ([3].includes(type) && reference_cart_id && reference_cart_id != "" && is_approve == 1 &&
@@ -2960,6 +2988,8 @@ export const orderUpdate = async (req, res) => {
           applicationLoginId: a_application_login_id,
           companyMasterId: findCompanyId.company_masters_id,
           miracle_account_legder: update_cart.miracle_account_ledger_adv ? update_cart.miracle_account_ledger_adv : "",
+          advanceSeriesPrefix: update_cart.advance_series_prefix,
+          advanceEnteredSeriesNumber: update_cart.advance_entered_series_number,
           amount_type: 1,
           req,
         });
@@ -3041,6 +3071,8 @@ export const orderUpdate = async (req, res) => {
           applicationLoginId: a_application_login_id,
           companyMasterId: findCompanyId.company_masters_id,
           miracle_account_legder: update_cart.miracle_account_ledger_adv ? update_cart.miracle_account_ledger_adv : "",
+          advanceSeriesPrefix: update_cart.advance_series_prefix,
+          advanceEnteredSeriesNumber: update_cart.advance_entered_series_number,
           amount_type: 1,
           req,
         });

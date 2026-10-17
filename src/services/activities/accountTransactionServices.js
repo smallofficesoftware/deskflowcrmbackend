@@ -1891,6 +1891,10 @@ export const generateAccountTransactionSampleSheet = async (req, res) => {
       remark: "Sample account transaction",
       // optional; required when the company has Bill to Bill Payment on
       cart_number: "INV-0001",
+      // optional; the voucher series when the payment mode has more than one (blank = its first)
+      series: "",
+      // required only when the payment mode is set to manual voucher entry
+      voucher_number: "",
     };
 
     const data = [excelColumnDefineArray];
@@ -2059,6 +2063,10 @@ export const importAccountTransactionByExcel = async (req) => {
       const rawAmount = row[colIndex["amount"]];
       const rawPaymentDate = row[colIndex["payment_date_time"]] ?? row[colIndex["payment_date"]];
       const rawRemark = row[colIndex["remark"]];
+      // Optional: the voucher series of the payment mode, and the typed voucher
+      // number for a payment mode set to manual entry.
+      const rawSeries = row[colIndex["series"]] ?? row[colIndex["sr_by_prifix"]];
+      const rawVoucherNo = row[colIndex["voucher_number"]] ?? row[colIndex["voucher_no"]];
 
       // Match Contact by Client Code
       const cleanCode = rawClientCode ? rawClientCode.toString().trim().toLowerCase() : null;
@@ -2185,6 +2193,7 @@ export const importAccountTransactionByExcel = async (req) => {
       if (rowCartId) importedAmountByCart.set(rowCartId, (importedAmountByCart.get(rowCartId) || 0) + amountVal);
 
       finalData.push({
+        rowNumber,
         cart_id: rowCartId,
         contact_masters_id: matchedContact.id,
         a_application_login_id,
@@ -2195,6 +2204,8 @@ export const importAccountTransactionByExcel = async (req) => {
         amount: amountVal,
         payment_date_time: paymentDateTime,
         remark: rawRemark ? rawRemark.toString().trim() : "",
+        sr_by_prifix: rawSeries ? rawSeries.toString().trim() : undefined,
+        entered_series_number: rawVoucherNo ? rawVoucherNo.toString().trim() : undefined,
         approve_by_a_application_login_id: isApproveRight ? a_application_login_id : 0,
         approve_date_time: isApproveRight ? now : "",
       });
@@ -2211,18 +2222,23 @@ export const importAccountTransactionByExcel = async (req) => {
       });
     }
 
+    let importedCount = 0;
     for (const item of finalData) {
-      // Auto series of the mode; a mode set to manual entry has no number in the sheet
+      // Voucher number: the sheet's `series` column picks the payment mode's series (blank =
+      // its first one); a mode set to manual entry takes the sheet's `voucher_number`.
       const series = await resolveAccountTransactionSeries(tenantDB, {
         company_masters_id: item.company_masters_id,
         mode: item.mode,
         type: item.type,
         payment_date_time: item.payment_date_time,
+        sr_by_prifix: item.sr_by_prifix,
+        entered_series_number: item.entered_series_number,
       });
       if (series.error) {
-        errorRows.push(`${item.payment_type_name} ${item.type === 1 ? "credit" : "debit"} on ${item.payment_date_time}: ${series.error}`);
+        errorRows.push(`Row ${item.rowNumber}: ${series.error}`);
         continue;
       }
+      importedCount += 1;
 
       const createdEntry = await accountTransaction.create({
         ...series.fields,
@@ -2264,7 +2280,7 @@ export const importAccountTransactionByExcel = async (req) => {
     }
 
     return resSuccess({
-      ack_msg: `Successfully imported ${finalData.length} account transactions.${duplicateRows.length ? ` ${duplicateRows.length} duplicate row(s) skipped.` : ""}${isApproveRight ? " All transactions approved automatically." : ""}`,
+      ack_msg: `Successfully imported ${importedCount} account transactions.${duplicateRows.length ? ` ${duplicateRows.length} duplicate row(s) skipped.` : ""}${isApproveRight ? " All transactions approved automatically." : ""}`,
       data: [...errorRows, ...duplicateRows].join("<br/>"),
     });
   } catch (error) {
