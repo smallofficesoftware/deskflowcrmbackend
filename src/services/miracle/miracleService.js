@@ -1392,7 +1392,8 @@ export const syncCaseBankPr = async (req) => {
                 const voudt = moment(getAcc.payment_date_time).format('YYYY-MM-DD');
 
                 // A voucher that came from Miracle keeps its own number (kept in the remark);
-                // anything made in Deskflow still goes out with the row id (ticket #2534).
+                // one made in Deskflow goes out with its voucher number (the payment mode's
+                // series), and an old one without a number with the row id (ticket #2534).
                 const { voucherNo, narr: remarkNarr } = parseReceiptRemark(getAcc.remark);
 
                 const payload = {
@@ -1400,7 +1401,7 @@ export const syncCaseBankPr = async (req) => {
                     uniqueId: getAcc.miracle_UniqueId || undefined,
                     voutyp: voutyp,
                     voudt: voudt,
-                    vouno: voucherNo || String(getAcc.id),
+                    vouno: voucherNo || getAcc.voucher_number || String(getAcc.id),
                     acc: con_acc_id,
                     oppacc: getAcc.miracle_account_ledger,
                     amount: Number(getAcc.amount || 0),

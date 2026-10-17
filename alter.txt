@@ -4069,3 +4069,19 @@ DROP TABLE IF EXISTS `form_builder_templates`;
 -- Form Builder "Save draft" on the fill screen and the My drafts box were removed; the per-person drafts table is no longer used. Every tenant DB + smalloffice_sample_tenant. Destroys any unfinished drafts people saved.
 -- Also removed its LIKE line from new_company_creation_sql/SQL/create-company/create_company_copy.sql.
 DROP TABLE IF EXISTS `form_builder_drafts`;
+
+
+17-10-2026 Dhaval
+-- migration: migration/tenant/migrations/20261017100000-add-voucher-series-to-account-transactions.js
+-- Voucher number series for account transactions (per payment mode, separate credit and debit series). Every tenant DB + smalloffice_sample_tenant. No new table, so no create_company_copy.sql change.
+ALTER TABLE `payment_types` ADD `credit_series_prefix` VARCHAR(255) NULL, ADD `credit_series_pattern` VARCHAR(100) NULL, ADD `credit_sr_manual` TINYINT NOT NULL DEFAULT 0, ADD `debit_series_prefix` VARCHAR(255) NULL, ADD `debit_series_pattern` VARCHAR(100) NULL, ADD `debit_sr_manual` TINYINT NOT NULL DEFAULT 0;
+ALTER TABLE `account_transactions` ADD `sr_by_prifix` VARCHAR(50) NULL, ADD `sr_by_number` INT NOT NULL DEFAULT 0, ADD `voucher_number` VARCHAR(100) NULL;
+ALTER TABLE `account_transactions` ADD INDEX `idx_account_transactions_series` (`mode`, `type`, `sr_by_prifix`, `isDelete`);
+-- Default series for payment types without one: Bank (transaction_type 0) = BR receipt / BP payment, otherwise Cash = CR / CP. Pattern 1/2/3A (e.g. BR/01/26-27).
+UPDATE `payment_types` SET `credit_series_prefix` = IF(`transaction_type` = 0, 'BR', 'CR'), `credit_series_pattern` = '1/2/3A' WHERE `credit_series_prefix` IS NULL OR `credit_series_prefix` = '';
+UPDATE `payment_types` SET `debit_series_prefix` = IF(`transaction_type` = 0, 'BP', 'CP'), `debit_series_pattern` = '1/2/3A' WHERE `debit_series_prefix` IS NULL OR `debit_series_prefix` = '';
+-- The ready-made payment types each get their own series (Kasar Account KR/KP, Other OR/OP, Cash CR/CP, Cheque QR/QP, Online Portal PR/PP, UPI UR/UP, NEFT NR/NP, RTGS RR/RP, IMPS IR/IP); one still on the untouched BR / BP default moves. Types a company added keep BR / BP.
+UPDATE `payment_types` SET
+`credit_series_prefix` = CASE LOWER(TRIM(`payment_type_name`)) WHEN 'kasar account' THEN 'KR' WHEN 'other' THEN 'OR' WHEN 'cash' THEN 'CR' WHEN 'cheque' THEN 'QR' WHEN 'online portal' THEN 'PR' WHEN 'upi' THEN 'UR' WHEN 'bank transfer by neft' THEN 'NR' WHEN 'bank transfer by rtgs' THEN 'RR' WHEN 'bank transfer by imps' THEN 'IR' END,
+`debit_series_prefix` = CASE LOWER(TRIM(`payment_type_name`)) WHEN 'kasar account' THEN 'KP' WHEN 'other' THEN 'OP' WHEN 'cash' THEN 'CP' WHEN 'cheque' THEN 'QP' WHEN 'online portal' THEN 'PP' WHEN 'upi' THEN 'UP' WHEN 'bank transfer by neft' THEN 'NP' WHEN 'bank transfer by rtgs' THEN 'RP' WHEN 'bank transfer by imps' THEN 'IP' END
+WHERE `credit_series_prefix` = 'BR' AND `debit_series_prefix` = 'BP' AND LOWER(TRIM(`payment_type_name`)) IN ('kasar account','other','cash','cheque','online portal','upi','bank transfer by neft','bank transfer by rtgs','bank transfer by imps');

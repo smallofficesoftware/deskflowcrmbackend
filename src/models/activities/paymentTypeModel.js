@@ -19,6 +19,26 @@ export const paymentTypeModel = (sequelize) => {
         transaction_type: {
             type: TINYINT,
         },
+        credit_series_prefix: {
+            type: STRING,
+        },
+        credit_series_pattern: {
+            type: STRING,
+        },
+        credit_sr_manual: {
+            type: TINYINT,
+            defaultValue: 0,
+        },
+        debit_series_prefix: {
+            type: STRING,
+        },
+        debit_series_pattern: {
+            type: STRING,
+        },
+        debit_sr_manual: {
+            type: TINYINT,
+            defaultValue: 0,
+        },
         created_date_time: {
             type: DATE,
             defaultValue: NOW,

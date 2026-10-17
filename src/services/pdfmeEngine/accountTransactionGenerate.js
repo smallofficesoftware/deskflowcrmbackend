@@ -99,8 +99,9 @@ export async function generateAccountTransactionPdf({
     contactSectionTitle: entitySectionTitle,
     txnSectionTitle: "Account Transaction",
 
-    txnIdLabel: "Transaction ID:",
-    txnIdValue: `# ${accountTransactions?.id ?? ""}`,
+    // a transaction with a voucher number shows it in place of the row id
+    txnIdLabel: accountTransactions?.voucher_number ? "Voucher No.:" : "Transaction ID:",
+    txnIdValue: accountTransactions?.voucher_number || `# ${accountTransactions?.id ?? ""}`,
     entityLabel,
     entityValue: resolvedEntityName,
 
