@@ -164,7 +164,7 @@ export async function resolveFormModelEntry(modelKey, tenantDB, company_masters_
 
   const form = await formBuilderFormModel(tenantDB).findOne({
     where: { id: formId, company_masters_id, isDelete: 0 },
-    attributes: ["id", "title", "published_schema_json"],
+    attributes: ["id", "title", "published_schema_json", "published_settings_json"],
     raw: true,
   });
   if (!form || !form.published_schema_json) return null;
@@ -194,10 +194,21 @@ export async function resolveFormModelEntry(modelKey, tenantDB, company_masters_
     }
   }
 
+  // The date field the form's reports filter by (Form settings > Reports).
+  let reportDateField = null;
+  try {
+    const published = typeof form.published_settings_json === "string" ? JSON.parse(form.published_settings_json) : form.published_settings_json;
+    const picked = published?.reports?.date_field;
+    if (picked && columns[picked]?.type === "date" && columns[picked].filterable) reportDateField = picked;
+  } catch {
+    reportDateField = null;
+  }
+
   return {
     label: `Form: ${form.title}`,
     isFormModel: true,
     formId,
+    reportDateField,
     // The fbs table has no a_application_login_id; "own" scope means the
     // person who submitted the entry.
     ownerColumn: "submitted_by_a_application_login_id",
@@ -338,11 +349,14 @@ export async function listFormModels(tenantDB, company_masters_id) {
 }
 
 // Same slim shape getGeneralFilterMeta() returns for static tables, for the
-// run screen's per-column filters. No generalFilters for forms.
+// run screen's per-column filters. Forms only offer the date-range slot (1):
+// on the date field picked in the form's settings (Reports > date field) when
+// there is one, else on the entry's Submitted Date.
 export function getFormFilterMeta(entry) {
   const filterableColumns = {};
   for (const [key, def] of Object.entries(entry.columns)) {
     if (def.filterable) filterableColumns[key] = { type: def.type, label: def.label };
   }
-  return { generalFilters: {}, columnTypes: {}, filterableColumns };
+  const dateColumn = entry.reportDateField || "created_date_time";
+  return { generalFilters: { 1: dateColumn }, columnTypes: { [dateColumn]: "date" }, filterableColumns };
 }
