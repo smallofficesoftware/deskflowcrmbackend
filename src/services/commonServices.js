@@ -3274,6 +3274,8 @@ export const createAccountTransaction = async ({
   miracle_account_legder,
   amount_type,
   skipVoucherSeries = false,
+  advanceSeriesPrefix,
+  advanceEnteredSeriesNumber,
   req,
 }) => {
 
@@ -3309,12 +3311,20 @@ export const createAccountTransaction = async ({
     if (!skipVoucherSeries) {
       let series = { fields: {} };
       if (Number(amount_type) === 1) {
-        series = await resolveAccountTransactionSeries(req.tenantDB, {
+        // The series / typed number picked in the Approve dialog; without one the
+        // payment mode's first series is used.
+        const seriesInput = {
           company_masters_id: companyMasterId,
           mode,
           type,
           payment_date_time: paymentDateTime,
+        };
+        series = await resolveAccountTransactionSeries(req.tenantDB, {
+          ...seriesInput,
+          sr_by_prifix: advanceSeriesPrefix,
+          entered_series_number: advanceEnteredSeriesNumber,
         });
+        if (series.error) series = await resolveAccountTransactionSeries(req.tenantDB, seriesInput);
       } else if (referenceTable === "carts" && referenceId) {
         const cart = await cartModel(req.tenantDB).findOne({
           where: { id: referenceId },
