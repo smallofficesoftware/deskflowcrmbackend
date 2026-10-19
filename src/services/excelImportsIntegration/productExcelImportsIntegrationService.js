@@ -1,4 +1,5 @@
 import moment from "moment";
+import { Op } from "sequelize";
 import XLSX from "xlsx";
 import { cartSerialNumberModel } from "../../models/activities/cartSerialNumberModel.js";
 import { applicationLoginTypeRightModel } from "../../models/application_login/applicationLoginTypeRightModel.js";
@@ -11,6 +12,7 @@ import { productModel } from "../../models/product_settings/productModel.js";
 import { productTypesModel } from "../../models/product_settings/productTypesModel.js";
 import { productUnitMasterModel } from "../../models/product_settings/productUnitMasterModel.js";
 import { taxModel } from "../../models/product_settings/taxModel.js";
+import { linkVariantAttributesByName } from "../product_settings/productVariantServices.js";
 import { PAGE_ID } from "../../utils/AppEnumeration.js";
 import {
     isValid,
@@ -279,6 +281,13 @@ export const addProductByExcelSheetV2 = async (req) => {
             "purchase_gst_label": "purchase_gst_id",
             "hsn_code": "hsn_code",
             "serial_number_tracking": "is_serial_number",
+            // Multi-variant products (plans/2026-10-18-product-variants-and-qty-pricing-plan.txt).
+            "product_type": "product_type",
+            "parent_product_code": "parent_product_code",
+            "attribute_1_name": "attribute_1_name",
+            "attribute_1_value": "attribute_1_value",
+            "attribute_2_name": "attribute_2_name",
+            "attribute_2_value": "attribute_2_value",
         };
 
         const customFormFieldModelIntance = customFieldFormModel(req.tenantDB);
@@ -398,7 +407,9 @@ export const addProductByExcelSheetV2 = async (req) => {
                         isDelete: 0,
                     },
                     raw: true,
-                    attributes: ["product_name", "product_code", "category_id"]
+                    // "id" added for multi-variant products (plans/2026-10-18-product-variants-
+                    // and-qty-pricing-plan.txt) - resolves parent_product_code to an id.
+                    attributes: ["id", "product_name", "product_code", "category_id"]
                 }),
                 CTProductGroupModel.findAll({
                     where: {
@@ -442,6 +453,18 @@ export const addProductByExcelSheetV2 = async (req) => {
                 existingProducts
                     .filter(p => p.product_code)
                     .map(p => String(p.product_code).trim().toLowerCase())
+            );
+
+            // Multi-variant products (plans/2026-10-18-product-variants-and-qty-pricing-plan.txt)
+            // - resolves a "Variant" row's parent_product_code to the parent's real id. The
+            // parent must already exist (created in an earlier import or via the UI) - this
+            // map is built from products that exist BEFORE this import runs, not from other
+            // rows in the same sheet, so a parent and its variants can't be created together
+            // in one pass.
+            const productIdByCode = new Map(
+                existingProducts
+                    .filter(p => p.product_code)
+                    .map(p => [String(p.product_code).trim().toLowerCase(), p.id])
             );
 
             const existingProductNameSet = new Map(
@@ -504,10 +527,13 @@ export const addProductByExcelSheetV2 = async (req) => {
             let invalidProductGroupNames = [];
             let productAlredyExistInGivenCategoryNames = [];
             let productTypesInvalidNames = [];
+            let variantParentNotFoundRows = [];
             let invalidUnitName = [];
             let rateGstInvalidRows = [];
             let invalidSerialTrackingRows = [];
             const sanitizedData = [];
+            // Multi-variant products (plans/2026-10-18-product-variants-and-qty-pricing-plan.txt).
+            const variantAttributePairsByCode = new Map();
 
             for (let i = 0; i < filterdData.length; i++) {
                 const v = filterdData[i];
@@ -523,6 +549,15 @@ export const addProductByExcelSheetV2 = async (req) => {
                 const purchase_rate = isValid(v.purchase_rate) ? v.purchase_rate.toString().trim() : "";
                 const purchase_gst_id = isValid(v.purchase_gst_id) ? v.purchase_gst_id.toString().trim() : "";
                 const product_code = isValid(v.product_code) ? v.product_code.toString().trim() : "";
+
+                // Multi-variant products (plans/2026-10-18-product-variants-and-qty-pricing-plan.txt).
+                const product_type_raw = isValid(v.product_type) ? v.product_type.toString().trim().toLowerCase() : "simple";
+                const is_variant_parent = product_type_raw === "variant parent" ? 1 : 0;
+                const parent_product_code = isValid(v.parent_product_code) ? v.parent_product_code.toString().trim() : "";
+                const variantAttributePairs = [
+                    { name: isValid(v.attribute_1_name) ? v.attribute_1_name.toString().trim() : "", value: isValid(v.attribute_1_value) ? v.attribute_1_value.toString().trim() : "" },
+                    { name: isValid(v.attribute_2_name) ? v.attribute_2_name.toString().trim() : "", value: isValid(v.attribute_2_value) ? v.attribute_2_value.toString().trim() : "" },
+                ];
 
                 const min_stock_quantity = isValid(v.min_stock_quantity) ? v.min_stock_quantity.toString().trim() : "";
                 const max_stock_quantity = isValid(v.max_stock_quantity) ? v.max_stock_quantity.toString().trim() : "";
@@ -563,6 +598,22 @@ export const addProductByExcelSheetV2 = async (req) => {
                 if (!isValid(unit)) {
                     unitBlankRows.push(rowNumber);
                     continue;
+                }
+
+                // Multi-variant products (plans/2026-10-18-product-variants-and-qty-pricing-plan.txt)
+                // - a "Variant" row must resolve its parent_product_code to an EXISTING
+                // product (see productIdByCode's own note: not resolvable within the same
+                // sheet). "Variant Parent"/"Simple" rows never read parent_product_code at
+                // all, even if a stray value is present in that column.
+                let variant_parent_product_id = null;
+                if (product_type_raw === "variant") {
+                    variant_parent_product_id = parent_product_code
+                        ? productIdByCode.get(parent_product_code.toLowerCase()) || null
+                        : null;
+                    if (!variant_parent_product_id) {
+                        variantParentNotFoundRows.push(rowNumber);
+                        continue;
+                    }
                 }
 
                 // if (!isValid(rate)) {
@@ -759,6 +810,9 @@ export const addProductByExcelSheetV2 = async (req) => {
                     product_inner_qty: product_inner_qty_int,
                     product_outer_qty: product_outer_qty_int,
                     is_serial_number,
+                    // Multi-variant products (plans/2026-10-18-product-variants-and-qty-pricing-plan.txt).
+                    is_variant_parent,
+                    parent_product_id: variant_parent_product_id,
                 };
 
                 const sanitizedRow = processRowDynamic(
@@ -769,6 +823,16 @@ export const addProductByExcelSheetV2 = async (req) => {
                 );
 
                 sanitizedData.push(sanitizedRow);
+
+                // Multi-variant products - keyed by product_code (not row index) so it
+                // survives however bulkCreate's result ends up ordered; resolved to a real
+                // product id by re-querying after insert, see below.
+                if (isValid(product_code) && variantAttributePairs.some(p => p.name && p.value)) {
+                    variantAttributePairsByCode.set(product_code.toLowerCase(), {
+                        variantAttributePairs,
+                        parentProductId: variant_parent_product_id,
+                    });
+                }
             }
 
 
@@ -791,6 +855,7 @@ export const addProductByExcelSheetV2 = async (req) => {
                 { rows: invalidUnitName, text: "Invalid unit." },
                 { rows: rateGstInvalidRows, text: "Invalid rate or GST." },
                 { rows: invalidSerialTrackingRows, text: "Invalid serial number tracking (use Yes or No)." },
+                { rows: variantParentNotFoundRows, text: "Parent Product Code not found - the parent must already exist before importing its variants." },
             ];
 
             // Build message
@@ -929,6 +994,36 @@ export const addProductByExcelSheetV2 = async (req) => {
                 }
             );
 
+            // Multi-variant products (plans/2026-10-18-product-variants-and-qty-pricing-plan.txt)
+            // - re-queries by product_code rather than trusting bulkCreate's own returned
+            // rows for ids: MySQL has no multi-row RETURNING, so Sequelize's "returning"
+            // option on bulkCreate is not reliable there for getting real new ids back.
+            if (variantAttributePairsByCode.size > 0) {
+                const newlyInsertedProducts = await CTproductModel.findAll({
+                    where: {
+                        company_masters_id: findCompanyId.company_masters_id,
+                        // Original-case codes: variantAttributePairsByCode's keys are already
+                        // lowercased, matched back below - Op.in needs the real stored values.
+                        product_code: { [Op.in]: [...new Set(productInsertData.map(p => p.product_code))] },
+                        isDelete: 0,
+                    },
+                    attributes: ["id", "product_code"],
+                    raw: true,
+                });
+                for (const product of newlyInsertedProducts) {
+                    const code = String(product.product_code || "").trim().toLowerCase();
+                    const pending = variantAttributePairsByCode.get(code);
+                    if (!pending) continue;
+                    await linkVariantAttributesByName(
+                        req.tenantDB,
+                        findCompanyId.company_masters_id,
+                        product.id,
+                        pending.parentProductId,
+                        pending.variantAttributePairs
+                    );
+                }
+            }
+
             if (isValid(insertProduct)) {
                 return resSuccess({
                     code: 200,
@@ -1039,6 +1134,15 @@ export const addProductByExcelSheetUpdateData = async (req) => {
                 "product_outer_qty": "product_outer_qty",
                 "product_outer_unit": "product_outer_unit",
             }),
+            // Multi-variant products (plans/2026-10-18-product-variants-and-qty-pricing-plan.txt).
+            "Product Type": "product_type",
+            "product_type": "product_type",
+            "Parent Product Code": "parent_product_code",
+            "parent_product_code": "parent_product_code",
+            "attribute_1_name": "attribute_1_name",
+            "attribute_1_value": "attribute_1_value",
+            "attribute_2_name": "attribute_2_name",
+            "attribute_2_value": "attribute_2_value",
         };
 
         // ================= CUSTOM FIELD =================
@@ -1231,7 +1335,9 @@ export const addProductByExcelSheetUpdateData = async (req) => {
                         findCompanyId.company_masters_id,
                     isDelete: 0,
                 },
-                attributes: ["id", "is_serial_number"],
+                // "product_code" added for multi-variant products (plans/2026-10-18-
+                // product-variants-and-qty-pricing-plan.txt) - resolves parent_product_code.
+                attributes: ["id", "is_serial_number", "product_code"],
                 raw: true,
             }),
             taxModelInstance.findAll({
@@ -1300,10 +1406,19 @@ export const addProductByExcelSheetUpdateData = async (req) => {
             existingProducts.map((p) => Number(p.id))
         );
 
+        // Multi-variant products (plans/2026-10-18-product-variants-and-qty-pricing-plan.txt)
+        // - resolves a "Variant" row's parent_product_code to the parent's real id.
+        const productIdByCode = new Map(
+            existingProducts
+                .filter((p) => p.product_code)
+                .map((p) => [String(p.product_code).trim().toLowerCase(), Number(p.id)])
+        );
+
         // ================= VALIDATION ARRAYS =================
 
         let productIdBlankRows = [];
         let productNotFoundRows = [];
+        let variantParentNotFoundRows = [];
         let productNameBlankRows = [];
         let gstBlankRows = [];
         let purchaseGstBlankRows = [];
@@ -1315,6 +1430,8 @@ export const addProductByExcelSheetUpdateData = async (req) => {
         let serialTrackingLockedRows = [];
 
         const sanitizedData = [];
+        // Multi-variant products (plans/2026-10-18-product-variants-and-qty-pricing-plan.txt).
+        const pendingVariantLinks = [];
 
         // ================= LOOP =================
         for (let i = 0; i < filterdData.length; i++) {
@@ -1420,6 +1537,25 @@ export const addProductByExcelSheetUpdateData = async (req) => {
                 continue;
             }
 
+            // Multi-variant products (plans/2026-10-18-product-variants-and-qty-pricing-plan.txt).
+            const product_type_raw = isValid(v.product_type) ? v.product_type.toString().trim().toLowerCase() : "simple";
+            const is_variant_parent = product_type_raw === "variant parent" ? 1 : 0;
+            const parent_product_code = isValid(v.parent_product_code) ? v.parent_product_code.toString().trim() : "";
+            const variantAttributePairs = [
+                { name: isValid(v.attribute_1_name) ? v.attribute_1_name.toString().trim() : "", value: isValid(v.attribute_1_value) ? v.attribute_1_value.toString().trim() : "" },
+                { name: isValid(v.attribute_2_name) ? v.attribute_2_name.toString().trim() : "", value: isValid(v.attribute_2_value) ? v.attribute_2_value.toString().trim() : "" },
+            ];
+            let variant_parent_product_id = null;
+            if (product_type_raw === "variant") {
+                variant_parent_product_id = parent_product_code
+                    ? productIdByCode.get(parent_product_code.toLowerCase()) || null
+                    : null;
+                if (!variant_parent_product_id) {
+                    variantParentNotFoundRows.push(rowNumber);
+                    continue;
+                }
+            }
+
             if (!isValid(product_name)) {
                 productNameBlankRows.push(rowNumber);
                 continue;
@@ -1520,6 +1656,9 @@ export const addProductByExcelSheetUpdateData = async (req) => {
                 ...(product_outer_unit !== undefined && { product_outer_unit }),
                 ...(product_group_id !== undefined && { product_group_id }),
                 ...(category_id !== undefined && { category_id }),
+                // Multi-variant products (plans/2026-10-18-product-variants-and-qty-pricing-plan.txt).
+                is_variant_parent,
+                parent_product_id: variant_parent_product_id,
             };
             // `...v` carries the raw sheet text ("Yes"/"No"); replace with 1/2 or drop.
             if (is_serial_number !== undefined) {
@@ -1530,6 +1669,14 @@ export const addProductByExcelSheetUpdateData = async (req) => {
             delete objCreated.product_group;
             delete objCreated.category_name;
             delete objCreated.product_category;
+            // Raw variant columns consumed above into is_variant_parent/parent_product_id/
+            // variantAttributePairs - not real products columns themselves.
+            delete objCreated.product_type;
+            delete objCreated.parent_product_code;
+            delete objCreated.attribute_1_name;
+            delete objCreated.attribute_1_value;
+            delete objCreated.attribute_2_name;
+            delete objCreated.attribute_2_value;
 
             const sanitizedRow = processRowDynamic(
                 objCreated,
@@ -1539,6 +1686,17 @@ export const addProductByExcelSheetUpdateData = async (req) => {
             );
 
             sanitizedData.push(sanitizedRow);
+
+            // Multi-variant products - this is an update-by-id sheet, so the product id is
+            // already known (unlike the create sheet, no post-insert code->id resolution
+            // needed) - link immediately once validation for this row has passed.
+            if (variantAttributePairs.some(p => p.name && p.value)) {
+                pendingVariantLinks.push({
+                    productId: id,
+                    parentProductId: variant_parent_product_id,
+                    variantAttributePairs,
+                });
+            }
         }
 
         // ================= RESPONSE MESSAGE =================
@@ -1587,6 +1745,10 @@ export const addProductByExcelSheetUpdateData = async (req) => {
             {
                 rows: serialTrackingLockedRows,
                 text: "Serial number tracking can't be turned off: this product already has serial numbers."
+            },
+            {
+                rows: variantParentNotFoundRows,
+                text: "Parent Product Code not found - the parent must already exist before importing its variants."
             },
         ];
 
@@ -1637,6 +1799,19 @@ export const addProductByExcelSheetUpdateData = async (req) => {
             if (updated[0] > 0) {
                 updatedCount++;
             }
+        }
+
+        // Multi-variant products (plans/2026-10-18-product-variants-and-qty-pricing-plan.txt) -
+        // after every row's own update succeeds, since linking depends on nothing the
+        // update itself might have changed.
+        for (const pending of pendingVariantLinks) {
+            await linkVariantAttributesByName(
+                req.tenantDB,
+                findCompanyId.company_masters_id,
+                pending.productId,
+                pending.parentProductId,
+                pending.variantAttributePairs
+            );
         }
 
         // ================= SUCCESS =================

@@ -18,6 +18,7 @@ import { productModel } from "../../models/product_settings/productModel.js";
 import { productTypesModel } from "../../models/product_settings/productTypesModel.js";
 import { productUnitMasterModel } from "../../models/product_settings/productUnitMasterModel.js";
 import { taxModel } from "../../models/product_settings/taxModel.js";
+import { getVariantOptionLabelsForProducts } from "./productVariantServices.js";
 import { EXPORTS_LINK_EXTENDED, PRODUCT_IMG_LINK_EXTENDED } from "../../utils/appConstants.js";
 import { PAGE_ID } from "../../utils/AppEnumeration.js";
 import { exportData } from "../../utils/exporter.js";
@@ -1373,6 +1374,19 @@ export const generateProductSampleSheet = async (req) => {
       "purchase_gst_label": "GST 18%",
       "hsn_code": "",
       "serial_number_tracking": "No",
+      // Multi-variant products (plans/2026-10-18-product-variants-and-qty-pricing-plan.txt).
+      // product_type: "Simple" (default, this demo row) | "Variant Parent" | "Variant".
+      // parent_product_code only applies to "Variant" rows, and the parent row must
+      // already exist (by product_code) before its variants are imported - it is not
+      // resolved across rows within the same sheet. Up to 2 attribute slots per row,
+      // matching the number of columns a sheet can reasonably carry (the UI supports
+      // unlimited attributes; bulk import does not).
+      "product_type": "Simple",
+      "parent_product_code": "",
+      "attribute_1_name": "",
+      "attribute_1_value": "",
+      "attribute_2_name": "",
+      "attribute_2_value": "",
     };
 
     /** Merge dynamic fields **/
@@ -1504,6 +1518,15 @@ export const getExportsProducts = async (req) => {
       "purchase_rate": "Purchase Rate",
       "purchase_gst_per": "Purchase GST (%)",
       "purchase_net_rate": "Purchase Net Rate",
+      // Multi-variant products (plans/2026-10-18-product-variants-and-qty-pricing-plan.txt) -
+      // mirrors the sample sheet's columns so an exported file can be edited and
+      // re-imported through the same parser unchanged.
+      "product_type": "Product Type",
+      "parent_product_code": "Parent Product Code",
+      "attribute_1_name": "Attribute 1 Name",
+      "attribute_1_value": "Attribute 1 Value",
+      "attribute_2_name": "Attribute 2 Name",
+      "attribute_2_value": "Attribute 2 Value",
     };
 
     const excelColumnDefineArrayDy = { ...excelColumnDefineArray, ...getCustomFormFieldObj };
@@ -1531,6 +1554,21 @@ export const getExportsProducts = async (req) => {
       },
     });
 
+    // Multi-variant products (plans/2026-10-18-product-variants-and-qty-pricing-plan.txt) -
+    // computed once for the whole export, not per row: a company-wide id->code map to
+    // resolve parent_product_code (a variant's parent may be outside the current
+    // search/category filter), and every variant row's attribute-value labels.
+    const allProductsForCodeLookup = await productCustom.findAll({
+      where: { company_masters_id: companyDetail.company_masters_id, isDelete: 0 },
+      attributes: ["id", "product_code"],
+      raw: true,
+    });
+    const productCodeById = new Map(allProductsForCodeLookup.map((p) => [p.id, p.product_code]));
+    const variantLabelsByProductId = await getVariantOptionLabelsForProducts(
+      req.tenantDB,
+      productsList.map((p) => p.id)
+    );
+
     const sanitizedContacts = await Promise.all(
       productsList.map(async (productItem) => {
         const sanitized = sanitizeObjectOfNull(productItem.toJSON());
@@ -1549,6 +1587,20 @@ export const getExportsProducts = async (req) => {
         }
 
         sanitized.category_id = sanitized?.category_name || "";
+
+        sanitized.product_type = productItem.is_variant_parent
+          ? "Variant Parent"
+          : productItem.parent_product_id
+            ? "Variant"
+            : "Simple";
+        sanitized.parent_product_code = productItem.parent_product_id
+          ? productCodeById.get(productItem.parent_product_id) || ""
+          : "";
+        const labels = variantLabelsByProductId[productItem.id] || [];
+        sanitized.attribute_1_name = labels[0]?.attribute_name || "";
+        sanitized.attribute_1_value = labels[0]?.value || "";
+        sanitized.attribute_2_name = labels[1]?.attribute_name || "";
+        sanitized.attribute_2_value = labels[1]?.value || "";
 
         let objectTemp = {};
         Object.keys(excelColumnDefineArrayDy).map((k) => {
@@ -1692,6 +1744,15 @@ export const getExportsProductsForUpdateData = async (req) => {
         product_outer_qty: "product_outer_qty",
         product_outer_unit: "product_outer_unit",
       }),
+      // Multi-variant products (plans/2026-10-18-product-variants-and-qty-pricing-plan.txt) -
+      // mirrors the sample sheet / plain export's columns so this sheet round-trips
+      // through the same update-import parser unchanged.
+      product_type: "Product Type",
+      parent_product_code: "Parent Product Code",
+      attribute_1_name: "Attribute 1 Name",
+      attribute_1_value: "Attribute 1 Value",
+      attribute_2_name: "Attribute 2 Name",
+      attribute_2_value: "Attribute 2 Value",
     };
 
     const excelColumnDefineArrayDy = {
@@ -1767,6 +1828,19 @@ export const getExportsProductsForUpdateData = async (req) => {
       ])
     );
 
+    // Multi-variant products (plans/2026-10-18-product-variants-and-qty-pricing-plan.txt) -
+    // same two lookups as the plain export, computed once for the whole sheet.
+    const allProductsForCodeLookup = await productCustom.findAll({
+      where: { company_masters_id: companyDetail.company_masters_id, isDelete: 0 },
+      attributes: ["id", "product_code"],
+      raw: true,
+    });
+    const productCodeById = new Map(allProductsForCodeLookup.map((p) => [p.id, p.product_code]));
+    const variantLabelsByProductId = await getVariantOptionLabelsForProducts(
+      req.tenantDB,
+      productsList.map((p) => p.id)
+    );
+
     const sanitizedContacts = productsList.map((productItem) => {
       const sanitized = sanitizeObjectOfNull(productItem.toJSON());
       sanitized['gst_id'] = sanitized['gst_id'] ? taxMasterIdGroupSet.get(Number(sanitized['gst_id'])) : ''
@@ -1781,6 +1855,21 @@ export const getExportsProductsForUpdateData = async (req) => {
       if (outerQtyActive) {
         sanitized['product_outer_unit'] = sanitized['product_outer_unit'] ? unitMasterIdGroupSet.get(Number(sanitized['product_outer_unit'])) || '' : ''
       }
+
+      sanitized.product_type = productItem.is_variant_parent
+        ? "Variant Parent"
+        : productItem.parent_product_id
+          ? "Variant"
+          : "Simple";
+      sanitized.parent_product_code = productItem.parent_product_id
+        ? productCodeById.get(productItem.parent_product_id) || ""
+        : "";
+      const labels = variantLabelsByProductId[productItem.id] || [];
+      sanitized.attribute_1_name = labels[0]?.attribute_name || "";
+      sanitized.attribute_1_value = labels[0]?.value || "";
+      sanitized.attribute_2_name = labels[1]?.attribute_name || "";
+      sanitized.attribute_2_value = labels[1]?.value || "";
+
       let objectTemp = {};
 
       Object.keys(excelColumnDefineArrayDy).map((k) => {

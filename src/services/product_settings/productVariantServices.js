@@ -223,6 +223,97 @@ export const getVariants = async (req) => {
   }
 };
 
+/** Bulk Excel import/export (plans/2026-10-18-product-variants-and-qty-pricing-plan.txt) -
+ * resolves {name, value} pairs straight from a spreadsheet row to attribute/value rows
+ * under a parent (find-or-create both, since a bulk sheet names attributes/values by
+ * label, not by id) and links the given variant product to them. Idempotent: replaces
+ * any existing links for this product_id, so re-importing the same sheet (or an edited
+ * update sheet) never leaves stale option-value rows behind. No-ops cleanly if every
+ * pair is empty (a plain "Simple" product row has none). */
+export const linkVariantAttributesByName = async (
+  tenantDB,
+  company_masters_id,
+  productId,
+  parentProductId,
+  attributePairs
+) => {
+  const validPairs = (attributePairs || []).filter((p) => p?.name && p?.value);
+  if (!validPairs.length) return;
+
+  const AttributeModel = productVariantAttributeModel(tenantDB);
+  const ValueModel = productVariantAttributeValueModel(tenantDB);
+  const OptionValueModel = productVariantOptionValueModel(tenantDB);
+
+  const valueIds = [];
+  for (const { name, value } of validPairs) {
+    let attribute = await AttributeModel.findOne({
+      where: { parent_product_id: parentProductId, attribute_name: name, isDelete: 0 },
+    });
+    if (!attribute) {
+      attribute = await AttributeModel.create({
+        company_masters_id,
+        parent_product_id: parentProductId,
+        attribute_name: name,
+      });
+    }
+
+    let attrValue = await ValueModel.findOne({
+      where: { product_variant_attribute_id: attribute.id, value, isDelete: 0 },
+    });
+    if (!attrValue) {
+      attrValue = await ValueModel.create({
+        company_masters_id,
+        product_variant_attribute_id: attribute.id,
+        value,
+      });
+    }
+    valueIds.push(attrValue.id);
+  }
+
+  await OptionValueModel.update({ isDelete: 1 }, { where: { product_id: productId } });
+  await OptionValueModel.bulkCreate(
+    valueIds.map((id) => ({
+      company_masters_id,
+      product_id: productId,
+      product_variant_attribute_value_id: id,
+    }))
+  );
+};
+
+/** Attribute-value labels for a set of variant product ids, for bulk export (plan,
+ * same doc) - returns { [productId]: [{attribute_name, value}] } so the caller can
+ * flatten into "attribute_1_name"/"attribute_1_value" style spreadsheet columns. */
+export const getVariantOptionLabelsForProducts = async (tenantDB, productIds) => {
+  if (!productIds?.length) return {};
+
+  const OptionValueModel = productVariantOptionValueModel(tenantDB);
+  const ValueModel = productVariantAttributeValueModel(tenantDB);
+  const AttributeModel = productVariantAttributeModel(tenantDB);
+
+  const optionValues = await OptionValueModel.findAll({
+    where: { product_id: { [Op.in]: productIds }, isDelete: 0 },
+    raw: true,
+  });
+  if (!optionValues.length) return {};
+
+  const valueIds = [...new Set(optionValues.map((ov) => ov.product_variant_attribute_value_id))];
+  const values = await ValueModel.findAll({ where: { id: { [Op.in]: valueIds } }, raw: true });
+  const attributeIds = [...new Set(values.map((v) => v.product_variant_attribute_id))];
+  const attributes = await AttributeModel.findAll({ where: { id: { [Op.in]: attributeIds } }, raw: true });
+
+  const valueById = new Map(values.map((v) => [v.id, v]));
+  const attributeById = new Map(attributes.map((a) => [a.id, a]));
+
+  const result = {};
+  for (const ov of optionValues) {
+    const value = valueById.get(ov.product_variant_attribute_value_id);
+    const attribute = value ? attributeById.get(value.product_variant_attribute_id) : null;
+    if (!attribute || !value) continue;
+    (result[ov.product_id] ||= []).push({ attribute_name: attribute.attribute_name, value: value.value });
+  }
+  return result;
+};
+
 /** Links an already-created variant (products row, parent_product_id already set via
  * /create-product) to its chosen attribute values - one row per attribute. Called right
  * after /create-product succeeds for a new variant, not a replacement for it. */
