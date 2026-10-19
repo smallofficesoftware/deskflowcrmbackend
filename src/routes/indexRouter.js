@@ -50,6 +50,7 @@ import quickSearchRouter from "./activities/quickSearchRouter.js";
 import reminderRouter from "./activities/reminderRouter.js";
 import routePlannerRouter from "./activities/routePlannerRouter.js";
 import stockAdjustmentRouter from "./activities/stockAdjustmentRouter.js";
+import warehouseTransferReportRouter from "./activities/warehouseTransferReportRouter.js";
 import TaskManagement from './activities/taskManagementRouter.js';
 import TaskChecklist from './activities/taskChecklistRouter.js';
 import TaskMessageHistory from './activities/taskMessageHistoryRouter.js';
@@ -203,6 +204,7 @@ export default () => {
   employeeAccountTransactionRouter(app);
   productBillOfMaterialRouter(app);
   stockAdjustmentRouter(app);
+  warehouseTransferReportRouter(app);
   supportTicketRouter(app);
   serialRequirementRouter(app);
   whatsappRoutes(app);
