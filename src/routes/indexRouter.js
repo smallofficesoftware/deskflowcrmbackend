@@ -105,6 +105,7 @@ import priceListItemRouter from "./product_settings/priceListItemRouter.js";
 import priceListMasterRouter from "./product_settings/priceListMasterRouter.js";
 import productBillOfMaterialRouter from "./product_settings/productBillOfMaterialRouter.js";
 import productRouter from "./product_settings/productRouter.js";
+import productVariantRouter from "./product_settings/productVariantRouter.js";
 import ProductUnitGet from "./product_settings/productUnitMasterRouter.js";
 import taxRouter from "./product_settings/taxRouter.js";
 import JobCardRouter from "./production/JobCardRouter.js";
@@ -126,6 +127,7 @@ export default () => {
   companyRouter(app);
   companyVsApplicationLoginRouter(app);
   productRouter(app);
+  productVariantRouter(app);
   reminderRouter(app);
   priceListMasterRouter(app);
   priceListItemRouter(app);

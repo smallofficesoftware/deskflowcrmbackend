@@ -615,6 +615,7 @@ export const productCreate = async (req) => {
       product_width: product_width,
       is_serial_number: is_serial_number,
       is_variant_parent: req.body.is_variant_parent ? 1 : 0,
+      parent_product_id: req.body.parent_product_id || null,
       product_height: product_height,
       rate: parseFloat(rate || 0).toFixed(2),
       GST: GST,
