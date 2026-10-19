@@ -233,6 +233,10 @@ INSERT INTO `products` SELECT * FROM smalloffice_sample_tenant.products;
 COMMIT;
 ALTER TABLE `products` ENABLE KEYS;
 
+CREATE TABLE `product_variant_attributes` LIKE smalloffice_sample_tenant.product_variant_attributes;
+CREATE TABLE `product_variant_attribute_values` LIKE smalloffice_sample_tenant.product_variant_attribute_values;
+CREATE TABLE `product_variant_option_values` LIKE smalloffice_sample_tenant.product_variant_option_values;
+
 ALTER TABLE `contact_masters`  DISABLE KEYS;
 START TRANSACTION;
 INSERT INTO `contact_masters` SELECT * FROM smalloffice_sample_tenant.contact_masters;

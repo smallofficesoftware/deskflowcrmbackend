@@ -55,6 +55,17 @@ export const productModel = (sequelize) => {
       product_group_id: {
         type: INTEGER,
       },
+      parent_product_id: {
+        // Self-FK to products.id. Set on a variant row, pointing at its parent
+        // (plans/2026-10-18-product-variants-and-qty-pricing-plan.txt, 4.1).
+        type: INTEGER,
+      },
+      is_variant_parent: {
+        // 1 = non-sellable template row (e.g. "T-Shirt" itself) - exclude from
+        // direct sale in the product picker (plan Q3).
+        type: TINYINT,
+        defaultValue: 0,
+      },
       weight_or_size: {
         type: DOUBLE,
       },

@@ -4427,3 +4427,325 @@ DROP TABLE IF EXISTS `form_builder_templates`;
 -- Form Builder "Save draft" on the fill screen and the My drafts box were removed; the per-person drafts table is no longer used. Every tenant DB + smalloffice_sample_tenant. Destroys any unfinished drafts people saved.
 -- Also removed its LIKE line from new_company_creation_sql/SQL/create-company/create_company_copy.sql.
 DROP TABLE IF EXISTS `form_builder_drafts`;
+
+13-10-2026 Dhaval
+-- MASTER DB only. Applied via adminpanel's own Sequelize migrations -- see
+-- adminpanel/backend/src/database/migrations/20261013180000-create-billing-companies.js.
+-- Backfilled entry: this migration shipped without an alter.txt record at the time; added now while
+-- auditing migrations against this log. Deskflow's own billing/issuing entities (the "seller" on a
+-- Customer Panel invoice) -- separate from company_masters (the tenant registry). invoice_prefix/
+-- next_invoice_seq were later replaced by a GST/non-GST series pair -- see the 16-10-2026 entry below.
+CREATE TABLE `billing_companies`(
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `company_name` VARCHAR(200) NOT NULL,
+  `invoice_prefix` VARCHAR(20) NOT NULL,
+  `next_invoice_seq` INT(11) NOT NULL DEFAULT 1,
+  `address` TEXT NULL DEFAULT NULL,
+  `state` VARCHAR(100) NULL DEFAULT NULL COMMENT 'for CGST+SGST (same state) vs IGST (different state)',
+  `gst_number` VARCHAR(20) NULL DEFAULT NULL COMMENT 'null/blank = not GST-registered, invoice has no tax section',
+  `pan_number` VARCHAR(20) NULL DEFAULT NULL,
+  `bank_name` VARCHAR(150) NULL DEFAULT NULL,
+  `bank_account_no` VARCHAR(50) NULL DEFAULT NULL,
+  `bank_ifsc` VARCHAR(20) NULL DEFAULT NULL,
+  `bank_branch` VARCHAR(150) NULL DEFAULT NULL,
+  `upi_id` VARCHAR(100) NULL DEFAULT NULL,
+  `upi_name` VARCHAR(150) NULL DEFAULT NULL,
+  `header_img` TEXT NULL DEFAULT NULL COMMENT 'data URL or hosted URL for PDF letterhead',
+  `company_sign` TEXT NULL DEFAULT NULL COMMENT 'data URL or hosted URL for PDF signature image',
+  `created_date_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `modified_date` DATETIME NULL DEFAULT NULL,
+  `isActive` TINYINT(4) NOT NULL DEFAULT 1,
+  `isDelete` TINYINT(4) NOT NULL DEFAULT 0,
+  PRIMARY KEY(`id`)
+) ENGINE = InnoDB;
+ALTER TABLE `billing_companies` ADD UNIQUE INDEX `idx_billing_companies_prefix` (`invoice_prefix`);
+
+16-10-2026 Dhaval
+-- MASTER DB only. Applied via adminpanel's own Sequelize migrations, not this repo's migration/master -- see
+-- adminpanel/backend/src/database/migrations/20261013190000-create-product-type-masters.js and
+-- 20261013190100-seed-product-type-masters.js, and the seeder
+-- adminpanel/backend/src/database/seeders/20261013190300-seed-product-type-master-page.js.
+-- New lookup table for customer_panel_products.product_type_id ('Product'/'Addon', extensible), replacing
+-- what would otherwise be a hardcoded enum -- same convention as event_type_masters/status_masters.
+-- 'product-type-master' a_application_pages row seeded with full Super Admin rights.
+CREATE TABLE `product_type_masters`(
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `type_name` VARCHAR(100) NOT NULL,
+  `display_order` INT(11) NOT NULL DEFAULT 0,
+  `created_date_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `modified_date` DATETIME NULL DEFAULT NULL,
+  `isActive` TINYINT(4) NOT NULL DEFAULT 1,
+  `isDelete` TINYINT(4) NOT NULL DEFAULT 0,
+  PRIMARY KEY(`id`)
+) ENGINE = InnoDB;
+INSERT INTO `product_type_masters` (`type_name`, `display_order`, `isActive`, `isDelete`) VALUES
+  ('Product', 0, 1, 0),
+  ('Addon', 1, 1, 0);
+
+16-10-2026 Dhaval
+-- MASTER DB only. Applied via adminpanel's own Sequelize migrations -- see
+-- adminpanel/backend/src/database/migrations/20261013200000-merge-customer-panel-addons-into-products.js.
+-- Customer Panel: an "Addon" is now just a customer_panel_products row with product_type_id = the 'Addon'
+-- row above, instead of a separate customer_panel_addons table -- same catalog shape for products and
+-- add-ons. Pricing moves to customer_panel_plans (each migrated add-on gets one plan row, "Standard",
+-- carrying its old price); customer_panel_products has no price column. The 10 existing customer_panel_addons
+-- rows are migrated to new customer_panel_products rows (new ids -- 1/2 are already CRM/WhatsApp), each with
+-- one customer_panel_plans row for its price; customer_addons.customer_panel_addon_id and
+-- customer_invoice_items.customer_panel_addon_id are repointed to the new ids; customer_panel_addons is
+-- then dropped.
+ALTER TABLE `customer_panel_products`
+  ADD COLUMN `product_type_id` INT(11) NULL DEFAULT NULL COMMENT 'product_type_masters.id (Product / Addon)',
+  ADD COLUMN `parent_product_id` INT(11) NULL DEFAULT NULL COMMENT 'customer_panel_products.id: for an Addon-type row, the product it is sold under',
+  ADD COLUMN `is_qty_enable` TINYINT(4) NOT NULL DEFAULT 0,
+  ADD COLUMN `default_qty` INT(11) NULL DEFAULT NULL,
+  ADD COLUMN `grants_customer_panel_plan_id` INT(11) NULL DEFAULT NULL COMMENT 'customer_panel_plans.id: for an Addon-type row, if set, assigning it to a company also grants a subscription to this plan';
+-- data move (10 customer_panel_addons rows -> customer_panel_products + customer_panel_plans, FK repoint on
+-- customer_addons/customer_invoice_items) done row-by-row in the migration, not as a single SQL statement.
+DROP TABLE `customer_panel_addons`;
+
+16-10-2026 Dhaval
+-- MASTER DB only. Applied via adminpanel's own Sequelize migrations -- see
+-- adminpanel/backend/src/database/migrations/20261013210000-merge-customer-addons-into-subscriptions.js.
+-- Customer Panel: an add-on "License" instance is now just a customer_subscriptions row with
+-- customer_panel_plan_id = NULL and a qty, instead of a separate customer_addons table (assignment-side
+-- counterpart to the catalog-side merge above). customer_invoice_items' customer_panel_addon_id/
+-- customer_addon_id columns are collapsed into customer_panel_product_id/customer_subscription_id, since
+-- an add-on is now just a customer_panel_products row and there is only one kind of instance row to point
+-- at.
+ALTER TABLE `customer_subscriptions`
+  ADD COLUMN `qty` INT(11) NULL DEFAULT 1,
+  MODIFY COLUMN `customer_panel_plan_id` INT(11) NULL DEFAULT NULL,
+  CHANGE COLUMN `granted_by_customer_addon_id` `granted_by_subscription_id` INT(11) NULL DEFAULT NULL
+    COMMENT 'customer_subscriptions.id: set when this instance exists from a specific add-on instance purchase, not direct billing';
+-- data move (customer_addons rows -> customer_subscriptions with plan_id=NULL, FK repoint on
+-- customer_subscriptions.granted_by_subscription_id/customer_invoice_items) done row-by-row in the
+-- migration, not as a single SQL statement.
+ALTER TABLE `customer_invoice_items`
+  DROP COLUMN `customer_panel_addon_id`,
+  DROP COLUMN `customer_addon_id`;
+DROP TABLE `customer_addons`;
+
+16-10-2026 Dhaval
+-- MASTER DB only. Applied via adminpanel's own Sequelize migrations -- see
+-- adminpanel/backend/src/database/migrations/20261013220000-drop-addon-master-tables.js and the seeder
+-- adminpanel/backend/src/database/seeders/20261013220100-remove-addons-page.js.
+-- Decommissions the legacy "Add On Master" / "Company -> Add Ons" system (addon_masters,
+-- company_vs_addon_masters, addon_vs_pages), fully superseded by the Customer Panel catalog
+-- (customer_panel_products with product_type_id = Addon) and its per-customer assignment
+-- (customer_subscriptions). Admin Panel "Addon Master" page, "Company -> Add On Planning" modal (billing
+-- calculator with GST/renewal estimation -- no Customer Panel equivalent exists for company_masters-based
+-- billing, accepted loss), and the addon-page-grant term in the access/limit audits are all removed.
+DROP TABLE `company_vs_addon_masters`;
+DROP TABLE `addon_vs_pages`;
+DROP TABLE `addon_masters`;
+-- 'addons' a_application_pages row soft-deleted (isDelete=1), not dropped, so existing
+-- superadmin_role_page_rights rows referencing it stay intact for history.
+UPDATE `a_application_pages` SET `isDelete` = 1 WHERE `page_slug` = 'addons';
+
+16-10-2026 Dhaval
+-- MASTER DB only. Applied via adminpanel's own Sequelize migrations -- see
+-- adminpanel/backend/src/database/migrations/20261013230000-alter-billing-companies-for-gst-series-and-terms.js,
+-- 20261013230100-add-billing-company-and-terms-to-customer-invoices.js,
+-- 20261013230200-add-custom-description-to-customer-invoice-items.js, and the seeder
+-- adminpanel/backend/src/database/seeders/20261013230300-seed-billing-companies-page.js.
+-- Company-wise Customer Panel billing: billing_companies (created empty by 20261013180000, never
+-- wired to code) gets two independent invoice-number series per company -- GST and non-GST, each
+-- with its own prefix/suffix/counter, since Indian GST practice keeps taxable and exempt/export
+-- invoices in separate sequential series -- plus a reusable default_terms template.
+-- customer_invoices gets billing_company_id (which entity issued it) and terms_and_conditions
+-- (pre-filled from the company's default, editable per invoice). customer_invoice_items gets
+-- custom_description for free-form "custom" line items (one-off custom-priced charges not tied to
+-- any catalog product/plan/add-on) -- item_type's existing free-string column just gains a
+-- 'custom' value, no schema change needed for that part.
+ALTER TABLE `billing_companies`
+  DROP COLUMN `invoice_prefix`,
+  DROP COLUMN `next_invoice_seq`,
+  ADD COLUMN `gst_series_prefix` VARCHAR(30) NULL DEFAULT NULL,
+  ADD COLUMN `gst_series_suffix` VARCHAR(30) NULL DEFAULT NULL,
+  ADD COLUMN `gst_series_next_seq` INT(11) NOT NULL DEFAULT 1,
+  ADD COLUMN `non_gst_series_prefix` VARCHAR(30) NULL DEFAULT NULL,
+  ADD COLUMN `non_gst_series_suffix` VARCHAR(30) NULL DEFAULT NULL,
+  ADD COLUMN `non_gst_series_next_seq` INT(11) NOT NULL DEFAULT 1,
+  ADD COLUMN `default_terms` TEXT NULL DEFAULT NULL COMMENT 'Reusable Terms & Conditions template; pre-fills new invoices for this company';
+ALTER TABLE `customer_invoices`
+  ADD COLUMN `billing_company_id` INT(11) NULL DEFAULT NULL COMMENT 'billing_companies.id: the Deskflow entity that issued this invoice',
+  ADD COLUMN `terms_and_conditions` TEXT NULL DEFAULT NULL;
+ALTER TABLE `customer_invoice_items`
+  ADD COLUMN `custom_description` VARCHAR(255) NULL DEFAULT NULL;
+-- 'billing-companies' a_application_pages row seeded with full Super Admin rights.
+
+17-10-2026 Dhaval
+-- MASTER DB only. Applied via adminpanel's own Sequelize migrations -- see
+-- adminpanel/backend/src/database/migrations/20261013240000-add-gst-number-to-customer-masters.js and
+-- 20261013240100-create-address-masters-and-link-customer-billing.js.
+-- A B2B tax invoice needs the buyer's GSTIN too, not just the seller's (billing_companies.gst_number).
+ALTER TABLE `customer_masters` ADD COLUMN `gst_number` VARCHAR(20) NULL DEFAULT NULL COMMENT "Buyer's GSTIN, shown on the invoice PDF when set";
+-- Master-DB copies of the CRM tenant's address lookup tables (a_countries/a_states/a_cities --
+-- normally per-tenant, see backend/src/config/dbManager.js), so customer_masters and
+-- billing_companies (both master-DB-only, not tied to any one tenant) can use structured
+-- country/state/city instead of free text -- needed to work out CGST+SGST (same state) vs IGST
+-- (different state) on an invoice by comparing the seller's and buyer's state_id. Data copied once
+-- from smalloffice_sample_tenant (same MySQL server) via cross-database INSERT ... SELECT, ids
+-- preserved as-is so they stay interchangeable with any tenant's own a_states/a_cities ids.
+CREATE TABLE `a_countries`(
+  `id` INT(11) NOT NULL,
+  `country_name` VARCHAR(255) NULL DEFAULT NULL,
+  `country_iso` VARCHAR(255) NULL DEFAULT NULL,
+  `country_code` VARCHAR(255) NULL DEFAULT NULL,
+  `isDelete` TINYINT(4) NOT NULL DEFAULT 0,
+  `isActive` TINYINT(4) NOT NULL DEFAULT 1,
+  `created_date_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `modified_date` DATETIME NULL DEFAULT NULL,
+  PRIMARY KEY(`id`)
+) ENGINE = InnoDB;
+CREATE TABLE `a_states`(
+  `id` INT(11) NOT NULL,
+  `state_name` VARCHAR(100) NOT NULL,
+  `country_id` INT(11) NOT NULL,
+  `isDelete` TINYINT(4) NOT NULL DEFAULT 0,
+  `isActive` TINYINT(4) NOT NULL DEFAULT 1,
+  `created_date_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `modified_date` DATETIME NULL DEFAULT NULL,
+  PRIMARY KEY(`id`)
+) ENGINE = InnoDB;
+CREATE TABLE `a_cities`(
+  `id` INT(11) NOT NULL,
+  `city_name` VARCHAR(100) NOT NULL,
+  `state_id` INT(11) NOT NULL,
+  `country_id` INT(11) NOT NULL,
+  `isDelete` TINYINT(4) NOT NULL DEFAULT 0,
+  `isActive` TINYINT(4) NOT NULL DEFAULT 1,
+  `created_date_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `modified_date` DATETIME NULL DEFAULT NULL,
+  PRIMARY KEY(`id`)
+) ENGINE = InnoDB;
+-- data copy: INSERT INTO a_countries/a_states/a_cities SELECT ... FROM smalloffice_sample_tenant.<table>
+-- (1 country, 36 states, 4208 cities at copy time) -- see the migration for the exact statements.
+ALTER TABLE `customer_masters`
+  ADD COLUMN `country_id` INT(11) NULL DEFAULT NULL,
+  ADD COLUMN `state_id` INT(11) NULL DEFAULT NULL,
+  ADD COLUMN `city_id` INT(11) NULL DEFAULT NULL;
+-- billing_companies.state (free text, from 20261013180000) replaced by state_id/city_id/country_id;
+-- never adopted (no code read/wrote it), so nothing is lost.
+ALTER TABLE `billing_companies`
+  DROP COLUMN `state`,
+  ADD COLUMN `country_id` INT(11) NULL DEFAULT NULL,
+  ADD COLUMN `state_id` INT(11) NULL DEFAULT NULL COMMENT 'a_states.id - compared against the customer''s state_id to decide CGST+SGST vs IGST',
+  ADD COLUMN `city_id` INT(11) NULL DEFAULT NULL;
+
+17-10-2026 Dhaval
+-- adminpanel: license_number was "<product_code>-<customer_subscriptions.id>" (shared row id), so numbers
+-- jumped around instead of running 1,2,3... per product. Give each product/add-on its own counter.
+ALTER TABLE `customer_panel_products` ADD COLUMN `license_seq_next` INT(11) NOT NULL DEFAULT 1 COMMENT 'Next sequence number to stamp into this product/add-on''s license_number series';
+UPDATE `customer_panel_products` p
+SET p.license_seq_next = (SELECT COUNT(*) + 1 FROM `customer_subscriptions` s WHERE s.customer_panel_product_id = p.id);
+
+18-10-2026 Dhaval
+-- adminpanel: splitting its own tables out of the shared smalloffice master DB (see
+-- deskflowadminpanel repo's own alter.txt for the full plan) hit a blocker: SuperAdminRolePageRight
+-- (adminpanel-exclusive) joins ApplicationPage/a_application_pages (CRM-shared, must stay put) on
+-- every login. Solved by giving adminpanel its own copy of just its ~27 RBAC page slugs, so that
+-- join never has to cross databases. a_application_pages itself is untouched - still the one true
+-- registry for CRM's own tenant/plan feature gating and adminpanel's "Application Pages" master
+-- screen (which manages the full table, CRM rows included).
+CREATE TABLE `superadmin_pages` LIKE `a_application_pages`;
+ALTER TABLE `superadmin_pages` DROP COLUMN IF EXISTS `id`,
+  ADD COLUMN `id` INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY FIRST;
+-- (actual migration keeps the exact same column set/types as a_application_pages - see
+-- deskflowadminpanel/backend/src/database/migrations/20261018000000-create-superadmin-pages.js)
+INSERT INTO `superadmin_pages`
+  (id, page_name, modual_name, page_slug, description, type, display_order,
+   isPublic, isRights, created_date_time, isDelete, isActive, group_id, usage_metric)
+SELECT id, page_name, modual_name, page_slug, description, type, display_order,
+       isPublic, isRights, created_date_time, isDelete, isActive, group_id, usage_metric
+FROM `a_application_pages`
+WHERE page_slug IN (
+  'dashboard','companies','tenant-master','logins','plans','billing','coupons','referral-codes',
+  'activation-codes','page-groups','application-pages','rbac','ops','leads','audit-logs','reviews',
+  'statuses','event-types','events','event-participants','system_document_templates',
+  'system_report_definitions','system_dashboard_definitions','customer-panel-catalog',
+  'customer-panel','product-type-master','billing-companies'
+) AND isDelete = 0;
+-- Same ids preserved, so superadmin_role_page_rights.page_id needed zero changes.
+
+17-10-2026 Dhaval
+-- adminpanel: billing_companies only had ONE gst series and ONE non-gst series (hardcoded columns).
+-- Replaced with a child table so a company can keep any number of named series (e.g. per branch).
+CREATE TABLE `billing_invoice_series` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `billing_company_id` INT(11) NOT NULL,
+  `series_name` VARCHAR(100) NOT NULL,
+  `is_gst` TINYINT NOT NULL DEFAULT 1,
+  `is_default` TINYINT NOT NULL DEFAULT 0,
+  `prefix` VARCHAR(30) NULL DEFAULT NULL,
+  `suffix` VARCHAR(30) NULL DEFAULT NULL,
+  `next_seq` INT(11) NOT NULL DEFAULT 1,
+  `created_date_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `modified_date` DATETIME NULL DEFAULT NULL,
+  `isActive` TINYINT NOT NULL DEFAULT 1,
+  `isDelete` TINYINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  KEY `idx_billing_invoice_series_company` (`billing_company_id`)
+);
+INSERT INTO `billing_invoice_series` (billing_company_id, series_name, is_gst, is_default, prefix, suffix, next_seq, created_date_time, isActive, isDelete)
+SELECT id, 'GST', 1, 1, gst_series_prefix, gst_series_suffix, gst_series_next_seq, NOW(), 1, 0 FROM `billing_companies` WHERE isDelete = 0;
+INSERT INTO `billing_invoice_series` (billing_company_id, series_name, is_gst, is_default, prefix, suffix, next_seq, created_date_time, isActive, isDelete)
+SELECT id, 'Non-GST', 0, 1, non_gst_series_prefix, non_gst_series_suffix, non_gst_series_next_seq, NOW(), 1, 0 FROM `billing_companies` WHERE isDelete = 0;
+ALTER TABLE `billing_companies`
+  DROP COLUMN `gst_series_prefix`,
+  DROP COLUMN `gst_series_suffix`,
+  DROP COLUMN `gst_series_next_seq`,
+  DROP COLUMN `non_gst_series_prefix`,
+  DROP COLUMN `non_gst_series_suffix`,
+  DROP COLUMN `non_gst_series_next_seq`;
+
+19-10-2026 Dhaval
+-- Multi-variant products (CRM-wide, not ecommerce-specific - plans/2026-10-18-product-variants-and-qty-pricing-plan.txt).
+-- Every tenant DB + smalloffice_sample_tenant. Additive only: existing products rows get
+-- parent_product_id=NULL, is_variant_parent=0, i.e. every existing product keeps behaving
+-- exactly as "Simple" with zero change for the 300+ existing companies.
+ALTER TABLE `products`
+  ADD COLUMN `parent_product_id` INT NULL DEFAULT NULL COMMENT 'Self-FK to products.id - set on a variant row, pointing at its parent',
+  ADD COLUMN `is_variant_parent` TINYINT NOT NULL DEFAULT 0 COMMENT '1 = non-sellable template row; exclude from direct sale in the product picker';
+ALTER TABLE `products` ADD INDEX `idx_products_parent_product_id` (`parent_product_id`);
+
+CREATE TABLE `product_variant_attributes` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `company_masters_id` INT(11) NOT NULL,
+  `parent_product_id` INT(11) NOT NULL,
+  `attribute_name` VARCHAR(100) NOT NULL,
+  `display_order` INT(11) NOT NULL DEFAULT 0,
+  `created_date_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `modified_date` DATETIME NULL DEFAULT NULL,
+  `isActive` TINYINT NOT NULL DEFAULT 1,
+  `isDelete` TINYINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  KEY `idx_pva_parent_product` (`parent_product_id`, `isDelete`)
+);
+
+CREATE TABLE `product_variant_attribute_values` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `company_masters_id` INT(11) NOT NULL,
+  `product_variant_attribute_id` INT(11) NOT NULL,
+  `value` VARCHAR(100) NOT NULL,
+  `display_order` INT(11) NOT NULL DEFAULT 0,
+  `created_date_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `modified_date` DATETIME NULL DEFAULT NULL,
+  `isActive` TINYINT NOT NULL DEFAULT 1,
+  `isDelete` TINYINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  KEY `idx_pvav_attribute` (`product_variant_attribute_id`, `isDelete`)
+);
+
+CREATE TABLE `product_variant_option_values` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `company_masters_id` INT(11) NOT NULL,
+  `product_id` INT(11) NOT NULL COMMENT 'The VARIANT row itself, not the parent',
+  `product_variant_attribute_value_id` INT(11) NOT NULL,
+  `created_date_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `isActive` TINYINT NOT NULL DEFAULT 1,
+  `isDelete` TINYINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  KEY `idx_pvov_product` (`product_id`, `isDelete`),
+  KEY `idx_pvov_attribute_value` (`product_variant_attribute_value_id`)
+);

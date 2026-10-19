@@ -39,7 +39,8 @@ export const getAllProduct = async (req) => {
       assinged_to_price_list,
       searchBarcodeNum,
       contact_id,
-      cart_type
+      cart_type,
+      excludeVariantParents
     } = req.body;
 
     const findCompanyId = await getCompanyByLoginId(a_application_login_id);
@@ -47,6 +48,15 @@ export const getAllProduct = async (req) => {
     let whereClause = {
       isDelete: "0",
     };
+
+    // Multi-variant products (plans/2026-10-18-product-variants-and-qty-pricing-plan.txt,
+    // 4.3): only the cart-building picker (OrderCreateModal) sends this flag - a variant
+    // "parent" is a non-sellable template row, never a real line item. Settings >
+    // Products, BOM, price lists, stock adjustment, and reports call this same endpoint
+    // without the flag and keep seeing parent rows, since they need to manage them.
+    if (excludeVariantParents) {
+      whereClause.is_variant_parent = 0;
+    }
 
     if (productId) {
       whereClause.id = {
@@ -604,6 +614,7 @@ export const productCreate = async (req) => {
       product_length: product_length,
       product_width: product_width,
       is_serial_number: is_serial_number,
+      is_variant_parent: req.body.is_variant_parent ? 1 : 0,
       product_height: product_height,
       rate: parseFloat(rate || 0).toFixed(2),
       GST: GST,
@@ -887,6 +898,7 @@ export const productUpdate = async (req) => {
         product_length: product_length,
         product_width: product_width,
         is_serial_number: is_serial_number,
+        is_variant_parent: req.body.is_variant_parent ? 1 : 0,
         product_height: product_height,
         rate: parseFloat(rate || 0).toFixed(2),
         GST: GST,

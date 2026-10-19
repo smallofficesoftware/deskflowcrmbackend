@@ -50,6 +50,9 @@ import { productGroupModel } from "../models/product_settings/productGroupModel.
 import { productModel } from "../models/product_settings/productModel.js";
 import { productTypesModel } from "../models/product_settings/productTypesModel.js";
 import { productUnitMasterModel } from "../models/product_settings/productUnitMasterModel.js";
+import { productVariantAttributeModel } from "../models/product_settings/productVariantAttributeModel.js";
+import { productVariantAttributeValueModel } from "../models/product_settings/productVariantAttributeValueModel.js";
+import { productVariantOptionValueModel } from "../models/product_settings/productVariantOptionValueModel.js";
 import { taxModel } from "../models/product_settings/taxModel.js";
 import { globalSequelize } from "./globalSequelize.js";
 
@@ -130,6 +133,9 @@ export const getTenantDB = async (tenantId, companyId) => {
         cart_items: cartItemModel(tenantSequelize),
         cart_vs_serial_numbers: cartSerialNumberModel(tenantSequelize),
         products: productModel(tenantSequelize),
+        product_variant_attributes: productVariantAttributeModel(tenantSequelize),
+        product_variant_attribute_values: productVariantAttributeValueModel(tenantSequelize),
+        product_variant_option_values: productVariantOptionValueModel(tenantSequelize),
         target_vs_incentives: targetVsIncentiveModel(tenantSequelize),
         contact_masters: contactModel(tenantSequelize),
         departments: departmentModel(tenantSequelize),
