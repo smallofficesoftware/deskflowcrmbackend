@@ -2343,12 +2343,56 @@ export const SerialNumberWiseStockCheck = async (req) => {
                 "";
             }
 
+            // Downstream docs converted from this row (e.g. dispatch ->
+            // invoice): cart_items whose referance_cart_id is this row's
+            // cart and reference_type is this row's cart_type, same product.
+            const linkedItems =
+              await cartItem.findAll({
+                where: {
+                  isDelete: 0,
+                  referance_cart_id:
+                    String(item.cart_id),
+                  reference_type:
+                    item.cart_type,
+                  // Invoices only - dispatch->dispatch rows (edits/copies)
+                  // carry the same number and would just repeat it.
+                  cart_type: 3,
+                  item_product_id:
+                    item.item_product_id,
+                },
+                attributes: [
+                  "cart_type",
+                  "cart_number",
+                ],
+                raw: true,
+              });
+
+            const linked_documents = [
+              ...new Map(
+                linkedItems
+                  .filter(
+                    (li) => li.cart_number
+                  )
+                  .map((li) => [
+                    `${li.cart_type}:${li.cart_number}`,
+                    {
+                      cart_type:
+                        li.cart_type,
+                      cart_number:
+                        li.cart_number,
+                    },
+                  ])
+              ).values(),
+            ];
+
             return {
 
               ...item.toJSON(),
 
               to_customer_name:
                 contact_name,
+
+              linked_documents,
             };
           }
         )

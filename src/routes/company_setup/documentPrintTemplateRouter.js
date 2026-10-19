@@ -24,32 +24,32 @@ import {
   updateDocumentTemplateController,
 } from "../../controllers/company_setup/documentPrintTemplateController.js";
 import { authenticateToken } from "../../middlewares/auth.js";
-import { requireReportPin, requireServiceSecret } from "../../middlewares/reportPinAuth.js";
+import { requireCompanyOwner, requireServiceSecret } from "../../middlewares/reportPinAuth.js";
 import { tenantMiddleware } from "../../middlewares/tenantMiddleware.js";
 
 export default (app) => {
   app.post("/document-templates/list", authenticateToken, tenantMiddleware, listDocumentTemplatesController);
   app.post("/document-templates/list-all", authenticateToken, tenantMiddleware, listAllDocumentTemplatesController);
   app.post("/document-templates/get", authenticateToken, tenantMiddleware, getDocumentTemplateController);
-  // Build/author routes below — owner+PIN gated (requireReportPin, shared
-  // with Report Builder's build routes: src/middlewares/reportPinAuth.js).
-  // Added retroactively — this router previously had no PIN gate at all.
-  app.post("/document-templates/create", authenticateToken, tenantMiddleware, requireReportPin, createDocumentTemplateController);
-  app.post("/document-templates/update", authenticateToken, tenantMiddleware, requireReportPin, updateDocumentTemplateController);
-  app.post("/document-templates/apply-options", authenticateToken, tenantMiddleware, requireReportPin, applyOptionsToDraftController);
-  app.post("/document-templates/reset-to-default", authenticateToken, tenantMiddleware, requireReportPin, resetDocumentTemplateToSystemDefaultController);
-  app.post("/document-templates/publish", authenticateToken, tenantMiddleware, requireReportPin, publishDocumentTemplateController);
-  app.post("/document-templates/discard-draft", authenticateToken, tenantMiddleware, requireReportPin, discardDraftChangesController);
-  app.post("/document-templates/reorder", authenticateToken, tenantMiddleware, requireReportPin, reorderDocumentTemplatesController);
-  app.post("/document-templates/set-default", authenticateToken, tenantMiddleware, requireReportPin, setDefaultDocumentTemplateController);
-  app.post("/document-templates/delete", authenticateToken, tenantMiddleware, requireReportPin, deleteDocumentTemplateController);
-  app.post("/document-templates/duplicate", authenticateToken, tenantMiddleware, requireReportPin, duplicateDocumentTemplateController);
+  // Build/author routes below — company-owner only (requireCompanyOwner,
+  // src/middlewares/reportPinAuth.js). The shared build PIN is no longer
+  // required here; Report Builder's build routes still use requireReportPin.
+  app.post("/document-templates/create", authenticateToken, tenantMiddleware, requireCompanyOwner, createDocumentTemplateController);
+  app.post("/document-templates/update", authenticateToken, tenantMiddleware, requireCompanyOwner, updateDocumentTemplateController);
+  app.post("/document-templates/apply-options", authenticateToken, tenantMiddleware, requireCompanyOwner, applyOptionsToDraftController);
+  app.post("/document-templates/reset-to-default", authenticateToken, tenantMiddleware, requireCompanyOwner, resetDocumentTemplateToSystemDefaultController);
+  app.post("/document-templates/publish", authenticateToken, tenantMiddleware, requireCompanyOwner, publishDocumentTemplateController);
+  app.post("/document-templates/discard-draft", authenticateToken, tenantMiddleware, requireCompanyOwner, discardDraftChangesController);
+  app.post("/document-templates/reorder", authenticateToken, tenantMiddleware, requireCompanyOwner, reorderDocumentTemplatesController);
+  app.post("/document-templates/set-default", authenticateToken, tenantMiddleware, requireCompanyOwner, setDefaultDocumentTemplateController);
+  app.post("/document-templates/delete", authenticateToken, tenantMiddleware, requireCompanyOwner, deleteDocumentTemplateController);
+  app.post("/document-templates/duplicate", authenticateToken, tenantMiddleware, requireCompanyOwner, duplicateDocumentTemplateController);
   app.post("/document-templates/export", authenticateToken, tenantMiddleware, exportDocumentTemplateController);
-  app.post("/document-templates/import", authenticateToken, tenantMiddleware, requireReportPin, importDocumentTemplateController);
+  app.post("/document-templates/import", authenticateToken, tenantMiddleware, requireCompanyOwner, importDocumentTemplateController);
   app.post("/document-templates/versions/list", authenticateToken, tenantMiddleware, listTemplateVersionsController);
-  app.post("/document-templates/versions/restore", authenticateToken, tenantMiddleware, requireReportPin, restoreTemplateVersionController);
+  app.post("/document-templates/versions/restore", authenticateToken, tenantMiddleware, requireCompanyOwner, restoreTemplateVersionController);
   app.post("/document-templates/system-gallery/list", authenticateToken, tenantMiddleware, listSystemTemplatesController);
-  app.post("/document-templates/system-gallery/copy", authenticateToken, tenantMiddleware, requireReportPin, copyFromSystemTemplateController);
+  app.post("/document-templates/system-gallery/copy", authenticateToken, tenantMiddleware, requireCompanyOwner, copyFromSystemTemplateController);
   app.post("/document-templates/data-dictionary", authenticateToken, tenantMiddleware, dataDictionaryController);
   // "Add Field" picker (tenant Designer) — read-only: returns the code-
   // default template for a doc_type so the editor can list its structured

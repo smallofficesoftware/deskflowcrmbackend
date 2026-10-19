@@ -7,6 +7,7 @@
 // comes — this registry is exactly where that plugs in later.
 import { Op } from "sequelize";
 import { customFieldFormModel } from "../../models/other_settings/customFieldFormModel.js";
+import { buildFormDictionary, parseFormDocTypeId } from "./formDocTypeTemplate.js";
 
 const CART_DOC_DICTIONARY = [
   { key: "companyName", label: "Company Name", group: "Company" },
@@ -391,6 +392,10 @@ const REPORT_DICTIONARY = [
 export async function buildDataDictionary(req, doc_type) {
   if (doc_type.startsWith("report_")) {
     return REPORT_DICTIONARY;
+  }
+  // Custom Form Maker print design (doc_type form_<id>).
+  if (parseFormDocTypeId(doc_type) !== null) {
+    return buildFormDictionary(req, doc_type);
   }
 
   const base = DICTIONARY_BY_DOC_TYPE[doc_type];

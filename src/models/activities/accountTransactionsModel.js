@@ -55,6 +55,16 @@ export const accountTransactionsModel = (sequelize) => {
     amount_type: {
       type: TINYINT,
     },
+    sr_by_prifix: {
+      type: STRING,
+    },
+    sr_by_number: {
+      type: INTEGER,
+      defaultValue: 0,
+    },
+    voucher_number: {
+      type: STRING,
+    },
     created_date_time: {
       type: DATE,
       defaultValue: NOW,

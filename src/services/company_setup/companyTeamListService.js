@@ -3,6 +3,7 @@ import loginModel from "../../models/application_login/loginModel.js";
 import { resBadRequest } from "../../utils/sharedFunctions.js";
 import { getCompanyByLoginId } from "../commonServices.js";
 import { getByIdTeam } from "./companyVsApplicationLoginService.js";
+import { applyPayrollAttendanceFlags } from "./teamPayrollAttendanceFlags.js";
 
 // My Company > Team List only (ticket #2529). /my-team is shared by many
 // pickers and filters that need the whole roster, so it is left alone; this
@@ -11,16 +12,21 @@ import { getByIdTeam } from "./companyVsApplicationLoginService.js";
 // else sees themself plus the logins whose reporting_member points at them.
 export const getCompanyTeamList = async (req) => {
   try {
-    const { a_application_login_id } = req.body;
+    // Who is asking: the id in the body, else the logged-in user from the
+    // token. A call without a_application_login_id used to make this NaN and
+    // fail with "Unknown column 'NaN' in 'WHERE'".
+    const me = Number(req.body?.a_application_login_id) || Number(req.user?.id);
+    if (!me) return resBadRequest({ ack_msg: "Login id not found" });
 
     const response = await getByIdTeam(req);
-    const items = response?.data?.item;
-    if (response?.ack !== 1 || !Array.isArray(items)) return response;
+    const rawItems = response?.data?.item;
+    if (response?.ack !== 1 || !Array.isArray(rawItems)) return response;
 
-    const requester = await getCompanyByLoginId(a_application_login_id);
-    if (Number(requester?.company_flag) === 1) return response;
+    const items = await applyPayrollAttendanceFlags(req, rawItems);
 
-    const me = Number(a_application_login_id);
+    const requester = await getCompanyByLoginId(me);
+    if (Number(requester?.company_flag) === 1) return { ...response, data: { ...response.data, item: items } };
+
     const directReports = await loginModel.findAll({
       where: {
         isDelete: "0",

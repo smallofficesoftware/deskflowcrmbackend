@@ -128,6 +128,9 @@ export const PAGE_ID = {
   // 20260915120000-add-serial-number-stock-check-application-page.js
   // (master DB). id 185 = next after CONTACT_MERGE (184).
   SERIAL_NUMBER_STOCK_CHECK: "185",
+  // Serial Number Trace report. Migration
+  // 20261019120000-add-serial-number-trace-application-page.js (master DB).
+  SERIAL_NUMBER_TRACE: "199",
   // Add more pages as needed
 };
 // config/googleApi.ts

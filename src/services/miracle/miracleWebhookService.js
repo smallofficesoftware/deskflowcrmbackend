@@ -867,6 +867,8 @@ export async function handleAccountTransactionAddOrUpdate({ voucherDetail, tenan
         created_date_time: paymentDateTime,
         // Miracle's voucher number leads the remark so the receipt shows the same number (ticket #2534).
         remark: buildReceiptRemark(vouno ?? voucherDetail.VouNo, narr),
+        // ...and it is the voucher number shown in the list / receipt, no Deskflow series is used for it.
+        voucher_number: String(vouno ?? voucherDetail.VouNo ?? "").trim(),
         approve_by_a_application_login_id: tenantId,
         miracle_account_ledger: oppacc || "",
         miracle_UniqueId: uniqueId,
@@ -1226,6 +1228,7 @@ export async function handleVoucherAddOrUpdate({ payload, context }) {
             applicationLoginId: tenantId,
             companyMasterId: companyId,
             miracle_account_legder: "",
+            skipVoucherSeries: true,
             req,
         });
     }

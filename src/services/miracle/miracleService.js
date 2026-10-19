@@ -620,7 +620,17 @@ export const syncInvoice = async (req) => {
                     }
                 }
 
-                const transactionAcc = getCart.transaction_mode == 1 ? getCart.miracle_account_legder : acc_id;
+                if (![6, 7].includes(getCart.type) && !isValid(getCart.transaction_mode)) {
+                    results.push({ cart_id: singleCartId, status: "fail", msg: "Transaction Mode is required for Miracle sync" });
+                    continue;
+                }
+                if (getCart.type !== 9 && getCart.transaction_mode == 1 && !isValid(getCart.miracle_account_legder)) {
+                    results.push({ cart_id: singleCartId, status: "fail", msg: "Miracle Account Ledger is required for cash transactions" });
+                    continue;
+                }
+
+                // Dispatch challan has no account ledger: always post against the customer account.
+                const transactionAcc = (getCart.transaction_mode == 1 && getCart.type !== 9) ? getCart.miracle_account_legder : acc_id;
                 const transactionModeFlag = getCart.transaction_mode == 1 ? "C" : getCart.transaction_mode == 2 ? "D" : "";
                 const invTyp = isSameState ? "GST" : "IGST";
                 const taxtyp = taxTypeFlag;
@@ -1382,7 +1392,8 @@ export const syncCaseBankPr = async (req) => {
                 const voudt = moment(getAcc.payment_date_time).format('YYYY-MM-DD');
 
                 // A voucher that came from Miracle keeps its own number (kept in the remark);
-                // anything made in Deskflow still goes out with the row id (ticket #2534).
+                // one made in Deskflow goes out with its voucher number (the payment mode's
+                // series), and an old one without a number with the row id (ticket #2534).
                 const { voucherNo, narr: remarkNarr } = parseReceiptRemark(getAcc.remark);
 
                 const payload = {
@@ -1390,7 +1401,7 @@ export const syncCaseBankPr = async (req) => {
                     uniqueId: getAcc.miracle_UniqueId || undefined,
                     voutyp: voutyp,
                     voudt: voudt,
-                    vouno: voucherNo || String(getAcc.id),
+                    vouno: voucherNo || getAcc.voucher_number || String(getAcc.id),
                     acc: con_acc_id,
                     oppacc: getAcc.miracle_account_ledger,
                     amount: Number(getAcc.amount || 0),

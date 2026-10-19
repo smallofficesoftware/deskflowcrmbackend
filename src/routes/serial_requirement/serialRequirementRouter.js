@@ -1,4 +1,5 @@
 import {
+  productOptions,
   serialLookup,
   serialRequirement,
 } from "../../controllers/serial_requirement/serialRequirementController.js";
@@ -8,4 +9,5 @@ import { tenantMiddleware } from "../../middlewares/tenantMiddleware.js";
 export default (app) => {
   app.post("/serial-requirement", authenticateToken, tenantMiddleware, serialRequirement);
   app.post("/serial-requirement/lookup", authenticateToken, tenantMiddleware, serialLookup);
+  app.post("/serial-requirement/products", authenticateToken, tenantMiddleware, productOptions);
 };

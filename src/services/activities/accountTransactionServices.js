@@ -44,6 +44,7 @@ import { sendMultipleNotification } from "../company_setup/thirdPartyIntegration
 import { generateAccountStatementPdf } from "../pdfmeEngine/accountStatementGenerate.js";
 import { generateAccountTransactionPdf } from "../pdfmeEngine/accountTransactionGenerate.js";
 import { emitAutomationEvent } from "../automation/emit.js";
+import { resolveAccountTransactionSeries } from "./accountTransactionSeries.js";
 import { CART_LINK_REFERENCE_TABLE, checkCartLinkRules, getCartInfoMap, getCartLinkSettings, resolveCartIdByNumber } from "./accountTransactionCartLinkServices.js";
 
 // Loads a company's own pdfme template JSON for accountStatement/
@@ -282,6 +283,7 @@ export const getAllAccountTransactions = async (req, res) => {
     if (searchTerm) {
       whereClause[Op.or] = [
         { remark: { [Op.like]: `%${searchTerm}%` } },
+        { voucher_number: { [Op.like]: `%${searchTerm}%` } },
       ];
     }
 
@@ -968,7 +970,7 @@ export const updateAccountTransaction = async (req, res) => {
         msg_account_transaction_id: updatedTransaction.id,
         description:
           `<b>Account History</b><br>` +
-          `# ${updatedTransaction.id}<br>` +
+          `${updatedTransaction.voucher_number || `# ${updatedTransaction.id}`}<br>` +
           `Payment Type: ${transactionTypeLabel}<br>` +
           `<b>₹${updatedTransaction.amount.toFixed(2) || "0.00"
           } By ${paymentTypeName}</b><br>` +
@@ -1024,7 +1026,7 @@ export const updateAccountTransaction = async (req, res) => {
             if (tokens.length > 0) {
               await sendMultipleNotification({
                 deviceTokens: tokens,
-                title: `Transaction #${updatedTransaction.id} Approved by ${approverUsername || "Someone"}`,
+                title: `Transaction ${updatedTransaction.voucher_number || `#${updatedTransaction.id}`} Approved by ${approverUsername || "Someone"}`,
                 body: `${approverUsername || "Someone"} approved a ${transactionTypeLabel} of ₹${updatedTransaction.amount.toFixed(2)} via ${paymentTypeMap.get(Number(updatedTransaction.mode)) || "Unknown"}.`,
               });
             }
@@ -1059,7 +1061,11 @@ export const createAccountTransaction = async (req, res) => {
       remark,
       payment_date_time,
       auto_reverse_entry,
-      cart_id
+      cart_id,
+      sr_by_prifix,
+      entered_series_number,
+      reverse_sr_by_prifix,
+      reverse_entered_series_number
     } = req.body;
 
     // Validation
@@ -1150,9 +1156,35 @@ export const createAccountTransaction = async (req, res) => {
 
     let createdItems = [];
 
+    // Voucher number of each entry; both are worked out before anything is saved
+    const firstSeries = await resolveAccountTransactionSeries(tenantDB, {
+      company_masters_id: baseData.company_masters_id,
+      mode: baseData.mode,
+      type,
+      payment_date_time,
+      sr_by_prifix,
+      entered_series_number,
+    });
+    if (firstSeries.error) return resError({ ack_msg: firstSeries.error });
+
+    const oppositeType = Number(type) === 1 ? 2 : 1;
+    let secondSeries = { fields: {} };
+    if (auto_reverse_entry === 1) {
+      secondSeries = await resolveAccountTransactionSeries(tenantDB, {
+        company_masters_id: baseData.company_masters_id,
+        mode: baseData.mode,
+        type: oppositeType,
+        payment_date_time,
+        sr_by_prifix: reverse_sr_by_prifix,
+        entered_series_number: reverse_entered_series_number,
+      });
+      if (secondSeries.error) return resError({ ack_msg: secondSeries.error });
+    }
+
     // === Normal Entry ===
     const firstEntry = await accountTransaction.create({
       ...baseData,
+      ...firstSeries.fields,
       type: Number(type),
       ...(cart_id ? { reference_table: CART_LINK_REFERENCE_TABLE, reference_id: cart_id } : {})
     });
@@ -1161,10 +1193,9 @@ export const createAccountTransaction = async (req, res) => {
 
     if (auto_reverse_entry === 1) {
       // === Auto Create Opposite Type Entry ===
-      const oppositeType = Number(type) === 1 ? 2 : 1;
-
       const secondEntry = await accountTransaction.create({
         ...baseData,
+        ...secondSeries.fields,
         type: oppositeType
       });
 
@@ -1630,6 +1661,7 @@ export const allAccountTransactionOfContactPDF = async (req, res) => {
       if (Number(tx.type) === 2) running -= amt;
       return {
         id: tx.id,
+        voucher_number: tx.voucher_number || "",
         payment_date: new Date(tx.payment_date_time).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }),
         remark: tx.remark,
         reference: tx.reference_table ? `${tx.reference_table} #${tx.reference_id || ""}` : "-",
@@ -1859,6 +1891,10 @@ export const generateAccountTransactionSampleSheet = async (req, res) => {
       remark: "Sample account transaction",
       // optional; required when the company has Bill to Bill Payment on
       cart_number: "INV-0001",
+      // optional; the voucher series when the payment mode has more than one (blank = its first)
+      series: "",
+      // required only when the payment mode is set to manual voucher entry
+      voucher_number: "",
     };
 
     const data = [excelColumnDefineArray];
@@ -2027,6 +2063,10 @@ export const importAccountTransactionByExcel = async (req) => {
       const rawAmount = row[colIndex["amount"]];
       const rawPaymentDate = row[colIndex["payment_date_time"]] ?? row[colIndex["payment_date"]];
       const rawRemark = row[colIndex["remark"]];
+      // Optional: the voucher series of the payment mode, and the typed voucher
+      // number for a payment mode set to manual entry.
+      const rawSeries = row[colIndex["series"]] ?? row[colIndex["sr_by_prifix"]];
+      const rawVoucherNo = row[colIndex["voucher_number"]] ?? row[colIndex["voucher_no"]];
 
       // Match Contact by Client Code
       const cleanCode = rawClientCode ? rawClientCode.toString().trim().toLowerCase() : null;
@@ -2153,6 +2193,7 @@ export const importAccountTransactionByExcel = async (req) => {
       if (rowCartId) importedAmountByCart.set(rowCartId, (importedAmountByCart.get(rowCartId) || 0) + amountVal);
 
       finalData.push({
+        rowNumber,
         cart_id: rowCartId,
         contact_masters_id: matchedContact.id,
         a_application_login_id,
@@ -2163,6 +2204,8 @@ export const importAccountTransactionByExcel = async (req) => {
         amount: amountVal,
         payment_date_time: paymentDateTime,
         remark: rawRemark ? rawRemark.toString().trim() : "",
+        sr_by_prifix: rawSeries ? rawSeries.toString().trim() : undefined,
+        entered_series_number: rawVoucherNo ? rawVoucherNo.toString().trim() : undefined,
         approve_by_a_application_login_id: isApproveRight ? a_application_login_id : 0,
         approve_date_time: isApproveRight ? now : "",
       });
@@ -2179,8 +2222,26 @@ export const importAccountTransactionByExcel = async (req) => {
       });
     }
 
+    let importedCount = 0;
     for (const item of finalData) {
+      // Voucher number: the sheet's `series` column picks the payment mode's series (blank =
+      // its first one); a mode set to manual entry takes the sheet's `voucher_number`.
+      const series = await resolveAccountTransactionSeries(tenantDB, {
+        company_masters_id: item.company_masters_id,
+        mode: item.mode,
+        type: item.type,
+        payment_date_time: item.payment_date_time,
+        sr_by_prifix: item.sr_by_prifix,
+        entered_series_number: item.entered_series_number,
+      });
+      if (series.error) {
+        errorRows.push(`Row ${item.rowNumber}: ${series.error}`);
+        continue;
+      }
+      importedCount += 1;
+
       const createdEntry = await accountTransaction.create({
+        ...series.fields,
         contact_masters_id: item.contact_masters_id,
         a_application_login_id: item.a_application_login_id,
         company_masters_id: item.company_masters_id,
@@ -2204,7 +2265,7 @@ export const importAccountTransactionByExcel = async (req) => {
           msg_account_transaction_id: createdEntry.id,
           description:
             `<b>Account History</b><br>` +
-            `# ${createdEntry.id}<br>` +
+            `${createdEntry.voucher_number || `# ${createdEntry.id}`}<br>` +
             `Payment Type: ${transactionTypeLabel}<br>` +
             `<b>₹${item.amount.toFixed(2)} By ${item.payment_type_name}</b><br>` +
             `${item.payment_date_time}<br>` +
@@ -2219,7 +2280,7 @@ export const importAccountTransactionByExcel = async (req) => {
     }
 
     return resSuccess({
-      ack_msg: `Successfully imported ${finalData.length} account transactions.${duplicateRows.length ? ` ${duplicateRows.length} duplicate row(s) skipped.` : ""}${isApproveRight ? " All transactions approved automatically." : ""}`,
+      ack_msg: `Successfully imported ${importedCount} account transactions.${duplicateRows.length ? ` ${duplicateRows.length} duplicate row(s) skipped.` : ""}${isApproveRight ? " All transactions approved automatically." : ""}`,
       data: [...errorRows, ...duplicateRows].join("<br/>"),
     });
   } catch (error) {

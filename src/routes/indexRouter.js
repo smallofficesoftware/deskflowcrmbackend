@@ -18,6 +18,8 @@ import thirdPartyIntegrationRouter from "./company_setup/thirdPartyIntegrationRo
 // import axios from "axios";
 import accountTransactionRouter from "./activities/accountTransactionRouter.js";
 import accountTransactionCartLinkRouter from "./activities/accountTransactionCartLinkRouter.js";
+import accountTransactionSeriesRouter from "./activities/accountTransactionSeriesRouter.js";
+import invoiceEntrySeriesRouter from "./company_setup/invoiceEntrySeriesRouter.js";
 import callhistoryRouter from "./activities/callHistoryRouter.js";
 import reminderNotificationRouter from "./configuration/Cron Job Routes/reminderNotificationRouter.js";
 import { default as accountOutstandingReport, default as allAccountTranctionsReport } from "./dashboard/Reports/accountTranstionReportRouter.js";
@@ -48,6 +50,7 @@ import quickSearchRouter from "./activities/quickSearchRouter.js";
 import reminderRouter from "./activities/reminderRouter.js";
 import routePlannerRouter from "./activities/routePlannerRouter.js";
 import stockAdjustmentRouter from "./activities/stockAdjustmentRouter.js";
+import warehouseTransferReportRouter from "./activities/warehouseTransferReportRouter.js";
 import TaskManagement from './activities/taskManagementRouter.js';
 import TaskChecklist from './activities/taskChecklistRouter.js';
 import TaskMessageHistory from './activities/taskMessageHistoryRouter.js';
@@ -136,6 +139,8 @@ export default () => {
   sourceOfTypesRouter(app);
   accountTransactionRouter(app);
   accountTransactionCartLinkRouter(app);
+  accountTransactionSeriesRouter(app);
+  invoiceEntrySeriesRouter(app);
   activationCodeMasterRouter(app);
   orderRouter(app);
   insightRouter(app);
@@ -203,6 +208,7 @@ export default () => {
   employeeAccountTransactionRouter(app);
   productBillOfMaterialRouter(app);
   stockAdjustmentRouter(app);
+  warehouseTransferReportRouter(app);
   supportTicketRouter(app);
   serialRequirementRouter(app);
   whatsappRoutes(app);

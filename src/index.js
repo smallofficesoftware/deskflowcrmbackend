@@ -266,6 +266,9 @@ app.use("/shipping_label_view", express.static(findShippingLabelView));
 // other upload alias above (see plan §3 "File access, checked not assumed").
 const findFormBuilderAttachments = path.join(process.cwd(), "media-folder/form_builder");
 app.use("/form-builder-att", express.static(findFormBuilderAttachments));
+// Saved file_path values are "media-folder/form_builder/<company>/<form>/<file>",
+// and the frontend requests them as <backend>/<file_path>.
+app.use("/media-folder/form_builder", express.static(findFormBuilderAttachments));
 
 const findContactPrintView = path.join(process.cwd(), "media-folder/ContactPrint");
 app.use("/contact_print_view", express.static(findContactPrintView));

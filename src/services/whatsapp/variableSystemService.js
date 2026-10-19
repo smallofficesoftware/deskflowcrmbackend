@@ -114,6 +114,7 @@ export const accWvFetch = async (req) => {
         const accqueryMap = {
             basic: `
                 account_transactions.id,
+                COALESCE(NULLIF(account_transactions.voucher_number, ''), CONCAT('#', account_transactions.id)) AS voucher_number,
                 account_transactions.type AS payment_type,
                 paytype.payment_type_name AS payment_by,
                 account_transactions.payment_date_time AS payment_date,

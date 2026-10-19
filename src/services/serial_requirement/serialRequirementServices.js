@@ -47,15 +47,44 @@ export const pickSerial = (body = {}) => {
   return s === "" || s === "null" || s === "undefined" ? null : s;
 };
 
+/** Pulls product_id out of a (possibly multipart) body as a positive integer or null. */
+export const pickProductId = (body = {}) => {
+  const id = Number.parseInt(body.product_id, 10);
+  return Number.isInteger(id) && id > 0 ? id : null;
+};
+
 /**
  * Shared guard for Task, Support Ticket and Visit.
+ * - product_id sent (the forms' Product dropdown): the product must exist. A
+ *   serial-tracked product also needs a serial that belongs to it; any other
+ *   product stores no serial.
+ * - No product_id (older clients, serial-only): falls through to the rules below.
  * - Serial system off (no serial-tracked product): never blocks, nothing stored.
  * - required: a missing serial is an error. Used on create; edits of older
  *   records without a serial are not forced to add one.
  * - A serial that is entered must belong to a serial-tracked product.
  * Returns { error } or { product_id, serial_number } to persist.
  */
-export const resolveSerial = async (tenantDB, { serial_number, required }) => {
+export const resolveSerial = async (tenantDB, { serial_number, required, product_id }) => {
+  const pickedProductId = pickProductId({ product_id });
+  if (pickedProductId) {
+    const picked = await productModel(tenantDB).findOne({
+      where: { id: pickedProductId, isDelete: 0 },
+      attributes: ["id", "is_serial_number"],
+      raw: true,
+    });
+    if (!picked) return { error: "Product not found." };
+    if (Number(picked.is_serial_number) !== SERIAL_NUMBER_ON) {
+      return { product_id: picked.id, serial_number: null };
+    }
+    if (!serial_number) return { error: "Serial number is required for this product." };
+    const owned = await cartSerialNumberModel(tenantDB).count({
+      where: { serial_numbers: serial_number, product_id: picked.id, isDelete: 0 },
+    });
+    return owned
+      ? { product_id: picked.id, serial_number }
+      : { error: "Serial number not found for this product." };
+  }
   if (!(await isSerialSystemOn(tenantDB))) {
     return { product_id: null, serial_number: null };
   }
@@ -79,6 +108,27 @@ export const getSerialRequirement = async (req) => {
     return resBadRequest({
       ack_msg: error.message,
       developer_msg: "getSerialRequirement failed",
+    });
+  }
+};
+
+/** Product dropdown options for the Task / Support Ticket / Visit forms. */
+export const getProductOptions = async (req) => {
+  try {
+    const products = await productModel(req.tenantDB).findAll({
+      where: { isDelete: 0 },
+      attributes: ["id", "product_name", "is_serial_number"],
+      order: [["product_name", "ASC"]],
+      raw: true,
+    });
+    return resSuccess({
+      data: { item: products },
+      ack_msg: "Products fetched successfully.",
+    });
+  } catch (error) {
+    return resBadRequest({
+      ack_msg: error.message,
+      developer_msg: "getProductOptions failed",
     });
   }
 };

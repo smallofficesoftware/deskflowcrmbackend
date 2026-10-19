@@ -712,6 +712,7 @@ export const MODEL_REGISTRY = {
       mode: { label: "Payment Mode", type: "lookup", filterable: true, sortable: false, groupable: true },
       payment_date_time: { label: "Payment Date", type: "date", filterable: true, sortable: true, groupable: false },
       remark: { label: "Remark", type: "string", filterable: true, sortable: false, groupable: false },
+      voucher_number: { label: "Voucher No.", type: "string", filterable: true, sortable: true, groupable: false },
       // Real scalar INTEGER FK, already used as the `contact` relation's own
       // foreignKey below — added as its own whitelisted column, same
       // "relation foreignKey isn't automatically filterable" reasoning as

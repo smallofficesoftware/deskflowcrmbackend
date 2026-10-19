@@ -137,6 +137,8 @@ const deriveAccountTxnRows = (typeLabel) => (result) =>
     return {
       ...txn,
       contact_masters_id: composeAccountContact(txn),
+      // an entry made before voucher numbers shows its id
+      voucher_number: txn.voucher_number || `#${txn.id}`,
       ...(typeLabel ? { typeItem: typeLabel } : {}),
       amount: txn.amountwithcurrency || txn.amount,
       remark: stripHtml(txn.remark),

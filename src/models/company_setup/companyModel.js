@@ -655,6 +655,15 @@ const companyModel = sequelize.define("company_masters", {
   return_sales_invoice_series_pattern: {
     type: TEXT
   },
+  // Series of the debit / credit entry an invoice creates in Account Transaction
+  invoice_entry_prefix: { type: STRING },
+  invoice_entry_series_pattern: { type: STRING },
+  purchase_entry_prefix: { type: STRING },
+  purchase_entry_series_pattern: { type: STRING },
+  return_sales_entry_prefix: { type: STRING },
+  return_sales_entry_series_pattern: { type: STRING },
+  return_purchase_entry_prefix: { type: STRING },
+  return_purchase_entry_series_pattern: { type: STRING },
   quotation_series_pattern: {
     type: TEXT
   },
