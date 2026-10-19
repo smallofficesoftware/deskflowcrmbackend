@@ -130,7 +130,7 @@ export const PAGE_ID = {
   SERIAL_NUMBER_STOCK_CHECK: "185",
   // Serial Number Trace report. Migration
   // 20261019120000-add-serial-number-trace-application-page.js (master DB).
-  SERIAL_NUMBER_TRACE: "197",
+  SERIAL_NUMBER_TRACE: "199",
   // Add more pages as needed
 };
 // config/googleApi.ts

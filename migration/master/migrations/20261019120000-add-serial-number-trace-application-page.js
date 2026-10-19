@@ -7,14 +7,15 @@
  * own application page/feature gate so it can be granted as a report tile with
  * its own view permission.
  *
- * id 197 - next after attribute_master (196). Verified against the local
- * a_application_pages (2026-10-19): MAX(id) was 196. Re-verify
+ * id 199 - next after workspaces (198). Verified against the demo server's
+ * a_application_pages (2026-10-19): MAX(id) was 198. The local DB only reached
+ * 196, and the admin panel numbers its pages differently per environment (id
+ * 197 is Tenant Master on demo), so re-verify
  * (SELECT MAX(id) FROM a_application_pages) on every other environment before
- * running this - adminpanel shares this table with rows not visible from the
- * CRM codebase, so the next free id there can differ.
+ * running this.
  */
 
-const SERIAL_NUMBER_TRACE_PAGE_ID = 197;
+const SERIAL_NUMBER_TRACE_PAGE_ID = 199;
 
 export const up = async (queryInterface, Sequelize) => {
   const [existingPage] = await queryInterface.sequelize.query(
