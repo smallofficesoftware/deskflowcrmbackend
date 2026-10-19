@@ -1,4 +1,6 @@
 import { Op } from "sequelize";
+import { productAttributeMasterModel } from "../../models/product_settings/productAttributeMasterModel.js";
+import { productAttributeValueMasterModel } from "../../models/product_settings/productAttributeValueMasterModel.js";
 import { productModel } from "../../models/product_settings/productModel.js";
 import { productVariantAttributeModel } from "../../models/product_settings/productVariantAttributeModel.js";
 import { productVariantAttributeValueModel } from "../../models/product_settings/productVariantAttributeValueModel.js";
@@ -62,13 +64,23 @@ export const getVariantAttributes = async (req) => {
 
 export const createVariantAttribute = async (req) => {
   try {
-    const { a_application_login_id, parent_product_id, attribute_name } = req.body;
-    if (!parent_product_id || !attribute_name) {
-      return resBadRequest({ developer_msg: "parent_product_id and attribute_name are required" });
+    const { a_application_login_id, parent_product_id, product_attribute_master_id } = req.body;
+    if (!parent_product_id || !product_attribute_master_id) {
+      return resBadRequest({
+        developer_msg: "parent_product_id and product_attribute_master_id are required",
+      });
     }
     const findCompanyId = await getCompanyByLoginId(a_application_login_id);
     if (!findCompanyId?.company_masters_id) {
       return resBadRequest({ ack_msg: "Company not found" });
+    }
+
+    const AttributeMasterModel = productAttributeMasterModel(req.tenantDB);
+    const master = await AttributeMasterModel.findOne({
+      where: { id: product_attribute_master_id, isDelete: 0 },
+    });
+    if (!master) {
+      return resError({ ack_msg: "Attribute not found in the catalog" });
     }
 
     const AttributeModel = productVariantAttributeModel(req.tenantDB);
@@ -76,7 +88,7 @@ export const createVariantAttribute = async (req) => {
     const duplicate = await AttributeModel.findOne({
       where: {
         parent_product_id,
-        attribute_name,
+        product_attribute_master_id,
         company_masters_id: findCompanyId.company_masters_id,
         isDelete: 0,
       },
@@ -88,7 +100,8 @@ export const createVariantAttribute = async (req) => {
     const created = await AttributeModel.create({
       company_masters_id: findCompanyId.company_masters_id,
       parent_product_id,
-      attribute_name,
+      product_attribute_master_id,
+      attribute_name: master.attribute_name,
     });
 
     return resSuccess({ ack_msg: "Attribute added", data: { item: created } });
@@ -121,19 +134,42 @@ export const deleteVariantAttribute = async (req) => {
 
 export const createVariantAttributeValue = async (req) => {
   try {
-    const { a_application_login_id, product_variant_attribute_id, value } = req.body;
-    if (!product_variant_attribute_id || !value) {
-      return resBadRequest({ developer_msg: "product_variant_attribute_id and value are required" });
+    const { a_application_login_id, product_variant_attribute_id, product_attribute_value_master_id } =
+      req.body;
+    if (!product_variant_attribute_id || !product_attribute_value_master_id) {
+      return resBadRequest({
+        developer_msg: "product_variant_attribute_id and product_attribute_value_master_id are required",
+      });
     }
     const findCompanyId = await getCompanyByLoginId(a_application_login_id);
     if (!findCompanyId?.company_masters_id) {
       return resBadRequest({ ack_msg: "Company not found" });
     }
 
+    const AttributeModel = productVariantAttributeModel(req.tenantDB);
+    const attribute = await AttributeModel.findOne({
+      where: { id: product_variant_attribute_id, isDelete: 0 },
+    });
+    if (!attribute) {
+      return resBadRequest({ ack_msg: "Attribute not found" });
+    }
+
+    const ValueMasterModel = productAttributeValueMasterModel(req.tenantDB);
+    const valueMaster = await ValueMasterModel.findOne({
+      where: {
+        id: product_attribute_value_master_id,
+        product_attribute_master_id: attribute.product_attribute_master_id,
+        isDelete: 0,
+      },
+    });
+    if (!valueMaster) {
+      return resError({ ack_msg: "This value does not belong to this attribute's catalog" });
+    }
+
     const ValueModel = productVariantAttributeValueModel(req.tenantDB);
 
     const duplicate = await ValueModel.findOne({
-      where: { product_variant_attribute_id, value, isDelete: 0 },
+      where: { product_variant_attribute_id, product_attribute_value_master_id, isDelete: 0 },
     });
     if (duplicate) {
       return resError({ ack_msg: "This value already exists for this attribute" });
@@ -142,7 +178,8 @@ export const createVariantAttributeValue = async (req) => {
     const created = await ValueModel.create({
       company_masters_id: findCompanyId.company_masters_id,
       product_variant_attribute_id,
-      value,
+      product_attribute_value_master_id,
+      value: valueMaster.value,
     });
 
     return resSuccess({ ack_msg: "Value added", data: { item: created } });
@@ -240,31 +277,67 @@ export const linkVariantAttributesByName = async (
   const validPairs = (attributePairs || []).filter((p) => p?.name && p?.value);
   if (!validPairs.length) return;
 
+  const AttributeMasterModel = productAttributeMasterModel(tenantDB);
+  const ValueMasterModel = productAttributeValueMasterModel(tenantDB);
   const AttributeModel = productVariantAttributeModel(tenantDB);
   const ValueModel = productVariantAttributeValueModel(tenantDB);
   const OptionValueModel = productVariantOptionValueModel(tenantDB);
 
   const valueIds = [];
   for (const { name, value } of validPairs) {
+    // A sheet names attributes/values by label, not id - find-or-create in the
+    // reusable catalog first (so imported names end up pickable on other products
+    // too), then find-or-create the per-product link to that catalog row.
+    let attributeMaster = await AttributeMasterModel.findOne({
+      where: { company_masters_id, attribute_name: name, isDelete: 0 },
+    });
+    if (!attributeMaster) {
+      attributeMaster = await AttributeMasterModel.create({
+        company_masters_id,
+        attribute_name: name,
+      });
+    }
+
     let attribute = await AttributeModel.findOne({
-      where: { parent_product_id: parentProductId, attribute_name: name, isDelete: 0 },
+      where: {
+        parent_product_id: parentProductId,
+        product_attribute_master_id: attributeMaster.id,
+        isDelete: 0,
+      },
     });
     if (!attribute) {
       attribute = await AttributeModel.create({
         company_masters_id,
         parent_product_id: parentProductId,
-        attribute_name: name,
+        product_attribute_master_id: attributeMaster.id,
+        attribute_name: attributeMaster.attribute_name,
+      });
+    }
+
+    let valueMaster = await ValueMasterModel.findOne({
+      where: { product_attribute_master_id: attributeMaster.id, value, isDelete: 0 },
+    });
+    if (!valueMaster) {
+      valueMaster = await ValueMasterModel.create({
+        company_masters_id,
+        product_attribute_master_id: attributeMaster.id,
+        value,
       });
     }
 
     let attrValue = await ValueModel.findOne({
-      where: { product_variant_attribute_id: attribute.id, value, isDelete: 0 },
+      where: {
+        product_variant_attribute_id: attribute.id,
+        product_attribute_value_master_id: valueMaster.id,
+        isDelete: 0,
+      },
     });
     if (!attrValue) {
       attrValue = await ValueModel.create({
         company_masters_id,
         product_variant_attribute_id: attribute.id,
-        value,
+        product_attribute_value_master_id: valueMaster.id,
+        value: valueMaster.value,
       });
     }
     valueIds.push(attrValue.id);

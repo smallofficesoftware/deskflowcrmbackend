@@ -19,6 +19,9 @@ export const productVariantAttributeValueModel = (sequelize) => {
       value: {
         type: STRING,
       },
+      product_attribute_value_master_id: {
+        type: INTEGER,
+      },
       display_order: {
         type: INTEGER,
         defaultValue: 0,

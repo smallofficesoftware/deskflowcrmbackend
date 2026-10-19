@@ -236,6 +236,8 @@ ALTER TABLE `products` ENABLE KEYS;
 CREATE TABLE `product_variant_attributes` LIKE smalloffice_sample_tenant.product_variant_attributes;
 CREATE TABLE `product_variant_attribute_values` LIKE smalloffice_sample_tenant.product_variant_attribute_values;
 CREATE TABLE `product_variant_option_values` LIKE smalloffice_sample_tenant.product_variant_option_values;
+CREATE TABLE `product_attribute_masters` LIKE smalloffice_sample_tenant.product_attribute_masters;
+CREATE TABLE `product_attribute_value_masters` LIKE smalloffice_sample_tenant.product_attribute_value_masters;
 
 ALTER TABLE `contact_masters`  DISABLE KEYS;
 START TRANSACTION;

@@ -49,6 +49,8 @@ import { processMastersModel } from "../models/product_settings/processMastersMo
 import { productGroupModel } from "../models/product_settings/productGroupModel.js";
 import { productModel } from "../models/product_settings/productModel.js";
 import { productTypesModel } from "../models/product_settings/productTypesModel.js";
+import { productAttributeMasterModel } from "../models/product_settings/productAttributeMasterModel.js";
+import { productAttributeValueMasterModel } from "../models/product_settings/productAttributeValueMasterModel.js";
 import { productUnitMasterModel } from "../models/product_settings/productUnitMasterModel.js";
 import { productVariantAttributeModel } from "../models/product_settings/productVariantAttributeModel.js";
 import { productVariantAttributeValueModel } from "../models/product_settings/productVariantAttributeValueModel.js";
@@ -136,6 +138,8 @@ export const getTenantDB = async (tenantId, companyId) => {
         product_variant_attributes: productVariantAttributeModel(tenantSequelize),
         product_variant_attribute_values: productVariantAttributeValueModel(tenantSequelize),
         product_variant_option_values: productVariantOptionValueModel(tenantSequelize),
+        product_attribute_masters: productAttributeMasterModel(tenantSequelize),
+        product_attribute_value_masters: productAttributeValueMasterModel(tenantSequelize),
         target_vs_incentives: targetVsIncentiveModel(tenantSequelize),
         contact_masters: contactModel(tenantSequelize),
         departments: departmentModel(tenantSequelize),
