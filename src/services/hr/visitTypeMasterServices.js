@@ -337,6 +337,7 @@ export const visitMasterCreate = async (req) => {
     }
     const resolvedSerial = await resolveSerial(req.tenantDB, {
       serial_number: pickSerial(req.body),
+      product_id: req.body.product_id,
       required: false,
     });
     if (resolvedSerial.error) {
@@ -837,9 +838,10 @@ export const visitMasterUpdate = async (req) => {
     };
 
     // Stop-visit callers that never send a product must not wipe the one saved at start.
-    if (req.body.serial_number !== undefined) {
+    if (req.body.serial_number !== undefined || req.body.product_id !== undefined) {
       const productSerial = await resolveSerial(req.tenantDB, {
         serial_number: pickSerial(req.body),
+        product_id: req.body.product_id,
         required: false,
       });
       if (productSerial.error) {

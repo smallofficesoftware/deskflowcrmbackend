@@ -1159,6 +1159,7 @@ export const createAllTask = async (req) => {
 
     const resolvedSerial = await resolveSerial(req.tenantDB, {
       serial_number: pickSerial(req.body),
+      product_id: req.body.product_id,
       required: false,
     });
     if (resolvedSerial.error) {
@@ -1934,6 +1935,7 @@ export const AllTaskUpdate = async (req) => {
     // Editing an older task that never had a serial must not force one.
     const updateProductSerial = await resolveSerial(req.tenantDB, {
       serial_number: pickSerial(req.body),
+      product_id: req.body.product_id,
       required: false,
     });
     if (updateProductSerial.error) {
@@ -2066,7 +2068,7 @@ export const AllTaskUpdate = async (req) => {
         is_support_ticket,
         contact_masters_id: finalContactId,
         // Clients that never send serial_number must not wipe a saved one.
-        ...(req.body.serial_number !== undefined && {
+        ...((req.body.serial_number !== undefined || req.body.product_id !== undefined) && {
           product_id: updateProductSerial.product_id,
           serial_number: updateProductSerial.serial_number,
         }),
