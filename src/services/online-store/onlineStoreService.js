@@ -535,7 +535,14 @@ export const getAllProducts = async (req) => {
         const whereConditions = {
             isDelete: 0,
             company_masters_id: companyId,
-            product_types: 5
+            product_types: 5,
+            // Multi-variant products (plans/2026-10-18-product-variants-and-qty-pricing-plan.txt)
+            // - a variant "parent" (e.g. "T-Shirt" itself) has no real price/stock of its own
+            // and must never be directly orderable by a storefront visitor. This query is
+            // separate from productServices.js's getAllProduct/excludeVariantParents flag
+            // (confirmed - this file has its own whereConditions, not a shared helper), so it
+            // needs its own filter rather than sending that flag.
+            is_variant_parent: 0,
         };
 
         if (search?.trim()) {
