@@ -1,5 +1,4 @@
 import {
-  b2ballProductgetAllProduct,
   DeleteProducts,
   generateProductSampleSheet,
   getAllProduct,
@@ -18,10 +17,6 @@ import { decryptRequestForMultipart } from "../../middlewares/payloadSecurity.js
 export const allProduct = async (req, res) => {
   await callServiceMethod(req, res, getAllProduct(req), "allProduct");
 };
-export const b2ballProduct = async (req, res) => {
-  await callServiceMethod(req, res, b2ballProductgetAllProduct(req), "allProduct");
-};
-
 export const createProduct = async (req, res) => {
   decryptRequestForMultipart(req);
   await callServiceMethod(req, res, productCreate(req), "createProduct");

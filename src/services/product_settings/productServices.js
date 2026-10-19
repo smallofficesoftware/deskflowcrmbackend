@@ -3,7 +3,6 @@ import fs from "fs-extra";
 import moment from "moment";
 import path from "path";
 import Sequelize, { Op } from "sequelize";
-import { getTenantDB } from "../../config/dbManager.js";
 import { buildSearchQuery } from "../../helpers/searchAlgoV1.js";
 import { cartItemModel } from "../../models/activities/cartItemsModel.js";
 import { cartSerialNumberModel } from "../../models/activities/cartSerialNumberModel.js";
@@ -355,60 +354,6 @@ export const getAllProduct = async (req) => {
     }
   } catch (e) {
     return resBadRequest({ developer_msg: `error ${e}` });
-  }
-};
-
-export const b2ballProductgetAllProduct = async (req, res) => {
-  try {
-    const { companyMasterId } = req.body;
-    const tenantId = req.headers["x-tenant-id"];
-
-    const tenantDB = await getTenantDB(tenantId, companyMasterId);
-    const productCustom = productModel(tenantDB);
-
-    const products = await productCustom.findAll({
-      where: {
-        company_masters_id: companyMasterId,
-        isDelete: 0,
-      },
-      order: [["id", "DESC"]],
-      attributes: [
-        "id",
-        "product_name",
-        "product_img",
-        [
-          Sequelize.literal(
-            `(SELECT category_name FROM categories WHERE categories.id = products.category_id AND products.isDelete = '${0}')`
-          ),
-          "category_name",
-        ],
-
-      ],
-    });
-
-    if (!products.length) {
-      return resError({
-        ack_msg: "No products found",
-        developer_msg: "No matching records for the provided companyMasterId",
-      });
-    }
-
-    const productsWithImg = products.map((item) => ({
-      id: item.dataValues.id,
-      product_name: item.dataValues.product_name,
-      product_img: item.dataValues.product_img
-        ? `${PRODUCT_IMG_LINK_EXTENDED}${item.dataValues.product_img}`
-        : "",
-      category_name: item.dataValues.category_name || "",
-    }));
-
-    return resSuccess({ data: { items: productsWithImg } });
-  } catch (error) {
-    console.error("API ERROR:", error);
-    return resBadRequest({
-      ack_msg: "Internal server error",
-      developer_msg: "Failed to fetch products",
-    });
   }
 };
 
