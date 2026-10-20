@@ -109,6 +109,7 @@ import priceListMasterRouter from "./product_settings/priceListMasterRouter.js";
 import productBillOfMaterialRouter from "./product_settings/productBillOfMaterialRouter.js";
 import productRouter from "./product_settings/productRouter.js";
 import productAttributeMasterRouter from "./product_settings/productAttributeMasterRouter.js";
+import productImageRouter from "./product_settings/productImageRouter.js";
 import productVariantRouter from "./product_settings/productVariantRouter.js";
 import ProductUnitGet from "./product_settings/productUnitMasterRouter.js";
 import taxRouter from "./product_settings/taxRouter.js";
@@ -133,6 +134,7 @@ export default () => {
   productRouter(app);
   productVariantRouter(app);
   productAttributeMasterRouter(app);
+  productImageRouter(app);
   reminderRouter(app);
   priceListMasterRouter(app);
   priceListItemRouter(app);

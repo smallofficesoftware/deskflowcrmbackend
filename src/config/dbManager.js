@@ -47,6 +47,7 @@ import { priceListMastersModel } from "../models/product_settings/priceListMaste
 import { priceListModel } from "../models/product_settings/priceListModel.js";
 import { processMastersModel } from "../models/product_settings/processMastersModel.js";
 import { productGroupModel } from "../models/product_settings/productGroupModel.js";
+import { productImageModel } from "../models/product_settings/productImageModel.js";
 import { productModel } from "../models/product_settings/productModel.js";
 import { productTypesModel } from "../models/product_settings/productTypesModel.js";
 import { productAttributeMasterModel } from "../models/product_settings/productAttributeMasterModel.js";
@@ -106,6 +107,7 @@ export const getTenantDB = async (tenantId, companyId) => {
     const models = {
         categories: categoryModel(tenantSequelize),
         product_groups: productGroupModel(tenantSequelize),
+        product_images: productImageModel(tenantSequelize),
         attendance_histories: attendanceModel(tenantSequelize),
         task_categories: taskCategoryModel(tenantSequelize),
         payment_types: paymentTypeModel(tenantSequelize),

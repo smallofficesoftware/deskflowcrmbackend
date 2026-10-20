@@ -238,6 +238,12 @@ CREATE TABLE `product_variant_attribute_values` LIKE smalloffice_sample_tenant.p
 CREATE TABLE `product_variant_option_values` LIKE smalloffice_sample_tenant.product_variant_option_values;
 CREATE TABLE `product_attribute_masters` LIKE smalloffice_sample_tenant.product_attribute_masters;
 CREATE TABLE `product_attribute_value_masters` LIKE smalloffice_sample_tenant.product_attribute_value_masters;
+CREATE TABLE `product_images` LIKE smalloffice_sample_tenant.product_images;
+CREATE TABLE `marketplace_addon_settings` LIKE smalloffice_sample_tenant.marketplace_addon_settings;
+CREATE TABLE `marketplace_addon_connector_keys` LIKE smalloffice_sample_tenant.marketplace_addon_connector_keys;
+CREATE TABLE `marketplace_addon_record_mappings` LIKE smalloffice_sample_tenant.marketplace_addon_record_mappings;
+CREATE TABLE `marketplace_addon_sync_jobs` LIKE smalloffice_sample_tenant.marketplace_addon_sync_jobs;
+CREATE TABLE `marketplace_addon_field_mappings` LIKE smalloffice_sample_tenant.marketplace_addon_field_mappings;
 
 ALTER TABLE `contact_masters`  DISABLE KEYS;
 START TRANSACTION;
