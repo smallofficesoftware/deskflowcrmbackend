@@ -67,6 +67,10 @@ export const customFieldFormModel = (sequelize) => {
       type: STRING,
       defaultValue: null
     },
+    variant_scope: {
+      type: TINYINT,
+      defaultValue: 3,
+    },
     display_on: {
       type: TINYINT,
       allowNull: false,
