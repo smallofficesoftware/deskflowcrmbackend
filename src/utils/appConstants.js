@@ -37,6 +37,9 @@ export const REPORT_PIN = process.env.REPORT_PIN;
 export const REPORT_BUILDER_TEST_SECRET = process.env.REPORT_BUILDER_TEST_SECRET;
 export const CALL_HELPER_APP_VERSION = process.env.CALL_HELPER_APP_VERSION;
 export const CALL_TRACKER_APP_URL = process.env.CALL_TRACKER_APP_URL;
+// adminpanel (deskflowadminpanel repo)'s own API base - e.g. next-upcoming training event, read
+// over HTTP instead of a direct DB connection into adminpanel's own database (deskflowadmin).
+export const ADMIN_PANEL_API_URL = process.env.ADMIN_PANEL_API_URL || "http://localhost:4000/api/v1";
 export const SUPER_ADMIN_WHATSAPP_APP_KEY = process.env.SUPER_ADMIN_WHATSAPP_APP_KEY;
 export const SUPER_ADMIN_WHATSAPP_AUTH_KEY = process.env.SUPER_ADMIN_WHATSAPP_AUTH_KEY;
 

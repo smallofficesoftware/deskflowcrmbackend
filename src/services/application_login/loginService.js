@@ -1,3 +1,4 @@
+import axios from "axios";
 import jwt from "jsonwebtoken";
 import moment from "moment";
 import nodemailer from "nodemailer";
@@ -27,6 +28,7 @@ import { getReviewPromptStatus } from "../company_setup/reviewServices.js";
 import { createTransporter } from "../../middlewares/nodemailer.js";
 import companyModel from "../../models/company_setup/companyModel.js";
 import {
+  ADMIN_PANEL_API_URL,
   ADVERTISEMENT_VARIABLE,
   ANDROID_APPLICATION_VERSION,
   ANDROID_UPDATE_VERSION_MSG,
@@ -65,7 +67,6 @@ import { applicationLoginTypeRightModel } from "../../models/application_login/a
 import applicationSessionModel from "../../models/application_login/applicationSessionModel.js";
 import companyVsWhatsappConfigModel from "../../models/company_setup/companyVsWhatsappConfigModel.js";
 import miracleConfigModel from "../../models/company_setup/miracleConfigModel.js";
-import eventMasterModel from "../../models/configuration/eventMasterModel.js";
 import maintenanceModesModel from "../../models/configuration/maintenanceModesModel.js";
 import tenantMasterModel from "../../models/configuration/tenantMasterModel.js";
 import { attendanceModel } from "../../models/hr/attendanceModel.js";
@@ -1638,40 +1639,15 @@ export const onLoad = async (req, res) => {
       attributes: ["is_training_disabled"],
     });
 
-    // Same shared master DB's event_masters table adminpanel's public
-    // calendar (marketing site) already reads — next upcoming event only,
-    // same isDelete/isActive/date filters as that public query
-    // (publicEvent.service.js's getMonthEvents), no status_id filter since
-    // that query doesn't apply one either. This table is owned by the
-    // adminpanel repo's own migration chain, not this one, so a column
-    // added there (start_time) can exist in code here before it's actually
-    // migrated on a given environment's DB — try WITH start_time first,
-    // fall back to WITHOUT it only if that's what actually fails, so an
-    // unmigrated environment still gets the date, just no time. Outer
-    // catch is the remaining safety net for anything else going wrong on
-    // this externally-owned table — must never take onLoad down with it.
+    // adminpanel's own next-upcoming-event lookup, same filters as its public calendar query
+    // (publicEvent.service.js's getMonthEvents) - read over HTTP from adminpanel's own API
+    // (deskflowadmin DB) instead of a direct DB connection, since that table isn't in this
+    // app's database. Short timeout + swallow-and-log on any failure so a slow/down adminpanel
+    // never holds up or breaks login.
     let nextEvent = null;
     try {
-      const nextEventWhere = {
-        isDelete: 0,
-        isActive: 1,
-        event_date: { [Op.gte]: moment().format("YYYY-MM-DD") },
-      };
-      const nextEventOrder = [["event_date", "ASC"], ["id", "ASC"]];
-      try {
-        nextEvent = await eventMasterModel.findOne({
-          where: nextEventWhere,
-          attributes: ["event_title", "event_date", "start_time"],
-          order: nextEventOrder,
-        });
-      } catch (e) {
-        if (!/unknown column/i.test(e.message)) throw e;
-        nextEvent = await eventMasterModel.findOne({
-          where: nextEventWhere,
-          attributes: ["event_title", "event_date"],
-          order: nextEventOrder,
-        });
-      }
+      const { data } = await axios.get(`${ADMIN_PANEL_API_URL}/public/events/next-upcoming`, { timeout: 3000 });
+      nextEvent = data?.event ?? null;
     } catch (e) {
       console.error("next_training_event lookup failed:", e.message);
     }
@@ -1681,9 +1657,9 @@ export const onLoad = async (req, res) => {
       is_training_disabled: maintenanceSetting?.dataValues?.is_training_disabled === 1 ? 1 : 0,
       next_training_event: nextEvent
         ? {
-            title: nextEvent.dataValues.event_title,
-            date: nextEvent.dataValues.event_date,
-            start_time: nextEvent.dataValues.start_time ?? null,
+            title: nextEvent.event_title,
+            date: nextEvent.event_date,
+            start_time: nextEvent.start_time ?? null,
           }
         : null,
       review: reviewStatus,
