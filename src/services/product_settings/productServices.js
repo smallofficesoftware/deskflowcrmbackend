@@ -40,7 +40,8 @@ export const getAllProduct = async (req) => {
       searchBarcodeNum,
       contact_id,
       cart_type,
-      excludeVariantParents
+      excludeVariantParents,
+      excludeVariants
     } = req.body;
 
     const findCompanyId = await getCompanyByLoginId(a_application_login_id);
@@ -56,6 +57,16 @@ export const getAllProduct = async (req) => {
     // without the flag and keep seeing parent rows, since they need to manage them.
     if (excludeVariantParents) {
       whereClause.is_variant_parent = 0;
+    }
+
+    // Opposite of excludeVariantParents - OrderCreateModal's picker now shows
+    // Simple products AND a Parent ("Has Variants" template) as one entry
+    // representing its whole family, but never an individual Variant row directly;
+    // picking a Parent opens a separate variant-resolution popup (frontend), which
+    // then adds the matching Variant row (a normal product, untouched by this flag)
+    // to the cart. plans/2026-10-20-product-variant-ui-and-field-scoping-plan.txt.
+    if (excludeVariants) {
+      whereClause.parent_product_id = null;
     }
 
     if (productId) {
