@@ -571,7 +571,15 @@ export const productCreate = async (req) => {
       product_length: product_length,
       product_width: product_width,
       is_serial_number: is_serial_number,
-      is_variant_parent: req.body.is_variant_parent ? 1 : 0,
+      // A variant (parent_product_id set) can never also be a "Has Variants"
+      // Parent template - this combination left the Order Creation variant-picker
+      // in an infinite reopen loop since a resolved variant was wrongly treated
+      // as a Parent again. Enforced here regardless of what the request sends.
+      is_variant_parent: req.body.parent_product_id
+        ? 0
+        : req.body.is_variant_parent
+          ? 1
+          : 0,
       parent_product_id: req.body.parent_product_id || null,
       product_height: product_height,
       rate: parseFloat(rate || 0).toFixed(2),
@@ -856,7 +864,14 @@ export const productUpdate = async (req) => {
         product_length: product_length,
         product_width: product_width,
         is_serial_number: is_serial_number,
-        is_variant_parent: req.body.is_variant_parent ? 1 : 0,
+        // Same invariant as the create path above - a variant can never also be
+        // flagged as its own "Has Variants" Parent, enforced off the existing row's
+        // own parent_product_id (never editable here, same as CreateProductView.tsx).
+        is_variant_parent: existingProduct?.parent_product_id
+          ? 0
+          : req.body.is_variant_parent
+            ? 1
+            : 0,
         product_height: product_height,
         rate: parseFloat(rate || 0).toFixed(2),
         GST: GST,

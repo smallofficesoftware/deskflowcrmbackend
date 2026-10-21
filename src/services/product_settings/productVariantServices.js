@@ -5,7 +5,7 @@ import { productModel } from "../../models/product_settings/productModel.js";
 import { productVariantAttributeModel } from "../../models/product_settings/productVariantAttributeModel.js";
 import { productVariantAttributeValueModel } from "../../models/product_settings/productVariantAttributeValueModel.js";
 import { productVariantOptionValueModel } from "../../models/product_settings/productVariantOptionValueModel.js";
-import { resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
+import { resBadRequest, resError, resSuccess, sanitizeObjectOfNull } from "../../utils/sharedFunctions.js";
 import { getCompanyByLoginId } from "../commonServices.js";
 
 // Multi-variant products - plans/2026-10-18-product-variants-and-qty-pricing-plan.txt, 4.1.
@@ -117,6 +117,27 @@ export const deleteVariantAttribute = async (req) => {
 
     const AttributeModel = productVariantAttributeModel(req.tenantDB);
     const ValueModel = productVariantAttributeValueModel(req.tenantDB);
+    const OptionValueModel = productVariantOptionValueModel(req.tenantDB);
+
+    // Block removal if any existing variant still carries one of this attribute's
+    // values (product_variant_option_values, keyed by the variant's own product_id) -
+    // otherwise those variants are left pointing at a soft-deleted value with no way
+    // to tell which option they actually were.
+    const values = await ValueModel.findAll({
+      where: { product_variant_attribute_id: id, isDelete: 0 },
+      attributes: ["id"],
+    });
+    const valueIds = values.map((v) => v.id);
+    if (valueIds.length > 0) {
+      const inUseCount = await OptionValueModel.count({
+        where: { product_variant_attribute_value_id: { [Op.in]: valueIds }, isDelete: 0 },
+      });
+      if (inUseCount > 0) {
+        return resError({
+          ack_msg: "Cannot remove this attribute - it is already used by existing variants. Delete those variants first.",
+        });
+      }
+    }
 
     // Soft-delete the attribute's own values too, so stale rows don't linger
     // orphaned once the attribute they belonged to is gone.
@@ -194,6 +215,18 @@ export const deleteVariantAttributeValue = async (req) => {
     if (!id) return resBadRequest({ developer_msg: "id is required" });
 
     const ValueModel = productVariantAttributeValueModel(req.tenantDB);
+    const OptionValueModel = productVariantOptionValueModel(req.tenantDB);
+
+    // Same check as deleteVariantAttribute above, at the single-value level.
+    const inUseCount = await OptionValueModel.count({
+      where: { product_variant_attribute_value_id: id, isDelete: 0 },
+    });
+    if (inUseCount > 0) {
+      return resError({
+        ack_msg: "Cannot remove this value - it is already used by an existing variant. Delete that variant first.",
+      });
+    }
+
     await ValueModel.update({ isDelete: 1 }, { where: { id } });
 
     return resSuccess({ ack_msg: "Value removed" });
@@ -251,7 +284,12 @@ export const getVariants = async (req) => {
           return attribute && value ? { attribute_name: attribute.attribute_name, value: value.value } : null;
         })
         .filter(Boolean);
-      return { ...variant, variant_options: labels };
+      // Same null -> "" sanitization getAllProduct applies to every row it returns -
+      // without it, a variant picked via SelectVariantModal carries raw SQL nulls
+      // into the cart (unlike every other product, fetched through getAllProduct),
+      // which is what caused React's "uncontrolled input becoming controlled"
+      // warning on whichever cart field happened to be null for that variant.
+      return { ...sanitizeObjectOfNull(variant), variant_options: labels };
     });
 
     return resSuccess({ data: { item: result } });
