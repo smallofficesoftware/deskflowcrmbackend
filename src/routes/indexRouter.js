@@ -97,6 +97,7 @@ import BillOfMaterials from "./masters/billOfmaterialsRouter.js";
 import sourceOfTypesRouter from "./masters/sourceOfTypesRouter.js";
 import getTaskTemplateDataSource from "./masters/taskTemplateRouter.js";
 import miracleRoutes from "./miracle/miracleRoutes.js";
+import tallyRoutes from "./tally/tallyRoutes.js";
 import thirdPartyLogRouter from "./activities/thirdPartyLogRouter.js";
 import onlineStoreRouter from "./online-store/onlineStoreRouter.js";
 import supportTicketRouter from "./online-store/supportTicketRouter.js";
@@ -215,6 +216,7 @@ export default () => {
   serialRequirementRouter(app);
   whatsappRoutes(app);
   miracleRoutes(app);
+  tallyRoutes(app);
   thirdPartyLogRouter(app);
   allInsightsRouter(app);
   quickSearchRouter(app);
