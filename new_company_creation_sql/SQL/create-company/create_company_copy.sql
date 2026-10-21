@@ -244,6 +244,7 @@ CREATE TABLE `marketplace_addon_connector_keys` LIKE smalloffice_sample_tenant.m
 CREATE TABLE `marketplace_addon_record_mappings` LIKE smalloffice_sample_tenant.marketplace_addon_record_mappings;
 CREATE TABLE `marketplace_addon_sync_jobs` LIKE smalloffice_sample_tenant.marketplace_addon_sync_jobs;
 CREATE TABLE `marketplace_addon_field_mappings` LIKE smalloffice_sample_tenant.marketplace_addon_field_mappings;
+CREATE TABLE `company_storefront_theme` LIKE smalloffice_sample_tenant.company_storefront_theme;
 
 ALTER TABLE `contact_masters`  DISABLE KEYS;
 START TRANSACTION;

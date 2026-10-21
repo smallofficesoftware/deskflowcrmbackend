@@ -5025,3 +5025,42 @@ CREATE TABLE `marketplace_addon_field_mappings` (
 -- plan_vs_pages, not wired into the old page-entitlement system.
 -- migration: migration/master/migrations/20261021100000-add-ecommerce-storefront-application-page.js
 INSERT INTO `a_application_pages` (`page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES ('Ecommerce Storefront', 'Ecommerce Storefront', 'ecommerce-storefront', 'B2B/B2C ecommerce storefront (marketplace addon)', '0', '0', '0', '1', NOW(), UNIX_TIMESTAMP(), '0', '1');
+
+
+21-10-2026 Dhaval
+-- MASTER DB only. Theme catalog for the ecommerce storefront addon (plans/2026-10-15-
+-- ecommerce-b2b-b2c-plan.txt, 4.6). Pharmacy seeded as the only theme today, required_tier='basic'.
+-- migration: migration/master/migrations/20261021110000-create-storefront-themes.js
+CREATE TABLE `storefront_themes` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `code` VARCHAR(50) NOT NULL,
+  `name` VARCHAR(100) NOT NULL,
+  `description` VARCHAR(255) NULL,
+  `preview_image` VARCHAR(255) NULL,
+  `required_tier` VARCHAR(20) NOT NULL DEFAULT 'basic',
+  `sort_order` INT NOT NULL DEFAULT 0,
+  `isActive` TINYINT NOT NULL DEFAULT 1,
+  `isDelete` TINYINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_storefront_themes_code` (`code`)
+);
+INSERT INTO `storefront_themes` (`code`, `name`, `description`, `required_tier`, `sort_order`, `isActive`, `isDelete`) VALUES ('pharmacy', 'Pharmacy', 'Pharmacy storefront theme, ported from a purchased ThemeForest template (customerdata/pharmacy-template-extract/).', 'basic', 0, 1, 0);
+
+
+21-10-2026 Dhaval
+-- Every tenant DB + smalloffice_sample_tenant. A company's active storefront theme pick
+-- (plans/2026-10-15-ecommerce-b2b-b2c-plan.txt, 4.6) - storefront_theme_id points at the
+-- MASTER DB storefront_themes.id above, no cross-DB FK, resolved in application code.
+-- migration: migration/tenant/migrations/20261021120000-create-company-storefront-theme.js
+CREATE TABLE `company_storefront_theme` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `company_masters_id` INT NOT NULL,
+  `storefront_theme_id` INT NOT NULL,
+  `activated_date` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_date_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `modified_date` DATETIME NULL,
+  `isActive` TINYINT NOT NULL DEFAULT 1,
+  `isDelete` TINYINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_cst_company` (`company_masters_id`)
+);
