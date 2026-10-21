@@ -35,6 +35,11 @@ export const companyStorefrontThemeModel = (sequelize) => {
       timestamps: true,
       createdAt: "created_date_time",
       updatedAt: "modified_date",
+      // Table is genuinely singular ("company_storefront_theme", already
+      // migrated as such) - without this, Sequelize auto-pluralizes the
+      // name passed to define() above to "company_storefront_themes" and
+      // every query 404s against a table that doesn't exist.
+      freezeTableName: true,
     }
   );
 };
