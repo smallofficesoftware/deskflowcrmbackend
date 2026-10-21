@@ -5015,3 +5015,13 @@ CREATE TABLE `marketplace_addon_field_mappings` (
   PRIMARY KEY (`id`),
   KEY `idx_mafm_company_addon_form` (`company_masters_id`, `addon_code`, `form_type`)
 );
+
+
+21-10-2026 Dhaval
+-- MASTER DB only. Page-lookup row for the B2B/B2C ecommerce storefront marketplace addon
+-- (plans/2026-10-15-ecommerce-b2b-b2c-plan.txt, P1/4.5). Looked up by page_slug='ecommerce-storefront'
+-- only, for the generic requireAddon(appCode) primitive reading a_application_login_type_rights
+-- (tenant DB) - same pattern as the Tally page row above, deliberately NOT inserted into
+-- plan_vs_pages, not wired into the old page-entitlement system.
+-- migration: migration/master/migrations/20261021100000-add-ecommerce-storefront-application-page.js
+INSERT INTO `a_application_pages` (`page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES ('Ecommerce Storefront', 'Ecommerce Storefront', 'ecommerce-storefront', 'B2B/B2C ecommerce storefront (marketplace addon)', '0', '0', '0', '1', NOW(), UNIX_TIMESTAMP(), '0', '1');
