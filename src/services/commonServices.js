@@ -89,6 +89,7 @@ import {
   resSuccess
 } from "../utils/sharedFunctions.js";
 import { emitAutomationEvent, automationBefore } from "./automation/emit.js";
+import { assertInquiryProductsAllowed } from "./product_settings/productSellerGuard.js";
 
 
 // Contacts are stored with the canonical mobile (91 + 10 digits, see the write path in
@@ -334,6 +335,15 @@ export const createCommon = async (req) => {
         ack_msg: "Table and data are required.",
         developer_msg: "Required fields are missing.",
       });
+    }
+    if (table === "inquiries" && req.body) {
+      const notSellerMsg = await assertInquiryProductsAllowed(req, data);
+      if (notSellerMsg) {
+        return resError({
+          ack_msg: notSellerMsg,
+          developer_msg: "Product not assigned to this team member",
+        });
+      }
     }
     sequelize.models.company_masters = companyModel;
     sequelize.models.company_vs_plans = companyVsPlansModel;

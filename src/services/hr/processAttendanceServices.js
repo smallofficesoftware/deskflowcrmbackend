@@ -14,6 +14,7 @@ import { generateDateRange, resBadRequest, resSuccess } from "../../utils/shared
 import { getCompanyByLoginId } from "../commonServices.js";
 import { rejectTodayOrFutureDates } from "./processAttendanceDateGuard.js";
 import { toJoinDateIso } from "./attendanceJoinDate.js";
+import { shouldSkipDay } from "./attendanceNoPunchDay.js";
 import { hasShiftTime } from "./attendanceShiftTime.js";
 
 export const misPunchList = async (req) => {
@@ -646,7 +647,7 @@ export const attendanceDetailUpdate = async (req) => {
                 const isWeekOffDay = isWeekOff(date, payroll);
                 const isHolidayDay = holiday_list.length > 0;
 
-                if (records.length <= 0 && leave_list.length <= 0 && !isWeekOffDay && !isHolidayDay) continue;
+                if (shouldSkipDay({ payroll, records, leave_list, isWeekOffDay, isHolidayDay })) continue;
 
                 const { first_in, last_out, total_working_hour, entries } = processAttendance(records);
                 let { day_status, late_in, early_out, net_working_hour, roundoff_hours, overtime_hours, regular_overtime_hours, extra_overtime_hours, leave_info } = calcDayStatus(

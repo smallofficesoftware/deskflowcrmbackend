@@ -5016,7 +5016,6 @@ CREATE TABLE `marketplace_addon_field_mappings` (
   KEY `idx_mafm_company_addon_form` (`company_masters_id`, `addon_code`, `form_type`)
 );
 
-
 21-10-2026 Dhaval
 -- MASTER DB only. Page-lookup row for the B2B/B2C ecommerce storefront marketplace addon
 -- (plans/2026-10-15-ecommerce-b2b-b2c-plan.txt, P1/4.5). Looked up by page_slug='ecommerce-storefront'
@@ -5083,3 +5082,11 @@ ALTER TABLE `categories`
 -- from product_description truncated, nothing for categories which has no description field) is done
 -- in application code by the migration above, not raw SQL here - a uniqueness-suffix loop isn't
 -- expressible as a single statement.
+
+
+22-10-2026 Dhaval
+-- Every tenant DB + smalloffice_sample_tenant. Product-wise team assignment: comma-separated
+-- a_application_login_id of team members allowed to sell the product. NULL/empty = everyone.
+-- migration: migration/tenant/migrations/20261022100000-add-sellers-to-products.js
+ALTER TABLE `products`
+  ADD COLUMN `sellers_a_application_login_id` TEXT NULL DEFAULT NULL COMMENT 'Comma-separated a_application_login_id of team members allowed to sell this product; empty = everyone';
