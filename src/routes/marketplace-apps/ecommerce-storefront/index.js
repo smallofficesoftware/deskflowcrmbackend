@@ -1,6 +1,7 @@
 import {
   getStorefrontCategoryBySlugController,
   getStorefrontCategoryTreeController,
+  getStorefrontCompanyInfoController,
   getStorefrontProductBySlugController,
   getStorefrontProductsController,
 } from "../../../controllers/storefront/storefrontCatalogController.js";
@@ -33,6 +34,7 @@ export default (app) => {
   // must be able to browse without a session or an addon-enabled check blocking
   // them - each service call resolves its own tenant DB from :companySlug instead
   // (storefrontCompanyResolver.js).
+  app.get("/storefront/:companySlug/info", getStorefrontCompanyInfoController);
   app.get("/storefront/:companySlug/categories", getStorefrontCategoryTreeController);
   app.get("/storefront/:companySlug/categories/:slug", getStorefrontCategoryBySlugController);
   app.get("/storefront/:companySlug/products", getStorefrontProductsController);

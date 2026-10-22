@@ -1,10 +1,15 @@
 import {
   getStorefrontCategoryBySlug,
   getStorefrontCategoryTree,
+  getStorefrontCompanyInfo,
   getStorefrontProductBySlug,
   getStorefrontProducts,
 } from "../../services/storefront/storefrontCatalogService.js";
 import callServiceMethod from "../baseController.js";
+
+export const getStorefrontCompanyInfoController = async (req, res) => {
+  await callServiceMethod(req, res, getStorefrontCompanyInfo(req), "getStorefrontCompanyInfo");
+};
 
 export const getStorefrontCategoryTreeController = async (req, res) => {
   await callServiceMethod(req, res, getStorefrontCategoryTree(req), "getStorefrontCategoryTree");
