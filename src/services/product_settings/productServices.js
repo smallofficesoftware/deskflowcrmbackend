@@ -21,6 +21,7 @@ import { getVariantOptionLabelsForProducts } from "./productVariantServices.js";
 import { EXPORTS_LINK_EXTENDED, PRODUCT_IMG_LINK_EXTENDED } from "../../utils/appConstants.js";
 import { PAGE_ID } from "../../utils/AppEnumeration.js";
 import { exportData } from "../../utils/exporter.js";
+import { generateUniqueSlug } from "../../utils/slugify.js";
 import {
   isValid,
   resBadRequest,
@@ -554,12 +555,23 @@ export const productCreate = async (req) => {
       finalOuterUnit = unit_id;
     }
 
+    // SEO fields for the ecommerce storefront's catalog pages (plans/2026-10-15-
+    // ecommerce-b2b-b2c-plan.txt, Q12/4.7) - a variant copies its own name/
+    // description independently (createVariantProduct), so this naturally gives
+    // every variant its own distinct slug too, not just the parent/simple case.
+    const seoSlug = await generateUniqueSlug(product, product_name);
+    const seoMetaTitle = (product_name || "").toString().slice(0, 255);
+    const seoMetaDescription = (product_description || "").toString().replace(/<[^>]*>/g, "").slice(0, 500);
+
     const createProductResult = await product.create({
       a_application_login_id: a_application_login_id,
       product_name: product_name,
       product_alias: product_alias,
       product_code: product_code,
       product_description: product_description,
+      slug: seoSlug,
+      meta_title: seoMetaTitle,
+      meta_description: seoMetaDescription,
       category_id: category_id,
       unit: unit,
       unit_id: unit_id,
@@ -847,12 +859,27 @@ export const productUpdate = async (req) => {
       finalOuterUnit = unit_id;
     }
 
+    // SEO fields (plans/2026-10-15-ecommerce-b2b-b2c-plan.txt, Q12/4.7) - only
+    // regenerate when the name actually changed, so re-saving a product under
+    // its own unchanged name doesn't needlessly churn its slug on every edit.
+    // No redirect from the old slug to the new one yet - flagged as a known
+    // gap, not built here (same as the category rename case above).
+    const seoNameChanged = existingProduct && existingProduct.product_name !== product_name;
+    const seoSlug = seoNameChanged
+      ? await generateUniqueSlug(product, product_name, product_id)
+      : existingProduct?.slug;
+    const seoMetaTitle = (product_name || "").toString().slice(0, 255);
+    const seoMetaDescription = (product_description || "").toString().replace(/<[^>]*>/g, "").slice(0, 500);
+
     const updateProductResult = await product.update(
       {
         product_name: product_name,
         product_alias: product_alias,
         product_code: product_code,
         product_description: product_description,
+        slug: seoSlug,
+        meta_title: seoMetaTitle,
+        meta_description: seoMetaDescription,
         category_id: category_id, // If no file, this will be null
         unit: unit, // If no file, this will be null
         unit_id: unit_id, // If no file, this will be null

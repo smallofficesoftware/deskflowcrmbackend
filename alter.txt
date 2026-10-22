@@ -5064,3 +5064,22 @@ CREATE TABLE `company_storefront_theme` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_cst_company` (`company_masters_id`)
 );
+
+
+21-10-2026 Dhaval
+-- Every tenant DB + smalloffice_sample_tenant. SEO columns (slug, meta_title, meta_description)
+-- for the ecommerce storefront's catalog pages (plans/2026-10-15-ecommerce-b2b-b2c-plan.txt, Q12/4.7).
+-- Auto-generated at product/category create/update, backfilled for existing rows by this migration.
+-- migration: migration/tenant/migrations/20261021130000-add-seo-fields-to-products-and-categories.js
+ALTER TABLE `products`
+  ADD COLUMN `slug` VARCHAR(255) NULL,
+  ADD COLUMN `meta_title` VARCHAR(255) NULL,
+  ADD COLUMN `meta_description` VARCHAR(500) NULL;
+ALTER TABLE `categories`
+  ADD COLUMN `slug` VARCHAR(255) NULL,
+  ADD COLUMN `meta_title` VARCHAR(255) NULL,
+  ADD COLUMN `meta_description` VARCHAR(500) NULL;
+-- Backfill (slug derived from product_name/category_name, meta_title from the same, meta_description
+-- from product_description truncated, nothing for categories which has no description field) is done
+-- in application code by the migration above, not raw SQL here - a uniqueness-suffix loop isn't
+-- expressible as a single statement.

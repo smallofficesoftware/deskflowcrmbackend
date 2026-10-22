@@ -30,6 +30,15 @@ export const categoryModel = (sequelize) => {
     group_id: {
       type: INTEGER,
     },
+    slug: {
+      type: STRING,
+    },
+    meta_title: {
+      type: STRING,
+    },
+    meta_description: {
+      type: STRING,
+    },
     isDelete: {
       type: TINYINT,
       defaultValue: "0",
