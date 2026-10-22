@@ -5090,3 +5090,12 @@ ALTER TABLE `categories`
 -- migration: migration/tenant/migrations/20261022100000-add-sellers-to-products.js
 ALTER TABLE `products`
   ADD COLUMN `sellers_a_application_login_id` TEXT NULL DEFAULT NULL COMMENT 'Comma-separated a_application_login_id of team members allowed to sell this product; empty = everyone';
+
+
+22-10-2026 Dhaval
+-- Every tenant DB + smalloffice_sample_tenant. Per-product visibility toggle for the
+-- ecommerce storefront's public catalog (plans/2026-10-15-ecommerce-b2b-b2c-plan.txt, P2).
+-- Variant-specific (like rate/is_serial_number), not shared - defaults to 1 (shown), opt-out model.
+-- migration: migration/tenant/migrations/20261022100000-add-show-in-ecommerce-to-products.js
+ALTER TABLE `products`
+  ADD COLUMN `show_in_ecommerce` TINYINT NOT NULL DEFAULT 1;

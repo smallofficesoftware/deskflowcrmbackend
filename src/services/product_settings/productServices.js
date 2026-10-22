@@ -587,6 +587,9 @@ export const productCreate = async (req) => {
       slug: seoSlug,
       meta_title: seoMetaTitle,
       meta_description: seoMetaDescription,
+      // Defaults to shown (1) - opt-out model, so enabling the ecommerce
+      // addon doesn't require touching every existing product first.
+      show_in_ecommerce: req.body.show_in_ecommerce !== undefined ? Number(req.body.show_in_ecommerce) : 1,
       category_id: category_id,
       unit: unit,
       unit_id: unit_id,
@@ -896,6 +899,9 @@ export const productUpdate = async (req) => {
         slug: seoSlug,
         meta_title: seoMetaTitle,
         meta_description: seoMetaDescription,
+        show_in_ecommerce: req.body.show_in_ecommerce !== undefined
+          ? Number(req.body.show_in_ecommerce)
+          : (existingProduct?.show_in_ecommerce ?? 1),
         category_id: category_id, // If no file, this will be null
         unit: unit, // If no file, this will be null
         unit_id: unit_id, // If no file, this will be null
