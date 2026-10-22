@@ -1,3 +1,5 @@
+import { Op } from "sequelize";
+import { productSellerFilter } from "../product_settings/productSellerGuard.js";
 import { cartSerialNumberModel } from "../../models/activities/cartSerialNumberModel.js";
 import { productModel } from "../../models/product_settings/productModel.js";
 import { resBadRequest, resSuccess } from "../../utils/sharedFunctions.js";
@@ -115,8 +117,10 @@ export const getSerialRequirement = async (req) => {
 /** Product dropdown options for the Task / Support Ticket / Visit forms. */
 export const getProductOptions = async (req) => {
   try {
+    // Task / Visit product dropdown: team members only see products they are assigned to sell.
+    const sellerFilter = await productSellerFilter(req);
     const products = await productModel(req.tenantDB).findAll({
-      where: { isDelete: 0 },
+      where: sellerFilter ? { isDelete: 0, [Op.and]: [sellerFilter] } : { isDelete: 0 },
       attributes: ["id", "product_name", "is_serial_number"],
       order: [["product_name", "ASC"]],
       raw: true,

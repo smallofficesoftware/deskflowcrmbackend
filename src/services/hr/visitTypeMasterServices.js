@@ -27,6 +27,7 @@ import { visitTypeModel } from "../../models/hr/visitTypeModel.js";
 import { customFieldFormModel } from "../../models/other_settings/customFieldFormModel.js";
 import { VISIT_IMG_LINK_EXTENDED } from "../../utils/appConstants.js";
 import { pickSerial, resolveSerial } from "../serial_requirement/serialRequirementServices.js";
+import { assertProductsAllowed } from "../product_settings/productSellerGuard.js";
 
 export const getAllVisitMaster = async (req) => {
   try {
@@ -347,6 +348,13 @@ export const visitMasterCreate = async (req) => {
       });
     }
     const { product_id, serial_number } = resolvedSerial;
+    const notSellerMsg = await assertProductsAllowed(req, product_id);
+    if (notSellerMsg) {
+      return resError({
+        ack_msg: notSellerMsg,
+        developer_msg: "Product not assigned to this team member",
+      });
+    }
 
     // Create visit
     const visitTypeMaster = visitsModel(req.tenantDB);
@@ -848,6 +856,13 @@ export const visitMasterUpdate = async (req) => {
         return resError({
           ack_msg: productSerial.error,
           developer_msg: "Serial number validation failed",
+        });
+      }
+      const notSellerMsg = await assertProductsAllowed(req, productSerial.product_id);
+      if (notSellerMsg) {
+        return resError({
+          ack_msg: notSellerMsg,
+          developer_msg: "Product not assigned to this team member",
         });
       }
       updateData.product_id = productSerial.product_id;

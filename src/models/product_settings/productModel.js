@@ -55,6 +55,10 @@ export const productModel = (sequelize) => {
       product_group_id: {
         type: INTEGER,
       },
+      sellers_a_application_login_id: {
+        // Comma-separated team-member ids allowed to sell this product; empty = everyone.
+        type: TEXT,
+      },
       parent_product_id: {
         // Self-FK to products.id. Set on a variant row, pointing at its parent
         // (plans/2026-10-18-product-variants-and-qty-pricing-plan.txt, 4.1).

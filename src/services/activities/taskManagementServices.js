@@ -46,6 +46,7 @@ import { PAGE_ID } from "../../utils/AppEnumeration.js";
 import { exportData } from "../../utils/exporter.js";
 import { addWhatsappDispatchJobs, taskSendWhatsappMessages } from "../whatsapp/whatsappService.js";
 import { emitAutomationEvent, automationBefore } from "../automation/emit.js";
+import { assertProductsAllowed } from "../product_settings/productSellerGuard.js";
 
 // import logger from "../utils/logger.js";
 
@@ -1169,6 +1170,13 @@ export const createAllTask = async (req) => {
       });
     }
     const { product_id, serial_number } = resolvedSerial;
+    const notSellerMsg = await assertProductsAllowed(req, product_id);
+    if (notSellerMsg) {
+      return resError({
+        ack_msg: notSellerMsg,
+        developer_msg: "Product not assigned to this team member",
+      });
+    }
 
     // let convertPathVisitImage = null;
 
@@ -1942,6 +1950,13 @@ export const AllTaskUpdate = async (req) => {
       return resError({
         ack_msg: updateProductSerial.error,
         developer_msg: "Serial number validation failed",
+      });
+    }
+    const notSellerMsg = await assertProductsAllowed(req, updateProductSerial.product_id);
+    if (notSellerMsg) {
+      return resError({
+        ack_msg: notSellerMsg,
+        developer_msg: "Product not assigned to this team member",
       });
     }
 

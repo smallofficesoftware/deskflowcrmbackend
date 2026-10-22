@@ -5015,3 +5015,10 @@ CREATE TABLE `marketplace_addon_field_mappings` (
   PRIMARY KEY (`id`),
   KEY `idx_mafm_company_addon_form` (`company_masters_id`, `addon_code`, `form_type`)
 );
+
+22-10-2026 Dhaval
+-- Every tenant DB + smalloffice_sample_tenant. Product-wise team assignment: comma-separated
+-- a_application_login_id of team members allowed to sell the product. NULL/empty = everyone.
+-- migration: migration/tenant/migrations/20261022100000-add-sellers-to-products.js
+ALTER TABLE `products`
+  ADD COLUMN `sellers_a_application_login_id` TEXT NULL DEFAULT NULL COMMENT 'Comma-separated a_application_login_id of team members allowed to sell this product; empty = everyone';

@@ -29,6 +29,7 @@ import {
   sanitizeObjectOfNull,
 } from "../../utils/sharedFunctions.js";
 import { getCompanyByLoginId } from "../commonServices.js";
+import { normalizeSellerIds, productSellerFilter } from "./productSellerGuard.js";
 export const getAllProduct = async (req) => {
   try {
     let { ul, ll, selectedDates, productId } = req.body;
@@ -41,7 +42,8 @@ export const getAllProduct = async (req) => {
       contact_id,
       cart_type,
       excludeVariantParents,
-      excludeVariants
+      excludeVariants,
+      forSeller
     } = req.body;
 
     const findCompanyId = await getCompanyByLoginId(a_application_login_id);
@@ -108,6 +110,19 @@ export const getAllProduct = async (req) => {
         product_barcode_number: searchBarcodeNum,
         isDelete: "0",
       };
+    }
+
+    // Selling pickers (cart/order/quotation/inquiry/visit/task) send forSeller so a team
+    // member only sees products they are assigned to sell. Applied after the barcode
+    // branch above, which replaces the whole where clause.
+    if (forSeller) {
+      const sellerFilter = await productSellerFilter(req);
+      if (sellerFilter) {
+        whereClause = {
+          ...whereClause,
+          [Op.and]: [...(whereClause[Op.and] || []), sellerFilter],
+        };
+      }
     }
 
     let resultPriceListItem;
@@ -598,6 +613,7 @@ export const productCreate = async (req) => {
       min_stock_quantity: Number(min_stock_quantity),
       max_stock_quantity: Number(max_stock_quantity),
       product_types: Number(product_types),
+      sellers_a_application_login_id: normalizeSellerIds(req.body.sellers_a_application_login_id),
       hsn_code: hsn_code,
       miracle_uom_name: req.body.miracle_uom_name !== undefined ? req.body.miracle_uom_name : "",
       products_column_number_1: req.body.products_column_number_1 || "",
@@ -886,6 +902,10 @@ export const productUpdate = async (req) => {
         min_stock_quantity: Number(min_stock_quantity),
         max_stock_quantity: Number(max_stock_quantity),
         product_types: Number(product_types),
+        // Only touched when the caller sends it, so other update callers keep the saved list.
+        ...(req.body.sellers_a_application_login_id !== undefined && {
+          sellers_a_application_login_id: normalizeSellerIds(req.body.sellers_a_application_login_id),
+        }),
         hsn_code: hsn_code,
         miracle_uom_name: req.body.miracle_uom_name !== undefined ? req.body.miracle_uom_name : (existingProduct?.miracle_uom_name || ""),
         products_column_number_1: req.body.products_column_number_1 || "",

@@ -77,6 +77,7 @@ import {
   insertStagesAndStatusLogs
 } from "../commonServices.js";
 import { emitAutomationEvent, automationBefore } from "../automation/emit.js";
+import { assertProductsAllowed } from "../product_settings/productSellerGuard.js";
 
 
 const orderTypesList = [
@@ -224,6 +225,14 @@ export const orderCreate = async (req, res) => {
     const findCompanyId = await getCompanyByLoginId(a_application_login_id);
     if (!findCompanyId) {
       return resError({ developer_msg: "Company not found" });
+    }
+
+    // Quotation / order / sales invoice: only products the team member is assigned to sell.
+    if ([1, 2, 3].includes(Number(cart?.type))) {
+      const notSellerMsg = await assertProductsAllowed(req, items.map((item) => item.item_product_id));
+      if (notSellerMsg) {
+        return resError({ ack_msg: notSellerMsg, developer_msg: "Product not assigned to this team member" });
+      }
     }
 
     const byPassCompany = [];
@@ -1908,6 +1917,18 @@ export const orderUpdate = async (req, res) => {
       reference_cart_id
     } = req.body;
     const findCompanyId = await getCompanyByLoginId(a_application_login_id);
+
+    // Only lines being added now are checked, so editing an old order that already holds a
+    // product the member is no longer assigned to still saves.
+    if ([1, 2, 3].includes(Number(type))) {
+      const newLineProductIds = (update_cart_items || [])
+        .filter((item) => !item.id)
+        .map((item) => item.item_product_id);
+      const notSellerMsg = await assertProductsAllowed(req, newLineProductIds);
+      if (notSellerMsg) {
+        return resError({ ack_msg: notSellerMsg, developer_msg: "Product not assigned to this team member" });
+      }
+    }
 
     const byPassCompany = [];
     const current_date = new Date();
