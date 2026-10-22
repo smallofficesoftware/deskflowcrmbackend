@@ -1,7 +1,6 @@
-import { getTenantDB } from "../../config/dbManager.js";
 import { isAppEnabledForCompany } from "../../middlewares/requireAddon.js";
-import companyModel from "../../models/company_setup/companyModel.js";
 import { resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
+import { resolveCompanyBySlug } from "../storefront/storefrontCompanyResolver.js";
 
 // Generic, public (no login) app-store status check - plans/2026-10-15-ecommerce-
 // b2b-b2c-plan.txt (4.5) and plans/2026-10-08-marketplace-tally-plan.txt (4.1) both
@@ -23,22 +22,12 @@ export const getAppStatus = async (req) => {
       return resBadRequest({ developer_msg: "company (qr_code) query param is required" });
     }
 
-    const companyData = await companyModel.findOne({
-      where: { qr_code, isDelete: 0 },
-      attributes: ["id", "a_application_login_id", "qr_code"],
-    });
-    if (!companyData) {
+    const resolved = await resolveCompanyBySlug(qr_code);
+    if (!resolved) {
       return resError({ ack_msg: "Company Not Found", developer_msg: "Company Not Found for provided qr_code" });
     }
 
-    const company_masters_id = companyData.dataValues.id;
-    const tenantId = companyData.dataValues.a_application_login_id;
-    const tenantDBInfo = await getTenantDB(tenantId, company_masters_id);
-    if (!tenantDBInfo || !tenantDBInfo.sequelize) {
-      return resError({ ack_msg: "Tenant DB Error", developer_msg: "Unable to resolve tenant DB" });
-    }
-
-    const { enabled } = await isAppEnabledForCompany(tenantDBInfo.sequelize, company_masters_id, appCode);
+    const { enabled } = await isAppEnabledForCompany(resolved.tenantDB, resolved.company_masters_id, appCode);
 
     return resSuccess({ data: { item: { appCode, enabled } } });
   } catch (error) {

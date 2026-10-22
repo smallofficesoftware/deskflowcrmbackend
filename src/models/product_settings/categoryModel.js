@@ -39,6 +39,9 @@ export const categoryModel = (sequelize) => {
     meta_description: {
       type: STRING,
     },
+    parent_category_id: {
+      type: INTEGER,
+    },
     isDelete: {
       type: TINYINT,
       defaultValue: "0",

@@ -1,4 +1,10 @@
 import {
+  getStorefrontCategoryBySlugController,
+  getStorefrontCategoryTreeController,
+  getStorefrontProductBySlugController,
+  getStorefrontProductsController,
+} from "../../../controllers/storefront/storefrontCatalogController.js";
+import {
   getStorefrontSettingsController,
   getStorefrontThemesController,
   saveStorefrontSettingsController,
@@ -20,4 +26,15 @@ export default (app) => {
   app.post("/storefront/settings/save", authenticateToken, tenantMiddleware, requireAddon("ecommerce-storefront"), saveStorefrontSettingsController);
   app.post("/storefront/themes/get", authenticateToken, tenantMiddleware, requireAddon("ecommerce-storefront"), getStorefrontThemesController);
   app.post("/storefront/theme/select", authenticateToken, tenantMiddleware, requireAddon("ecommerce-storefront"), selectStorefrontThemeController);
+
+  // PUBLIC catalog reads (P2/4.2) - deliberately NO authenticateToken/tenantMiddleware/
+  // requireAddon here, per 4.2's own text: "requireAddon() on every route except
+  // public catalog reads." An anonymous visitor/crawler on a resolved subdomain
+  // must be able to browse without a session or an addon-enabled check blocking
+  // them - each service call resolves its own tenant DB from :companySlug instead
+  // (storefrontCompanyResolver.js).
+  app.get("/storefront/:companySlug/categories", getStorefrontCategoryTreeController);
+  app.get("/storefront/:companySlug/categories/:slug", getStorefrontCategoryBySlugController);
+  app.get("/storefront/:companySlug/products", getStorefrontProductsController);
+  app.get("/storefront/:companySlug/products/:slug", getStorefrontProductBySlugController);
 };

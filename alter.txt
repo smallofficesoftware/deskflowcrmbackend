@@ -5099,3 +5099,13 @@ ALTER TABLE `products`
 -- migration: migration/tenant/migrations/20261022100000-add-show-in-ecommerce-to-products.js
 ALTER TABLE `products`
   ADD COLUMN `show_in_ecommerce` TINYINT NOT NULL DEFAULT 1;
+
+
+22-10-2026 Dhaval
+-- Every tenant DB + smalloffice_sample_tenant. Subcategory support for the ecommerce storefront's
+-- category browse pages (plans/2026-10-15-ecommerce-b2b-b2c-plan.txt, P2/4.7). categories.group_id
+-- is a different, unrelated concept (links to product_groups) - this is a new self-referencing
+-- relationship, one level deep for phase 1.
+-- migration: migration/tenant/migrations/20261022110000-add-parent-category-id-to-categories.js
+ALTER TABLE `categories`
+  ADD COLUMN `parent_category_id` INT NULL;
