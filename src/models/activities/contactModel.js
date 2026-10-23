@@ -98,6 +98,32 @@ export const contactModel = (sequelize) => {
     assinged_to_price_list: {
       type: INTEGER,
     },
+    // Ecommerce storefront invite-only allowlist flag (plans/2026-10-15-
+    // ecommerce-b2b-b2c-plan.txt, P3/Q3).
+    storefront_invited: {
+      type: TINYINT,
+    },
+    // Storefront auth state (plans/2026-10-15-ecommerce-b2b-b2c-plan.txt, P3/Q3,
+    // REVISED 23-10-2026) - a storefront customer IS a contact, not a separate
+    // identity (see migration 20261023100000's own comment for why).
+    storefront_pin_hash: {
+      type: STRING,
+    },
+    storefront_is_verified_mobile: {
+      type: TINYINT,
+    },
+    storefront_is_verified_email: {
+      type: TINYINT,
+    },
+    // Non-null means "this contact has a storefront account" - used by
+    // storefrontAuthService.js's invite-only gate to distinguish an existing
+    // storefront customer from a CRM contact who's never used the storefront.
+    storefront_signup_method: {
+      type: STRING,
+    },
+    storefront_last_login_date: {
+      type: DATE,
+    },
     assinged_to_work_a_application_id: {
       type: TEXT,
     },

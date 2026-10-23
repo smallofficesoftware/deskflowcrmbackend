@@ -11,8 +11,18 @@ import {
   saveStorefrontSettingsController,
   selectStorefrontThemeController,
 } from "../../../controllers/storefront/storefrontController.js";
+import {
+  getStorefrontMeController,
+  requestStorefrontOtpController,
+  setStorefrontPinController,
+  storefrontInviteLoginController,
+  storefrontLightLoginController,
+  storefrontPinLoginController,
+  verifyStorefrontOtpController,
+} from "../../../controllers/storefront/storefrontAuthController.js";
 import { authenticateToken } from "../../../middlewares/auth.js";
 import { requireAddon } from "../../../middlewares/requireAddon.js";
+import { requireStorefrontSession } from "../../../services/storefront/storefrontSession.js";
 import { tenantMiddleware } from "../../../middlewares/tenantMiddleware.js";
 
 // First slice of the ecommerce storefront addon's CRM admin settings page
@@ -39,4 +49,23 @@ export default (app) => {
   app.get("/storefront/:companySlug/categories/:slug", getStorefrontCategoryBySlugController);
   app.get("/storefront/:companySlug/products", getStorefrontProductsController);
   app.get("/storefront/:companySlug/products/:slug", getStorefrontProductBySlugController);
+
+  // Customer accounts (P3/4.2a/Q3) - also PUBLIC/ungated in the authenticateToken/
+  // tenantMiddleware/requireAddon sense (there is no req.user for an anonymous
+  // customer), but NOT addon-gate-free like catalog reads: each service call does
+  // its own inline resolveCompanyBySlug() + isAppEnabledForCompany() check instead
+  // (storefrontAuthService.js's resolveAndGate helper) - identified during P1/P2
+  // as a requirement requireAddon() itself can't satisfy for this audience.
+  app.post("/storefront/:companySlug/auth/otp/request", requestStorefrontOtpController);
+  app.post("/storefront/:companySlug/auth/otp/verify", verifyStorefrontOtpController);
+  app.post("/storefront/:companySlug/auth/pin-login", storefrontPinLoginController);
+  app.post("/storefront/:companySlug/auth/light-login", storefrontLightLoginController);
+  app.post("/storefront/:companySlug/auth/invite-login", storefrontInviteLoginController);
+
+  // Logged-in customer (requireStorefrontSession resolves req.tenantDB itself from
+  // the session token's a_application_login_id/company_masters_id - see that
+  // middleware's own comment; no tenantMiddleware here, that one assumes CRM staff
+  // auth shape).
+  app.get("/storefront/me", requireStorefrontSession, getStorefrontMeController);
+  app.post("/storefront/me/pin", requireStorefrontSession, setStorefrontPinController);
 };
