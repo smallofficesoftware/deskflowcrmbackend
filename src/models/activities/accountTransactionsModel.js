@@ -52,6 +52,12 @@ export const accountTransactionsModel = (sequelize) => {
     reference_table: {
       type: STRING,
     },
+    gateway_order_id: {
+      type: STRING,
+    },
+    gateway_payment_id: {
+      type: STRING,
+    },
     amount_type: {
       type: TINYINT,
     },

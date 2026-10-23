@@ -31,6 +31,10 @@ import {
   getStorefrontStatesController,
 } from "../../../controllers/storefront/storefrontLocationController.js";
 import { createStorefrontCheckoutController } from "../../../controllers/storefront/storefrontCheckoutController.js";
+import {
+  createStorefrontPaymentOrderController,
+  verifyStorefrontPaymentController,
+} from "../../../controllers/storefront/storefrontPaymentController.js";
 import { authenticateToken } from "../../../middlewares/auth.js";
 import { requireAddon } from "../../../middlewares/requireAddon.js";
 import { requireStorefrontSession } from "../../../services/storefront/storefrontSession.js";
@@ -89,6 +93,13 @@ export default (app) => {
   // auth routes above (an anonymous guest can check out too, per Q6) - each
   // call resolves/gates itself the same way.
   app.post("/storefront/:companySlug/checkout", createStorefrontCheckoutController);
+
+  // P4 payment (23-10-2026) - create-order then verify, mirroring the EXISTING
+  // CRM billing pattern (thirdPartyIntegrationService.js's addPlanByRrazorpay/
+  // razorpayPaymentVerify) with per-company keys instead of the global env
+  // vars. Public like checkout above - same reasoning (guest checkout).
+  app.post("/storefront/:companySlug/payments/create-order", createStorefrontPaymentOrderController);
+  app.post("/storefront/:companySlug/payments/verify", verifyStorefrontPaymentController);
 
   // Logged-in customer (requireStorefrontSession resolves req.tenantDB itself from
   // the session token's a_application_login_id/company_masters_id - see that

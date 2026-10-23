@@ -5153,3 +5153,14 @@ ALTER TABLE `categories`
   ADD COLUMN `image_path` VARCHAR(255) NULL,
   ADD COLUMN `webp_path` VARCHAR(255) NULL,
   ADD COLUMN `thumbnail_path` VARCHAR(255) NULL;
+
+
+23-10-2026 Dhaval
+-- Every tenant DB + smalloffice_sample_tenant. Ecommerce storefront P4 payment
+-- confirmation - Razorpay's own order/payment ids, linked to a cart via the
+-- EXISTING reference_table/reference_id columns (no payment_status on carts -
+-- see plans/2026-10-15-ecommerce-b2b-b2c-plan.txt, P4).
+-- migration: migration/tenant/migrations/20261023130000-add-gateway-ids-to-account-transactions.js
+ALTER TABLE `account_transactions`
+  ADD COLUMN `gateway_order_id` VARCHAR(255) NULL,
+  ADD COLUMN `gateway_payment_id` VARCHAR(255) NULL;

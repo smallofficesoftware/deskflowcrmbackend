@@ -24,6 +24,14 @@ const DEFAULTS = {
   // applyDefaultPriceList used to read this via its own separate query; checkout
   // (P4) needs it too, so it's read once here instead of twice.
   default_price_list_id: null,
+  // P4 payment settings (23-10-2026, per the user: settings UI now, real
+  // payment wiring built right after) - same config_json blob, no new keys
+  // table. razorpay_key_secret never leaves the server (storefrontPaymentService.js
+  // only ever reads it server-side to call Razorpay's own API / verify its
+  // signature - never returned to any client, CRM or storefront).
+  razorpay_key_id: "",
+  razorpay_key_secret: "",
+  paid_stage_status_id: null,
 };
 
 export const getStorefrontAuthSettings = async (tenantDB, company_masters_id) => {
