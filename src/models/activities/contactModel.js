@@ -124,6 +124,13 @@ export const contactModel = (sequelize) => {
     storefront_last_login_date: {
       type: DATE,
     },
+    // Mode-switch lock (Q3(d), 23-10-2026) - comma-separated method keys
+    // ('light'|'invite'|'otp_mobile'|'otp_email') this contact is denylisted
+    // from, independent of the company-wide toggle. See migration
+    // 20261023110000's own comment for why this only matters on re-enable.
+    storefront_locked_methods: {
+      type: TEXT,
+    },
     assinged_to_work_a_application_id: {
       type: TEXT,
     },

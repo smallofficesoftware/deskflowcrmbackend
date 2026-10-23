@@ -5118,3 +5118,11 @@ ALTER TABLE `categories`
 -- migration: migration/tenant/migrations/20261022140000-add-storefront-invited-to-contacts.js
 ALTER TABLE `contact_masters`
   ADD COLUMN `storefront_invited` TINYINT NOT NULL DEFAULT 0;
+
+
+23-10-2026 Dhaval
+-- Every tenant DB + smalloffice_sample_tenant. Mode-switch per-method lock (Q3(d)) -
+-- plans/2026-10-15-ecommerce-b2b-b2c-plan.txt, P3.
+-- migration: migration/tenant/migrations/20261023110000-add-storefront-locked-methods-to-contacts.js
+ALTER TABLE `contact_masters`
+  ADD COLUMN `storefront_locked_methods` TEXT NULL;

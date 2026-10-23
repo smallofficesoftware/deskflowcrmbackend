@@ -6,6 +6,7 @@ import { sendStorefrontOtpEmail } from "./storefrontMailer.js";
 import { createSessionToken } from "./storefrontSession.js";
 import { hashPin, isValidPinFormat, verifyPin } from "./storefrontPin.js";
 import { getStorefrontAuthSettings } from "./storefrontAuthSettings.js";
+import { isMethodLocked } from "./storefrontModeSwitch.js";
 import { resolveCompanyBySlug } from "./storefrontCompanyResolver.js";
 import { normalizeToTenDigit, resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
 
@@ -163,6 +164,9 @@ export const requestStorefrontOtp = async (req) => {
     if (!hasStorefrontAccount(contact) && !canSignUp(settings, contact)) {
       return resError({ ack_msg: "This store is invite-only. Contact the seller for access." });
     }
+    if (contact && isMethodLocked(contact, channel === "mobile" ? "otp_mobile" : "otp_email")) {
+      return resError({ ack_msg: "This login method has been disabled for your account. Contact the seller for help." });
+    }
 
     const { code, token } = createOtpChallenge(identifier);
 
@@ -299,6 +303,9 @@ export const storefrontLightLogin = async (req) => {
     if (!hasStorefrontAccount(contact) && !canSignUp(settings, contact)) {
       return resError({ ack_msg: "This store is invite-only. Contact the seller for access." });
     }
+    if (contact && isMethodLocked(contact, "light")) {
+      return resError({ ack_msg: "This login method has been disabled for your account. Contact the seller for help." });
+    }
 
     contact = await createOrUpgradeContact(resolved.tenantDB, {
       company_masters_id: resolved.company_masters_id,
@@ -336,6 +343,9 @@ export const storefrontInviteLogin = async (req) => {
     let contact = await findContact(resolved.tenantDB, resolved.company_masters_id, "mobile", lookupValue);
     if (!hasStorefrontAccount(contact) && !contact?.storefront_invited) {
       return resError({ ack_msg: "This mobile number hasn't been invited." });
+    }
+    if (contact && isMethodLocked(contact, "invite")) {
+      return resError({ ack_msg: "This login method has been disabled for your account. Contact the seller for help." });
     }
 
     contact = await createOrUpgradeContact(resolved.tenantDB, {
