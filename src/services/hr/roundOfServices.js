@@ -6,14 +6,13 @@ export const roundOffGet = async (req) => {
     try {
         const { ul, ll, a_application_login_id } = req.body;
 
-        const findCompanyId = await getCompanyByLoginId(a_application_login_id);
 
         const limit = Number(ll);
         const offset = Number(ul);
 
         const AttendanceRoundoffRulesInstance = AttendanceRoundoffRules(req.tenantDB);
         const result = await AttendanceRoundoffRulesInstance.findAll({
-            where: { isDelete: "0", company_masters_id: findCompanyId.company_masters_id },
+            where: { isDelete: "0" },
             attributes: [
                 "id",
                 "minutes",
