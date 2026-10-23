@@ -30,6 +30,7 @@ import {
   getStorefrontCountriesController,
   getStorefrontStatesController,
 } from "../../../controllers/storefront/storefrontLocationController.js";
+import { createStorefrontCheckoutController } from "../../../controllers/storefront/storefrontCheckoutController.js";
 import { authenticateToken } from "../../../middlewares/auth.js";
 import { requireAddon } from "../../../middlewares/requireAddon.js";
 import { requireStorefrontSession } from "../../../services/storefront/storefrontSession.js";
@@ -83,6 +84,11 @@ export default (app) => {
   app.post("/storefront/:companySlug/auth/pin-login", storefrontPinLoginController);
   app.post("/storefront/:companySlug/auth/light-login", storefrontLightLoginController);
   app.post("/storefront/:companySlug/auth/invite-login", storefrontInviteLoginController);
+
+  // P4 (23-10-2026) - checkout only, no payment wiring yet. Public like the
+  // auth routes above (an anonymous guest can check out too, per Q6) - each
+  // call resolves/gates itself the same way.
+  app.post("/storefront/:companySlug/checkout", createStorefrontCheckoutController);
 
   // Logged-in customer (requireStorefrontSession resolves req.tenantDB itself from
   // the session token's a_application_login_id/company_masters_id - see that

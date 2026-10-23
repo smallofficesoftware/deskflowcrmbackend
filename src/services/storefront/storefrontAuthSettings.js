@@ -20,6 +20,10 @@ const DEFAULTS = {
   auth_light_mode_enabled: false,
   auth_invite_only: false,
   guest_checkout_enabled: true,
+  // Not auth-specific, but the same config_json row - storefrontCatalogService.js's
+  // applyDefaultPriceList used to read this via its own separate query; checkout
+  // (P4) needs it too, so it's read once here instead of twice.
+  default_price_list_id: null,
 };
 
 export const getStorefrontAuthSettings = async (tenantDB, company_masters_id) => {
