@@ -31,6 +31,39 @@ const generateWebpVariants = async (companyFolder, fileName) => {
   return { webpName, thumbName };
 };
 
+/** POST /get-category-image { category_id } - mirrors getProductImages'
+ * pre-built-URL shape so the CRM's category edit form can preview the
+ * current image the same way ProductPhotosSection does for products. */
+export const getCategoryImage = async (req) => {
+  try {
+    const { category_id } = req.body;
+    if (!category_id) return resBadRequest({ developer_msg: "category_id is required" });
+
+    const companyId = req.user?.companyId;
+    if (!companyId) return resBadRequest({ ack_msg: "Company not found" });
+
+    const CategoryModel = categoryModel(req.tenantDB);
+    const category = await CategoryModel.findOne({
+      where: { id: category_id, company_masters_id: companyId, isDelete: 0 },
+      attributes: ["image_path", "webp_path", "thumbnail_path"],
+      raw: true,
+    });
+    if (!category) return resError({ ack_msg: "Category not found" });
+
+    return resSuccess({
+      data: {
+        item: {
+          image_url: category.image_path ? CATEGORY_IMG_LINK_EXTENDED + category.image_path : null,
+          webp_url: category.webp_path ? CATEGORY_IMG_LINK_EXTENDED + category.webp_path : null,
+          thumbnail_url: category.thumbnail_path ? CATEGORY_IMG_LINK_EXTENDED + category.thumbnail_path : null,
+        },
+      },
+    });
+  } catch (error) {
+    return resError({ developer_msg: `error ${error}` });
+  }
+};
+
 export const uploadCategoryImage = async (req) => {
   try {
     const { category_id } = req.body;

@@ -1,5 +1,9 @@
-import { deleteCategoryImage, uploadCategoryImage } from "../../services/product_settings/categoryImageServices.js";
+import { deleteCategoryImage, getCategoryImage, uploadCategoryImage } from "../../services/product_settings/categoryImageServices.js";
 import callServiceMethod from "../baseController.js";
+
+export const getCategoryImageController = async (req, res) => {
+  await callServiceMethod(req, res, getCategoryImage(req), "getCategoryImage");
+};
 
 export const uploadCategoryImageController = async (req, res) => {
   await callServiceMethod(req, res, uploadCategoryImage(req), "uploadCategoryImage");
