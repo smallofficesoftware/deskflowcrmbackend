@@ -196,6 +196,12 @@ const findDirProductImages = path.join(
 );
 app.use("/productImg", express.static(findDirProductImages));
 
+const findDirCategoryImages = path.join(
+    process.cwd(),
+    "media-folder/category-images"
+);
+app.use("/categoryImg", express.static(findDirCategoryImages));
+
 const findDirProductBomImages = path.join(
     process.cwd(),
     "media-folder/product_bom"

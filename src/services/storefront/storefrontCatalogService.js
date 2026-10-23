@@ -100,6 +100,19 @@ export const getStorefrontCompanyInfo = async (req) => {
   }
 };
 
+/** Shapes a category's own three image columns (23-10-2026 - one image per
+ * category, unlike product_images' multi-row table) into the same
+ * `{ webp_path, thumbnail_path }` shape attachPrimaryImages() already gives
+ * products, so the frontend's existing mediaUrl()/StorefrontProductImage-
+ * style handling works unchanged for categories too. */
+const attachCategoryImage = (category) => {
+  const { image_path, webp_path, thumbnail_path, ...rest } = category;
+  return {
+    ...rest,
+    image: webp_path || thumbnail_path || image_path ? { webp_path: webp_path || image_path, thumbnail_path: thumbnail_path || image_path } : null,
+  };
+};
+
 /** GET /storefront/:companySlug/categories - full tree (top-level categories
  * with their direct subcategories nested), for nav/menus. */
 export const getStorefrontCategoryTree = async (req) => {
@@ -111,7 +124,7 @@ export const getStorefrontCategoryTree = async (req) => {
     const CategoryModel = categoryModel(resolved.tenantDB);
     const all = await CategoryModel.findAll({
       where: { company_masters_id: resolved.company_masters_id, isDelete: 0 },
-      attributes: ["id", "category_name", "slug", "parent_category_id"],
+      attributes: ["id", "category_name", "slug", "parent_category_id", "image_path", "webp_path", "thumbnail_path"],
       order: [["category_name", "ASC"]],
       raw: true,
     });
@@ -127,8 +140,8 @@ export const getStorefrontCategoryTree = async (req) => {
       childrenByParentId.get(key).push(c);
     });
     const topLevel = (childrenByParentId.get(null) || []).map((c) => ({
-      ...c,
-      children: childrenByParentId.get(c.id) || [],
+      ...attachCategoryImage(c),
+      children: (childrenByParentId.get(c.id) || []).map(attachCategoryImage),
     }));
 
     return resSuccess({ data: { item: topLevel } });
@@ -155,10 +168,10 @@ export const getStorefrontCategoryBySlug = async (req) => {
     });
     if (!category) return resError({ ack_msg: "Category not found" });
 
-    const [children, parent] = await Promise.all([
+    const [childrenRaw, parentRaw] = await Promise.all([
       CategoryModel.findAll({
         where: { parent_category_id: category.id, isDelete: 0 },
-        attributes: ["id", "category_name", "slug"],
+        attributes: ["id", "category_name", "slug", "image_path", "webp_path", "thumbnail_path"],
         raw: true,
       }),
       category.parent_category_id
@@ -169,6 +182,8 @@ export const getStorefrontCategoryBySlug = async (req) => {
           })
         : null,
     ]);
+    const children = childrenRaw.map(attachCategoryImage);
+    const parent = parentRaw;
 
     const ProductModel = productModel(resolved.tenantDB);
     const products = await ProductModel.findAll({
@@ -187,7 +202,7 @@ export const getStorefrontCategoryBySlug = async (req) => {
     const pricedProducts = await applyDefaultPriceList(resolved.tenantDB, resolved.company_masters_id, products);
     const productsWithImages = await attachPrimaryImages(resolved.tenantDB, pricedProducts);
 
-    return resSuccess({ data: { item: { category, parent, children, products: productsWithImages } } });
+    return resSuccess({ data: { item: { category: attachCategoryImage(category), parent, children, products: productsWithImages } } });
   } catch (error) {
     return resError({ developer_msg: `getStorefrontCategoryBySlug failed: ${error}` });
   }

@@ -5126,3 +5126,30 @@ ALTER TABLE `contact_masters`
 -- migration: migration/tenant/migrations/20261023110000-add-storefront-locked-methods-to-contacts.js
 ALTER TABLE `contact_masters`
   ADD COLUMN `storefront_locked_methods` TEXT NULL;
+
+
+23-10-2026 Dhaval
+-- Every tenant DB + smalloffice_sample_tenant. Storefront customer auth state on
+-- contact_masters (REVISED 23-10-2026 - a storefront customer IS a contact, not a
+-- separate identity) - plans/2026-10-15-ecommerce-b2b-b2c-plan.txt, P3/Q3.
+-- NOTE: this entry was missed when the migration was first written - caught by a
+-- migration-vs-alter.txt audit, not run against any live server until now.
+-- migration: migration/tenant/migrations/20261023100000-add-storefront-auth-fields-to-contacts.js
+ALTER TABLE `contact_masters`
+  ADD COLUMN `storefront_pin_hash` VARCHAR(255) NULL,
+  ADD COLUMN `storefront_is_verified_mobile` TINYINT NOT NULL DEFAULT 0,
+  ADD COLUMN `storefront_is_verified_email` TINYINT NOT NULL DEFAULT 0,
+  ADD COLUMN `storefront_signup_method` VARCHAR(30) NULL,
+  ADD COLUMN `storefront_last_login_date` DATETIME NULL;
+
+
+23-10-2026 Dhaval
+-- Every tenant DB + smalloffice_sample_tenant. Category images for the ecommerce
+-- storefront - categories had no image column at all (confirmed via SHOW COLUMNS).
+-- One image per category, same webp+thumbnail convention as product_images -
+-- plans/2026-10-15-ecommerce-b2b-b2c-plan.txt.
+-- migration: migration/tenant/migrations/20261023120000-add-image-fields-to-categories.js
+ALTER TABLE `categories`
+  ADD COLUMN `image_path` VARCHAR(255) NULL,
+  ADD COLUMN `webp_path` VARCHAR(255) NULL,
+  ADD COLUMN `thumbnail_path` VARCHAR(255) NULL;
