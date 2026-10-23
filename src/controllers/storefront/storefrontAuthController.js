@@ -6,6 +6,7 @@ import {
   storefrontInviteLogin,
   storefrontLightLogin,
   storefrontPinLogin,
+  updateStorefrontMe,
   verifyStorefrontOtp,
 } from "../../services/storefront/storefrontAuthService.js";
 import callServiceMethod from "../baseController.js";
@@ -40,4 +41,8 @@ export const setStorefrontPinController = async (req, res) => {
 
 export const getStorefrontMeController = async (req, res) => {
   await callServiceMethod(req, res, getStorefrontMe(req), "getStorefrontMe");
+};
+
+export const updateStorefrontMeController = async (req, res) => {
+  await callServiceMethod(req, res, updateStorefrontMe(req), "updateStorefrontMe");
 };

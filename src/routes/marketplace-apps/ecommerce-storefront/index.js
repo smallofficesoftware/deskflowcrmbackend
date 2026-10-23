@@ -19,6 +19,7 @@ import {
   storefrontInviteLoginController,
   storefrontLightLoginController,
   storefrontPinLoginController,
+  updateStorefrontMeController,
   verifyStorefrontOtpController,
 } from "../../../controllers/storefront/storefrontAuthController.js";
 import { authenticateToken } from "../../../middlewares/auth.js";
@@ -69,5 +70,6 @@ export default (app) => {
   // middleware's own comment; no tenantMiddleware here, that one assumes CRM staff
   // auth shape).
   app.get("/storefront/me", requireStorefrontSession, getStorefrontMeController);
+  app.put("/storefront/me", requireStorefrontSession, updateStorefrontMeController);
   app.post("/storefront/me/pin", requireStorefrontSession, setStorefrontPinController);
 };

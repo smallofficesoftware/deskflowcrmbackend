@@ -369,3 +369,37 @@ export const getStorefrontMe = async (req) => {
     return resError({ developer_msg: `getStorefrontMe failed: ${error}` });
   }
 };
+
+// Only these four - person_name, address, shipping_address, pincode - are
+// safe for a storefront customer to write directly: they're free text on
+// contact_masters. country/state/city/area are NOT free text despite the
+// Sequelize model's STRING declaration - SHOW COLUMNS confirms they're all
+// int(11) foreign keys (into country_masters etc.), and there's no public
+// endpoint yet to list those master values for a dropdown, so accepting
+// arbitrary text for them would either silently corrupt the FK or fail.
+// Deferred, not built - structured address editing needs that lookup first.
+const EDITABLE_PROFILE_FIELDS = ["person_name", "address", "shipping_address", "pincode"];
+
+/** PUT /storefront/me - protected (requireStorefrontSession). */
+export const updateStorefrontMe = async (req) => {
+  try {
+    const { contact_master_id, company_masters_id } = req.storefrontSession;
+    const contact = await contactModel(req.tenantDB).findOne({
+      where: { id: contact_master_id, company_masters_id, isDelete: 0 },
+    });
+    if (!contact) return resError({ ack_msg: "Account not found." });
+
+    const body = req.body || {};
+    const updates = {};
+    for (const field of EDITABLE_PROFILE_FIELDS) {
+      if (body[field] === undefined) continue;
+      updates[field] = String(body[field] ?? "").trim();
+    }
+    if (updates.person_name === "") return resBadRequest({ developer_msg: "person_name cannot be empty" });
+
+    await contact.update(updates);
+    return resSuccess({ data: { item: publicContactShape(contact) } });
+  } catch (error) {
+    return resError({ developer_msg: `updateStorefrontMe failed: ${error}` });
+  }
+};
