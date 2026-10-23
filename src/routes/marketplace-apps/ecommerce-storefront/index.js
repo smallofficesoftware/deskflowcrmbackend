@@ -22,6 +22,12 @@ import {
   updateStorefrontMeController,
   verifyStorefrontOtpController,
 } from "../../../controllers/storefront/storefrontAuthController.js";
+import {
+  getStorefrontAreasController,
+  getStorefrontCitiesController,
+  getStorefrontCountriesController,
+  getStorefrontStatesController,
+} from "../../../controllers/storefront/storefrontLocationController.js";
 import { authenticateToken } from "../../../middlewares/auth.js";
 import { requireAddon } from "../../../middlewares/requireAddon.js";
 import { requireStorefrontSession } from "../../../services/storefront/storefrontSession.js";
@@ -51,6 +57,15 @@ export default (app) => {
   app.get("/storefront/:companySlug/categories/:slug", getStorefrontCategoryBySlugController);
   app.get("/storefront/:companySlug/products", getStorefrontProductsController);
   app.get("/storefront/:companySlug/products/:slug", getStorefrontProductBySlugController);
+
+  // Cascading location lookups for the address form (P3, 23-10-2026) - public/
+  // read-only mirrors of the per-tenant a_countries/a_states/a_cities/a_areas
+  // master tables (storefrontLocationService.js's own comment has the full
+  // reasoning for why these are new rather than reusing the internal commonGet).
+  app.get("/storefront/:companySlug/locations/countries", getStorefrontCountriesController);
+  app.get("/storefront/:companySlug/locations/states", getStorefrontStatesController);
+  app.get("/storefront/:companySlug/locations/cities", getStorefrontCitiesController);
+  app.get("/storefront/:companySlug/locations/areas", getStorefrontAreasController);
 
   // Customer accounts (P3/4.2a/Q3) - also PUBLIC/ungated in the authenticateToken/
   // tenantMiddleware/requireAddon sense (there is no req.user for an anonymous

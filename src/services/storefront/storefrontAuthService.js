@@ -1,4 +1,8 @@
 import { contactModel } from "../../models/activities/contactModel.js";
+import { areaModel } from "../../models/masters/areaModel.js";
+import { cityModel } from "../../models/masters/cityModel.js";
+import { countryModel } from "../../models/masters/countryModel.js";
+import { stateModel } from "../../models/masters/stateModel.js";
 import { isAppEnabledForCompany } from "../../middlewares/requireAddon.js";
 import { ClaudeOfficeWhatsAppOtp } from "../company_setup/thirdPartyIntegrationService.js";
 import { createOtpChallenge, verifyOtpChallenge } from "./storefrontOtp.js";
@@ -380,15 +384,27 @@ export const getStorefrontMe = async (req) => {
   }
 };
 
-// Only these four - person_name, address, shipping_address, pincode - are
-// safe for a storefront customer to write directly: they're free text on
-// contact_masters. country/state/city/area are NOT free text despite the
-// Sequelize model's STRING declaration - SHOW COLUMNS confirms they're all
-// int(11) foreign keys (into country_masters etc.), and there's no public
-// endpoint yet to list those master values for a dropdown, so accepting
-// arbitrary text for them would either silently corrupt the FK or fail.
-// Deferred, not built - structured address editing needs that lookup first.
+// Free text on contact_masters - safe for a storefront customer to write
+// directly.
 const EDITABLE_PROFILE_FIELDS = ["person_name", "address", "shipping_address", "pincode"];
+
+// country/state/city/area are int(11) foreign keys despite the Sequelize
+// model's STRING declaration (confirmed via SHOW COLUMNS) - into the real,
+// per-tenant a_countries/a_states/a_cities/a_areas master tables (REVISED
+// 23-10-2026, per the user: those tables exist and are seeded, so this is
+// built now rather than skipped - see storefrontLocationService.js's own
+// comment for the new public lookup endpoints the address form uses). Each
+// is validated to actually exist before writing, so a bad/stale id can't
+// silently corrupt the FK. Cascade consistency (state really belongs to
+// the given country, etc.) is NOT cross-checked against whichever values
+// are already on the contact - only that the id itself exists - since the
+// frontend always submits the whole cascade together from one form.
+const LOCATION_FIELD_MODELS = {
+  country: countryModel,
+  state: stateModel,
+  city: cityModel,
+  area: areaModel,
+};
 
 /** PUT /storefront/me - protected (requireStorefrontSession). */
 export const updateStorefrontMe = async (req) => {
@@ -406,6 +422,18 @@ export const updateStorefrontMe = async (req) => {
       updates[field] = String(body[field] ?? "").trim();
     }
     if (updates.person_name === "") return resBadRequest({ developer_msg: "person_name cannot be empty" });
+
+    for (const [field, model] of Object.entries(LOCATION_FIELD_MODELS)) {
+      if (body[field] === undefined) continue;
+      const id = Number(body[field]);
+      if (!id) {
+        updates[field] = null; // explicit clear
+        continue;
+      }
+      const exists = await model(req.tenantDB).findOne({ where: { id, isDelete: 0 }, attributes: ["id"], raw: true });
+      if (!exists) return resBadRequest({ developer_msg: `Invalid ${field} id` });
+      updates[field] = id;
+    }
 
     await contact.update(updates);
     return resSuccess({ data: { item: publicContactShape(contact) } });
