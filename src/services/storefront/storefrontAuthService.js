@@ -115,6 +115,24 @@ function publicContactShape(contact) {
   return Object.fromEntries(PUBLIC_CONTACT_FIELDS.map((field) => [field, plain[field]]));
 }
 
+/** GET /storefront/:companySlug/auth/config - public, no secrets (just which
+ * of Q3's six methods + Q6 guest checkout are on) - the frontend needs this
+ * to render only the login/signup methods the company has actually enabled,
+ * per the plan's own exit criteria ("auth screen that shows only the
+ * methods the company has enabled"). */
+export const getStorefrontAuthConfig = async (req) => {
+  try {
+    const { companySlug } = req.params;
+    const { resolved, error } = await resolveAndGate(companySlug);
+    if (error) return error;
+
+    const settings = await getStorefrontAuthSettings(resolved.tenantDB, resolved.company_masters_id);
+    return resSuccess({ data: { item: settings } });
+  } catch (error) {
+    return resError({ developer_msg: `getStorefrontAuthConfig failed: ${error}` });
+  }
+};
+
 /** POST /storefront/:companySlug/auth/otp/request { channel, identifier }
  * Used both for first-time PIN-method verification (1/2) and every-time OTP
  * login (3/4) - the caller doesn't need to say which, this just gates the

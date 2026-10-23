@@ -12,6 +12,7 @@ import {
   selectStorefrontThemeController,
 } from "../../../controllers/storefront/storefrontController.js";
 import {
+  getStorefrontAuthConfigController,
   getStorefrontMeController,
   requestStorefrontOtpController,
   setStorefrontPinController,
@@ -56,6 +57,7 @@ export default (app) => {
   // its own inline resolveCompanyBySlug() + isAppEnabledForCompany() check instead
   // (storefrontAuthService.js's resolveAndGate helper) - identified during P1/P2
   // as a requirement requireAddon() itself can't satisfy for this audience.
+  app.get("/storefront/:companySlug/auth/config", getStorefrontAuthConfigController);
   app.post("/storefront/:companySlug/auth/otp/request", requestStorefrontOtpController);
   app.post("/storefront/:companySlug/auth/otp/verify", verifyStorefrontOtpController);
   app.post("/storefront/:companySlug/auth/pin-login", storefrontPinLoginController);

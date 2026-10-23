@@ -1,4 +1,5 @@
 import {
+  getStorefrontAuthConfig,
   getStorefrontMe,
   requestStorefrontOtp,
   setStorefrontPin,
@@ -8,6 +9,10 @@ import {
   verifyStorefrontOtp,
 } from "../../services/storefront/storefrontAuthService.js";
 import callServiceMethod from "../baseController.js";
+
+export const getStorefrontAuthConfigController = async (req, res) => {
+  await callServiceMethod(req, res, getStorefrontAuthConfig(req), "getStorefrontAuthConfig");
+};
 
 export const requestStorefrontOtpController = async (req, res) => {
   await callServiceMethod(req, res, requestStorefrontOtp(req), "requestStorefrontOtp");
