@@ -6,10 +6,12 @@ import {
   getStorefrontProductsController,
 } from "../../../controllers/storefront/storefrontCatalogController.js";
 import {
+  getLockedAccountsController,
   getStorefrontSettingsController,
   getStorefrontThemesController,
   saveStorefrontSettingsController,
   selectStorefrontThemeController,
+  unlockStorefrontAccountController,
 } from "../../../controllers/storefront/storefrontController.js";
 import {
   getStorefrontAuthConfigController,
@@ -45,6 +47,8 @@ export default (app) => {
   app.post("/storefront/settings/save", authenticateToken, tenantMiddleware, requireAddon("ecommerce-storefront"), saveStorefrontSettingsController);
   app.post("/storefront/themes/get", authenticateToken, tenantMiddleware, requireAddon("ecommerce-storefront"), getStorefrontThemesController);
   app.post("/storefront/theme/select", authenticateToken, tenantMiddleware, requireAddon("ecommerce-storefront"), selectStorefrontThemeController);
+  app.post("/storefront/locked-accounts/get", authenticateToken, tenantMiddleware, requireAddon("ecommerce-storefront"), getLockedAccountsController);
+  app.post("/storefront/locked-accounts/unlock", authenticateToken, tenantMiddleware, requireAddon("ecommerce-storefront"), unlockStorefrontAccountController);
 
   // PUBLIC catalog reads (P2/4.2) - deliberately NO authenticateToken/tenantMiddleware/
   // requireAddon here, per 4.2's own text: "requireAddon() on every route except
