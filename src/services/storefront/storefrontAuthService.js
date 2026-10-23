@@ -126,8 +126,11 @@ export const getStorefrontAuthConfig = async (req) => {
     const { resolved, error } = await resolveAndGate(companySlug);
     if (error) return error;
 
+    // Flat, not { item: settings } - every sibling function in this file (otp/verify,
+    // pin-login, etc.) returns its fields directly under `data`, not wrapped in an
+    // `item` key (that's the catalog service's convention, a different file/feature).
     const settings = await getStorefrontAuthSettings(resolved.tenantDB, resolved.company_masters_id);
-    return resSuccess({ data: { item: settings } });
+    return resSuccess({ data: settings });
   } catch (error) {
     return resError({ developer_msg: `getStorefrontAuthConfig failed: ${error}` });
   }
