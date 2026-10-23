@@ -177,13 +177,13 @@ export const getStorefrontCategoryBySlug = async (req) => {
       category.parent_category_id
         ? CategoryModel.findOne({
             where: { id: category.parent_category_id, isDelete: 0 },
-            attributes: ["id", "category_name", "slug"],
+            attributes: ["id", "category_name", "slug", "image_path", "webp_path", "thumbnail_path"],
             raw: true,
           })
         : null,
     ]);
     const children = childrenRaw.map(attachCategoryImage);
-    const parent = parentRaw;
+    const parent = parentRaw ? attachCategoryImage(parentRaw) : null;
 
     const ProductModel = productModel(resolved.tenantDB);
     const products = await ProductModel.findAll({
