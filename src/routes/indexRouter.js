@@ -51,6 +51,7 @@ import reminderRouter from "./activities/reminderRouter.js";
 import routePlannerRouter from "./activities/routePlannerRouter.js";
 import stockAdjustmentRouter from "./activities/stockAdjustmentRouter.js";
 import warehouseTransferReportRouter from "./activities/warehouseTransferReportRouter.js";
+import priceListReportRouter from "./product_settings/priceListReportRouter.js";
 import TaskManagement from './activities/taskManagementRouter.js';
 import TaskChecklist from './activities/taskChecklistRouter.js';
 import TaskMessageHistory from './activities/taskMessageHistoryRouter.js';
@@ -211,6 +212,7 @@ export default () => {
   productBillOfMaterialRouter(app);
   stockAdjustmentRouter(app);
   warehouseTransferReportRouter(app);
+  priceListReportRouter(app);
   supportTicketRouter(app);
   serialRequirementRouter(app);
   whatsappRoutes(app);
