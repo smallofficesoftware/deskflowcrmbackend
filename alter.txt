@@ -5061,3 +5061,9 @@ INSERT INTO `price_list_history` (`company_masters_id`, `pricelist_masters_id`, 
 SELECT NEW.`company_masters_id`, NEW.`pricelist_masters_id`, NEW.`id`, NEW.`product_id`, 'update', OLD.`rate`, NEW.`rate`, OLD.`discount`, NEW.`discount`, OLD.`discount_amount`, NEW.`discount_amount`, OLD.`net_rate`, NEW.`net_rate`, COALESCE(NULLIF(NEW.`last_updated_by`, 0), NEW.`a_application_login_id`), NOW()
 FROM DUAL
 WHERE NOT (OLD.`rate` <=> NEW.`rate`) OR NOT (OLD.`discount` <=> NEW.`discount`) OR NOT (OLD.`discount_amount` <=> NEW.`discount_amount`) OR NOT (OLD.`net_rate` <=> NEW.`net_rate`);
+
+24-10-2026 Dhaval
+-- migration: migration/master/migrations/20261024120000-add-price-list-rates-application-page.js
+-- MASTER DB only. New report page "Price List Rates" so Team Rights lists it by name (id 202 = next after Ecommerce Storefront 201 locally; re-check SELECT MAX(id) FROM a_application_pages on demo/live first). No new table, so no create_company_copy.sql change.
+INSERT INTO `a_application_pages` (`id`, `page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (202, 'Price List Rates', 'Price List Rates', 'price_list_rates', 'Current rate of every product in each price list and the history of rate changes', '0', '0', '0', '1', NOW(), UNIX_TIMESTAMP(), '0', '1');
+INSERT INTO `plan_vs_pages` (`plan_id`, `page_id`, `data_limit`, `extra_information`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) SELECT pm.`id`, p.`id`, '0', '', NOW(), current_timestamp(), '0', '1' FROM `plan_masters` pm JOIN `a_application_pages` p ON p.`page_slug` = 'price_list_rates' WHERE pm.`isDelete` = 0 AND NOT EXISTS (SELECT 1 FROM `plan_vs_pages` x WHERE x.`plan_id` = pm.`id` AND x.`page_id` = p.`id`);

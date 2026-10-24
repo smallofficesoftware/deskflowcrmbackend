@@ -88,6 +88,24 @@ export const getPriceListReport = async (req) => {
             { replacements, type: QueryTypes.SELECT }
         );
 
+        // Filter choices: every live price list, and every product that is priced in one.
+        // Independent of the filters above, so picking one doesn't shrink the other's list.
+        const priceListOptions = await req.tenantDB.query(
+            `SELECT id, price_list_name AS name FROM pricelist_masters WHERE isDelete = 0 ORDER BY price_list_name ASC`,
+            { type: QueryTypes.SELECT }
+        );
+        const productOptions = await req.tenantDB.query(
+            `SELECT p.id, p.product_name AS name, p.product_code AS code
+             FROM products p
+             WHERE p.id IN (
+                 SELECT pl.product_id FROM price_lists pl
+                 JOIN pricelist_masters pm ON pm.id = pl.pricelist_masters_id AND pm.isDelete = 0
+                 WHERE pl.isDelete = 0
+             )
+             ORDER BY p.product_name ASC`,
+            { type: QueryTypes.SELECT }
+        );
+
         // Users live in the master DB, so resolve their names here.
         const userIds = [...new Set([...current.map((r) => r.last_updated_by), ...history.map((r) => r.changed_by)].filter((v) => v))];
         const userMap = new Map();
@@ -124,6 +142,7 @@ export const getPriceListReport = async (req) => {
             data: {
                 current: currentRows,
                 history: historyRows,
+                options: { price_lists: priceListOptions, products: productOptions },
                 totals: {
                     price_lists: new Set(currentRows.map((r) => r.pricelist_masters_id)).size,
                     products: new Set(currentRows.map((r) => r.product_id)).size,
