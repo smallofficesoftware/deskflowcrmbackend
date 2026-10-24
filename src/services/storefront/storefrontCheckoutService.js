@@ -167,7 +167,17 @@ async function checkDerivedStock(tenantDB, company_masters_id, items) {
   const mode = await getStorefrontStockCheckMode(company_masters_id);
   if (mode === 0 || mode === 2) return { status: true, mode };
 
-  const stockItem = items.map((i) => ({ product_id: i.product_id, qty: i.qty, product_name: i.product_name, warehouse_from: null }));
+  // warehouse_from: 0, not null - caught during P5 live verification. cart_items.
+  // item_warehouse_id is NOT NULL with no DB default; the real "no specific
+  // warehouse" sentinel this schema actually uses is 0 (confirmed via a real
+  // value distribution query), and checkWarehouseWiseStock's own match is a
+  // loose `==` against whatever's passed here - `0 == null` is false in JS,
+  // so passing null made every non-warehouse-wise storefront stock check
+  // silently see 0 available for every product, always failing once a
+  // company turned strict checking on. Not a storefront-specific mistake -
+  // the original P4 code had the same null here, just never exercised
+  // against a company with strict checking actually active until now.
+  const stockItem = items.map((i) => ({ product_id: i.product_id, qty: i.qty, product_name: i.product_name, warehouse_from: 0 }));
   // checkWarehouseWiseStock reads req.tenantDB internally - this route has no
   // tenantMiddleware (it's public, like every other storefront endpoint), so
   // the real Express req never has that set. Pass a minimal req-shaped object
@@ -209,7 +219,7 @@ async function reserveStockForCheckout(tenantDB, t, company_masters_id, items) {
       item_product_id: { [Op.in]: productIds },
       cart_number: { [Op.ne]: null, [Op.not]: "" },
       stock_type: { [Op.ne]: 0 },
-      item_warehouse_id: null, // mode 1 (non-warehouse-wise) assumption - same as P4's own checkDerivedStock.
+      item_warehouse_id: 0, // mode 1 (non-warehouse-wise) sentinel - see checkDerivedStock's own comment above for why 0, not null.
       [Op.or]: [
         { cart_type: 4, reference_type: { [Op.ne]: 8 } },
         { cart_type: 3, reference_type: { [Op.ne]: 9 } },
@@ -327,6 +337,12 @@ export const createStorefrontCheckout = async (req) => {
         cart_type: 2,
         company_masters_id: resolved.company_masters_id,
         a_application_login_id: resolved.a_application_login_id,
+        // Explicit, not relying on MySQL's non-strict-mode implicit-0 for an
+        // omitted NOT NULL column (that's what silently made this "work"
+        // before - an EXPLICIT null, as a raw-SQL test insert found out, is
+        // rejected even under non-strict mode). 0 is this schema's real "no
+        // specific warehouse" sentinel - see checkDerivedStock's own comment.
+        item_warehouse_id: 0,
         item_product_id: p.id,
         item_product_code: p.product_code || "",
         item_product_name: p.product_name,
@@ -367,7 +383,16 @@ export const createStorefrontCheckout = async (req) => {
     // skipping its own payment step, not a new backend status machine.
     const isApprovalMode = Boolean(session) && Boolean(settings.approval_mode_enabled);
 
-    const reservedMode = !isApprovalMode && settings.stock_check_mode === "reserved";
+    // Bug caught during live P5 verification: reservedMode must also depend on
+    // the company's OWN strict-stock-check setting (same gate checkDerivedStock
+    // already applies) - without this, a company with stock checking off
+    // (mode 0) or warehouse-wise (mode 2, no picker UI exists for the
+    // storefront) would still get every checkout locked/reserved against
+    // reserveStockForCheckout, contradicting the settings UI's own text
+    // ("Only takes effect when strict stock checking is already on") and
+    // checkDerivedStock's own mode 0/2 short-circuit.
+    const stockMode = await getStorefrontStockCheckMode(resolved.company_masters_id);
+    const reservedMode = !isApprovalMode && stockMode === 1 && settings.stock_check_mode === "reserved";
     let cartStatus = 0;
 
     if (!reservedMode) {
