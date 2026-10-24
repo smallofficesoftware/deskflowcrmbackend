@@ -4,10 +4,10 @@ import { getCompanyByLoginId } from "../../commonServices.js";
 import { isValid, resBadRequest, resError, resSuccess } from "../../../utils/sharedFunctions.js";
 
 // Call types in call_histories: 1 Incoming, 2 Outgoing, 3 Missed, 4 Rejected, 5 Blocked,
-// 7 Outgoing Not Connected. Connected = a conversation happened; not connected = missed or the
-// outgoing call did not connect. Rejected / blocked only count in the total.
+// 7 Outgoing Not Connected. Connected = a conversation happened; every other type did not
+// connect (missed, rejected, blocked, outgoing not connected), so total = connected + not connected.
 const CONNECTED_CALL_TYPES = "1, 2";
-const NOT_CONNECTED_CALL_TYPES = "3, 7";
+const NOT_CONNECTED_CALL_TYPES = "3, 4, 5, 7";
 const TASK_COMPLETE_STATUS = -6;
 const DETAIL_ROW_LIMIT = 200;
 const CONTACT_LIMIT = 5000;
