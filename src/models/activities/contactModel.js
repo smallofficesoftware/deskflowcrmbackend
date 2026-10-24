@@ -103,6 +103,20 @@ export const contactModel = (sequelize) => {
     storefront_invited: {
       type: TINYINT,
     },
+    // B2B credit control (plans/2026-10-15-ecommerce-b2b-b2c-plan.txt, P5) -
+    // null/0 = no limit/not set. credit_limit checked against the SAME
+    // closing-balance convention this file's own getContactById already
+    // computes (SUM(type=2 Debit) - SUM(type=1 Credit) from
+    // account_transactions) plus the new order's grand_total - see
+    // storefrontCheckoutService.js's checkCreditLimit. payment_terms is
+    // informational only this phase (days, e.g. 30 for "Net 30") - no
+    // automated due-date enforcement/reminders.
+    credit_limit: {
+      type: DOUBLE,
+    },
+    payment_terms: {
+      type: INTEGER,
+    },
     // Storefront auth state (plans/2026-10-15-ecommerce-b2b-b2c-plan.txt, P3/Q3,
     // REVISED 23-10-2026) - a storefront customer IS a contact, not a separate
     // identity (see migration 20261023100000's own comment for why).

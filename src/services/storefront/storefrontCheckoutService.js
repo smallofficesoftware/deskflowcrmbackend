@@ -1,4 +1,6 @@
 import moment from "moment";
+import { Op } from "sequelize";
+import { accountTransactionsModel } from "../../models/activities/accountTransactionsModel.js";
 import { contactModel } from "../../models/activities/contactModel.js";
 import { cartModel } from "../../models/activities/cartsModel.js";
 import { cartItemModel } from "../../models/activities/cartItemsModel.js";
@@ -16,14 +18,27 @@ import { normalizeToTenDigit, resBadRequest, resError, resSuccess } from "../../
 // creates a REAL carts row (type 2), exactly the old online-store module's
 // own precedent (onlineStoreService.js's orderCreateByOnlineStore) - no
 // storefront_orders wrapper, no payment_status column (REVISED 23-10-2026,
-// per the user - both dropped, see the plan's own 4.2c). This is checkout
-// only - no payment wiring yet (that's the next slice, once per-company
-// Razorpay keys + the "which stage means paid" setting exist). cart_status
-// stays 0 (draft/pending) here, same as the old module's own "draft"
-// orderType - no cart_number assigned yet either, same reasoning (a
-// number is only reserved once an order is real/approved, not at
-// creation - avoids burning sequential numbers on abandoned checkouts).
+// per the user - both dropped, see the plan's own 4.2c). cart_number is only
+// reserved once an order is real/approved (storefrontPaymentService.js's own
+// verify step, or here directly for approval-mode - see isApprovalMode
+// below), not at draft creation.
+//
+// P5 (24-10-2026) adds: credit-limit check (checkCreditLimit), approval-mode
+// branch (isApprovalMode - reuses the SAME draft-cart mechanism, no new
+// status machine), and 'reserved' stock-check mode (reserveStockForCheckout -
+// per the user, still no new table: a hold is just a cart sitting in a
+// dedicated cart_status, time-windowed rather than cleaned up by a cron).
 const ADDON_CODE = "ecommerce-storefront";
+
+// Distinct from 0 (plain draft/no reservation) and orderServices.js's own
+// existing -9/-8 sentinels - unambiguously "stock is held against this cart,
+// payment in flight." reserveStockForCheckout's own query excludes carts
+// older than RESERVATION_WINDOW_MINUTES from counting as held, so an
+// abandoned reservation just stops blocking other checkouts on its own - the
+// row itself is left sitting here, same as any other abandoned draft order
+// already is today, not a new cleanup problem.
+const STOREFRONT_RESERVED_CART_STATUS = -20;
+const RESERVATION_WINDOW_MINUTES = 15;
 
 async function resolveAndGate(companySlug) {
   const resolved = await resolveCompanyBySlug(companySlug);
@@ -100,11 +115,37 @@ async function resolvePrices(tenantDB, { contactPriceListId, defaultPriceListId,
   return priceByProductId;
 }
 
-/** Derived stock check (Q7) - 'reserved' mode is P5, not here (and per the
- * 23-10-2026 correction, won't be a separate table either way - just a
- * cart_status). Warehouse-wise mode (checkStockCheckMode === 2) is SKIPPED
- * for now - the storefront has no warehouse-picker UI yet, and guessing
- * one would be worse than not checking; flagged here, not silently wrong. */
+/** P5 credit-limit check (24-10-2026). Exposure = the contact's EXISTING
+ * closing-balance convention (contactService.js's own getContactById already
+ * computes this same SUM(type=2 Debit) - SUM(type=1 Credit) from
+ * account_transactions for the "closing_balance" field shown elsewhere in
+ * the CRM) plus this new order's own grand_total - per the user's explicit
+ * choice over "unpaid carts only." A contact with no credit_limit set (null/
+ * 0, the default for every existing contact and every guest) always passes -
+ * this is opt-in per B2B contact, not a blanket gate. */
+async function checkCreditLimit(tenantDB, company_masters_id, contact, orderTotal) {
+  const limit = Number(contact.credit_limit) || 0;
+  if (limit <= 0) return { overLimit: false, projected: 0, limit: 0 };
+
+  const row = await accountTransactionsModel(tenantDB).findOne({
+    where: { contact_masters_id: contact.id, company_masters_id, isDelete: 0 },
+    attributes: [
+      [tenantDB.fn("SUM", tenantDB.literal("CASE WHEN type=2 THEN amount ELSE 0 END")), "debit"],
+      [tenantDB.fn("SUM", tenantDB.literal("CASE WHEN type=1 THEN amount ELSE 0 END")), "credit"],
+    ],
+    raw: true,
+  });
+  const closingBalance = (Number(row?.debit) || 0) - (Number(row?.credit) || 0);
+  const projected = closingBalance + orderTotal;
+  return { overLimit: projected > limit, projected, limit };
+}
+
+/** Derived stock check (Q7) - the DEFAULT mode, unchanged from P4. 'reserved'
+ * mode is a separate function below (reserveStockForCheckout) - the two are
+ * mutually exclusive per checkout, picked by settings.stock_check_mode.
+ * Warehouse-wise mode (checkStockCheckMode === 2) is SKIPPED for now - the
+ * storefront has no warehouse-picker UI yet, and guessing one would be worse
+ * than not checking; flagged here, not silently wrong. */
 /** Inlined copy of stockAdjustmentServices.js's getStockCheckMode logic,
  * using the ALREADY-RESOLVED company_masters_id directly instead of
  * re-deriving it via getCompanyByLoginId(a_application_login_id) - that
@@ -124,21 +165,97 @@ async function getStorefrontStockCheckMode(company_masters_id) {
 
 async function checkDerivedStock(tenantDB, company_masters_id, items) {
   const mode = await getStorefrontStockCheckMode(company_masters_id);
-  if (mode === 0 || mode === 2) return { status: true };
+  if (mode === 0 || mode === 2) return { status: true, mode };
 
   const stockItem = items.map((i) => ({ product_id: i.product_id, qty: i.qty, product_name: i.product_name, warehouse_from: null }));
   // checkWarehouseWiseStock reads req.tenantDB internally - this route has no
   // tenantMiddleware (it's public, like every other storefront endpoint), so
   // the real Express req never has that set. Pass a minimal req-shaped object
   // instead of the real req, carrying only what that function actually reads.
-  // Grouping by warehouse - with every warehouse_from null here (mode 1, not
-  // warehouse-wise), every item collapses into one "null warehouse" bucket
-  // per product, which is exactly the company-wide total every cart_item
-  // row's own item_warehouse_id would need to match - only correct when
-  // cart_items for this company are never warehouse-tagged under mode 1,
-  // the same assumption the existing non-warehouse-wise code path
-  // (checkStockAvailability) already makes.
-  return checkWarehouseWiseStock({ tenantDB }, stockItem);
+  const result = await checkWarehouseWiseStock({ tenantDB }, stockItem);
+  return { ...result, mode };
+}
+
+/** P5 'reserved' stock-check mode (24-10-2026) - REVISED per the user: no
+ * storefront_stock_reservations table, "directly system." A hold is just
+ * this checkout's own cart sitting in STOREFRONT_RESERVED_CART_STATUS; this
+ * function must run INSIDE the same DB transaction that creates that cart,
+ * because the derived ledger calc (checkWarehouseWiseStock's own query,
+ * cart_number IS NOT NULL) only ever counts CONFIRMED stock movements
+ * (invoices/inward/dispatch) - it never saw any draft/pending cart, storefront
+ * or otherwise, which is exactly why two concurrent checkouts for the last
+ * unit can both pass it (Q7's own "trust the derived calc" caveat). This
+ * function additionally subtracts every OTHER currently-held reservation for
+ * the same product, and locks each product row (SELECT ... FOR UPDATE, via
+ * Sequelize's transaction lock) for the lifetime of this transaction so a
+ * concurrent reserveStockForCheckout on the SAME product must wait for this
+ * one to commit/rollback first - that's what actually prevents the race, not
+ * just the subtraction query by itself. */
+async function reserveStockForCheckout(tenantDB, t, company_masters_id, items) {
+  const productIds = [...new Set(items.map((i) => i.product_id))];
+
+  // Locks these product rows for the rest of this transaction - any other
+  // reserveStockForCheckout touching the SAME product_id blocks here until
+  // this transaction commits or rolls back.
+  await productModel(tenantDB).findAll({
+    where: { id: productIds, company_masters_id },
+    transaction: t,
+    lock: t.LOCK.UPDATE,
+  });
+
+  const openQtyRows = await cartItemModel(tenantDB).findAll({
+    where: {
+      isDelete: 0,
+      item_product_id: { [Op.in]: productIds },
+      cart_number: { [Op.ne]: null, [Op.not]: "" },
+      stock_type: { [Op.ne]: 0 },
+      item_warehouse_id: null, // mode 1 (non-warehouse-wise) assumption - same as P4's own checkDerivedStock.
+      [Op.or]: [
+        { cart_type: 4, reference_type: { [Op.ne]: 8 } },
+        { cart_type: 3, reference_type: { [Op.ne]: 9 } },
+        { cart_type: { [Op.in]: [6, 7, 8, 9, 10, 11] } },
+      ],
+    },
+    attributes: ["item_product_id", [tenantDB.literal("SUM(CASE WHEN cart_type IN (4, 6, 8, 10) THEN item_qty WHEN cart_type IN (3, 7, 9, 11) THEN -item_qty ELSE 0 END)"), "calOpenQty"]],
+    group: ["item_product_id"],
+    raw: true,
+    transaction: t,
+  });
+  const openQtyByProduct = new Map(openQtyRows.map((r) => [Number(r.item_product_id), Number(r.calOpenQty) || 0]));
+
+  // Every OTHER currently-held reservation for these products - a plain join
+  // via two models (no cross-model association declared here), so a raw
+  // query, parameterized.
+  const [reservedRows] = await tenantDB.query(
+    `SELECT ci.item_product_id AS item_product_id, SUM(ci.item_qty) AS reserved_qty
+     FROM cart_items ci
+     INNER JOIN carts c ON c.id = ci.cart_id
+     WHERE ci.isDelete = 0 AND c.isDelete = 0
+       AND c.cart_status = :reservedStatus
+       AND c.company_masters_id = :company_masters_id
+       AND ci.item_product_id IN (:productIds)
+       AND c.created_date_time >= :cutoff
+     GROUP BY ci.item_product_id`,
+    {
+      replacements: {
+        reservedStatus: STOREFRONT_RESERVED_CART_STATUS,
+        company_masters_id,
+        productIds,
+        cutoff: moment().subtract(RESERVATION_WINDOW_MINUTES, "minutes").format("YYYY-MM-DD HH:mm:ss"),
+      },
+      transaction: t,
+    }
+  );
+  const reservedByProduct = new Map(reservedRows.map((r) => [Number(r.item_product_id), Number(r.reserved_qty) || 0]));
+
+  const errors = [];
+  for (const item of items) {
+    const available = (openQtyByProduct.get(item.product_id) || 0) - (reservedByProduct.get(item.product_id) || 0);
+    if (available < item.qty) {
+      errors.push(`${item.product_name} has only ${Math.max(available, 0)} available right now, requested ${item.qty}`);
+    }
+  }
+  return errors.length ? { status: false, errors } : { status: true };
 }
 
 export const createStorefrontCheckout = async (req) => {
@@ -193,19 +310,11 @@ export const createStorefrontCheckout = async (req) => {
       products,
     });
 
-    const stockItems = items.map((i) => {
-      const p = productById.get(Number(i.product_id));
-      return { product_id: p.id, qty: Number(i.qty) || 1, product_name: p.product_name };
-    });
-    const stockResult = await checkDerivedStock(resolved.tenantDB, resolved.company_masters_id, stockItems);
-    if (!stockResult.status) {
-      return resError({ ack_msg: stockResult.errors.join("; ") });
-    }
-
     const nowFormatted = moment().format("YYYY-MM-DD HH:mm:ss");
     let totalQty = 0;
     let totalAmt = 0;
     const cartItemsToCreate = [];
+    const stockItems = [];
     for (const i of items) {
       const p = productById.get(Number(i.product_id));
       const price = priceByProductId.get(p.id) || { rate: p.rate, net_rate: p.net_rate };
@@ -213,6 +322,7 @@ export const createStorefrontCheckout = async (req) => {
       const itemTotal = Number((Number(price.net_rate) * qty).toFixed(2));
       totalQty += qty;
       totalAmt += itemTotal;
+      stockItems.push({ product_id: p.id, qty, product_name: p.product_name });
       cartItemsToCreate.push({
         cart_type: 2,
         company_masters_id: resolved.company_masters_id,
@@ -233,11 +343,46 @@ export const createStorefrontCheckout = async (req) => {
         created_date_time: nowFormatted,
       });
     }
+    const grandTotal = Number(totalAmt.toFixed(2));
 
+    // P5: credit-limit check (logged-in only - a guest contact never has
+    // credit_limit set, so this is naturally a no-op for B2C). Checked BEFORE
+    // any stock check or transaction - a hard block shouldn't burn a stock
+    // reservation or run any other work first.
+    let creditWarning = false;
+    if (session && contact.credit_limit) {
+      const { overLimit } = await checkCreditLimit(resolved.tenantDB, resolved.company_masters_id, contact, grandTotal);
+      if (overLimit) {
+        if (settings.credit_limit_action === "block") {
+          return resError({ ack_msg: "This order exceeds your account's credit limit. Please contact us to proceed." });
+        }
+        creditWarning = true;
+      }
+    }
+
+    // P5: approval mode (logged-in only, same reasoning as credit-limit above -
+    // this is a B2B workflow, not something that should apply to anonymous
+    // B2C guests). The cart stays a plain draft (cart_status 0, no cart_number)
+    // exactly like today's default - "approval" is just the storefront
+    // skipping its own payment step, not a new backend status machine.
+    const isApprovalMode = Boolean(session) && Boolean(settings.approval_mode_enabled);
+
+    const reservedMode = !isApprovalMode && settings.stock_check_mode === "reserved";
+    let cartStatus = 0;
+
+    if (!reservedMode) {
+      // Unchanged P4 path - derived calc, outside any transaction.
+      const stockResult = await checkDerivedStock(resolved.tenantDB, resolved.company_masters_id, stockItems);
+      if (!stockResult.status) {
+        return resError({ ack_msg: stockResult.errors.join("; ") });
+      }
+    }
+
+    const remarkSuffix = [creditWarning ? "OVER CREDIT LIMIT" : null, isApprovalMode ? "Awaiting approval" : null].filter(Boolean).join(" - ");
     const cartBody = {
       type: 2,
       cart_date: moment().format("YYYY-MM-DD"),
-      cart_remark: "Storefront order",
+      cart_remark: remarkSuffix ? `Storefront order - ${remarkSuffix}` : "Storefront order",
       Address: address || "",
       shipping_address: shipping_address || "",
       PinCode: pincode || "",
@@ -249,21 +394,40 @@ export const createStorefrontCheckout = async (req) => {
       created_date_time: nowFormatted,
       a_application_login_id: resolved.a_application_login_id,
       company_masters_id: resolved.company_masters_id,
-      cart_status: 0,
+      cart_status: cartStatus, // reassigned below for reserved mode, inside the transaction.
       total_qty: totalQty,
-      total_amt: Number(totalAmt.toFixed(2)),
-      grand_total: Number(totalAmt.toFixed(2)),
+      total_amt: grandTotal,
+      grand_total: grandTotal,
     };
 
     const t = await resolved.tenantDB.transaction();
     try {
+      if (reservedMode) {
+        const reserveResult = await reserveStockForCheckout(resolved.tenantDB, t, resolved.company_masters_id, stockItems);
+        if (!reserveResult.status) {
+          await t.rollback();
+          return resError({ ack_msg: reserveResult.errors.join("; ") });
+        }
+        cartBody.cart_status = STOREFRONT_RESERVED_CART_STATUS;
+      }
+
       const cart = await cartModel(resolved.tenantDB).create(cartBody, { transaction: t });
       await cartItemModel(resolved.tenantDB).bulkCreate(
         cartItemsToCreate.map((ci) => ({ ...ci, cart_id: cart.id })),
         { transaction: t }
       );
       await t.commit();
-      return resSuccess({ ack_msg: "Order placed", data: { item: { cart_id: cart.id, grand_total: cartBody.grand_total } } });
+      return resSuccess({
+        ack_msg: "Order placed",
+        data: {
+          item: {
+            cart_id: cart.id,
+            grand_total: grandTotal,
+            requires_approval: isApprovalMode,
+            credit_warning: creditWarning,
+          },
+        },
+      });
     } catch (txError) {
       await t.rollback();
       throw txError;

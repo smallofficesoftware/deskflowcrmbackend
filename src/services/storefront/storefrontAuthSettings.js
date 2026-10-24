@@ -32,6 +32,20 @@ const DEFAULTS = {
   razorpay_key_id: "",
   razorpay_key_secret: "",
   paid_stage_status_id: null,
+  // P5 B2B settings (24-10-2026) - same config_json blob, no new keys table.
+  // credit_limit_action: what happens when a logged-in B2B checkout would
+  // push a contact over their contact_masters.credit_limit (per the user:
+  // admin-configurable, not hardcoded - see storefrontCheckoutService.js's
+  // checkCreditLimit). approval_mode_enabled: logged-in checkout creates a
+  // plain draft cart (no payment step) instead of going to Razorpay - same
+  // draft mechanism the old online-store module's own orderType "draft"
+  // already uses, not a new status machine. stock_check_mode: 'derived'
+  // (P4's existing ledger-only calc, unchanged default) or 'reserved' (holds
+  // stock against OTHER concurrent storefront checkouts too - see
+  // storefrontCheckoutService.js's reserveStockForCheckout).
+  credit_limit_action: "warn",
+  approval_mode_enabled: false,
+  stock_check_mode: "derived",
 };
 
 export const getStorefrontAuthSettings = async (tenantDB, company_masters_id) => {

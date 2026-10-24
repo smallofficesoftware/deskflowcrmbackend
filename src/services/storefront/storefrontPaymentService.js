@@ -171,6 +171,13 @@ export const verifyStorefrontPayment = async (req) => {
           amount: cart.grand_total,
           payment_date_time: nowFormatted,
           approve_date_time: nowFormatted,
+          // Without this, account_outstanding_view (WHERE approve_by_...
+          // != 0) silently excludes every storefront payment - caught while
+          // building P5's credit-limit check, which reads the SAME
+          // account_transactions rows this writes (contactService.js's own
+          // closing-balance formula doesn't filter on this column, so P5's
+          // check itself was unaffected - this fixes the separate report).
+          approve_by_a_application_login_id: resolved.a_application_login_id,
           remark: "Razorpay online payment (storefront)",
           reference_table: CART_REFERENCE_TABLE,
           reference_id: cart.id,
