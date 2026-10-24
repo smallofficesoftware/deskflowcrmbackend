@@ -1,3 +1,4 @@
+import { Op } from "sequelize";
 import companyModel from "../../models/company_setup/companyModel.js";
 import { categoryModel } from "../../models/product_settings/categoryModel.js";
 import { marketplaceAddonSettingsModel } from "../../models/marketplace/marketplaceAddonSettingsModel.js";
@@ -89,7 +90,7 @@ export const getStorefrontCompanyInfo = async (req) => {
 
     const company = await companyModel.findOne({
       where: { id: resolved.company_masters_id, isDelete: 0 },
-      attributes: ["id", "company_name", "company_logo", "banner_img_one", "banner_img_two"],
+      attributes: ["id", "company_name", "company_logo", "banner_img_one", "banner_img_two", "company_email", "company_contact"],
       raw: true,
     });
     if (!company) return resError({ ack_msg: "Store not found" });
@@ -234,6 +235,44 @@ export const getStorefrontProducts = async (req) => {
     return resSuccess({ data: { item: productsWithImages } });
   } catch (error) {
     return resError({ developer_msg: `getStorefrontProducts failed: ${error}` });
+  }
+};
+
+/** GET /storefront/:companySlug/search?q=... - product name/code search (24-10-2026,
+ * per the user). Same scoping/shape as getStorefrontProducts above, just with a
+ * LIKE filter instead of returning everything - no separate search index/table,
+ * this dataset is small enough for a plain LIKE query, same as every other
+ * simple text search already in this codebase. */
+export const getStorefrontSearchResults = async (req) => {
+  try {
+    const { companySlug } = req.params;
+    const q = (req.query?.q || "").trim();
+    const resolved = await resolveCompanyBySlug(companySlug);
+    if (!resolved) return resError({ ack_msg: "Store not found" });
+
+    if (!q) return resSuccess({ data: { item: [] } });
+
+    const ProductModel = productModel(resolved.tenantDB);
+    const products = await ProductModel.findAll({
+      where: {
+        company_masters_id: resolved.company_masters_id,
+        isDelete: 0,
+        isActive: 1,
+        show_in_ecommerce: 1,
+        parent_product_id: null,
+        [Op.or]: [{ product_name: { [Op.like]: `%${q}%` } }, { product_code: { [Op.like]: `%${q}%` } }],
+      },
+      attributes: ["id", "product_name", "slug", "meta_title", "meta_description", "rate", "net_rate", "category_id", "is_variant_parent"],
+      order: [["product_name", "ASC"]],
+      limit: 60,
+      raw: true,
+    });
+    const pricedProducts = await applyDefaultPriceList(resolved.tenantDB, resolved.company_masters_id, products);
+    const productsWithImages = await attachPrimaryImages(resolved.tenantDB, pricedProducts);
+
+    return resSuccess({ data: { item: productsWithImages } });
+  } catch (error) {
+    return resError({ developer_msg: `getStorefrontSearchResults failed: ${error}` });
   }
 };
 

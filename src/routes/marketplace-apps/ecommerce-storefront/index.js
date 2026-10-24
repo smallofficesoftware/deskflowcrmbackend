@@ -4,6 +4,7 @@ import {
   getStorefrontCompanyInfoController,
   getStorefrontProductBySlugController,
   getStorefrontProductsController,
+  getStorefrontSearchResultsController,
 } from "../../../controllers/storefront/storefrontCatalogController.js";
 import {
   getLockedAccountsController,
@@ -65,6 +66,7 @@ export default (app) => {
   app.get("/storefront/:companySlug/categories", getStorefrontCategoryTreeController);
   app.get("/storefront/:companySlug/categories/:slug", getStorefrontCategoryBySlugController);
   app.get("/storefront/:companySlug/products", getStorefrontProductsController);
+  app.get("/storefront/:companySlug/search", getStorefrontSearchResultsController);
   app.get("/storefront/:companySlug/products/:slug", getStorefrontProductBySlugController);
 
   // Cascading location lookups for the address form (P3, 23-10-2026) - public/
