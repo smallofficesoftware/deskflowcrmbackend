@@ -54,6 +54,7 @@ import warehouseTransferReportRouter from "./activities/warehouseTransferReportR
 import priceListReportRouter from "./product_settings/priceListReportRouter.js";
 import reportCatalogRouter from "./report_catalog/reportCatalogRouter.js";
 import myDaySummaryRouter from "./activities/myDaySummaryRouter.js";
+import teamPerformanceDetailRouter from "./dashboard/Reports/teamPerformanceDetailRouter.js";
 import TaskManagement from './activities/taskManagementRouter.js';
 import TaskChecklist from './activities/taskChecklistRouter.js';
 import TaskMessageHistory from './activities/taskMessageHistoryRouter.js';
@@ -217,6 +218,7 @@ export default () => {
   priceListReportRouter(app);
   reportCatalogRouter(app);
   myDaySummaryRouter(app);
+  teamPerformanceDetailRouter(app);
   supportTicketRouter(app);
   serialRequirementRouter(app);
   whatsappRoutes(app);
