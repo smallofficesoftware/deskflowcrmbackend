@@ -44,6 +44,7 @@ export const getAllProduct = async (req) => {
       cart_type,
       excludeVariantParents,
       excludeVariants,
+      productKind,
       forSeller
     } = req.body;
 
@@ -70,6 +71,19 @@ export const getAllProduct = async (req) => {
     // to the cart. plans/2026-10-20-product-variant-ui-and-field-scoping-plan.txt.
     if (excludeVariants) {
       whereClause.parent_product_id = null;
+    }
+
+    // Product-type filter for the Settings > Product list and Products report:
+    // simple = standalone, parent = "has variants" template, variant = a child row.
+    // Overrides excludeVariantParents so the report can still list parents on request.
+    if (productKind === "simple") {
+      whereClause.is_variant_parent = 0;
+      whereClause.parent_product_id = null;
+    } else if (productKind === "parent") {
+      whereClause.is_variant_parent = 1;
+    } else if (productKind === "variant") {
+      delete whereClause.is_variant_parent;
+      whereClause.parent_product_id = { [Op.ne]: null };
     }
 
     if (productId) {
