@@ -31,7 +31,7 @@ const ids = (list) => [...new Set((list || []).map(Number).filter((n) => Number.
  * Per team member activity for the Team Performance report columns, for one date range.
  *
  * - calls_*: calls the member made or took (call_histories).
- * - followups_done: reminders the member completed in the range.
+ * - followups_done: reminders and tasks the member completed in the range.
  * - tasks_*: tasks created in the range and assigned to the member; tasks_called = how many of
  *   those tasks' contacts the member called after the task was created.
  *
@@ -56,13 +56,28 @@ export async function getTeamActivityCounts(tenantDB, userIds, startDate, endDat
                AND call_date_time BETWEEN :start AND :end
              GROUP BY a_application_login_id`
         ),
+        // A follow-up is a completed reminder or a completed task: reminders by their completion time,
+        // tasks by their completion time (completed_date, else the last modified time for tasks
+        // completed through a path that does not stamp it).
         select(
-            `SELECT assigned_to AS uid, COUNT(*) AS done
-             FROM reminder_messages
-             WHERE isDelete = 0 AND status = 1 AND is_reminder_app_flag = 0
-               AND assigned_to IN (:users)
-               AND completed_date_time BETWEEN :start AND :end
-             GROUP BY assigned_to`
+            `SELECT uid, SUM(n) AS done FROM (
+                SELECT assigned_to AS uid, COUNT(*) AS n
+                FROM reminder_messages
+                WHERE isDelete = 0 AND status = 1 AND is_reminder_app_flag = 0
+                  AND assigned_to IN (:users)
+                  AND completed_date_time BETWEEN :start AND :end
+                GROUP BY assigned_to
+                UNION ALL
+                SELECT u.id AS uid, COUNT(t.id) AS n
+                FROM (${users.map((id) => `SELECT ${id} AS id`).join(" UNION ALL ")}) u
+                JOIN task_managements t
+                  ON FIND_IN_SET(u.id, t.assigned_team_member)
+                 AND t.isDelete = 0 AND t.is_archive = '0' AND t.task_template = '0'
+                 AND t.is_not_visible = '0' AND t.is_support_ticket = '0'
+                 AND t.status = ${TASK_COMPLETE_STATUS}
+                 AND IF(t.completed_date > '1000-01-01 00:00:00', t.completed_date, t.modified_date) BETWEEN :start AND :end
+                GROUP BY u.id
+             ) x GROUP BY uid`
         ),
         select(
             `SELECT u.id AS uid,
@@ -164,36 +179,81 @@ export const getTeamPerformanceDetail = async (req) => {
         ]);
         const contactIds = ids(touched.flat().map((r) => r.id));
 
-        const statusCount = new Map();
-        const labelCount = new Map();
-        if (contactIds.length > 0) {
-            const contacts = await req.tenantDB.query(
-                `SELECT c.id, c.lable, s.name AS status_name
-                 FROM contact_masters c
-                 LEFT JOIN stage_status_masters s ON s.id = c.contact_status
-                 WHERE c.isDelete = 0 AND c.id IN (:contactIds)`,
-                { replacements: { contactIds }, type: QueryTypes.SELECT }
-            );
-            const labels = await req.tenantDB.query(`SELECT id, lable_name FROM lable_masters WHERE isDelete = 0`, { type: QueryTypes.SELECT });
-            const labelName = new Map(labels.map((l) => [String(l.id), l.lable_name]));
+        const labels = await req.tenantDB.query(`SELECT id, lable_name FROM lable_masters WHERE isDelete = 0`, { type: QueryTypes.SELECT });
+        const labelName = new Map(labels.map((l) => [String(l.id), l.lable_name]));
 
-            contacts.forEach((c) => {
-                const status = isValid(c.status_name) ? c.status_name : "No status";
-                statusCount.set(status, (statusCount.get(status) || 0) + 1);
-                const own = String(c.lable || "").split(",").map((v) => v.trim()).filter(Boolean);
-                if (own.length === 0) labelCount.set("No label", (labelCount.get("No label") || 0) + 1);
-                own.forEach((id) => {
-                    const name = labelName.get(id) || `Label ${id}`;
-                    labelCount.set(name, (labelCount.get(name) || 0) + 1);
+        // Count a list of contacts by their current status and by label.
+        const breakdownOf = async (list) => {
+            const statusCount = new Map();
+            const labelCount = new Map();
+            if (list.length > 0) {
+                const contacts = await req.tenantDB.query(
+                    `SELECT c.id, c.lable, s.name AS status_name
+                     FROM contact_masters c
+                     LEFT JOIN stage_status_masters s ON s.id = c.contact_status
+                     WHERE c.isDelete = 0 AND c.id IN (:list)`,
+                    { replacements: { list }, type: QueryTypes.SELECT }
+                );
+                contacts.forEach((c) => {
+                    const status = isValid(c.status_name) ? c.status_name : "No status";
+                    statusCount.set(status, (statusCount.get(status) || 0) + 1);
+                    const own = String(c.lable || "").split(",").map((v) => v.trim()).filter(Boolean);
+                    if (own.length === 0) labelCount.set("No label", (labelCount.get("No label") || 0) + 1);
+                    own.forEach((id) => {
+                        const name = labelName.get(id) || `Label ${id}`;
+                        labelCount.set(name, (labelCount.get(name) || 0) + 1);
+                    });
                 });
-            });
+            }
+            return { count: list.length, status_breakdown: tally(statusCount), label_breakdown: tally(labelCount) };
+        };
+
+        // New contacts: created in the period, by the member or assigned to them (the same rule the
+        // report's "New Contacts" column uses).
+        const newRows = await select(
+            `SELECT id FROM contact_masters
+             WHERE isDelete = 0 AND created_date_time BETWEEN :start AND :end
+               AND (a_application_login_id = :userId OR FIND_IN_SET(:userId, assinged_to_work_a_application_id))
+             LIMIT ${CONTACT_LIMIT}`
+        );
+        const newContactIds = ids(newRows.map((r) => r.id));
+
+        // Follow-ups on older contacts: contacts created BEFORE the period that the member completed a
+        // reminder or a task for, inside the period.
+        const followupRows = await Promise.all([
+            select(`SELECT DISTINCT contact_masters_id AS id FROM reminder_messages WHERE isDelete = 0 AND status = 1 AND assigned_to = :userId AND completed_date_time BETWEEN :start AND :end AND contact_masters_id > 0 LIMIT ${CONTACT_LIMIT}`),
+            select(
+                `SELECT DISTINCT contact_masters_id AS id FROM task_managements
+                 WHERE isDelete = 0 AND is_archive = '0' AND task_template = '0' AND is_not_visible = '0' AND is_support_ticket = '0'
+                   AND FIND_IN_SET(:userId, assigned_team_member) AND status = ${TASK_COMPLETE_STATUS}
+                   AND IF(completed_date > '1000-01-01 00:00:00', completed_date, modified_date) BETWEEN :start AND :end
+                   AND contact_masters_id > 0
+                 LIMIT ${CONTACT_LIMIT}`
+            ),
+        ]);
+        const followupCandidates = ids(followupRows.flat().map((r) => r.id));
+        let followupContactIds = [];
+        if (followupCandidates.length > 0) {
+            const older = await select(
+                `SELECT id FROM contact_masters WHERE isDelete = 0 AND id IN (:candidates) AND created_date_time < :start`,
+                { candidates: followupCandidates }
+            );
+            followupContactIds = ids(older.map((r) => r.id));
         }
+
+        const [allTouched, newContacts, followupContacts] = await Promise.all([
+            breakdownOf(contactIds),
+            breakdownOf(newContactIds),
+            breakdownOf(followupContactIds),
+        ]);
 
         return resSuccess({
             data: {
-                contacts_touched: contactIds.length,
-                status_breakdown: tally(statusCount),
-                label_breakdown: tally(labelCount),
+                contacts_touched: allTouched.count,
+                status_breakdown: allTouched.status_breakdown,
+                label_breakdown: allTouched.label_breakdown,
+                new_contacts: newContacts,
+                followup_contacts: followupContacts,
                 tasks: tasks.map((t) => ({
                     id: t.id,
                     title: t.task_title || "",
