@@ -8,6 +8,10 @@ import {
 } from "../../../controllers/storefront/storefrontCatalogController.js";
 import {
   getLockedAccountsController,
+  getStorefrontDomainController,
+  resolveStorefrontDomainController,
+  saveStorefrontDomainController,
+  verifyStorefrontDomainController,
   getStorefrontSettingsController,
   getStorefrontThemesController,
   saveStorefrontSettingsController,
@@ -53,6 +57,11 @@ export default (app) => {
   app.post("/storefront/settings/save", authenticateToken, tenantMiddleware, requireAddon("ecommerce-storefront"), saveStorefrontSettingsController);
   app.post("/storefront/themes/get", authenticateToken, tenantMiddleware, requireAddon("ecommerce-storefront"), getStorefrontThemesController);
   app.post("/storefront/theme/select", authenticateToken, tenantMiddleware, requireAddon("ecommerce-storefront"), selectStorefrontThemeController);
+  app.post("/storefront/domain/get", authenticateToken, tenantMiddleware, requireAddon("ecommerce-storefront"), getStorefrontDomainController);
+  app.post("/storefront/domain/save", authenticateToken, tenantMiddleware, requireAddon("ecommerce-storefront"), saveStorefrontDomainController);
+  app.post("/storefront/domain/verify", authenticateToken, tenantMiddleware, requireAddon("ecommerce-storefront"), verifyStorefrontDomainController);
+  // PUBLIC - must be registered before the /storefront/:companySlug/* routes so "resolve-domain" is not read as a slug.
+  app.get("/storefront/resolve-domain", resolveStorefrontDomainController);
   app.post("/storefront/locked-accounts/get", authenticateToken, tenantMiddleware, requireAddon("ecommerce-storefront"), getLockedAccountsController);
   app.post("/storefront/locked-accounts/unlock", authenticateToken, tenantMiddleware, requireAddon("ecommerce-storefront"), unlockStorefrontAccountController);
 

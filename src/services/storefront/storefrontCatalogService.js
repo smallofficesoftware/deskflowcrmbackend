@@ -1,3 +1,4 @@
+import storefrontDomainModel from "../../models/storefront/storefrontDomainModel.js";
 import { Op } from "sequelize";
 import companyModel from "../../models/company_setup/companyModel.js";
 import { categoryModel } from "../../models/product_settings/categoryModel.js";
@@ -117,6 +118,14 @@ export const getStorefrontCompanyInfo = async (req) => {
     // Strict hex only - the storefront injects this into a <style> block.
     const accent = config?.theme_accent_color;
     company.theme_accent_color = typeof accent === "string" && /^#[0-9a-fA-F]{6}$/.test(accent) ? accent : "#ff0000";
+
+    // Verified custom domain (Q11) - the storefront emits it as the canonical URL.
+    const domainRow = await storefrontDomainModel.findOne({
+      where: { company_masters_id: resolved.company_masters_id, isDelete: 0 },
+      attributes: ["domain", "verified_at"],
+      raw: true,
+    });
+    company.custom_domain = domainRow?.verified_at ? domainRow.domain : null;
 
     return resSuccess({ data: { item: company } });
   } catch (error) {

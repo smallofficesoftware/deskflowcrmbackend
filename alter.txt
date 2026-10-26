@@ -5175,3 +5175,21 @@ ALTER TABLE `account_transactions`
 ALTER TABLE `contact_masters`
   ADD COLUMN `credit_limit` DOUBLE NULL,
   ADD COLUMN `payment_terms` INT NULL;
+
+
+26-10-2026 Dhaval
+-- MASTER DB only (not tenant DBs, not smalloffice_sample_tenant). Custom-domain
+-- -> company lookup for the ecommerce storefront (Q8/4.3a).
+-- migration: migration/master/migrations/20261026100000-create-storefront-domains.js
+CREATE TABLE `storefront_domains` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `company_masters_id` INT NOT NULL,
+  `a_application_login_id` INT NOT NULL,
+  `domain` VARCHAR(255) NOT NULL,
+  `verification_token` VARCHAR(64) NOT NULL,
+  `verified_at` DATETIME NULL,
+  `isDelete` TINYINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_storefront_domains_domain` (`domain`),
+  UNIQUE KEY `uq_storefront_domains_company` (`company_masters_id`)
+);

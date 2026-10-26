@@ -1,3 +1,4 @@
+import { getStorefrontDomain, resolveStorefrontDomain, saveStorefrontDomain, verifyStorefrontDomain } from "../../services/storefront/storefrontDomainService.js";
 import { getStorefrontSettings, saveStorefrontSettings } from "../../services/storefront/storefrontSettingsService.js";
 import { getStorefrontThemes, selectStorefrontTheme } from "../../services/storefront/storefrontThemeService.js";
 import { getLockedAccounts, unlockStorefrontAccount } from "../../services/storefront/storefrontModeSwitch.js";
@@ -25,4 +26,20 @@ export const getLockedAccountsController = async (req, res) => {
 
 export const unlockStorefrontAccountController = async (req, res) => {
   await callServiceMethod(req, res, unlockStorefrontAccount(req), "unlockStorefrontAccount");
+};
+
+export const getStorefrontDomainController = async (req, res) => {
+  await callServiceMethod(req, res, getStorefrontDomain(req), "getStorefrontDomain");
+};
+
+export const saveStorefrontDomainController = async (req, res) => {
+  await callServiceMethod(req, res, saveStorefrontDomain(req), "saveStorefrontDomain");
+};
+
+export const verifyStorefrontDomainController = async (req, res) => {
+  await callServiceMethod(req, res, verifyStorefrontDomain(req), "verifyStorefrontDomain");
+};
+
+export const resolveStorefrontDomainController = async (req, res) => {
+  await callServiceMethod(req, res, resolveStorefrontDomain(req), "resolveStorefrontDomain");
 };
