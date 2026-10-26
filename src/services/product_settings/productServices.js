@@ -31,6 +31,7 @@ import {
 import { getCompanyByLoginId } from "../commonServices.js";
 import { normalizeSellerIds, productSellerFilter } from "./productSellerGuard.js";
 import { stockCartItemConditions } from "./stockCondition.js";
+import { findProductUsage } from "./productUsage.js";
 export const getAllProduct = async (req) => {
   try {
     let { ul, ll, selectedDates, productId } = req.body;
@@ -1214,68 +1215,61 @@ export const DeleteProducts = async (req) => {
         });
       }
 
-      // Check for dependencies in cart or price list for each product ID
-      const dependentProducts = [];
-      for (const id of productIds) {
-        const productInCart = await cartItemModels.findAll({
-          where: {
-            isDelete: 0,
-            company_masters_id: findCompanyId.company_masters_id,
-            item_product_id: id,
-          },
-          transaction,
-        });
+      // A product used in a document, task, price list, variant, job card, BOM and so on cannot be
+      // deleted (see productUsage.js). With several selected, the unused ones are still deleted and
+      // the used ones are skipped and reported, instead of one used product blocking the whole delete.
+      const usage = await findProductUsage(tenantDB, productIds, { transaction });
+      const deletableIds = productIds.filter((id) => !usage.has(id));
+      const usedIds = productIds.filter((id) => usage.has(id));
 
-        const productInPriceList = await productListCustom.findAll({
-          where: {
-            isDelete: 0,
-            company_masters_id: findCompanyId.company_masters_id,
-            product_id: id,
-          },
-          transaction,
-        });
-
-        if (productInCart.length > 0 || productInPriceList.length > 0) {
-          dependentProducts.push(id);
-        }
+      let deletedCount = 0;
+      if (deletableIds.length > 0) {
+        [deletedCount] = await productModels.update(
+          { isDelete: 1 },
+          {
+            where: {
+              isDelete: 0,
+              id: deletableIds,
+              company_masters_id: findCompanyId.company_masters_id,
+            },
+            transaction,
+          }
+        );
       }
 
-      if (dependentProducts.length > 0) {
-        const errorMessage =
-          dependentProducts.length === productIds.length
-            ? "Cannot delete the product(s) because they exist in cart or price list."
-            : `Cannot delete product(s) with ID(s) ${dependentProducts.join(
-              ", "
-            )} because they exist in cart or price list.`;
+      let skipped = [];
+      if (usedIds.length > 0) {
+        const names = await productModels.findAll({
+          where: { id: usedIds },
+          attributes: ["id", "product_name"],
+          raw: true,
+          transaction,
+        });
+        const nameOf = new Map(names.map((p) => [p.id, p.product_name]));
+        skipped = usedIds.map((id) => ({
+          id,
+          product_name: nameOf.get(id) || `#${id}`,
+          used_in: usage.get(id),
+        }));
+      }
+
+      if (deletedCount === 0) {
         return resError({
-          ack_msg: errorMessage,
+          ack_msg:
+            usedIds.length > 0
+              ? `Cannot delete: ${skipped.map((s) => `${s.product_name} (${s.used_in.join(", ")})`).slice(0, 5).join("; ")}${skipped.length > 5 ? ` and ${skipped.length - 5} more` : ""}.`
+              : "No products found to delete",
+          data: { deleted_count: 0, skipped },
         });
       }
 
-      // Delete products with no dependencies
-      const [updatedCount] = await productModels.update(
-        { isDelete: 1 },
-        {
-          where: {
-            isDelete: 0,
-            id: productIds,
-            company_masters_id: findCompanyId.company_masters_id,
-          },
-          transaction,
-        }
-      );
-
-      if (updatedCount === 0) {
-        return resError({
-          ack_msg: "No products found to delete",
-        });
-      }
-
+      const deletedMessage = deletedCount > 1 ? `${deletedCount} products deleted` : "Product deleted successfully";
       return resSuccess({
         ack_msg:
-          productIds.length > 1
-            ? "Products deleted successfully"
-            : "Product deleted successfully",
+          skipped.length > 0
+            ? `${deletedMessage}. ${skipped.length} not deleted because they are in use: ${skipped.map((s) => `${s.product_name} (${s.used_in.join(", ")})`).slice(0, 5).join("; ")}${skipped.length > 5 ? ` and ${skipped.length - 5} more` : ""}.`
+            : deletedMessage,
+        data: { deleted_count: deletedCount, skipped },
       });
     });
   } catch (error) {
