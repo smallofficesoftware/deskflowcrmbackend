@@ -20,6 +20,9 @@ const DEFAULTS = {
   auth_light_mode_enabled: false,
   auth_invite_only: false,
   guest_checkout_enabled: true,
+  // false = anonymous visitors can only reach /account (login); every other
+  // storefront page redirects there until they have a valid session.
+  public_browsing_enabled: true,
   // Not auth-specific, but the same config_json row - storefrontCatalogService.js's
   // applyDefaultPriceList used to read this via its own separate query; checkout
   // (P4) needs it too, so it's read once here instead of twice.
@@ -29,6 +32,11 @@ const DEFAULTS = {
   // table. razorpay_key_secret never leaves the server (storefrontPaymentService.js
   // only ever reads it server-side to call Razorpay's own API / verify its
   // signature - never returned to any client, CRM or storefront).
+  // Checkout payment options. cash = no gateway: the order is saved as a plain
+  // draft and the team collects payment themselves (same draft path approval
+  // mode uses).
+  payment_razorpay_enabled: true,
+  payment_cash_enabled: false,
   razorpay_key_id: "",
   razorpay_key_secret: "",
   paid_stage_status_id: null,
