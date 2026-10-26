@@ -92,6 +92,33 @@ const attachPrimaryImages = async (tenantDB, products) => {
   });
 };
 
+/** Every non-deleted photo of each product/variant (primary first), as `images`, so the product page can
+ * show a gallery - and a variant its OWN photos. attachPrimaryImages' single `image` stays for the grids. */
+const attachAllImages = async (tenantDB, products) => {
+  if (products.length === 0) return products;
+  const rows = await productImageModel(tenantDB).findAll({
+    where: { product_id: products.map((p) => p.id), isDelete: 0 },
+    attributes: ["product_id", "image_path", "webp_path", "thumbnail_path"],
+    order: [["is_primary", "DESC"], ["display_order", "ASC"], ["id", "ASC"]],
+    raw: true,
+  });
+  const byProduct = new Map();
+  for (const r of rows) {
+    const list = byProduct.get(r.product_id) || [];
+    list.push({ webp_path: r.webp_path || r.image_path, thumbnail_path: r.thumbnail_path || r.image_path });
+    byProduct.set(r.product_id, list);
+  }
+  return products.map((p) => ({ ...p, images: byProduct.get(p.id) || [] }));
+};
+
+/** The product page used to send the whole products row to anonymous callers - purchase rate/cost, stock
+ * limits, GST/HSN, internal ids. Only the fields a storefront actually renders go out. */
+const PUBLIC_PRODUCT_FIELDS = [
+  "id", "product_name", "slug", "meta_title", "meta_description", "product_description", "rate", "net_rate",
+  "category_id", "is_variant_parent", "parent_product_id", "unit", "image", "images", "variant_options",
+];
+const toPublicProduct = (p) => Object.fromEntries(PUBLIC_PRODUCT_FIELDS.filter((k) => k in p).map((k) => [k, p[k]]));
+
 /** GET /storefront/:companySlug/info - branding fields for generateMetadata's
  * derived OG/title defaults (plan 4.7) - company_name/company_logo/banner_img_
  * one are the only usable fields today (3.10 - no dedicated storefront SEO
@@ -353,7 +380,8 @@ export const getStorefrontProductBySlug = async (req) => {
     const { product_img, ...productWithoutLegacyImage } = product;
     void product_img; // legacy single-image field - see attachPrimaryImages' own comment.
     const [priced] = await applyDefaultPriceList(resolved.tenantDB, resolved.company_masters_id, [productWithoutLegacyImage]);
-    const [withImages] = await attachPrimaryImages(resolved.tenantDB, [priced]);
+    const [withPrimary] = await attachPrimaryImages(resolved.tenantDB, [priced]);
+    const [withImages] = (await attachAllImages(resolved.tenantDB, [withPrimary])).map(toPublicProduct);
 
     if (Number(product.is_variant_parent) === 1) {
       const [attributes, variants] = await Promise.all([
@@ -363,7 +391,7 @@ export const getStorefrontProductBySlug = async (req) => {
       const visibleVariants = variants
         .filter((v) => Number(v.show_in_ecommerce) !== 0)
         .map(({ product_img: _legacyImg, ...v }) => v); // eslint-disable-line no-unused-vars
-      const variantsWithImages = await attachPrimaryImages(resolved.tenantDB, visibleVariants);
+      const variantsWithImages = (await attachAllImages(resolved.tenantDB, await attachPrimaryImages(resolved.tenantDB, visibleVariants))).map(toPublicProduct);
       return resSuccess({ data: { item: { product: withImages, attributes, variants: variantsWithImages } } });
     }
 

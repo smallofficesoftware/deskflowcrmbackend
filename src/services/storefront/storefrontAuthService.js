@@ -136,9 +136,9 @@ export const getStorefrontAuthConfig = async (req) => {
     // `item` key (that's the catalog service's convention, a different file/feature).
     const settings = await getStorefrontAuthSettings(resolved.tenantDB, resolved.company_masters_id);
     // PUBLIC endpoint - never expose the server-only settings (the Razorpay key pair, stage ids, price list,
-    // credit/approval/stock policy). The storefront reads only the toggles below; create-order returns
+    // credit/approval/stock policy). Bank/UPI pay-to details stay in: the order confirmation page shows them.
     // the Razorpay key id itself when a payment actually starts.
-    const { razorpay_key_id, razorpay_key_secret, paid_stage_status_id, cash_stage_status_id, default_price_list_id, credit_limit_action, approval_mode_enabled, stock_check_mode, ...publicSettings } = settings; // eslint-disable-line no-unused-vars
+    const { razorpay_key_id, razorpay_key_secret, paid_stage_status_id, cash_stage_status_id, bank_stage_status_id, upi_stage_status_id, default_price_list_id, credit_limit_action, approval_mode_enabled, stock_check_mode, ...publicSettings } = settings; // eslint-disable-line no-unused-vars
     return resSuccess({ data: publicSettings });
   } catch (error) {
     return resError({ developer_msg: `getStorefrontAuthConfig failed: ${error}` });
