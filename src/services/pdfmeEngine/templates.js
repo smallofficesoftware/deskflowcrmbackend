@@ -152,8 +152,8 @@ export function applyTemplateOptions(id, loadedTemplate, { header = null, column
 export function withCompanyHeader(template, company) {
   const cloned = structuredClone(template);
   const contactLine =
-    `Mo.: ${company.mobile ?? ""}  Email: ${company.email ?? ""}  GSTIN: ${company.gstin ?? ""}  State: ${company.state ?? ""}`;
-  const addressLine = `Address: ${company.address}\n${contactLine}`;
+    `**Mo.:** ${company.mobile ?? ""}  **Email:** ${company.email ?? ""}  **GSTIN:** ${company.gstin ?? ""}  **State:** ${company.state ?? ""}`;
+  const addressLine = `**Address:** ${company.address}\n${contactLine}`;
   const combinedBlock = `${company.name}\n${addressLine}`;
 
   // A Report Builder bootstrap template (buildDefaultReportTemplate) has no
@@ -166,8 +166,9 @@ export function withCompanyHeader(template, company) {
     // templates saved before dataSource existed.
     const key = field.dataSource || field.name;
     if (key === "companyName") return { ...field, content: company.name };
-    if (key === "companyAddress") return { ...field, content: addressLine };
-    if (key === "companyDetailsWithLogo") return { ...field, content: combinedBlock };
+    // inline-markdown so the **label** parts above print bold (richTextPlugin.js).
+    if (key === "companyAddress") return { ...field, content: addressLine, textFormat: "inline-markdown" };
+    if (key === "companyDetailsWithLogo") return { ...field, content: combinedBlock, textFormat: "inline-markdown" };
     if (key === "companyHeaderImage" && company.headerImage) return { ...field, content: company.headerImage };
     if (key === "companyLogo" && company.logoImage) return { ...field, content: company.logoImage };
     if (key === "companyFooterImage" && company.footerImage) return { ...field, content: company.footerImage };
