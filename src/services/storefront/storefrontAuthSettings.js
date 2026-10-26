@@ -46,6 +46,17 @@ const DEFAULTS = {
   credit_limit_action: "warn",
   approval_mode_enabled: false,
   stock_check_mode: "derived",
+  // Theme accent color (24-10-2026, per the user: "we need color option for
+  // the theme also as of now it is red or pink") - the ported Pharmacy CSS
+  // hardcodes its own red/pink accent (buttons, prices, active-menu
+  // underline) throughout thousands of rules with literal hex values, not
+  // CSS variables, so this can't be swapped by editing the stylesheet itself
+  // without breaking the "byte-identical ported CSS" approach. Instead the
+  // storefront injects a small override <style> block using this value -
+  // see storefront's app/layout.tsx. Default matches the theme's own current
+  // red so turning this on doesn't change anything until an admin picks a
+  // different color.
+  theme_accent_color: "#ff0000",
 };
 
 export const getStorefrontAuthSettings = async (tenantDB, company_masters_id) => {

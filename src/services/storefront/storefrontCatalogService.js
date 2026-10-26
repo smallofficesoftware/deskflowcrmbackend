@@ -95,6 +95,27 @@ export const getStorefrontCompanyInfo = async (req) => {
     });
     if (!company) return resError({ ack_msg: "Store not found" });
 
+    // theme_accent_color (24-10-2026) - lives in the SAME marketplace_addon_
+    // settings.config_json as every other storefront setting, but this
+    // public/unauthenticated endpoint (not getStorefrontAuthSettings, which
+    // is only ever called from already-tenant-resolved internal code) is
+    // what every page actually reads company branding from, so it's merged
+    // in here rather than adding a second public call just for one field.
+    const settingsRow = await marketplaceAddonSettingsModel(resolved.tenantDB).findOne({
+      where: { company_masters_id: resolved.company_masters_id, addon_code: ADDON_CODE, isDelete: 0 },
+      attributes: ["config_json"],
+      raw: true,
+    });
+    let config = settingsRow?.config_json;
+    if (typeof config === "string") {
+      try {
+        config = JSON.parse(config);
+      } catch {
+        config = {};
+      }
+    }
+    company.theme_accent_color = config?.theme_accent_color || "#ff0000";
+
     return resSuccess({ data: { item: company } });
   } catch (error) {
     return resError({ developer_msg: `getStorefrontCompanyInfo failed: ${error}` });
