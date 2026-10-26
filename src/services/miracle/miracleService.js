@@ -27,6 +27,7 @@ import { getCompanyByLoginId } from "../commonServices.js";
 import { insertMiracleLog } from "../activities/miracleLogService.js";
 import { emitAutomationEvent } from "../automation/emit.js";
 import { parseReceiptRemark } from "./miracleReceiptNumber.js";
+import { postLedger } from "./miracleLedgerRequest.js";
 
 export const getMiracleUfdDet = async (tenantDB, companyId, formType, entityData) => {
     try {
@@ -1636,11 +1637,11 @@ export const fetchMiracleProducts = async (req) => {
         // ---------------------------------------------------------
         const ledgerPayload = {
             "rptfield": [
-                "prdnm", "prdid", "gstunt", "hsncode", "minstk", "ordlev", "lprate", "lsrate", "prdmrp", "commnm", "slabnm", "opamt", "opqty1", "recqty1", "iqty1", "clqty1", "prdcrdt", "prdupdt", "lastactiondt"
+                "prdnm", "prdid", "gstunt", "hsncode", "minstk", "ordlev", "lprate", "lsrate", "prdmrp", "commnm", "slabnm", "opamt", "opqty1", "recqty1", "iqty1", "clqty1", "prdcrdt", "prdupdt"
             ]
         };
 
-        const ledgerResponse = await api.post('TPA/M2/V1/ProductLedger', ledgerPayload);
+        const ledgerResponse = await postLedger(api, 'TPA/M2/V1/ProductLedger', ledgerPayload);
         const { Data: baseProducts, TotalRecords, IsError: baseIsError, Message: baseMsg, ErrorCode: baseCode } = ledgerResponse.data || {};
 
         if (baseIsError) {
@@ -1811,10 +1812,10 @@ export const processProducts = async (req) => {
         // STEP 1: Fetch Base Product List from Miracle
         // ---------------------------------------------------------
         const ledgerPayload = {
-            "rptfield": ["prdnm", "prdid", "gstunt", "hsncode", "minstk", "ordlev", "lprate", "lsrate", "prdmrp", "commnm", "slabnm", "opamt", "opqty1", "recqty1", "iqty1", "clqty1", "prdcrdt", "prdupdt", "lastactiondt"]
+            "rptfield": ["prdnm", "prdid", "gstunt", "hsncode", "minstk", "ordlev", "lprate", "lsrate", "prdmrp", "commnm", "slabnm", "opamt", "opqty1", "recqty1", "iqty1", "clqty1", "prdcrdt", "prdupdt"]
         };
 
-        const ledgerResponse = await api.post('TPA/M2/V1/ProductLedger', ledgerPayload);
+        const ledgerResponse = await postLedger(api, 'TPA/M2/V1/ProductLedger', ledgerPayload);
         const { Data: baseProducts, IsError: baseIsError, Message: baseMsg, ErrorCode: baseCode } = ledgerResponse.data || {};
 
         if (baseIsError) {
@@ -2197,13 +2198,13 @@ export const fetchContact = async (req) => {
         const ledgerPayload = {
             "fromdate": fromDate,
             "todate": toDate,
-            "rptfield": ["accid", "accnm", "accalinm", "accgrpnm", "citynm", "statenm", "sgrpname", "gstin", "bname", "opbal", "totalcr", "totaldb", "clbal", "lastactiondt", "panno", "crdays", "regtype", "mob1", "email", "acccrdt", "accupdt"],
+            "rptfield": ["accid", "accnm", "accalinm", "accgrpnm", "citynm", "statenm", "sgrpname", "gstin", "bname", "opbal", "totalcr", "totaldb", "clbal", "panno", "crdays", "regtype", "mob1", "email", "acccrdt", "accupdt"],
             "rptfilter": {
                 "accgrpnm": ["Sundry Debtors", "Sundry Creditors"]
             }
         };
 
-        const ledgerResponse = await api.post('TPA/M2/V1/AccountLedger', ledgerPayload);
+        const ledgerResponse = await postLedger(api, 'TPA/M2/V1/AccountLedger', ledgerPayload);
         const { Data: baseContacts, IsError: baseIsError, Message: baseMsg, ErrorCode: baseCode } = ledgerResponse.data || {};
 
         if (baseIsError) {
@@ -2317,13 +2318,13 @@ export const processContact = async (req) => {
         const ledgerPayload = {
             "fromdate": fromDate,
             "todate": toDate,
-            "rptfield": ["accid", "accnm", "accalinm", "accgrpnm", "citynm", "areanm", "statenm", "sgrpname", "panno", "crdays", "crlimit", "aadharno", "gstin", "transport", "regtype", "udyamno", "udyamtyp", "udyamact", "accstatus", "balmethod", "conper1", "conper2", "addr1", "addr2", "addr3", "addr4", "pincode", "mob2", "mob1", "phone1", "phone2", "rphone1", "rphone2", "factoryno", "email", "website", "bname", "bbranch", "bradd", "bifsc", "baccno", "ibanno", "swiftcode", "opbal", "totalcr", "totaldb", "clbal", "acccrdt", "accupdt", "lastactiondt"],
+            "rptfield": ["accid", "accnm", "accalinm", "accgrpnm", "citynm", "areanm", "statenm", "sgrpname", "panno", "crdays", "crlimit", "aadharno", "gstin", "transport", "regtype", "udyamno", "udyamtyp", "udyamact", "accstatus", "balmethod", "conper1", "conper2", "addr1", "addr2", "addr3", "addr4", "pincode", "mob2", "mob1", "phone1", "phone2", "rphone1", "rphone2", "factoryno", "email", "website", "bname", "bbranch", "bradd", "bifsc", "baccno", "ibanno", "swiftcode", "opbal", "totalcr", "totaldb", "clbal", "acccrdt", "accupdt"],
             "rptfilter": {
                 "accgrpnm": ["Sundry Debtors", "Sundry Creditors"]
             }
         };
 
-        const ledgerResponse = await api.post('TPA/M2/V1/AccountLedger', ledgerPayload);
+        const ledgerResponse = await postLedger(api, 'TPA/M2/V1/AccountLedger', ledgerPayload);
         const { Data: baseContacts, IsError: baseIsError, Message: baseMsg, ErrorCode: baseCode } = ledgerResponse.data || {};
 
         if (baseIsError) {
