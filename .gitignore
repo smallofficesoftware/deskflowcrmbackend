@@ -48,3 +48,6 @@ out/
 coverage/
 .nyc_output/
 .env.development
+
+# Migration temporary tenant configs (contain DB credentials)
+src/config/temp-tenants/
