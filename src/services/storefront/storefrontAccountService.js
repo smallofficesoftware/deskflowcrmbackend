@@ -111,3 +111,74 @@ export const getStorefrontMyTransactions = async (req) => {
     return resError({ developer_msg: `getStorefrontMyTransactions failed: ${error}` });
   }
 };
+
+/** GET /storefront/me/orders/:id - one of the customer's own orders in full (lines, tax split, addresses). */
+export const getStorefrontMyOrder = async (req) => {
+  try {
+    const { contact_master_id, company_masters_id } = req.storefrontSession;
+    const orderId = Number(req.params.id);
+    if (!Number.isInteger(orderId)) return resError({ ack_msg: "Order not found" });
+    const db = req.tenantDB;
+
+    // Scoped to the session's own contact in the WHERE - another customer's id simply finds nothing.
+    const [order] = await db.query(
+      `SELECT c.id, c.cart_number, c.cart_date, c.cart_status, c.total_amt, c.taxable_amt, c.gst_amt, c.round_off,
+              c.grand_total, c.total_qty, c.cart_remark, c.shipping_address,
+              c.to_customer_name, c.to_customer_phone, c.to_customer_email,
+              s.name AS stage_name, s.color AS stage_color
+         FROM carts c
+         LEFT JOIN stage_status_masters s ON s.id = c.cart_status AND s.isDelete = 0
+        WHERE c.id = :id AND c.to_customer_id = :contact AND c.company_masters_id = :company AND c.type = 2 AND c.isDelete = 0
+        LIMIT 1`,
+      { replacements: { id: orderId, contact: contact_master_id, company: company_masters_id }, type: QueryTypes.SELECT }
+    );
+    if (!order) return resError({ ack_msg: "Order not found" });
+
+    const lines = await db.query(
+      `SELECT item_product_name, item_product_code, item_hsn_code, item_qty, item_rate, item_gst, item_net_rate, item_total
+         FROM cart_items WHERE cart_id = :id AND isDelete = 0 ORDER BY id ASC`,
+      { replacements: { id: orderId }, type: QueryTypes.SELECT }
+    );
+
+    // Storefront checkout saves the order total but not the tax split on the cart row (taxable_amt/gst_amt stay 0),
+    // so derive it from the lines: taxable = rate x qty, GST = the rest of each line total.
+    const linesTaxable = lines.reduce((a, l) => a + Number(l.item_rate || 0) * Number(l.item_qty || 0), 0);
+    const linesGst = lines.reduce((a, l) => a + (Number(l.item_total || 0) - Number(l.item_rate || 0) * Number(l.item_qty || 0)), 0);
+    const hasSplit = Number(order.taxable_amt) > 0 || Number(order.gst_amt) > 0;
+    const taxable = hasSplit ? order.taxable_amt : Math.round(linesTaxable * 100) / 100;
+    const gst = hasSplit ? order.gst_amt : Math.round(linesGst * 100) / 100;
+
+    return resSuccess({
+      data: {
+        item: {
+          id: order.id,
+          order_number: order.cart_number || null,
+          date: order.cart_date,
+          status: order.stage_name || null,
+          status_color: order.stage_color || null,
+          subtotal: order.total_amt,
+          taxable: taxable,
+          gst: gst,
+          round_off: order.round_off,
+          total: order.grand_total,
+          qty: order.total_qty,
+          remark: plainText(order.cart_remark) || null,
+          shipping_address: plainText(order.shipping_address) || null,
+          customer: { name: order.to_customer_name || null, phone: order.to_customer_phone || null, email: order.to_customer_email || null },
+          items: lines.map((l) => ({
+            name: l.item_product_name,
+            code: l.item_product_code || null,
+            hsn: l.item_hsn_code || null,
+            qty: l.item_qty,
+            rate: l.item_rate,
+            gst_percent: l.item_gst,
+            net_rate: l.item_net_rate,
+            total: l.item_total,
+          })),
+        },
+      },
+    });
+  } catch (error) {
+    return resError({ developer_msg: `getStorefrontMyOrder failed: ${error}` });
+  }
+};

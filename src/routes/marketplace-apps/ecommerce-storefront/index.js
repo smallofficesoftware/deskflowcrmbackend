@@ -21,6 +21,7 @@ import {
 import {
   getStorefrontAuthConfigController,
   getStorefrontMeController,
+  getStorefrontMyOrderController,
   getStorefrontMyOrdersController,
   getStorefrontMyTransactionsController,
   requestStorefrontOtpController,
@@ -120,6 +121,7 @@ export default (app) => {
   // auth shape).
   app.get("/storefront/me", requireStorefrontSession, getStorefrontMeController);
   app.get("/storefront/me/orders", requireStorefrontSession, getStorefrontMyOrdersController);
+  app.get("/storefront/me/orders/:id", requireStorefrontSession, getStorefrontMyOrderController);
   app.get("/storefront/me/transactions", requireStorefrontSession, getStorefrontMyTransactionsController);
   app.put("/storefront/me", requireStorefrontSession, updateStorefrontMeController);
   app.post("/storefront/me/pin", requireStorefrontSession, setStorefrontPinController);

@@ -9,7 +9,7 @@ import {
   updateStorefrontMe,
   verifyStorefrontOtp,
 } from "../../services/storefront/storefrontAuthService.js";
-import { getStorefrontMyOrders, getStorefrontMyTransactions } from "../../services/storefront/storefrontAccountService.js";
+import { getStorefrontMyOrder, getStorefrontMyOrders, getStorefrontMyTransactions } from "../../services/storefront/storefrontAccountService.js";
 import callServiceMethod from "../baseController.js";
 
 export const getStorefrontAuthConfigController = async (req, res) => {
@@ -42,6 +42,10 @@ export const setStorefrontPinController = async (req, res) => {
 
 export const getStorefrontMyOrdersController = async (req, res) => {
   await callServiceMethod(req, res, getStorefrontMyOrders(req), "getStorefrontMyOrders");
+};
+
+export const getStorefrontMyOrderController = async (req, res) => {
+  await callServiceMethod(req, res, getStorefrontMyOrder(req), "getStorefrontMyOrder");
 };
 
 export const getStorefrontMyTransactionsController = async (req, res) => {
