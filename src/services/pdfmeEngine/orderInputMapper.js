@@ -322,6 +322,9 @@ export function buildComputedFields(cart, numberTowords, grouped = false) {
     subTotal: num(cart?.total_amt, 2, grouped),
     taxableAmount: num(cart?.taxable_amt, 2, grouped),
     gstAmount: num(cart?.gst_amt, 2, grouped),
+    // Unformatted twin of gstAmount: Number("54,909.00") is NaN once the company
+    // uses grouped number format, which hid the GST lines and the HSN table.
+    gstAmountRaw: Number(cart?.gst_amt) || 0,
     packingCharge: num(cart?.packing_forwarding_charge, 2, grouped),
     transportCharge: num(cart?.transport_charge, 2, grouped),
     tcsAmount: num(cart?.tcs_amt, 2, grouped),
@@ -607,10 +610,10 @@ export function buildInputsForCart({ company, buyer, order, computed, items, pen
     // (~line 987-1005). gstLine2 stays blank/hidden for the IGST case,
     // rather than adding a 3rd row slot — matches the EJS's own row count
     // per branch (2 rows same-state, 1 row different-state).
-    gstLine1Label: Number(computed?.gstAmount) > 0 ? (totals.isSameState ? "CGST" : "IGST") : "",
-    gstLine1Value: Number(computed?.gstAmount) > 0 ? num(totals.isSameState ? Number(computed.gstAmount) / 2 : computed.gstAmount) : "",
-    gstLine2Label: Number(computed?.gstAmount) > 0 && totals.isSameState ? "SGST" : "",
-    gstLine2Value: Number(computed?.gstAmount) > 0 && totals.isSameState ? num(Number(computed.gstAmount) / 2) : "",
+    gstLine1Label: Number(computed?.gstAmountRaw) > 0 ? (totals.isSameState ? "CGST" : "IGST") : "",
+    gstLine1Value: Number(computed?.gstAmountRaw) > 0 ? num(totals.isSameState ? Number(computed.gstAmountRaw) / 2 : computed.gstAmountRaw) : "",
+    gstLine2Label: Number(computed?.gstAmountRaw) > 0 && totals.isSameState ? "SGST" : "",
+    gstLine2Value: Number(computed?.gstAmountRaw) > 0 && totals.isSameState ? num(Number(computed.gstAmountRaw) / 2) : "",
 
     tcsLabel: totals.tcsLabel ?? "TCS",
     tcsValue: computed?.tcsAmount && Number(computed.tcsAmount) !== 0 ? computed.tcsAmount : "",
@@ -656,14 +659,14 @@ export function buildInputsForCart({ company, buyer, order, computed, items, pen
           ? [totals.cashDiscountLabel ?? "Cash Discount", num(totals.cashDiscountAmount)]
           : null,
         ["Total Taxable Amount", computed?.taxableAmount ?? ""],
-        Number(computed?.gstAmount) > 0
+        Number(computed?.gstAmountRaw) > 0
           ? [
             totals.isSameState ? "CGST" : "IGST",
-            num(totals.isSameState ? Number(computed.gstAmount) / 2 : computed.gstAmount),
+            num(totals.isSameState ? Number(computed.gstAmountRaw) / 2 : computed.gstAmountRaw),
           ]
           : null,
-        Number(computed?.gstAmount) > 0 && totals.isSameState
-          ? ["SGST", num(Number(computed.gstAmount) / 2)]
+        Number(computed?.gstAmountRaw) > 0 && totals.isSameState
+          ? ["SGST", num(Number(computed.gstAmountRaw) / 2)]
           : null,
         computed?.tcsAmount && Number(computed.tcsAmount) !== 0
           ? [totals.tcsLabel ?? "TCS", num(computed.tcsAmount)]
