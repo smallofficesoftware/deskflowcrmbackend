@@ -271,7 +271,7 @@ async function reserveStockForCheckout(tenantDB, t, company_masters_id, items) {
 export const createStorefrontCheckout = async (req) => {
   try {
     const { companySlug } = req.params;
-    const { items, address, shipping_address, pincode, guest_mobile_number, guest_person_name } = req.body || {};
+    const { items, address, shipping_address, pincode, guest_mobile_number, guest_person_name, payment_method } = req.body || {};
 
     if (!Array.isArray(items) || items.length === 0) {
       return resBadRequest({ developer_msg: "items[] is required" });
@@ -284,6 +284,11 @@ export const createStorefrontCheckout = async (req) => {
     const session = readOptionalSession(req);
     if (!session && !settings.guest_checkout_enabled) {
       return resError({ ack_msg: "Please log in to continue." });
+    }
+
+    const isCash = payment_method === "cash";
+    if (isCash ? !settings.payment_cash_enabled : !settings.payment_razorpay_enabled) {
+      return resError({ ack_msg: "This payment method is not available for this store." });
     }
 
     const { contact, error: contactError } = await resolveOrderingContact({
@@ -382,6 +387,8 @@ export const createStorefrontCheckout = async (req) => {
     // exactly like today's default - "approval" is just the storefront
     // skipping its own payment step, not a new backend status machine.
     const isApprovalMode = Boolean(session) && Boolean(settings.approval_mode_enabled);
+    // Cash is also a no-payment draft, so it never reserves stock either.
+    const isDraftOnly = isApprovalMode || isCash;
 
     // Bug caught during live P5 verification: reservedMode must also depend on
     // the company's OWN strict-stock-check setting (same gate checkDerivedStock
@@ -392,7 +399,7 @@ export const createStorefrontCheckout = async (req) => {
     // ("Only takes effect when strict stock checking is already on") and
     // checkDerivedStock's own mode 0/2 short-circuit.
     const stockMode = await getStorefrontStockCheckMode(resolved.company_masters_id);
-    const reservedMode = !isApprovalMode && stockMode === 1 && settings.stock_check_mode === "reserved";
+    const reservedMode = !isDraftOnly && stockMode === 1 && settings.stock_check_mode === "reserved";
     let cartStatus = 0;
 
     if (!reservedMode) {
@@ -403,7 +410,7 @@ export const createStorefrontCheckout = async (req) => {
       }
     }
 
-    const remarkSuffix = [creditWarning ? "OVER CREDIT LIMIT" : null, isApprovalMode ? "Awaiting approval" : null].filter(Boolean).join(" - ");
+    const remarkSuffix = [creditWarning ? "OVER CREDIT LIMIT" : null, isApprovalMode ? "Awaiting approval" : null, isCash ? "Cash payment" : null].filter(Boolean).join(" - ");
     const cartBody = {
       type: 2,
       cart_date: moment().format("YYYY-MM-DD"),
@@ -449,6 +456,7 @@ export const createStorefrontCheckout = async (req) => {
             cart_id: cart.id,
             grand_total: grandTotal,
             requires_approval: isApprovalMode,
+            pay_by_cash: isCash && !isApprovalMode,
             credit_warning: creditWarning,
           },
         },
