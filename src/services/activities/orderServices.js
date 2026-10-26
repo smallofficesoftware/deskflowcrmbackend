@@ -78,6 +78,7 @@ import {
 } from "../commonServices.js";
 import { emitAutomationEvent, automationBefore } from "../automation/emit.js";
 import { assertProductsAllowed } from "../product_settings/productSellerGuard.js";
+import { stockCartItemConditions } from "../product_settings/stockCondition.js";
 
 
 const orderTypesList = [
@@ -298,28 +299,8 @@ export const orderCreate = async (req, res) => {
         const whereClauseStock = {
           isDelete: 0,
           item_product_id: item.item_product_id,
-          cart_type: { [Op.in]: [4, 3, 6, 7, 8, 9, 10, 11] },
-          cart_number: { [Op.ne]: null, [Op.not]: "" },
-          stock_type: { [Op.ne]: 0 },
-          [Op.and]: [
-            {
-              [Op.or]: [
-                // cart_type = 4 AND reference_type != 8
-                {
-                  cart_type: 4,
-                  reference_type: { [Op.ne]: 8 },
-                },
-                {
-                  cart_type: 3,
-                  reference_type: { [Op.ne]: 9 },
-                },
-
-                {
-                  cart_type: { [Op.in]: [6, 7, 8, 9, 10, 11] },
-                },
-              ],
-            },
-          ],
+          // The shared stock rule (stockCondition.js).
+          [Op.and]: stockCartItemConditions(),
         };
 
         let warehouseName = "total stock";
@@ -2021,28 +2002,8 @@ export const orderUpdate = async (req, res) => {
         const whereClauseStock = {
           isDelete: 0,
           item_product_id: item.item_product_id,
-          cart_type: { [Op.in]: [4, 3, 6, 7, 8, 9, 10, 11] },
-          cart_number: { [Op.ne]: null, [Op.not]: "" },
-          stock_type: { [Op.ne]: 0 },
-          [Op.and]: [
-            {
-              [Op.or]: [
-                // cart_type = 4 AND reference_type != 8
-                {
-                  cart_type: 4,
-                  reference_type: { [Op.ne]: 8 },
-                },
-                {
-                  cart_type: 3,
-                  reference_type: { [Op.ne]: 9 },
-                },
-
-                {
-                  cart_type: { [Op.in]: [6, 7, 8, 9, 10, 11] },
-                },
-              ],
-            },
-          ],
+          // The shared stock rule (stockCondition.js).
+          [Op.and]: stockCartItemConditions(),
         };
         console.log("whereClauseStockwhereClauseStock", whereClauseStock);
 

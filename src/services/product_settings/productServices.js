@@ -30,6 +30,7 @@ import {
 } from "../../utils/sharedFunctions.js";
 import { getCompanyByLoginId } from "../commonServices.js";
 import { normalizeSellerIds, productSellerFilter } from "./productSellerGuard.js";
+import { stockCartItemConditions } from "./stockCondition.js";
 export const getAllProduct = async (req) => {
   try {
     let { ul, ll, selectedDates, productId } = req.body;
@@ -245,28 +246,8 @@ export const getAllProduct = async (req) => {
         const whereClauseOpen = {
           isDelete: 0,
           item_product_id: product.dataValues.id,
-          cart_type: { [Op.in]: [4, 3, 6, 7, 8, 9, 10, 11] },
-          cart_number: { [Op.ne]: null, [Op.not]: "" },
-          stock_type: { [Op.ne]: 0 },
-          [Op.and]: [
-            {
-              [Op.or]: [
-                // cart_type = 4 AND reference_type != 8
-                {
-                  cart_type: 4,
-                  reference_type: { [Op.ne]: 8 },
-                },
-                {
-                  cart_type: 3,
-                  reference_type: { [Op.ne]: 9 },
-                },
-
-                {
-                  cart_type: { [Op.in]: [6, 7, 8, 9, 10, 11] },
-                },
-              ],
-            },
-          ],
+          // The shared stock rule (stockCondition.js).
+          [Op.and]: stockCartItemConditions(),
         };
 
         const findOpeningQty = await cartItem.findAll({

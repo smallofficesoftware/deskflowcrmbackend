@@ -8,6 +8,7 @@ import companyModel from "../../models/company_setup/companyModel.js";
 import { wareHouseModel } from "../../models/other_settings/wareHouseModel.js";
 import { getFinancialYear, getFinancialYearRangeWise, isValid, resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { getCompanyByLoginId } from "../commonServices.js";
+import { stockCartItemConditions } from "../product_settings/stockCondition.js";
 
 /**
  * How strictly to check stock before taking it out, from the company's two
@@ -43,13 +44,7 @@ export const checkWarehouseWiseStock = async (req, stockItem) => {
         where: {
             isDelete: 0,
             item_product_id: { [Op.in]: [...new Set(stockItem.map((i) => i.product_id))] },
-            cart_number: { [Op.ne]: null, [Op.not]: "" },
-            stock_type: { [Op.ne]: 0 },
-            [Op.or]: [
-                { cart_type: 4, reference_type: { [Op.ne]: 8 } },
-                { cart_type: 3, reference_type: { [Op.ne]: 9 } },
-                { cart_type: { [Op.in]: [6, 7, 8, 9, 10, 11] } },
-            ],
+            [Op.and]: stockCartItemConditions(),
         },
         attributes: [
             "item_product_id",
@@ -86,27 +81,7 @@ export const checkStockAvailability = async (req, stockDetail, stockItem) => {
             const whereClauseOpen = {
                 isDelete: 0,
                 item_product_id: product.product_id,
-                cart_type: { [Op.in]: [4, 3, 6, 7, 8, 9, 10, 11] },
-                cart_number: { [Op.ne]: null, [Op.not]: "" },
-                stock_type: { [Op.ne]: 0 },
-                [Op.and]: [
-                    {
-                        [Op.or]: [
-                            {
-                                cart_type: 4,
-                                reference_type: { [Op.ne]: 8 },
-                            },
-                            {
-                                cart_type: 3,
-                                reference_type: { [Op.ne]: 9 },
-                            },
-
-                            {
-                                cart_type: { [Op.in]: [6, 7, 8, 9, 10, 11] },
-                            },
-                        ],
-                    },
-                ],
+                [Op.and]: stockCartItemConditions(),
             };
 
             const findOpeningQty = await cartItemModelInstance.findAll({

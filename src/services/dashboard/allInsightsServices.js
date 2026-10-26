@@ -29,6 +29,7 @@ import {
     resSuccess
 } from "../../utils/sharedFunctions.js";
 import { getCompanyByLoginId } from "../commonServices.js";
+import { stockCartItemConditions, stockSignedQty } from "../product_settings/stockCondition.js";
 
 /* -------------------------------------------------------------------------- */
 /* Helpers                                                                    */
@@ -471,71 +472,42 @@ export const getCrmInsight = async (req) => {
 
         const dateRangeFilter = { [Op.between]: [start, end] };
 
-        const [openingStocks, purchaseSums, salesSums] = await Promise.all([
+        // Same stock rule as the product list and the Stock Summary report (see stockCondition.js):
+        // every stock-moving document type, real cart numbers only, no double counting of
+        // documents made from an inward / dispatch. Opening is everything BEFORE the start date, and
+        // the period starts on it, so the start day is counted once.
+        const stockRowAttributes = ["item_product_id", "cart_type", "reference_type", "item_qty"];
+        const [openingItems, movementItems] = await Promise.all([
             cartItem.findAll({
                 where: {
                     isDelete: 0,
-                    cart_type: { [Op.in]: [3, 4] },
-                    cart_date: { [Op.lte]: start },
-                    cart_number: { [Op.ne]: null, [Op.not]: "" },
+                    cart_date: { [Op.lt]: start },
                     item_product_id: { [Op.in]: productIds },
-                    [Op.and]: stockScopedAnd(),
+                    [Op.and]: [...stockScopedAnd(), ...stockCartItemConditions()],
                 },
-                attributes: ["item_product_id", "cart_type", "item_qty"],
+                attributes: stockRowAttributes,
                 raw: true,
             }),
             cartItem.findAll({
                 where: {
                     isDelete: 0,
-                    cart_type: 4,
                     cart_date: dateRangeFilter,
                     item_product_id: { [Op.in]: productIds },
-                    [Op.and]: stockScopedAnd(),
+                    [Op.and]: [...stockScopedAnd(), ...stockCartItemConditions()],
                 },
-                attributes: [
-                    "item_product_id",
-                    [sequelize.fn("SUM", sequelize.col("item_qty")), "purchase"],
-                ],
-                group: ["item_product_id"],
-                raw: true,
-            }),
-            cartItem.findAll({
-                where: {
-                    isDelete: 0,
-                    cart_type: 3,
-                    cart_date: dateRangeFilter,
-                    item_product_id: { [Op.in]: productIds },
-                    [Op.and]: stockScopedAnd(),
-                },
-                attributes: [
-                    "item_product_id",
-                    [sequelize.fn("SUM", sequelize.col("item_qty")), "sales"],
-                ],
-                group: ["item_product_id"],
+                attributes: stockRowAttributes,
                 raw: true,
             }),
         ]);
 
-        const purchaseMap = Object.fromEntries(
-            purchaseSums.map((p) => [p.item_product_id, parseFloat(p.purchase || 0)])
-        );
-        const salesMap = Object.fromEntries(
-            salesSums.map((s) => [s.item_product_id, parseFloat(s.sales || 0)])
-        );
-
-        const openingMap = {};
-        for (const item of openingStocks) {
-            const id = item.item_product_id;
-            const qty = parseFloat(item.item_qty || 0);
-            openingMap[id] = openingMap[id] || 0;
-            openingMap[id] += item.cart_type === 4 ? qty : -qty;
+        const closingMap = {};
+        for (const item of [...openingItems, ...movementItems]) {
+            closingMap[item.item_product_id] = (closingMap[item.item_product_id] || 0) + stockSignedQty(item);
         }
 
         let outOfStockCount = 0;
         for (const product of products) {
-            const id = product.id;
-            const openQty = openingMap[id] || 0;
-            const netClosing = openQty + (purchaseMap[id] || 0) - (salesMap[id] || 0);
+            const netClosing = closingMap[product.id] || 0;
             if (netClosing <= product.min_stock_quantity) outOfStockCount++;
         }
 
@@ -1274,8 +1246,9 @@ export const getProductionInsight = async (req) => {
                     where: {
                         isDelete: 0,
                         item_product_id: item.id,
-                        cart_type: { [Op.in]: [4, 3, 6, 7, 8, 9, 10, 11] },
                         cart_date: { [Op.lt]: start },
+                        // Same stock rule as every stock report: real cart numbers, stock_type not 0, no double counting.
+                        [Op.and]: stockCartItemConditions(),
                     },
                     raw: true,
                 });
@@ -1304,8 +1277,8 @@ export const getProductionInsight = async (req) => {
                     where: {
                         isDelete: 0,
                         item_product_id: item.id,
-                        cart_type: { [Op.in]: [4, 3, 6, 7, 8, 9, 10, 11] },
                         cart_date: { [Op.between]: [start, end] },
+                        [Op.and]: stockCartItemConditions(),
                     },
                     raw: true,
                 });
