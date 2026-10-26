@@ -21,6 +21,8 @@ import {
 import {
   getStorefrontAuthConfigController,
   getStorefrontMeController,
+  getStorefrontMyOrdersController,
+  getStorefrontMyTransactionsController,
   requestStorefrontOtpController,
   setStorefrontPinController,
   storefrontInviteLoginController,
@@ -117,6 +119,8 @@ export default (app) => {
   // middleware's own comment; no tenantMiddleware here, that one assumes CRM staff
   // auth shape).
   app.get("/storefront/me", requireStorefrontSession, getStorefrontMeController);
+  app.get("/storefront/me/orders", requireStorefrontSession, getStorefrontMyOrdersController);
+  app.get("/storefront/me/transactions", requireStorefrontSession, getStorefrontMyTransactionsController);
   app.put("/storefront/me", requireStorefrontSession, updateStorefrontMeController);
   app.post("/storefront/me/pin", requireStorefrontSession, setStorefrontPinController);
 };
