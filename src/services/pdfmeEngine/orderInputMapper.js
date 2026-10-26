@@ -499,9 +499,15 @@ export function buildInputsForCart({ company, buyer, order, computed, items, pen
         case "rate":
           return num(item.rate);
         case "discount":
-          return num(item.discount);
+          // orderServices.js passes a pre-formatted "5.00%" / "₹ 5.00" string;
+          // num() would turn that into "NaN".
+          return typeof item.discount === "string" && Number.isNaN(Number(item.discount))
+            ? item.discount
+            : num(item.discount);
         case "serial":
           return item.serialNumbers ?? "";
+        case "taxable":
+          return num(item.taxable);
         case "cgst":
           return num(item.cgst);
         case "sgst":
