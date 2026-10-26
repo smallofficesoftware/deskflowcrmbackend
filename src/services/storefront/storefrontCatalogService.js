@@ -9,6 +9,8 @@ import { productModel } from "../../models/product_settings/productModel.js";
 import { getVariantAttributesForParent, getVariantsForParent } from "./storefrontVariantHelpers.js";
 import { resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { resolveCompanyBySlug } from "./storefrontCompanyResolver.js";
+import { getStorefrontAuthSettings } from "./storefrontAuthSettings.js";
+import { verifySessionToken } from "./storefrontSession.js";
 
 // PUBLIC catalog reads (plans/2026-10-15-ecommerce-b2b-b2c-plan.txt, P2/4.2) - no
 // requireAddon() gate on these specifically, per 4.2's own text: "Middleware
@@ -17,6 +19,19 @@ import { resolveCompanyBySlug } from "./storefrontCompanyResolver.js";
 // without an addon-enabled check blocking them.
 
 const ADDON_CODE = "ecommerce-storefront";
+
+/** "Allow public browsing" off: catalog reads need a valid storefront session for THIS
+ * company (token in the `authorization` header, same convention as requireStorefrontSession).
+ * Returns an error response to send, or null when access is allowed. Not applied to
+ * getStorefrontCompanyInfo - the login screen needs the store's name/logo/accent. */
+const requireBrowseAccess = async (req, resolved) => {
+  const settings = await getStorefrontAuthSettings(resolved.tenantDB, resolved.company_masters_id);
+  if (settings.public_browsing_enabled !== false) return null;
+  const token = req.headers.authorization;
+  const session = token ? verifySessionToken(token) : null;
+  if (session && Number(session.company_masters_id) === Number(resolved.company_masters_id)) return null;
+  return resError({ ack_msg: "Please log in to continue.", developer_msg: "Public browsing is disabled for this store" });
+};
 
 /** Overrides a product's rate/net_rate from the company's configured default price
  * list (marketplace_addon_settings.config_json.default_price_list_id) when one is
@@ -153,6 +168,8 @@ export const getStorefrontCategoryTree = async (req) => {
     const { companySlug } = req.params;
     const resolved = await resolveCompanyBySlug(companySlug);
     if (!resolved) return resError({ ack_msg: "Store not found" });
+    const denied = await requireBrowseAccess(req, resolved);
+    if (denied) return denied;
 
     const CategoryModel = categoryModel(resolved.tenantDB);
     const all = await CategoryModel.findAll({
@@ -193,6 +210,8 @@ export const getStorefrontCategoryBySlug = async (req) => {
     const { companySlug, slug } = req.params;
     const resolved = await resolveCompanyBySlug(companySlug);
     if (!resolved) return resError({ ack_msg: "Store not found" });
+    const denied = await requireBrowseAccess(req, resolved);
+    if (denied) return denied;
 
     const CategoryModel = categoryModel(resolved.tenantDB);
     const category = await CategoryModel.findOne({
@@ -247,6 +266,8 @@ export const getStorefrontProducts = async (req) => {
     const { companySlug } = req.params;
     const resolved = await resolveCompanyBySlug(companySlug);
     if (!resolved) return resError({ ack_msg: "Store not found" });
+    const denied = await requireBrowseAccess(req, resolved);
+    if (denied) return denied;
 
     const ProductModel = productModel(resolved.tenantDB);
     const products = await ProductModel.findAll({
@@ -281,6 +302,8 @@ export const getStorefrontSearchResults = async (req) => {
     const q = (req.query?.q || "").trim();
     const resolved = await resolveCompanyBySlug(companySlug);
     if (!resolved) return resError({ ack_msg: "Store not found" });
+    const denied = await requireBrowseAccess(req, resolved);
+    if (denied) return denied;
 
     if (!q) return resSuccess({ data: { item: [] } });
 
@@ -317,6 +340,8 @@ export const getStorefrontProductBySlug = async (req) => {
     const { companySlug, slug } = req.params;
     const resolved = await resolveCompanyBySlug(companySlug);
     if (!resolved) return resError({ ack_msg: "Store not found" });
+    const denied = await requireBrowseAccess(req, resolved);
+    if (denied) return denied;
 
     const ProductModel = productModel(resolved.tenantDB);
     const product = await ProductModel.findOne({
