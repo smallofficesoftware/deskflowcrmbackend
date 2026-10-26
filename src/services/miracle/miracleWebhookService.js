@@ -29,6 +29,7 @@ import { Op } from "sequelize";
 import { CART_TYPE_TO_PREFIX_FIELD } from "../../utils/AppEnumeration.js";
 import { emitAutomationEvent } from "../automation/emit.js";
 import { buildReceiptRemark } from "./miracleReceiptNumber.js";
+import { voucherAutomationEvent } from "./miracleVoucherEvent.js";
 
 /**
  * Miracle invoice numbers arrive as one opaque string (e.g. "RJT1769/26-27")
@@ -1232,6 +1233,8 @@ export async function handleVoucherAddOrUpdate({ payload, context }) {
             req,
         });
     }
+
+    emitAutomationEvent({ tenantDB, company_masters_id: companyId }, voucherAutomationEvent(created), { id: cart.id });
 
     return { UniqueId, cartId: cart.id, status: created ? "created" : "updated" };
 }
