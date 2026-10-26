@@ -5193,3 +5193,19 @@ CREATE TABLE `storefront_domains` (
   UNIQUE KEY `uq_storefront_domains_domain` (`domain`),
   UNIQUE KEY `uq_storefront_domains_company` (`company_masters_id`)
 );
+
+26-10-2026 Ravi
+-- migration: migration/tenant/migrations/20261026110000-create-price-list-qty-slabs.js
+CREATE TABLE `price_list_qty_slabs` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `company_masters_id` INT NOT NULL,
+  `a_application_login_id` INT NOT NULL,
+  `pricelist_masters_id` INT NOT NULL DEFAULT 0,
+  `product_id` INT NOT NULL,
+  `min_qty` INT NOT NULL,
+  `rate` DOUBLE NOT NULL,
+  `net_rate` DOUBLE NOT NULL,
+  `isDelete` TINYINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  KEY `idx_qty_slabs_product_list` (`product_id`, `pricelist_masters_id`)
+);

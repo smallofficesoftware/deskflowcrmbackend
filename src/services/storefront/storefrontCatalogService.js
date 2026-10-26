@@ -1,3 +1,4 @@
+import { loadQtySlabs, slabsForProduct } from "./storefrontQtySlabs.js";
 import storefrontDomainModel from "../../models/storefront/storefrontDomainModel.js";
 import { Op } from "sequelize";
 import companyModel from "../../models/company_setup/companyModel.js";
@@ -382,6 +383,17 @@ export const getStorefrontProductBySlug = async (req) => {
     const [priced] = await applyDefaultPriceList(resolved.tenantDB, resolved.company_masters_id, [productWithoutLegacyImage]);
     const [withPrimary] = await attachPrimaryImages(resolved.tenantDB, [priced]);
     const [withImages] = (await attachAllImages(resolved.tenantDB, [withPrimary])).map(toPublicProduct);
+
+    // Quantity slabs for the product page's tier table. This endpoint has no
+    // logged-in contact, so only the store's default list and the product's
+    // own base slabs can apply; checkout re-prices with the contact's list.
+    const authSettings = await getStorefrontAuthSettings(resolved.tenantDB, resolved.company_masters_id);
+    const slabContext = await loadQtySlabs(resolved.tenantDB, {
+      contactPriceListId: null,
+      defaultPriceListId: authSettings.default_price_list_id || null,
+      productIds: [product.id],
+    });
+    withImages.qty_slabs = slabsForProduct(slabContext, product.id).map((s) => ({ min_qty: s.min_qty, net_rate: s.net_rate }));
 
     if (Number(product.is_variant_parent) === 1) {
       const [attributes, variants] = await Promise.all([

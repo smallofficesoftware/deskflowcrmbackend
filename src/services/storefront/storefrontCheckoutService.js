@@ -10,6 +10,7 @@ import { priceListModel } from "../../models/product_settings/priceListModel.js"
 import { isAppEnabledForCompany } from "../../middlewares/requireAddon.js";
 import { checkWarehouseWiseStock } from "../activities/stockAdjustmentServices.js";
 import { getStorefrontAuthSettings } from "./storefrontAuthSettings.js";
+import { loadQtySlabs, pickSlab, slabsForProduct } from "./storefrontQtySlabs.js";
 import { resolveCompanyBySlug } from "./storefrontCompanyResolver.js";
 import { verifySessionToken } from "./storefrontSession.js";
 import { getNumberSeries, normalizeToTenDigit, resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
@@ -287,11 +288,22 @@ export const createStorefrontCheckout = async (req) => {
     }
 
     const isCash = payment_method === "cash";
-    if (isCash ? !settings.payment_cash_enabled : !settings.payment_razorpay_enabled) {
+    const isBank = payment_method === "bank";
+    const isUpi = payment_method === "upi";
+    const isOffline = isCash || isBank || isUpi;
+    const methodEnabled = isCash
+      ? settings.payment_cash_enabled
+      : isBank
+        ? settings.payment_bank_enabled
+        : isUpi
+          ? settings.payment_upi_enabled
+          : settings.payment_razorpay_enabled;
+    if (!methodEnabled) {
       return resError({ ack_msg: "This payment method is not available for this store." });
     }
-    if (isCash && !settings.cash_stage_status_id) {
-      return resError({ ack_msg: "This store hasn't configured the stage for cash orders yet." });
+    const offlineStageId = isCash ? settings.cash_stage_status_id : isBank ? settings.bank_stage_status_id : isUpi ? settings.upi_stage_status_id : null;
+    if (isOffline && !offlineStageId) {
+      return resError({ ack_msg: "This store hasn't configured the stage for this payment method yet." });
     }
 
     const { contact, error: contactError } = await resolveOrderingContact({
@@ -328,9 +340,27 @@ export const createStorefrontCheckout = async (req) => {
       products,
     });
 
+    // Quantity slabs override the single price per product, using the TOTAL qty
+    // ordered for that product (the same product may appear on two lines).
+    const qtyByProductId = new Map();
+    for (const i of items) {
+      const id = Number(i.product_id);
+      qtyByProductId.set(id, (qtyByProductId.get(id) || 0) + (Number(i.qty) || 1));
+    }
+    const slabContext = await loadQtySlabs(resolved.tenantDB, {
+      contactPriceListId: contact.assinged_to_price_list || null,
+      defaultPriceListId,
+      productIds: products.map((p) => p.id),
+    });
+    for (const p of products) {
+      const slab = pickSlab(slabsForProduct(slabContext, p.id), qtyByProductId.get(p.id) || 1);
+      if (slab) priceByProductId.set(p.id, { rate: slab.rate, net_rate: slab.net_rate });
+    }
+
     const nowFormatted = moment().format("YYYY-MM-DD HH:mm:ss");
     let totalQty = 0;
     let totalAmt = 0;
+    let taxableAmt = 0; // before-tax value of the lines (rate x qty) - the cart's taxable_amt
     const cartItemsToCreate = [];
     const stockItems = [];
     for (const i of items) {
@@ -340,6 +370,7 @@ export const createStorefrontCheckout = async (req) => {
       const itemTotal = Number((Number(price.net_rate) * qty).toFixed(2));
       totalQty += qty;
       totalAmt += itemTotal;
+      taxableAmt += Number(price.rate) * qty;
       stockItems.push({ product_id: p.id, qty, product_name: p.product_name });
       cartItemsToCreate.push({
         cart_type: 2,
@@ -391,7 +422,7 @@ export const createStorefrontCheckout = async (req) => {
     // skipping its own payment step, not a new backend status machine.
     const isApprovalMode = Boolean(session) && Boolean(settings.approval_mode_enabled);
     // Cash is also a no-payment draft, so it never reserves stock either.
-    const isDraftOnly = isApprovalMode || isCash;
+    const isDraftOnly = isApprovalMode || isOffline;
 
     // Bug caught during live P5 verification: reservedMode must also depend on
     // the company's OWN strict-stock-check setting (same gate checkDerivedStock
@@ -413,7 +444,7 @@ export const createStorefrontCheckout = async (req) => {
       }
     }
 
-    const remarkSuffix = [creditWarning ? "OVER CREDIT LIMIT" : null, isApprovalMode ? "Awaiting approval" : null, isCash ? "Cash payment" : null].filter(Boolean).join(" - ");
+    const remarkSuffix = [creditWarning ? "OVER CREDIT LIMIT" : null, isApprovalMode ? "Awaiting approval" : null, isCash ? "Cash payment" : null, isBank ? "Bank transfer" : null, isUpi ? "UPI payment" : null].filter(Boolean).join(" - ");
     const cartBody = {
       type: 2,
       cart_date: moment().format("YYYY-MM-DD"),
@@ -432,19 +463,22 @@ export const createStorefrontCheckout = async (req) => {
       cart_status: cartStatus, // reassigned below for reserved mode, inside the transaction.
       total_qty: totalQty,
       total_amt: grandTotal,
+      // Without these the order's tax split read as 0 everywhere (CRM order view, print, storefront order page).
+      taxable_amt: Number(taxableAmt.toFixed(2)),
+      gst_amt: Number((grandTotal - taxableAmt).toFixed(2)),
       grand_total: grandTotal,
     };
 
     // A cash order (not approval mode, which stays a plain draft) is a real
     // order straight away: it gets the configured cash stage and an order
     // number, the same two things a confirmed Razorpay payment sets.
-    const isCashOrder = isCash && !isApprovalMode;
+    const isCashOrder = isOffline && !isApprovalMode;
     if (isCashOrder) {
       const numberSeries = await getNumberSeries(resolved.company_masters_id, cartBody.type, cartBody.cart_date, null, { tenantDB: resolved.tenantDB });
       if (numberSeries?.ack === 0) {
         return resError({ ack_msg: "Order numbering failed. Please try again.", developer_msg: numberSeries?.developer_msg });
       }
-      cartBody.cart_status = settings.cash_stage_status_id;
+      cartBody.cart_status = offlineStageId;
       cartBody.cart_number = numberSeries.order_no;
       cartBody.sr_by_number = numberSeries.sr_by_no;
       cartBody.sr_by_prifix = numberSeries.sr_by_prifix;
@@ -475,6 +509,7 @@ export const createStorefrontCheckout = async (req) => {
             grand_total: grandTotal,
             requires_approval: isApprovalMode,
             pay_by_cash: isCashOrder,
+            payment_method: isCashOrder ? (isBank ? "bank" : isUpi ? "upi" : "cash") : "razorpay",
             cart_number: cartBody.cart_number || null,
             credit_warning: creditWarning,
           },

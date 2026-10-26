@@ -40,6 +40,22 @@ const DEFAULTS = {
   // Sales Order stage a cash order lands in (a real, numbered order - unlike
   // approval mode's plain draft).
   cash_stage_status_id: null,
+  // Bank transfer: no gateway either. Details are shown to the customer after
+  // they place the order; the order lands in bank_stage_status_id.
+  payment_bank_enabled: false,
+  bank_stage_status_id: null,
+  bank_name: "",
+  bank_account_holder: "",
+  bank_account_number: "",
+  bank_ifsc: "",
+  bank_instructions: "",
+  // UPI: no gateway. The customer pays to upi_id from their own UPI app (the
+  // storefront builds the upi:// link); the order lands in upi_stage_status_id.
+  payment_upi_enabled: false,
+  upi_stage_status_id: null,
+  upi_id: "",
+  upi_payee_name: "",
+  upi_instructions: "",
   razorpay_key_id: "",
   razorpay_key_secret: "",
   paid_stage_status_id: null,

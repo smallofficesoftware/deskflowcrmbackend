@@ -67,6 +67,7 @@ CREATE TABLE `location_trackings` LIKE smalloffice_sample_tenant.location_tracki
 CREATE TABLE `personal_notes` LIKE smalloffice_sample_tenant.personal_notes;
 CREATE TABLE `pricelist_masters` LIKE smalloffice_sample_tenant.pricelist_masters;
 CREATE TABLE `price_lists` LIKE smalloffice_sample_tenant.price_lists;
+CREATE TABLE `price_list_qty_slabs` LIKE smalloffice_sample_tenant.price_list_qty_slabs;
 CREATE TABLE `product_types` LIKE smalloffice_sample_tenant.product_types;
 ALTER TABLE `product_types`  DISABLE KEYS;
 START TRANSACTION;
