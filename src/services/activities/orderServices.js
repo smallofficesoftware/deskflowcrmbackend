@@ -397,6 +397,8 @@ export const orderCreate = async (req, res) => {
 
       // cart Type wise add  stock_type
       getStockType = STOCK_IN_OUT_ACCESSIBILITY[cart.type] ?? "";
+      // Sales return saved with "do not add the stock back" (replacement): no stock effect.
+      if (Number(cart.type) === 6 && Number(cart.include_stock) === 0) getStockType = 0;
     }
 
     // Prepare cart custom fields from the first item (as per payload structure)
@@ -2417,6 +2419,8 @@ export const orderUpdate = async (req, res) => {
     let getStockType = 0;
     if (is_approve == 1) {
       getStockType = STOCK_IN_OUT_ACCESSIBILITY[update_cart.type] ?? "";
+      // Sales return saved with "do not add the stock back" (replacement): no stock effect.
+      if (Number(update_cart.type) === 6 && Number(update_cart.include_stock) === 0) getStockType = 0;
     }
 
     let reference_cart_type_n;
