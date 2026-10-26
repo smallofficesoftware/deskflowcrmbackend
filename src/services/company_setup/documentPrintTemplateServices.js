@@ -1394,7 +1394,11 @@ const renderTemplateAsPdf = async ({ req, company_masters_id, draftTemplate, car
 
       cart = cartRow.dataValues;
       items = cartItems.map((item) => ({
-        description: item.item_product_name,
+        // Same name + description text the real print builds (orderServices.js).
+        description: item.item_product_description
+          ? `${item.item_product_name}\n${item.item_product_description}`
+          : item.item_product_name,
+        taxable: item.item_total,
         hsn: item.item_hsn_code,
         qty: item.item_unit_name ? `${item.item_qty} / ${item.item_unit_name}` : item.item_qty,
         rate: item.item_rate,
