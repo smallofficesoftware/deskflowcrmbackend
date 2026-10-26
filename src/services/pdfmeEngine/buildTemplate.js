@@ -553,7 +553,16 @@ export function buildDocTemplate(
   const bottomPadding = footerImage ? Math.max(30, FOOTER_BOTTOM_MARGIN + footerHeightMM + 3) : 10;
 
   const contentTopOffset = topPadding - 25;
-  const applyContentOffset = (field) => shiftFieldY(field, contentTopOffset);
+  // The items table moves down with the taller header, but the HSN/GST table and everything below it
+  // do not, so without a correction the table's bottom ran into the HSN/GST table (the last item row,
+  // and a photo drawn in it, was hidden). Shrinking the table's declared height by the same amount keeps
+  // its bottom where it was; a table with more rows still grows and pushes what is below it.
+  const applyContentOffset = (field) => {
+    const shifted = shiftFieldY(field, contentTopOffset);
+    return field.name === "itemsTable" && contentTopOffset > 0
+      ? { ...shifted, height: Math.max(40, shifted.height - contentTopOffset) }
+      : shifted;
+  };
 
   return {
     basePdf: {
