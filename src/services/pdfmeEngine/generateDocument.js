@@ -337,6 +337,7 @@ export async function generateQuotationPdf({
     items,
     pendingItems,
     columnOptions: resolvedColumnOptions,
+    itemImages,
     totals: {
       isSameState,
       packingChargeLabel,

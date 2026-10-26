@@ -7,7 +7,7 @@
 // data in, before its ejs.render() call) — this module only shapes and
 // transforms, it doesn't reach into raw DB rows itself.
 import QRCode from "qrcode";
-import { resolveColumns } from "./tableColumns.js";
+import { imageSettings, resolveColumns } from "./tableColumns.js";
 import { formatNumber } from "../../utils/sharedFunctions.js";
 
 // dataSource defaults to the field's own name (buildTemplate.js's
@@ -468,8 +468,11 @@ export function getSampleDataForPreview() {
 // extraction from raw cart.dataValues/companyDetail happens at the call
 // site (orderServices.js), not here — keeps this module's job to shaping,
 // not digging through DB rows it doesn't own the schema of.
-export function buildInputsForCart({ company, buyer, order, computed, items, pendingItems, columnOptions, totals = {} }) {
+export function buildInputsForCart({ company, buyer, order, computed, items, pendingItems, columnOptions, itemImages, totals = {} }) {
   const columns = resolveColumns(columnOptions);
+  // Photos "below the description": every row that has a photo gets blank lines under its text, so
+  // imageOverlay.js has room to draw it there. Rows without a photo stay normal height.
+  const belowLines = imageSettings(columnOptions).reserveLines;
 
   // pendingSalesOrder/pendingPurchaseOrder only — a fulfillment/outstanding-
   // quantity row shape (ordered/invoiced/pending qty), not the generic
@@ -491,7 +494,7 @@ export function buildInputsForCart({ company, buyer, order, computed, items, pen
         case "image":
           return "";
         case "description":
-          return item.description ?? "";
+          return (item.description ?? "") + (belowLines > 0 && itemImages?.[index] ? "\n".repeat(belowLines) : "");
         case "hsn":
           return item.hsn ?? "";
         case "qty":

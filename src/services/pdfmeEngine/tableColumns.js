@@ -33,10 +33,38 @@ export const ALL_COLUMNS = [
 // and "description" are always shown (required: true). image/discount/cgst/
 // sgst/igst are opt-in (defaultOn: false) since they depend on business type
 // (intra vs inter-state) or aren't needed by every doc type.
+// Product photo settings, from the item table's columnOptions:
+//   image === true            -> photos are on
+//   imageMode "column"        -> photos in their own "Image" column (default, the original behaviour)
+//   imageMode "below"         -> photos below the product description, no Image column, so the
+//                                description keeps that column's width
+//   imageSizeMm (number)      -> photo box in millimetres, typed by the user (default 9, the original
+//                                size; kept between 5 and 60 so a typo cannot break the layout)
+export const IMAGE_SIZE_DEFAULT_MM = 9;
+export const IMAGE_SIZE_MIN_MM = 5;
+export const IMAGE_SIZE_MAX_MM = 60;
+
+// Height of one text line in a body cell (7.5 pt font, line height 1) - used to reserve blank lines
+// under the description for a "below" photo.
+const BODY_LINE_MM = 2.65;
+
+export function imageSettings(columnOptions) {
+  const opts = columnOptions || {};
+  const enabled = opts.image === true;
+  const mode = !enabled ? "none" : opts.imageMode === "below" ? "below" : "column";
+  const typed = Number(opts.imageSizeMm);
+  const sizeMm = Number.isFinite(typed) && typed > 0 ? Math.min(IMAGE_SIZE_MAX_MM, Math.max(IMAGE_SIZE_MIN_MM, typed)) : IMAGE_SIZE_DEFAULT_MM;
+  // Blank lines to add under a description so the row is tall enough for the photo plus a small gap.
+  const reserveLines = mode === "below" ? Math.ceil((sizeMm + 1) / BODY_LINE_MM) : 0;
+  return { enabled, mode, sizeMm, reserveLines };
+}
+
 export function resolveColumns(columnOptions) {
   const opts = columnOptions || {};
+  const imageInOwnColumn = imageSettings(opts).mode === "column";
   const builtIn = ALL_COLUMNS.filter((c) => {
     if (c.required) return true;
+    if (c.key === "image") return imageInOwnColumn;
     if (c.defaultOn === false) return opts[c.key] === true;
     return opts[c.key] !== false;
   });
