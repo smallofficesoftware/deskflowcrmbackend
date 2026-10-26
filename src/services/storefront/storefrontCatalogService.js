@@ -114,7 +114,9 @@ export const getStorefrontCompanyInfo = async (req) => {
         config = {};
       }
     }
-    company.theme_accent_color = config?.theme_accent_color || "#ff0000";
+    // Strict hex only - the storefront injects this into a <style> block.
+    const accent = config?.theme_accent_color;
+    company.theme_accent_color = typeof accent === "string" && /^#[0-9a-fA-F]{6}$/.test(accent) ? accent : "#ff0000";
 
     return resSuccess({ data: { item: company } });
   } catch (error) {
