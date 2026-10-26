@@ -860,7 +860,8 @@ export const waCloudHook = async (req, res) => {
             source_type_id: SOURCE_TYPE_ID,
             city_id: "",
             area_id: "",
-            description: message
+            description: message,
+            detect_city_from_text: true
         });
         const contactAssignedIdsStr = isValid(contactAssignedIds?.data?.assignedIds) ? contactAssignedIds?.data?.assignedIds?.join(",") : "";
 
