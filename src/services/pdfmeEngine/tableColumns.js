@@ -22,6 +22,8 @@ export const ALL_COLUMNS = [
   // No:" block (orderPdfV1.ejs), just as its own column instead of being
   // folded into the description cell.
   { key: "serial", label: "Serial No.", widthPct: 12, alignment: "left", defaultOn: false },
+  // Per-item amount after discount, before GST (cart item_total).
+  { key: "taxable", label: "Taxable", widthPct: 12, alignment: "right", defaultOn: false },
   { key: "cgst", label: "CGST", widthPct: 8, alignment: "right", defaultOn: false },
   { key: "sgst", label: "SGST", widthPct: 8, alignment: "right", defaultOn: false },
   { key: "igst", label: "IGST", widthPct: 8, alignment: "right", defaultOn: false },

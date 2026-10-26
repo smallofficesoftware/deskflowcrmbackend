@@ -5104,8 +5104,26 @@ const generateSingleOrderPdf = async (req, res) => {
             .map(({ _pendingQtyRaw, ...rest }) => rest);
         }
 
+        // Same split the legacy EJS HSN/GST summary uses: same state ->
+        // CGST + SGST at half the rate each, different state -> IGST at the
+        // full rate. item_total is already net of the item discount.
+        const isSameStateForItems = !!companyStateName && companyStateName === customerStateName;
+        const itemTaxAmounts = (item) => {
+          const taxable = Number(item.item_total) || 0;
+          const rate = Number(item.item_gst) || 0;
+          if (rate <= 0) return { cgst: "", sgst: "", igst: "" };
+          const half = (taxable * rate) / 200;
+          return isSameStateForItems
+            ? { cgst: half, sgst: half, igst: "" }
+            : { cgst: "", sgst: "", igst: (taxable * rate) / 100 };
+        };
+
         const pdfmeItems = finalData.map((item) => ({
-          description: item.item_product_name,
+          description: item.item_product_description
+            ? `${item.item_product_name}\n${item.item_product_description}`
+            : item.item_product_name,
+          taxable: item.item_total,
+          ...itemTaxAmounts(item),
           hsn: item.item_hsn_code,
           qty: item.item_unit_name ? `${item.item_qty} / ${item.item_unit_name}` : item.item_qty,
           rate: item.item_rate,
