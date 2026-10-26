@@ -37,6 +37,9 @@ const DEFAULTS = {
   // mode uses).
   payment_razorpay_enabled: true,
   payment_cash_enabled: false,
+  // Sales Order stage a cash order lands in (a real, numbered order - unlike
+  // approval mode's plain draft).
+  cash_stage_status_id: null,
   razorpay_key_id: "",
   razorpay_key_secret: "",
   paid_stage_status_id: null,

@@ -12,7 +12,7 @@ import { checkWarehouseWiseStock } from "../activities/stockAdjustmentServices.j
 import { getStorefrontAuthSettings } from "./storefrontAuthSettings.js";
 import { resolveCompanyBySlug } from "./storefrontCompanyResolver.js";
 import { verifySessionToken } from "./storefrontSession.js";
-import { normalizeToTenDigit, resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
+import { getNumberSeries, normalizeToTenDigit, resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
 
 // P4 (plans/2026-10-15-ecommerce-b2b-b2c-plan.txt) - first slice: checkout
 // creates a REAL carts row (type 2), exactly the old online-store module's
@@ -290,6 +290,9 @@ export const createStorefrontCheckout = async (req) => {
     if (isCash ? !settings.payment_cash_enabled : !settings.payment_razorpay_enabled) {
       return resError({ ack_msg: "This payment method is not available for this store." });
     }
+    if (isCash && !settings.cash_stage_status_id) {
+      return resError({ ack_msg: "This store hasn't configured the stage for cash orders yet." });
+    }
 
     const { contact, error: contactError } = await resolveOrderingContact({
       tenantDB: resolved.tenantDB,
@@ -432,6 +435,21 @@ export const createStorefrontCheckout = async (req) => {
       grand_total: grandTotal,
     };
 
+    // A cash order (not approval mode, which stays a plain draft) is a real
+    // order straight away: it gets the configured cash stage and an order
+    // number, the same two things a confirmed Razorpay payment sets.
+    const isCashOrder = isCash && !isApprovalMode;
+    if (isCashOrder) {
+      const numberSeries = await getNumberSeries(resolved.company_masters_id, cartBody.type, cartBody.cart_date, null, { tenantDB: resolved.tenantDB });
+      if (numberSeries?.ack === 0) {
+        return resError({ ack_msg: "Order numbering failed. Please try again.", developer_msg: numberSeries?.developer_msg });
+      }
+      cartBody.cart_status = settings.cash_stage_status_id;
+      cartBody.cart_number = numberSeries.order_no;
+      cartBody.sr_by_number = numberSeries.sr_by_no;
+      cartBody.sr_by_prifix = numberSeries.sr_by_prifix;
+    }
+
     const t = await resolved.tenantDB.transaction();
     try {
       if (reservedMode) {
@@ -456,7 +474,8 @@ export const createStorefrontCheckout = async (req) => {
             cart_id: cart.id,
             grand_total: grandTotal,
             requires_approval: isApprovalMode,
-            pay_by_cash: isCash && !isApprovalMode,
+            pay_by_cash: isCashOrder,
+            cart_number: cartBody.cart_number || null,
             credit_warning: creditWarning,
           },
         },
