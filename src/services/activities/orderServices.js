@@ -79,6 +79,7 @@ import {
 import { emitAutomationEvent, automationBefore } from "../automation/emit.js";
 import { assertProductsAllowed } from "../product_settings/productSellerGuard.js";
 import { stockCartItemConditions } from "../product_settings/stockCondition.js";
+import { getAssignedPersonDetails } from "../pdfmeEngine/assignedPerson.js";
 
 
 const orderTypesList = [
@@ -5188,6 +5189,9 @@ const generateSingleOrderPdf = async (req, res) => {
             number: cartData.cart_number,
             dateTime: cartData.update_Date_time ? moment(cartData.update_Date_time).format("DD-MM-YYYY hh:mm A") : "",
             contactPerson: loginDetail?.username,
+            contactPersonMobile: loginDetail?.recovery_mobile,
+            // The team member(s) assigned to the customer, and their mobile numbers.
+            ...(await getAssignedPersonDetails(req.tenantDB, cartData.to_customer_id)),
           },
           items: pdfmeItems,
           pendingItems,

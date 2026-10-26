@@ -452,7 +452,7 @@ export function getSampleDataForPreview() {
   return {
     company: { name: "Sample Company Pvt Ltd", address: "123 Business Street, City, State, PIN", gstin: "00XXXXX0000X0X0", mobile: "9876543210", email: "company@example.com" },
     buyer: { companyName: "Customer Company Name", contactName: "Customer Contact Name", phone: "9876543210", email: "customer@example.com", billingAddress: "123 Street, City, State, PIN", shippingAddress: "123 Street, City, State, PIN", gstin: "00XXXXX0000X0X0", supplyTo: "State - City" },
-    order: { number: "SAMPLE/00/2026-2027", dateTime: "01-01-2026 12:00 PM", contactPerson: "Team Member Name" },
+    order: { number: "SAMPLE/00/2026-2027", dateTime: "01-01-2026 12:00 PM", contactPerson: "Team Member Name", contactPersonMobile: "9876543210", assignedPerson: "Assigned Person Name", assignedPersonMobile: "9876543211" },
     items: [
       { description: "Sample Item 1\nProduct Code: ABC", hsn: "1234", qty: "1.00 / Nos", rate: "100.00", discount: "0.00", total: "100.00", item_hsn_code: "1234", item_total: "100.00", serialNumbers: "SN0001" },
       { description: "Sample Item 2\nProduct Code: XYZ", hsn: "5678", qty: "2.00 / Nos", rate: "50.00", discount: "0.00", total: "100.00", item_hsn_code: "5678", item_total: "100.00", serialNumbers: "SN0002, SN0003" },
@@ -552,6 +552,9 @@ export function buildInputsForCart({ company, buyer, order, computed, items, pen
     orderNumber: order?.number ?? "",
     orderDateTime: order?.dateTime ?? "",
     contactPerson: order?.contactPerson ?? "",
+    contactPersonMobile: order?.contactPersonMobile ?? "",
+    assignedPerson: order?.assignedPerson ?? "",
+    assignedPersonMobile: order?.assignedPersonMobile ?? "",
 
     itemsTable: JSON.stringify(itemsTableRows),
     pendingItemsTable: JSON.stringify(pendingItemsTableRows),

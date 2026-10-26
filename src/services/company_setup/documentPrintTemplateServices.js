@@ -41,6 +41,7 @@ import { pickProductCustomValues } from "../pdfmeEngine/productCustomValues.js";
 import { generateShippingLabelPdf } from "../pdfmeEngine/shippingLabelGenerate.js";
 import { generateTaskDueListPdf } from "../pdfmeEngine/taskDueListGenerate.js";
 import { applyTemplateOptions } from "../pdfmeEngine/templates.js";
+import { getAssignedPersonDetails } from "../pdfmeEngine/assignedPerson.js";
 import { logAuditEvent } from "./auditLogServices.js";
 
 function formatAccountTransactionDateAndTime(dateStr) {
@@ -1426,10 +1427,21 @@ const renderTemplateAsPdf = async ({ req, company_masters_id, draftTemplate, car
       // "value.split is not a function" (same root cause fixed in
       // orderServices.js's §5 integration — this preview path duplicates
       // that field-mapping independently and needs the same fix).
+      // Same contact-person / assigned-person values the real print resolves (orderServices.js), so the
+      // preview matches what will print.
+      const previewCreator = cart.a_application_login_id
+        ? await loginModel.findOne({
+            where: { id: cart.a_application_login_id, isDelete: 0 },
+            attributes: ["username", "recovery_mobile"],
+            raw: true,
+          })
+        : null;
       order = {
         number: cart.cart_number,
         dateTime: cart.update_Date_time ? moment(cart.update_Date_time).format("DD-MM-YYYY hh:mm A") : "",
-        contactPerson: "",
+        contactPerson: previewCreator?.username || "",
+        contactPersonMobile: previewCreator?.recovery_mobile || "",
+        ...(await getAssignedPersonDetails(req.tenantDB, cart.to_customer_id)),
       };
       const cartCurrency = cart.currency_id
         ? await currencyModel.findOne({ where: { id: cart.currency_id, isDelete: 0 }, attributes: ["short_name"] })
