@@ -404,6 +404,15 @@ export const getStorefrontProductBySlug = async (req) => {
         .filter((v) => Number(v.show_in_ecommerce) !== 0)
         .map(({ product_img: _legacyImg, ...v }) => v); // eslint-disable-line no-unused-vars
       const variantsWithImages = (await attachAllImages(resolved.tenantDB, await attachPrimaryImages(resolved.tenantDB, visibleVariants))).map(toPublicProduct);
+      // Each variant is its own product row, so slabs are looked up per variant id.
+      const variantSlabContext = await loadQtySlabs(resolved.tenantDB, {
+        contactPriceListId: null,
+        defaultPriceListId: authSettings.default_price_list_id || null,
+        productIds: variantsWithImages.map((v) => v.id),
+      });
+      variantsWithImages.forEach((v) => {
+        v.qty_slabs = slabsForProduct(variantSlabContext, v.id).map((s) => ({ min_qty: s.min_qty, net_rate: s.net_rate }));
+      });
       return resSuccess({ data: { item: { product: withImages, attributes, variants: variantsWithImages } } });
     }
 
