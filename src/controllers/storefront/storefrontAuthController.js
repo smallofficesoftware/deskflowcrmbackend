@@ -10,6 +10,8 @@ import {
   verifyStorefrontOtp,
 } from "../../services/storefront/storefrontAuthService.js";
 import { getStorefrontMyOrder, getStorefrontMyOrders, getStorefrontMyTransactions } from "../../services/storefront/storefrontAccountService.js";
+import { getChatThread, getMyChat, listChatThreads, replyToChat, sendMyChat } from "../../services/storefront/storefrontChatService.js";
+import { createMyTicket, getMyTicket, getMyTickets, getTicketCategories, replyMyTicket } from "../../services/storefront/storefrontTicketService.js";
 import callServiceMethod from "../baseController.js";
 
 export const getStorefrontAuthConfigController = async (req, res) => {
@@ -50,6 +52,38 @@ export const getStorefrontMyOrderController = async (req, res) => {
 
 export const getStorefrontMyTransactionsController = async (req, res) => {
   await callServiceMethod(req, res, getStorefrontMyTransactions(req), "getStorefrontMyTransactions");
+};
+
+export const getStorefrontMyChatController = async (req, res) => {
+  await callServiceMethod(req, res, getMyChat(req), "getMyChat");
+};
+export const sendStorefrontMyChatController = async (req, res) => {
+  await callServiceMethod(req, res, sendMyChat(req), "sendMyChat");
+};
+export const listStorefrontChatThreadsController = async (req, res) => {
+  await callServiceMethod(req, res, listChatThreads(req), "listChatThreads");
+};
+export const getStorefrontChatThreadController = async (req, res) => {
+  await callServiceMethod(req, res, getChatThread(req), "getChatThread");
+};
+export const replyStorefrontChatController = async (req, res) => {
+  await callServiceMethod(req, res, replyToChat(req), "replyToChat");
+};
+
+export const getStorefrontTicketCategoriesController = async (req, res) => {
+  await callServiceMethod(req, res, getTicketCategories(req), "getTicketCategories");
+};
+export const getStorefrontMyTicketsController = async (req, res) => {
+  await callServiceMethod(req, res, getMyTickets(req), "getMyTickets");
+};
+export const createStorefrontMyTicketController = async (req, res) => {
+  await callServiceMethod(req, res, createMyTicket(req), "createMyTicket");
+};
+export const getStorefrontMyTicketController = async (req, res) => {
+  await callServiceMethod(req, res, getMyTicket(req), "getMyTicket");
+};
+export const replyStorefrontMyTicketController = async (req, res) => {
+  await callServiceMethod(req, res, replyMyTicket(req), "replyMyTicket");
 };
 
 export const getStorefrontMeController = async (req, res) => {

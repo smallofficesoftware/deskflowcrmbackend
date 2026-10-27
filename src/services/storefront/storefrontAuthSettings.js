@@ -23,6 +23,8 @@ const DEFAULTS = {
   // false = anonymous visitors can only reach /account (login); every other
   // storefront page redirects there until they have a valid session.
   public_browsing_enabled: true,
+  // In-store chat widget (customers message the team; replies come from the CRM). Off by default.
+  chat_enabled: false,
   // Not auth-specific, but the same config_json row - storefrontCatalogService.js's
   // applyDefaultPriceList used to read this via its own separate query; checkout
   // (P4) needs it too, so it's read once here instead of twice.

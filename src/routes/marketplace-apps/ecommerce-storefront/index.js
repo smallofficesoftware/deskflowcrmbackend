@@ -21,7 +21,17 @@ import {
 import {
   getStorefrontAuthConfigController,
   getStorefrontMeController,
+  getStorefrontChatThreadController,
+  createStorefrontMyTicketController,
+  getStorefrontMyChatController,
+  getStorefrontMyTicketController,
+  getStorefrontMyTicketsController,
+  getStorefrontTicketCategoriesController,
+  replyStorefrontMyTicketController,
   getStorefrontMyOrderController,
+  listStorefrontChatThreadsController,
+  replyStorefrontChatController,
+  sendStorefrontMyChatController,
   getStorefrontMyOrdersController,
   getStorefrontMyTransactionsController,
   requestStorefrontOtpController,
@@ -65,6 +75,10 @@ export default (app) => {
   app.post("/storefront/domain/verify", authenticateToken, tenantMiddleware, requireAddon("ecommerce-storefront"), verifyStorefrontDomainController);
   // PUBLIC - must be registered before the /storefront/:companySlug/* routes so "resolve-domain" is not read as a slug.
   app.get("/storefront/resolve-domain", resolveStorefrontDomainController);
+  // CRM staff side of the in-store chat.
+  app.post("/storefront/chat/threads", authenticateToken, tenantMiddleware, requireAddon("ecommerce-storefront"), listStorefrontChatThreadsController);
+  app.post("/storefront/chat/messages", authenticateToken, tenantMiddleware, requireAddon("ecommerce-storefront"), getStorefrontChatThreadController);
+  app.post("/storefront/chat/reply", authenticateToken, tenantMiddleware, requireAddon("ecommerce-storefront"), replyStorefrontChatController);
   app.post("/storefront/locked-accounts/get", authenticateToken, tenantMiddleware, requireAddon("ecommerce-storefront"), getLockedAccountsController);
   app.post("/storefront/locked-accounts/unlock", authenticateToken, tenantMiddleware, requireAddon("ecommerce-storefront"), unlockStorefrontAccountController);
 
@@ -120,6 +134,13 @@ export default (app) => {
   // middleware's own comment; no tenantMiddleware here, that one assumes CRM staff
   // auth shape).
   app.get("/storefront/me", requireStorefrontSession, getStorefrontMeController);
+  app.get("/storefront/me/chat", requireStorefrontSession, getStorefrontMyChatController);
+  app.post("/storefront/me/chat", requireStorefrontSession, sendStorefrontMyChatController);
+  app.get("/storefront/me/tickets/categories", requireStorefrontSession, getStorefrontTicketCategoriesController);
+  app.get("/storefront/me/tickets", requireStorefrontSession, getStorefrontMyTicketsController);
+  app.post("/storefront/me/tickets", requireStorefrontSession, createStorefrontMyTicketController);
+  app.get("/storefront/me/tickets/:id", requireStorefrontSession, getStorefrontMyTicketController);
+  app.post("/storefront/me/tickets/:id/messages", requireStorefrontSession, replyStorefrontMyTicketController);
   app.get("/storefront/me/orders", requireStorefrontSession, getStorefrontMyOrdersController);
   app.get("/storefront/me/orders/:id", requireStorefrontSession, getStorefrontMyOrderController);
   app.get("/storefront/me/transactions", requireStorefrontSession, getStorefrontMyTransactionsController);
