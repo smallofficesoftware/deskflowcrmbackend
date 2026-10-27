@@ -20,6 +20,10 @@ export const getTeamReminderReport = async (req) => {
             referenceWiseContact = 1,
             typeFilter = "due",
             viewScope, // "all" | "my" - explicit scope toggle, same idea as Task Management's All/My
+            // Label filter (ids of the contact's labels; -9999 = contacts with no label) and sort by label.
+            labelFilter,
+            sortBy,
+            sortOrder,
         } = req.body;
 
         // ────────────────────────────────────────────────
@@ -34,6 +38,25 @@ export const getTeamReminderReport = async (req) => {
                     [Op.between]: [startDate, endDate],
                 },
             });
+        }
+
+        // ────────────────────────────────────────────────
+        // Label filter: the reminder's CONTACT has any of the chosen labels (-9999 = no label at all).
+        // Added to the same list as the date range, so the counts follow it too.
+        // ────────────────────────────────────────────────
+        const labelIds = (Array.isArray(labelFilter) ? labelFilter : [])
+            .map(Number)
+            .filter((n) => Number.isInteger(n));
+        if (labelIds.length > 0) {
+            const parts = labelIds
+                .filter((id) => id !== -9999)
+                .map((id) => `FIND_IN_SET(${id}, contact_masters.lable) > 0`);
+            if (labelIds.includes(-9999)) parts.push("(contact_masters.lable IS NULL OR contact_masters.lable = '')");
+            baseDateConditions.push(
+                Sequelize.literal(
+                    `reminder_messages.contact_masters_id IN (SELECT contact_masters.id FROM contact_masters WHERE contact_masters.isDelete = 0 AND (${parts.join(" OR ")}))`
+                )
+            );
         }
 
         // ────────────────────────────────────────────────
@@ -239,12 +262,24 @@ export const getTeamReminderReport = async (req) => {
         // no need for a second, identical query.
         const resolvedMyCount = myCount ?? allCount;
 
-        const orderClause =
+        const defaultOrder =
             typeFilter === "future"
                 ? [["reminder_data_time", "ASC"]]
                 : typeFilter === "complete"
                 ? [["completed_date_time", "DESC"]]
                 : [["reminder_data_time", "DESC"]];
+        // Sort by the contact's labels (their names, alphabetically joined), then the normal order.
+        const labelNamesSql =
+            "(SELECT GROUP_CONCAT(lable_masters.lable_name ORDER BY lable_masters.lable_name SEPARATOR ',') FROM lable_masters WHERE lable_masters.isDelete = 0 AND FIND_IN_SET(lable_masters.id, (SELECT contact_masters.lable FROM contact_masters WHERE contact_masters.id = reminder_messages.contact_masters_id)))";
+        // Reminders whose contact has no label always come last, in either direction.
+        const orderClause =
+            sortBy === "label"
+                ? [
+                    [Sequelize.literal(`(${labelNamesSql} IS NULL)`), "ASC"],
+                    [Sequelize.literal(labelNamesSql), String(sortOrder).toUpperCase() === "DESC" ? "DESC" : "ASC"],
+                    ...defaultOrder,
+                ]
+                : defaultOrder;
 
         // ────────────────────────────────────────────────
         // Fetch reminders
@@ -266,11 +301,40 @@ export const getTeamReminderReport = async (req) => {
             reminderModel.count({ where: reminderQueryWhere }),
         ]);
 
+        // Labels of the contacts on this page, looked up once (not per row).
+        const pageContactIds = [...new Set(remindersRaw.map((r) => r.contact_masters_id).filter(Boolean))];
+        const contactLabelIds = new Map();
+        const labelById = new Map();
+        if (pageContactIds.length > 0) {
+            const contactRows = await contactModel(req.tenantDB).findAll({
+                where: { id: { [Op.in]: pageContactIds }, isDelete: 0 },
+                attributes: ["id", "lable"],
+                raw: true,
+            });
+            contactRows.forEach((c) => {
+                contactLabelIds.set(
+                    c.id,
+                    String(c.lable || "").split(",").map((v) => v.trim()).filter(Boolean)
+                );
+            });
+            const allLabelIds = [...new Set([...contactLabelIds.values()].flat().map(Number).filter(Number.isInteger))];
+            if (allLabelIds.length > 0) {
+                const labelRows = await req.tenantDB.query(
+                    "SELECT id, lable_name, color FROM lable_masters WHERE isDelete = 0 AND id IN (:allLabelIds)",
+                    { replacements: { allLabelIds }, type: Sequelize.QueryTypes.SELECT }
+                );
+                labelRows.forEach((l) => labelById.set(String(l.id), l));
+            }
+        }
+
         // ────────────────────────────────────────────────
         // Enrich data: contact name, username, status text
         // ────────────────────────────────────────────────
         const enrichedReminders = await Promise.all(
             remindersRaw.map(async (reminder) => {
+                const reminderLabels = (contactLabelIds.get(reminder.contact_masters_id) || [])
+                    .map((id) => labelById.get(id))
+                    .filter(Boolean);
                 let contactName = "";
                 if (reminder.contact_masters_id) {
                     const contact = await contactModel(req.tenantDB).findOne({
@@ -300,6 +364,9 @@ export const getTeamReminderReport = async (req) => {
 
                     // Enriched fields
                     contact_name: contactName,
+                    // The contact's labels, for the report's Label column.
+                    label_name: reminderLabels.map((l) => l.lable_name).join(", "),
+                    labels: reminderLabels.map((l) => ({ label_name: l.lable_name, color: l.color })),
                     created_by_username: createdByName,        // or created_by_name
                     status_display: statusText,
 

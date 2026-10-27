@@ -11,6 +11,7 @@ import {
     resSuccess
 } from "../../utils/sharedFunctions.js";
 import { contactAssignSendMessage } from "../whatsapp/whatsappService.js";
+import { findRuleCityIdInText } from "./autoAssignmentCityFromText.js";
 
 
 export const insertAutoAssignmentContactDetail = async (req) => {
@@ -206,7 +207,8 @@ export const autoAssignmentContactIdsGet = async (req, requiredDetail = {}) => {
     const sequelize = req.tenantDB;
 
     try {
-        const { source_type_id, country_id, state_id, city_id, area_id, description } = requiredDetail;
+        const { source_type_id, country_id, state_id, area_id, description, detect_city_from_text } = requiredDetail;
+        let { city_id } = requiredDetail;
 
         if (!isValid(source_type_id)) {
             return resError({
@@ -219,6 +221,15 @@ export const autoAssignmentContactIdsGet = async (req, requiredDetail = {}) => {
             source_type_id,
             isDelete: 0,
         };
+
+        // Sources that arrive with no geo (WhatsApp) can still name a city in the message.
+        // City found: use that city's rules. Not found: prefer the rule left blank for
+        // "any city" (the fallback below drops this again if there is none, so companies
+        // without such a rule behave exactly as before).
+        if (detect_city_from_text && !city_id) {
+            city_id = await findRuleCityIdInText(sequelize, source_type_id, description);
+            if (!city_id) whereCondition.city_id = { [Op.or]: [null, 0] };
+        }
 
         if (country_id) whereCondition.country_id = country_id;
         if (state_id) whereCondition.state_id = state_id;

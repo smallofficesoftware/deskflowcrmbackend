@@ -11,6 +11,7 @@ import {
     resSuccess
 } from "../../utils/sharedFunctions.js";
 import { emitAutomationEvent } from "../automation/emit.js";
+import { stockCartItemConditions } from "../product_settings/stockCondition.js";
 
 export const orderCreateByOnlineStore = async (req, res) => {
     const qr_code = req.params.qrcode;
@@ -625,24 +626,12 @@ export const getAllProducts = async (req) => {
                 const whereClauseOpen = {
                     isDelete: 0,
                     item_product_id: p.id,
-                    // 10 / 11 = Stock Inward / Outward (stock adjustments), same
-                    // set stockAdjustmentServices.js counts.
-                    cart_type: { [Op.in]: [4, 3, 6, 7, 8, 9, 10, 11] },
-                    cart_number: { [Op.ne]: null, [Op.not]: "" },
-                    stock_type: { [Op.ne]: 0 },
                     [Op.or]: [
                         { a_application_login_id: tenantId },
                         { company_masters_id: companyId },
                     ],
-                    [Op.and]: [
-                        {
-                            [Op.or]: [
-                                { cart_type: 4, reference_type: { [Op.ne]: 8 } },
-                                { cart_type: 3, reference_type: { [Op.ne]: 9 } },
-                                { cart_type: { [Op.in]: [6, 7, 8, 9, 10, 11] } },
-                            ],
-                        },
-                    ],
+                    // The shared stock rule (stockCondition.js).
+                    [Op.and]: stockCartItemConditions(),
                 };
 
                 const cartItems = await CartItem.findAll({ where: whereClauseOpen });

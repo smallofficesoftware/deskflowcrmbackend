@@ -22,6 +22,7 @@ import { getCompanyByLoginId } from "../commonServices.js";
 import { fetchJobCardsPerProcess } from "./rawMaterialProcessJobCards.js";
 import { fetchMaterialsWithOwnBom } from "./materialOwnBomLookup.js";
 import { hasJobCardRight } from "./jobCardRights.js";
+import { stockCartItemConditions } from "../product_settings/stockCondition.js";
 
 export const jobCardsFetch = async (req) => {
     try {
@@ -904,13 +905,7 @@ export const fetchItemStockBatch = async (req, itemIds) => {
             where: {
                 isDelete: 0,
                 item_product_id: { [Op.in]: itemIds },
-                cart_number: { [Op.ne]: null, [Op.not]: "" },
-                stock_type: { [Op.ne]: 0 },
-                [Op.or]: [
-                    { cart_type: 4, reference_type: { [Op.ne]: 8 } },
-                    { cart_type: 3, reference_type: { [Op.ne]: 9 } },
-                    { cart_type: { [Op.in]: [6, 7, 8, 9, 10, 11] } },
-                ],
+                [Op.and]: stockCartItemConditions(),
             },
             attributes: [
                 "item_product_id",
@@ -1654,13 +1649,7 @@ export const fetchWarehouseStockBatch = async (req) => {
             where: {
                 isDelete: 0,
                 item_product_id: { [Op.in]: materialIds },
-                cart_number: { [Op.ne]: null, [Op.not]: "" },
-                stock_type: { [Op.ne]: 0 },
-                [Op.or]: [
-                    { cart_type: 4, reference_type: { [Op.ne]: 8 } },
-                    { cart_type: 3, reference_type: { [Op.ne]: 9 } },
-                    { cart_type: { [Op.in]: [6, 7, 8, 9, 10, 11] } },
-                ],
+                [Op.and]: stockCartItemConditions(),
             },
             attributes: [
                 "item_product_id",

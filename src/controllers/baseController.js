@@ -26,7 +26,9 @@ const SOCKET_EVENT_MAP = {
   assignSourceContactsProvider: "contact-changed",
   recoverContact: "contact-changed",
   contactarchive: "contact-changed",
-  CreateContactWithReminder: "contact-changed",
+  CreateContactWithReminder: ["contact-changed", "reminder-changed"],
+  // A reminder completed from a task chat message.
+  ReminderCompleteTaskMsg: "reminder-changed",
   visitingCardReadInsertContactProvider: "contact-changed",
   mergeContactProvider: ["contact-changed", "task-changed", "support-ticket-changed"],
   waCloudHookProvider: ["contact-changed", "contact-chat-changed"],
@@ -41,6 +43,8 @@ const SOCKET_EVENT_MAP = {
 const COMMON_TABLE_EVENT_MAP = {
   task_managements: ["task-changed", "support-ticket-changed"],
   contact_masters: "contact-changed",
+  // Reminders created, completed or edited from the web or the app (both write through commonCreate / commonUpdate).
+  reminder_messages: "reminder-changed",
   task_message_histories: "task-chat-changed",
   contact_message_histories: "contact-chat-changed",
 };

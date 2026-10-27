@@ -140,7 +140,8 @@ export const addContactMessageFromWhatsApp = async (req, res) => {
                 state_id: null,
                 city_id: null,
                 area_id: null,
-                description: description
+                description: description,
+                detect_city_from_text: true
             });
             const contactAssignedIdsStr = isValid(contactAssignedIds?.data?.assignedIds) ? contactAssignedIds?.data?.assignedIds?.join(",") : "";
 

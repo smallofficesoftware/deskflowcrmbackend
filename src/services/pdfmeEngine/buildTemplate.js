@@ -65,6 +65,12 @@ export const HEADER_RELATIVE_FIELD_NAMES = new Set([
   "orderDateTime",
   "contactPersonLabel",
   "contactPerson",
+  "contactPersonMobileLabel",
+  "contactPersonMobile",
+  "assignedPersonLabel",
+  "assignedPerson",
+  "assignedPersonMobileLabel",
+  "assignedPersonMobile",
   "itemsTable",
 ]);
 
@@ -553,7 +559,16 @@ export function buildDocTemplate(
   const bottomPadding = footerImage ? Math.max(30, FOOTER_BOTTOM_MARGIN + footerHeightMM + 3) : 10;
 
   const contentTopOffset = topPadding - 25;
-  const applyContentOffset = (field) => shiftFieldY(field, contentTopOffset);
+  // The items table moves down with the taller header, but the HSN/GST table and everything below it
+  // do not, so without a correction the table's bottom ran into the HSN/GST table (the last item row,
+  // and a photo drawn in it, was hidden). Shrinking the table's declared height by the same amount keeps
+  // its bottom where it was; a table with more rows still grows and pushes what is below it.
+  const applyContentOffset = (field) => {
+    const shifted = shiftFieldY(field, contentTopOffset);
+    return field.name === "itemsTable" && contentTopOffset > 0
+      ? { ...shifted, height: Math.max(40, shifted.height - contentTopOffset) }
+      : shifted;
+  };
 
   return {
     basePdf: {
@@ -849,6 +864,35 @@ export function buildDocTemplate(
           fontSize: 8,
           content: "Team Member Name",
         }),
+        // Contact person's mobile, and the team member(s) assigned to the customer, with their mobile
+        // numbers. Each label and value is hidden when there is nothing to show, so documents without
+        // an assigned person look exactly as before.
+        ...[
+          ["contactPersonMobile", "Contact Mobile:", 45, "9876543210"],
+          ["assignedPerson", "Assigned Person:", 49, "Assigned Person Name"],
+          ["assignedPersonMobile", "Assigned Mobile:", 53, "9876543210"],
+        ].flatMap(([name, label, y, sample]) => [
+          textField({
+            name: `${name}Label`,
+            position: { x: 105, y },
+            width: 32,
+            height: 4,
+            fontSize: 8,
+            fontName: "Poppins Bold",
+            content: label,
+            readOnly: true,
+            visibilityCondition: { mode: "compare", field: name, operator: "isNotEmpty" },
+          }),
+          textField({
+            name,
+            position: { x: 137, y },
+            width: 63,
+            height: 4,
+            fontSize: 8,
+            content: sample,
+            visibilityCondition: { mode: "hideIfEmpty" },
+          }),
+        ]),
         buildItemsTableField(columnOptions),
         ...buildHsnAndTotalsFields(),
         textField({

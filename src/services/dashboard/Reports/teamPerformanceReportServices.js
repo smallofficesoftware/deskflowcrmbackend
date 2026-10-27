@@ -22,6 +22,7 @@ import {
   sanitizeObjectOfNull,
 } from "../../../utils/sharedFunctions.js";
 import { getCompanyByLoginId } from "../../commonServices.js";
+import { emptyActivity, getTeamActivityCounts } from "./teamPerformanceActivityServices.js";
 
 export const getTeamPerformanceReport = async (req) => {
   const selectedDates = req.body.selectedDates || [];
@@ -158,6 +159,13 @@ export const getTeamPerformanceReport = async (req) => {
       })),
     };
   }
+
+  const activityCounts = await getTeamActivityCounts(
+    req.tenantDB,
+    companyVsApplicationLoginResult.map((item) => item.a_application_login_id),
+    startDate,
+    endDate
+  );
 
   const teamData = await Promise.all(
     companyVsApplicationLoginResult.map(async (item) => {
@@ -509,8 +517,10 @@ export const getTeamPerformanceReport = async (req) => {
           expense,
           pendingReminder,
           attendanceData: result,
-          account
-
+          account,
+          // Calls, follow-ups and task/call follow-through (new columns), see teamPerformanceActivityServices.js
+          userId: item.a_application_login_id,
+          activity: activityCounts.get(Number(item.a_application_login_id)) || emptyActivity(),
         };
       }
     })

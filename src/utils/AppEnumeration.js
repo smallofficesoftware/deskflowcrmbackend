@@ -131,6 +131,8 @@ export const PAGE_ID = {
   // Serial Number Trace report. Migration
   // 20261019120000-add-serial-number-trace-application-page.js (master DB).
   SERIAL_NUMBER_TRACE: "199",
+  // Price List Rates report. Migration 20261024120000-add-price-list-rates-application-page.js (master DB).
+  PRICE_LIST_RATES: "202",
   // Add more pages as needed
 };
 // config/googleApi.ts

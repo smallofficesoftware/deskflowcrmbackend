@@ -653,8 +653,8 @@ export const attendanceDetailUpdate = async (req) => {
                 let { day_status, late_in, early_out, net_working_hour, roundoff_hours, overtime_hours, regular_overtime_hours, extra_overtime_hours, leave_info } = calcDayStatus(
                     date, first_in, last_out, total_working_hour, payroll, compensation_list, leave_list, holiday_list, roundoffMap
                 );
-
                 let penaltyAdded = false;
+
                 // ── Late-in penalty: skip on LEAVE / WOWO / WOPH days ─────────────
                 if (late_in && day_status !== DAY_STATUS.LEAVE && day_status !== DAY_STATUS.WOWO && day_status !== DAY_STATUS.WOPH) {
                     lateInCount++;
@@ -687,7 +687,6 @@ export const attendanceDetailUpdate = async (req) => {
                         }
                     }
                 }
-
                 // ── Early-out penalty: skip on LEAVE / WOWO / WOPH days ───────────
                 if (early_out && day_status !== DAY_STATUS.LEAVE && day_status !== DAY_STATUS.WOWO && day_status !== DAY_STATUS.WOPH) {
                     earlyOutCount++;
@@ -720,7 +719,6 @@ export const attendanceDetailUpdate = async (req) => {
                         }
                     }
                 }
-
                 if (penaltyAdded) {
                     ({ day_status, late_in, early_out, net_working_hour, roundoff_hours, overtime_hours, regular_overtime_hours, extra_overtime_hours, leave_info } = calcDayStatus(
                         date, first_in, last_out, total_working_hour, payroll, compensation_list, leave_list, holiday_list, roundoffMap
@@ -1054,7 +1052,6 @@ function calcDayStatus(date, first_in, last_out, total_working_hour, payroll, co
     const { isLeave, leave_info } = resolveLeaveOverride(leave_list);
     const isHoliday = Array.isArray(holiday_list) && holiday_list.length > 0;
     const isWeekOffDay = isWeekOff(date, payroll);
-
     const rawWorkingMins = timeStrToMinutes(total_working_hour);
     const hasAnyWork = rawWorkingMins > 0;
 
@@ -1097,6 +1094,7 @@ function calcDayStatus(date, first_in, last_out, total_working_hour, payroll, co
     const gracePeriodMins = parseInt(payroll.grace_period ?? 0, 10);
     const minPresentMins = timeStrToMinutes(payroll.min_present_hours);
     const halfDayMins = timeStrToMinutes(payroll.half_day_hours);
+    const fullDayMins = timeStrToMinutes(payroll.daily_working_hours) || minPresentMins;
     const minOvertimeMins = timeStrToMinutes(payroll.min_overtime_hours);
     const maxOvertimeMins = timeStrToMinutes(payroll.approve_ot_hours);
 
@@ -1124,7 +1122,7 @@ function calcDayStatus(date, first_in, last_out, total_working_hour, payroll, co
 
     // ── Overtime computed from the ROUNDED net working hour, then rounded
     // again independently (per your confirmed answer: round each separately) ──
-    const overtimeMinsRaw = calcOvertimeMinutes(netWorkingMins, minPresentMins, halfDayMins, minOvertimeMins, maxOvertimeMins);
+    const overtimeMinsRaw = calcOvertimeMinutes(netWorkingMins, fullDayMins, minOvertimeMins, maxOvertimeMins);
     const overtimeMins = applyRoundoff(overtimeMinsRaw, roundoffMap);
     const overtimeHourStr = minutesToTimeStr(overtimeMins);
 
@@ -1184,18 +1182,27 @@ function calcDayStatus(date, first_in, last_out, total_working_hour, payroll, co
  */
 function buildWorkOnOffDayResult(statusCode, total_working_hour, payroll, leave_info = [], roundoffMap = null) {
     const rawWorkingMins = timeStrToMinutes(total_working_hour);
-    const breakMins = timeStrToMinutes(payroll?.daily_break_hours);
-    const netWorkingMinsRaw = Math.max(0, rawWorkingMins - breakMins);
+    const netWorkingMinsRaw = Math.max(0, rawWorkingMins);
     const netWorkingMins = applyRoundoff(netWorkingMinsRaw, roundoffMap);
     const roundoffDiffMins = netWorkingMins - netWorkingMinsRaw;
     const roundoffHoursStr = formatDiffMinutesToTimeStr(roundoffDiffMins);
-    const otStr = minutesToTimeStr(netWorkingMins);
+
+    // All worked time is OT, subject to the min OT threshold and the approved OT cap.
+    const minOvertimeMins = timeStrToMinutes(payroll?.min_overtime_hours);
+    const maxOvertimeMins = timeStrToMinutes(payroll?.approve_ot_hours);
+    let overtimeMins = netWorkingMins;
+    if (overtimeMins <= minOvertimeMins) {
+        overtimeMins = 0;
+    } else if (maxOvertimeMins > 0 && overtimeMins > maxOvertimeMins) {
+        overtimeMins = maxOvertimeMins;
+    }
+    const otStr = minutesToTimeStr(overtimeMins);
 
     return {
         day_status: statusCode,
         late_in: null,
         early_out: null,
-        net_working_hour: otStr,
+        net_working_hour: minutesToTimeStr(netWorkingMins),
         roundoff_hours: roundoffHoursStr,
         overtime_hours: otStr, // all working hour = overtime
         regular_overtime_hours: "00:00:00",
@@ -1243,28 +1250,16 @@ function calcCompensationMinutes(compensation_list) {
 }
 
 /**
- * Calculates overtime_hours based on net_working_hour vs payroll thresholds.
+ * Calculates overtime_hours based on net_working_hour vs the full-day hours
+ * (payroll.daily_working_hours).
  *
- * Case 1 (present): netWorkingMins > minPresentMins
- *   excess = netWorkingMins - minPresentMins
- *   if excess > minOvertimeMins → overtime = excess
- *
- * Case 2 (half-day): halfDayMins < netWorkingMins < minPresentMins
- *   excess = netWorkingMins - halfDayMins
- *   if excess > minOvertimeMins → overtime = excess
+ * excess = netWorkingMins - fullDayMins (only when positive)
+ * if excess > minOvertimeMins → overtime = excess, capped at maxOvertimeMins (when > 0)
  *
  * Otherwise → overtime = 0
  */
-function calcOvertimeMinutes(netWorkingMins, minPresentMins, halfDayMins, minOvertimeMins, maxOvertimeMins = 0) {
-    let excessMins = 0;
-
-    if (netWorkingMins > minPresentMins) {
-        // Case 1: present, beyond min_present_hours
-        excessMins = netWorkingMins - minPresentMins;
-    } else if (netWorkingMins > halfDayMins && netWorkingMins < minPresentMins) {
-        // Case 2: half-day range, beyond half_day_hours
-        excessMins = netWorkingMins - halfDayMins;
-    }
+function calcOvertimeMinutes(netWorkingMins, fullDayMins, minOvertimeMins, maxOvertimeMins = 0) {
+    const excessMins = netWorkingMins > fullDayMins ? netWorkingMins - fullDayMins : 0;
 
     if (excessMins > minOvertimeMins) {
         if (maxOvertimeMins > 0 && excessMins > maxOvertimeMins) {

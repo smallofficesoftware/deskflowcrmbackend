@@ -7,7 +7,7 @@
 // data in, before its ejs.render() call) — this module only shapes and
 // transforms, it doesn't reach into raw DB rows itself.
 import QRCode from "qrcode";
-import { resolveColumns } from "./tableColumns.js";
+import { imageSettings, resolveColumns } from "./tableColumns.js";
 import { formatNumber } from "../../utils/sharedFunctions.js";
 
 // dataSource defaults to the field's own name (buildTemplate.js's
@@ -322,6 +322,9 @@ export function buildComputedFields(cart, numberTowords, grouped = false) {
     subTotal: num(cart?.total_amt, 2, grouped),
     taxableAmount: num(cart?.taxable_amt, 2, grouped),
     gstAmount: num(cart?.gst_amt, 2, grouped),
+    // Unformatted twin of gstAmount: Number("54,909.00") is NaN once the company
+    // uses grouped number format, which hid the GST lines and the HSN table.
+    gstAmountRaw: Number(cart?.gst_amt) || 0,
     packingCharge: num(cart?.packing_forwarding_charge, 2, grouped),
     transportCharge: num(cart?.transport_charge, 2, grouped),
     tcsAmount: num(cart?.tcs_amt, 2, grouped),
@@ -452,7 +455,7 @@ export function getSampleDataForPreview() {
   return {
     company: { name: "Sample Company Pvt Ltd", address: "123 Business Street, City, State, PIN", gstin: "00XXXXX0000X0X0", mobile: "9876543210", email: "company@example.com" },
     buyer: { companyName: "Customer Company Name", contactName: "Customer Contact Name", phone: "9876543210", email: "customer@example.com", billingAddress: "123 Street, City, State, PIN", shippingAddress: "123 Street, City, State, PIN", gstin: "00XXXXX0000X0X0", supplyTo: "State - City" },
-    order: { number: "SAMPLE/00/2026-2027", dateTime: "01-01-2026 12:00 PM", contactPerson: "Team Member Name" },
+    order: { number: "SAMPLE/00/2026-2027", dateTime: "01-01-2026 12:00 PM", contactPerson: "Team Member Name", contactPersonMobile: "9876543210", assignedPerson: "Assigned Person Name", assignedPersonMobile: "9876543211" },
     items: [
       { description: "Sample Item 1\nProduct Code: ABC", hsn: "1234", qty: "1.00 / Nos", rate: "100.00", discount: "0.00", total: "100.00", item_hsn_code: "1234", item_total: "100.00", serialNumbers: "SN0001" },
       { description: "Sample Item 2\nProduct Code: XYZ", hsn: "5678", qty: "2.00 / Nos", rate: "50.00", discount: "0.00", total: "100.00", item_hsn_code: "5678", item_total: "100.00", serialNumbers: "SN0002, SN0003" },
@@ -468,8 +471,11 @@ export function getSampleDataForPreview() {
 // extraction from raw cart.dataValues/companyDetail happens at the call
 // site (orderServices.js), not here — keeps this module's job to shaping,
 // not digging through DB rows it doesn't own the schema of.
-export function buildInputsForCart({ company, buyer, order, computed, items, pendingItems, columnOptions, totals = {} }) {
+export function buildInputsForCart({ company, buyer, order, computed, items, pendingItems, columnOptions, itemImages, totals = {} }) {
   const columns = resolveColumns(columnOptions);
+  // Photos "below the description": every row that has a photo gets blank lines under its text, so
+  // imageOverlay.js has room to draw it there. Rows without a photo stay normal height.
+  const belowLines = imageSettings(columnOptions).reserveLines;
 
   // pendingSalesOrder/pendingPurchaseOrder only — a fulfillment/outstanding-
   // quantity row shape (ordered/invoiced/pending qty), not the generic
@@ -491,7 +497,7 @@ export function buildInputsForCart({ company, buyer, order, computed, items, pen
         case "image":
           return "";
         case "description":
-          return item.description ?? "";
+          return (item.description ?? "") + (belowLines > 0 && itemImages?.[index] ? "\n".repeat(belowLines) : "");
         case "hsn":
           return item.hsn ?? "";
         case "qty":
@@ -499,9 +505,15 @@ export function buildInputsForCart({ company, buyer, order, computed, items, pen
         case "rate":
           return num(item.rate);
         case "discount":
-          return num(item.discount);
+          // orderServices.js passes a pre-formatted "5.00%" / "₹ 5.00" string;
+          // num() would turn that into "NaN".
+          return typeof item.discount === "string" && Number.isNaN(Number(item.discount))
+            ? item.discount
+            : num(item.discount);
         case "serial":
           return item.serialNumbers ?? "";
+        case "taxable":
+          return num(item.taxable);
         case "cgst":
           return num(item.cgst);
         case "sgst":
@@ -549,6 +561,9 @@ export function buildInputsForCart({ company, buyer, order, computed, items, pen
     orderNumber: order?.number ?? "",
     orderDateTime: order?.dateTime ?? "",
     contactPerson: order?.contactPerson ?? "",
+    contactPersonMobile: order?.contactPersonMobile ?? "",
+    assignedPerson: order?.assignedPerson ?? "",
+    assignedPersonMobile: order?.assignedPersonMobile ?? "",
 
     itemsTable: JSON.stringify(itemsTableRows),
     pendingItemsTable: JSON.stringify(pendingItemsTableRows),
@@ -595,10 +610,10 @@ export function buildInputsForCart({ company, buyer, order, computed, items, pen
     // (~line 987-1005). gstLine2 stays blank/hidden for the IGST case,
     // rather than adding a 3rd row slot — matches the EJS's own row count
     // per branch (2 rows same-state, 1 row different-state).
-    gstLine1Label: Number(computed?.gstAmount) > 0 ? (totals.isSameState ? "CGST" : "IGST") : "",
-    gstLine1Value: Number(computed?.gstAmount) > 0 ? num(totals.isSameState ? Number(computed.gstAmount) / 2 : computed.gstAmount) : "",
-    gstLine2Label: Number(computed?.gstAmount) > 0 && totals.isSameState ? "SGST" : "",
-    gstLine2Value: Number(computed?.gstAmount) > 0 && totals.isSameState ? num(Number(computed.gstAmount) / 2) : "",
+    gstLine1Label: Number(computed?.gstAmountRaw) > 0 ? (totals.isSameState ? "CGST" : "IGST") : "",
+    gstLine1Value: Number(computed?.gstAmountRaw) > 0 ? num(totals.isSameState ? Number(computed.gstAmountRaw) / 2 : computed.gstAmountRaw) : "",
+    gstLine2Label: Number(computed?.gstAmountRaw) > 0 && totals.isSameState ? "SGST" : "",
+    gstLine2Value: Number(computed?.gstAmountRaw) > 0 && totals.isSameState ? num(Number(computed.gstAmountRaw) / 2) : "",
 
     tcsLabel: totals.tcsLabel ?? "TCS",
     tcsValue: computed?.tcsAmount && Number(computed.tcsAmount) !== 0 ? computed.tcsAmount : "",
@@ -644,14 +659,14 @@ export function buildInputsForCart({ company, buyer, order, computed, items, pen
           ? [totals.cashDiscountLabel ?? "Cash Discount", num(totals.cashDiscountAmount)]
           : null,
         ["Total Taxable Amount", computed?.taxableAmount ?? ""],
-        Number(computed?.gstAmount) > 0
+        Number(computed?.gstAmountRaw) > 0
           ? [
             totals.isSameState ? "CGST" : "IGST",
-            num(totals.isSameState ? Number(computed.gstAmount) / 2 : computed.gstAmount),
+            num(totals.isSameState ? Number(computed.gstAmountRaw) / 2 : computed.gstAmountRaw),
           ]
           : null,
-        Number(computed?.gstAmount) > 0 && totals.isSameState
-          ? ["SGST", num(Number(computed.gstAmount) / 2)]
+        Number(computed?.gstAmountRaw) > 0 && totals.isSameState
+          ? ["SGST", num(Number(computed.gstAmountRaw) / 2)]
           : null,
         computed?.tcsAmount && Number(computed.tcsAmount) !== 0
           ? [totals.tcsLabel ?? "TCS", num(computed.tcsAmount)]

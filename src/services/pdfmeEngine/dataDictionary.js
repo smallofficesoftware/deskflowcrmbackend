@@ -28,6 +28,11 @@ const CART_DOC_DICTIONARY = [
   { key: "orderNumber", label: "Order Number", group: "Order" },
   { key: "orderDateTime", label: "Order Date & Time", group: "Order" },
   { key: "contactPerson", label: "Contact Person", group: "Order" },
+  // Mobile number of the Contact Person (the team member who made the document).
+  { key: "contactPersonMobile", label: "Contact Person Mobile", group: "Order" },
+  // The team member(s) assigned to the customer's contact: name(s) and mobile number(s).
+  { key: "assignedPerson", label: "Assigned Person", group: "Order" },
+  { key: "assignedPersonMobile", label: "Assigned Person Mobile", group: "Order" },
 
   { key: "itemsTable", label: "Items Table", group: "Item" },
   { key: "pendingItemsTable", label: "Pending Items Table", group: "Item" },

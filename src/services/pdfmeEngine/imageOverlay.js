@@ -11,14 +11,16 @@ import { PDFDocument } from "@pdfme/pdf-lib";
 import { getDynamicTemplate, getDynamicLayoutSplitRange, mm2pt, pt2mm } from "@pdfme/common";
 import { getDynamicLayoutForSchema } from "@pdfme/schemas/dynamicLayout";
 import { getDynamicHeightsForTable, TABLE_BODY_SPLIT_UNIT } from "@pdfme/schemas/tables";
-import { resolveColumns } from "./tableColumns.js";
+import { imageSettings, resolveColumns } from "./tableColumns.js";
 
 const CELL_PADDING_MM = 2;
+// Body cell padding of the items table (buildTemplate.js bodyStyles), used to sit a "below the
+// description" photo at the bottom of its cell.
+const BODY_CELL_PADDING_MM = 1.5;
 
-// Fixed thumbnail box, not "fill the row" — a uniform cap makes every row's
-// photo the same consistent thumbnail size, like a real product catalog,
-// regardless of the row's actual height or the source image's aspect ratio.
-const THUMBNAIL_MAX_MM = 9;
+// The photo box is a fixed size, not "fill the row" — a uniform cap makes every row's photo the same
+// consistent thumbnail, like a real product catalog, regardless of the row's actual height or the
+// source image's aspect ratio. The size is the template's imageSizeMm (default 9 mm, the original).
 
 function detectImageFormat(dataUri) {
   if (dataUri.startsWith("data:image/png")) return "png";
@@ -53,8 +55,14 @@ export async function overlayItemImages({ pdfBytes, template, tableFieldName = "
   const tableSchema = template.schemas[0]?.find((f) => f.name === tableFieldName);
   if (!tableSchema || !itemImages?.some(Boolean)) return pdfBytes;
 
+  const { mode, sizeMm: thumbnailMaxMm } = imageSettings(tableSchema.columnOptions);
+  if (mode === "none") return pdfBytes;
+  const below = mode === "below";
+
   const columns = resolveColumns(tableSchema.columnOptions);
-  const imgColIndex = columns.findIndex((c) => c.key === "image");
+  // "column": the photo goes in the Image column. "below": it goes at the bottom of the description
+  // cell, in the blank lines orderInputMapper.js reserved there.
+  const imgColIndex = columns.findIndex((c) => c.key === (below ? "description" : "image"));
   if (imgColIndex === -1) return pdfBytes;
 
   const options = { font: fontMap };
@@ -120,16 +128,18 @@ export async function overlayItemImages({ pdfBytes, template, tableFieldName = "
           embedCache.set(dataUri, embedded);
         }
 
-        const availWMm = Math.min(colWidthMm - CELL_PADDING_MM * 2, THUMBNAIL_MAX_MM);
-        const availHMm = Math.min(rowHeightMm - CELL_PADDING_MM * 2, THUMBNAIL_MAX_MM);
+        const availWMm = Math.min(colWidthMm - CELL_PADDING_MM * 2, thumbnailMaxMm);
+        const availHMm = Math.min(rowHeightMm - CELL_PADDING_MM * 2, thumbnailMaxMm);
         if (availWMm > 0 && availHMm > 0) {
           const naturalWMm = pt2mm(embedded.width);
           const naturalHMm = pt2mm(embedded.height);
           const scale = Math.min(availWMm / naturalWMm, availHMm / naturalHMm, 1);
           const drawWMm = naturalWMm * scale;
           const drawHMm = naturalHMm * scale;
-          const drawXMm = colXMm + (colWidthMm - drawWMm) / 2;
-          const drawYMm = yMm + (rowHeightMm - drawHMm) / 2;
+          // Own column: centred in the cell. Below the description: left-aligned with the text, at
+          // the bottom of the cell.
+          const drawXMm = below ? colXMm + BODY_CELL_PADDING_MM : colXMm + (colWidthMm - drawWMm) / 2;
+          const drawYMm = below ? yMm + rowHeightMm - BODY_CELL_PADDING_MM - drawHMm : yMm + (rowHeightMm - drawHMm) / 2;
           page.drawImage(embedded, {
             x: mm2pt(drawXMm),
             y: pageHeightPt - mm2pt(drawYMm) - mm2pt(drawHMm),

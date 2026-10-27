@@ -78,6 +78,8 @@ import {
 } from "../commonServices.js";
 import { emitAutomationEvent, automationBefore } from "../automation/emit.js";
 import { assertProductsAllowed } from "../product_settings/productSellerGuard.js";
+import { stockCartItemConditions } from "../product_settings/stockCondition.js";
+import { getAssignedPersonDetails } from "../pdfmeEngine/assignedPerson.js";
 
 
 const orderTypesList = [
@@ -298,28 +300,8 @@ export const orderCreate = async (req, res) => {
         const whereClauseStock = {
           isDelete: 0,
           item_product_id: item.item_product_id,
-          cart_type: { [Op.in]: [4, 3, 6, 7, 8, 9, 10, 11] },
-          cart_number: { [Op.ne]: null, [Op.not]: "" },
-          stock_type: { [Op.ne]: 0 },
-          [Op.and]: [
-            {
-              [Op.or]: [
-                // cart_type = 4 AND reference_type != 8
-                {
-                  cart_type: 4,
-                  reference_type: { [Op.ne]: 8 },
-                },
-                {
-                  cart_type: 3,
-                  reference_type: { [Op.ne]: 9 },
-                },
-
-                {
-                  cart_type: { [Op.in]: [6, 7, 8, 9, 10, 11] },
-                },
-              ],
-            },
-          ],
+          // The shared stock rule (stockCondition.js).
+          [Op.and]: stockCartItemConditions(),
         };
 
         let warehouseName = "total stock";
@@ -416,6 +398,8 @@ export const orderCreate = async (req, res) => {
 
       // cart Type wise add  stock_type
       getStockType = STOCK_IN_OUT_ACCESSIBILITY[cart.type] ?? "";
+      // Sales return saved with "do not add the stock back" (replacement): no stock effect.
+      if (Number(cart.type) === 6 && Number(cart.include_stock) === 0) getStockType = 0;
     }
 
     // Prepare cart custom fields from the first item (as per payload structure)
@@ -2021,28 +2005,8 @@ export const orderUpdate = async (req, res) => {
         const whereClauseStock = {
           isDelete: 0,
           item_product_id: item.item_product_id,
-          cart_type: { [Op.in]: [4, 3, 6, 7, 8, 9, 10, 11] },
-          cart_number: { [Op.ne]: null, [Op.not]: "" },
-          stock_type: { [Op.ne]: 0 },
-          [Op.and]: [
-            {
-              [Op.or]: [
-                // cart_type = 4 AND reference_type != 8
-                {
-                  cart_type: 4,
-                  reference_type: { [Op.ne]: 8 },
-                },
-                {
-                  cart_type: 3,
-                  reference_type: { [Op.ne]: 9 },
-                },
-
-                {
-                  cart_type: { [Op.in]: [6, 7, 8, 9, 10, 11] },
-                },
-              ],
-            },
-          ],
+          // The shared stock rule (stockCondition.js).
+          [Op.and]: stockCartItemConditions(),
         };
         console.log("whereClauseStockwhereClauseStock", whereClauseStock);
 
@@ -2456,6 +2420,8 @@ export const orderUpdate = async (req, res) => {
     let getStockType = 0;
     if (is_approve == 1) {
       getStockType = STOCK_IN_OUT_ACCESSIBILITY[update_cart.type] ?? "";
+      // Sales return saved with "do not add the stock back" (replacement): no stock effect.
+      if (Number(update_cart.type) === 6 && Number(update_cart.include_stock) === 0) getStockType = 0;
     }
 
     let reference_cart_type_n;
@@ -5138,8 +5104,26 @@ const generateSingleOrderPdf = async (req, res) => {
             .map(({ _pendingQtyRaw, ...rest }) => rest);
         }
 
+        // Same split the legacy EJS HSN/GST summary uses: same state ->
+        // CGST + SGST at half the rate each, different state -> IGST at the
+        // full rate. item_total is already net of the item discount.
+        const isSameStateForItems = !!companyStateName && companyStateName === customerStateName;
+        const itemTaxAmounts = (item) => {
+          const taxable = Number(item.item_total) || 0;
+          const rate = Number(item.item_gst) || 0;
+          if (rate <= 0) return { cgst: "", sgst: "", igst: "" };
+          const half = (taxable * rate) / 200;
+          return isSameStateForItems
+            ? { cgst: half, sgst: half, igst: "" }
+            : { cgst: "", sgst: "", igst: (taxable * rate) / 100 };
+        };
+
         const pdfmeItems = finalData.map((item) => ({
-          description: item.item_product_name,
+          description: item.item_product_description
+            ? `${item.item_product_name}\n${item.item_product_description}`
+            : item.item_product_name,
+          taxable: item.item_total,
+          ...itemTaxAmounts(item),
           hsn: item.item_hsn_code,
           qty: item.item_unit_name ? `${item.item_qty} / ${item.item_unit_name}` : item.item_qty,
           rate: item.item_rate,
@@ -5223,6 +5207,9 @@ const generateSingleOrderPdf = async (req, res) => {
             number: cartData.cart_number,
             dateTime: cartData.update_Date_time ? moment(cartData.update_Date_time).format("DD-MM-YYYY hh:mm A") : "",
             contactPerson: loginDetail?.username,
+            contactPersonMobile: loginDetail?.recovery_mobile,
+            // The team member(s) assigned to the customer, and their mobile numbers.
+            ...(await getAssignedPersonDetails(req.tenantDB, cartData.to_customer_id)),
           },
           items: pdfmeItems,
           pendingItems,
