@@ -152,6 +152,7 @@ export const newrightsprinteee = async (req) => {
     try {
         const {
             page_id,
+            page_slug,
             a_application_login_id,
             rights_flag
         } = req.body;
@@ -163,6 +164,7 @@ export const newrightsprinteee = async (req) => {
             company_masters_id: findCompanyId.company_masters_id,
             a_application_login_id,
             page_id: page_id,
+            page_slug,
             tenentId: req.tenantDB
         });
         return resSuccess({

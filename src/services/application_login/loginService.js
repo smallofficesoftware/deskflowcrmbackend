@@ -1414,7 +1414,7 @@ export const onLoad = async (req, res) => {
     }
     const findCompanyId = await getCompanyByLoginId(a_application_login_id);
     const applicationLoginTypeRightModelIntance = applicationLoginTypeRightModel(req.tenantDB);
-    const resultRights = await applicationLoginTypeRightModelIntance.findAll({
+    const resultRightsRaw = await applicationLoginTypeRightModelIntance.findAll({
       where: {
         a_application_login_id,
         company_masters_id: findCompanyId.company_masters_id,
@@ -1422,6 +1422,27 @@ export const onLoad = async (req, res) => {
       },
       attributes: ["a_page_id_rights_jason", "page_id", "page_name"],
     });
+
+    // page_id for the same page_slug can drift between databases - a_application_pages
+    // ids are plain AUTO_INCREMENT and the table is also written to independently by the
+    // admin panel's own platform-page migrations, so the same feature can land on a
+    // different numeric id per server (found 27-10-2026, Attribute Master: 196 on the dev
+    // DB vs 200 on demobackend). Attach page_slug here (master DB) so the frontend can
+    // match rights by slug instead of trusting a hardcoded id to be the same everywhere.
+    const rightsPageIds = [...new Set(resultRightsRaw.map((r) => r.page_id))];
+    let slugByPageId = {};
+    if (rightsPageIds.length) {
+      const masterDbName = process.env.TENANT_DB_DB_NAME;
+      const [slugRows] = await req.tenantDB.query(
+        `SELECT id, page_slug FROM \`${masterDbName}\`.\`a_application_pages\` WHERE id IN (:rightsPageIds)`,
+        { replacements: { rightsPageIds } }
+      );
+      slugByPageId = Object.fromEntries(slugRows.map((r) => [r.id, r.page_slug]));
+    }
+    const resultRights = resultRightsRaw.map((r) => ({
+      ...r.dataValues,
+      page_slug: slugByPageId[r.page_id] ?? null,
+    }));
 
     /* ===================== TENANT ===================== */
     req.headers["x-tenant-id"] = findLogin.id;

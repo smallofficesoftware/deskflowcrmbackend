@@ -5253,3 +5253,52 @@ WHERE NOT (OLD.`rate` <=> NEW.`rate`) OR NOT (OLD.`discount` <=> NEW.`discount`)
 -- MASTER DB only. New report page "Price List Rates" so Team Rights lists it by name (id 202 = next after Ecommerce Storefront 201 locally; re-check SELECT MAX(id) FROM a_application_pages on demo/live first). No new table, so no create_company_copy.sql change.
 INSERT INTO `a_application_pages` (`id`, `page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (202, 'Price List Rates', 'Price List Rates', 'price_list_rates', 'Current rate of every product in each price list and the history of rate changes', '0', '0', '0', '1', NOW(), UNIX_TIMESTAMP(), '0', '1');
 INSERT INTO `plan_vs_pages` (`plan_id`, `page_id`, `data_limit`, `extra_information`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) SELECT pm.`id`, p.`id`, '0', '', NOW(), current_timestamp(), '0', '1' FROM `plan_masters` pm JOIN `a_application_pages` p ON p.`page_slug` = 'price_list_rates' WHERE pm.`isDelete` = 0 AND NOT EXISTS (SELECT 1 FROM `plan_vs_pages` x WHERE x.`plan_id` = pm.`id` AND x.`page_id` = p.`id`);
+
+27-10-2026 Dhaval
+-- migration: migration/tenant/migrations/20261027120000-backfill-attribute-master-rights.js
+-- TENANT DB (run once per tenant DB, including smalloffice_sample_tenant). Attribute Master
+-- (page_slug 'attribute_master') got its a_application_pages row + plan_vs_pages grants on
+-- 19-10-2026, but existing logins were never granted a_application_login_type_rights for it -
+-- same gap as Serial Number Wise Stock Check (page 185, 17-09-2026 below). Found while
+-- investigating a live "permission denied / upgrade your plan" report: the page_id for this
+-- slug is NOT the same number on every database (plain AUTO_INCREMENT, and the admin panel's
+-- own platform-page migrations write to the same a_application_pages table independently - id
+-- 196 on the dev DB vs 200 on demobackend). Resolve the id by page_slug against the master DB
+-- at run time instead of hardcoding either number - do not copy this as a literal id into any
+-- other tenant DB's SQL console; always run the migration file so it resolves per-database.
+INSERT INTO `a_application_login_type_rights`
+  (`a_application_login_id`, `company_masters_id`, `page_id`, `page_name`, `a_page_id_rights_jason`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`)
+SELECT DISTINCT
+  t.`a_application_login_id`, t.`company_masters_id`,
+  (SELECT id FROM `smalloffice`.`a_application_pages` WHERE page_slug = 'attribute_master' AND isDelete = 0 LIMIT 1),
+  'Attribute Master',
+  '{"view":1,"add":1,"edit":1,"delete":1,"approve":0,"import":0,"print":0,"share":0,"all_data":0,"personal":0,"limit":"0"}',
+  NOW(), NOW(), 0, 1
+FROM `a_application_login_type_rights` t
+WHERE t.isDelete = 0
+  AND NOT EXISTS (
+    SELECT 1 FROM `a_application_login_type_rights` x
+    WHERE x.a_application_login_id = t.a_application_login_id
+      AND x.page_id = (SELECT id FROM `smalloffice`.`a_application_pages` WHERE page_slug = 'attribute_master' AND isDelete = 0 LIMIT 1)
+      AND x.isDelete = 0
+  );
+-- (replace `smalloffice` above with that database server's actual master DB name if different -
+-- the migration file itself reads this from process.env.TENANT_DB_DB_NAME, so it never needs editing)
+
+27-10-2026 Dhaval
+-- Permission-check hardening, no schema change (recorded here per the alter.txt convention of
+-- logging the incident, not because it's a DB alter). a_application_pages ids drift between
+-- databases (see entry above) - this is a code fix, not SQL, split across:
+--   backend: src/services/application_login/loginService.js (onLoad's resultRights now carries
+--     page_slug, joined from a_application_pages), src/helpers/rightsHelper.js (getUserRights
+--     accepts page_slug as an alternative to page_id), src/services/company_setup/
+--     printSettingServices.js (new-rights-print passes page_slug through)
+--   frontend: hooks/useCheckUserPermission.ts, pages/side-view/ReportsTileView.tsx,
+--     pages/side-view/SideBarView.tsx, pages/left-side/header/Setting/work-flow-automation/
+--     MiracleSynchronizationView.tsx (all 4 local permission-check implementations now match by
+--     page_slug when given a string instead of a numeric PAGE_ID), common/SharedFunction.tsx
+--     (newRightsForPrint accepts a slug), attribute-master/AttributeMasterView.tsx + Create
+--     AttributeMasterView.tsx (now pass "attribute_master" instead of the removed
+--     PAGE_ID.ATTRIBUTE_MASTER enum member)
+-- Existing numeric PAGE_ID.* call sites (127 other pages) are untouched and unaffected - this
+-- only adds an alternative slug path for any page added after today.
