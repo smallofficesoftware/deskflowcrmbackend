@@ -27,6 +27,7 @@ import {
   getStorefrontMyTicketController,
   getStorefrontMyTicketsController,
   getStorefrontTicketCategoriesController,
+  getStorefrontTicketOptionsController,
   replyStorefrontMyTicketController,
   getStorefrontMyOrderController,
   listStorefrontChatThreadsController,
@@ -78,6 +79,7 @@ export default (app) => {
   // PUBLIC - must be registered before the /storefront/:companySlug/* routes so "resolve-domain" is not read as a slug.
   app.get("/storefront/resolve-domain", resolveStorefrontDomainController);
   // CRM staff side of the in-store chat.
+  app.post("/storefront/tickets/options", authenticateToken, tenantMiddleware, requireAddon("ecommerce-storefront"), getStorefrontTicketOptionsController);
   app.post("/storefront/chat/threads", authenticateToken, tenantMiddleware, requireAddon("ecommerce-storefront"), listStorefrontChatThreadsController);
   app.post("/storefront/chat/messages", authenticateToken, tenantMiddleware, requireAddon("ecommerce-storefront"), getStorefrontChatThreadController);
   app.post("/storefront/chat/reply", authenticateToken, tenantMiddleware, requireAddon("ecommerce-storefront"), replyStorefrontChatController);

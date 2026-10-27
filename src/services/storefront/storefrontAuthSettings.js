@@ -27,6 +27,14 @@ const DEFAULTS = {
   chat_enabled: false,
   // Guests (not logged in) may chat / raise tickets after verifying a mobile number by OTP - which creates a contact.
   chat_guest_enabled: true,
+  // Support tickets (customers raise/track tickets from the store). The ticket itself is the CRM's own support-ticket task.
+  tickets_enabled: true,
+  ticket_category_ids: [], // [] = every customer-visible category
+  ticket_category_required: false,
+  ticket_default_assignee_id: null, // a_application_logins.id; null = the company's own login (what the old store-ticket flow uses)
+  ticket_default_priority: 4, // task_managements.task_priority
+  ticket_initial_status_id: -14, // stage status (customer-facing) a new ticket starts in
+  ticket_customer_reply_enabled: true,
   // Not auth-specific, but the same config_json row - storefrontCatalogService.js's
   // applyDefaultPriceList used to read this via its own separate query; checkout
   // (P4) needs it too, so it's read once here instead of twice.

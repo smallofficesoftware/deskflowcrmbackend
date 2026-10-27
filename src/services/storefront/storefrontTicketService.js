@@ -1,8 +1,10 @@
 import moment from "moment";
-import { QueryTypes } from "sequelize";
+import Sequelize, { Op, QueryTypes } from "sequelize";
 import { taskManagementModel } from "../../models/activities/taskManagementModel.js";
 import { taskMessageHistroyModel } from "../../models/activities/taskMessageHistroyModel.js";
 import emitToCompany from "../1socketIOServices/emitToCompany.js";
+import loginModel from "../../models/application_login/loginModel.js";
+import { getStorefrontAuthSettings } from "./storefrontAuthSettings.js";
 import { resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
 
 // Support tickets for a logged-in storefront customer. A ticket is the CRM's own support-ticket task
@@ -18,17 +20,37 @@ const MAX_TEXT = 2000;
 const MAX_TICKETS = 100;
 const MAX_MESSAGES = 200;
 
+// Admin-configurable (storefront settings -> Support tickets). Every customer-facing ticket call goes through this.
+const ticketSettings = async (req, companyId) => {
+  const s = await getStorefrontAuthSettings(req.tenantDB, companyId);
+  const ids = Array.isArray(s.ticket_category_ids) ? s.ticket_category_ids.map(Number).filter(Number.isInteger) : [];
+  const initial = Number(s.ticket_initial_status_id);
+  return {
+    enabled: s.tickets_enabled !== false,
+    categoryIds: ids,
+    categoryRequired: Boolean(s.ticket_category_required),
+    assigneeId: Number(s.ticket_default_assignee_id) || null,
+    priority: Number(s.ticket_default_priority) || 4,
+    initialStatus: s.ticket_initial_status_id !== null && Number.isInteger(initial) ? initial : -14,
+    replyEnabled: s.ticket_customer_reply_enabled !== false,
+  };
+};
+const DISABLED = () => resError({ ack_msg: "Support tickets are not available." });
+
 const clean = (v, max) => String(v ?? "").replace(/\s+/g, " ").trim().slice(0, max);
 const escapeHtml = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 /** GET /storefront/me/tickets/categories - the ticket categories the store exposes to customers. */
 export const getTicketCategories = async (req) => {
   try {
+    const cfg = await ticketSettings(req, req.storefrontSession.company_masters_id);
+    if (!cfg.enabled) return DISABLED();
     const rows = await req.tenantDB.query(
       `SELECT id, task_category_name AS name FROM task_categories WHERE isDelete = 0 AND visibility = 1 ORDER BY id ASC`,
       { type: QueryTypes.SELECT }
     );
-    return resSuccess({ data: { item: rows } });
+    const allowed = cfg.categoryIds.length ? rows.filter((r) => cfg.categoryIds.includes(Number(r.id))) : rows;
+    return resSuccess({ data: { item: allowed, category_required: cfg.categoryRequired } });
   } catch (error) {
     return resError({ developer_msg: `getTicketCategories failed: ${error}` });
   }
@@ -38,6 +60,7 @@ export const getTicketCategories = async (req) => {
 export const getMyTickets = async (req) => {
   try {
     const { contact_master_id, company_masters_id } = req.storefrontSession;
+    if (!(await ticketSettings(req, company_masters_id)).enabled) return DISABLED();
     const rows = await req.tenantDB.query(
       `SELECT t.id, t.task_title, t.created_date_time, t.external_status, s.name AS status_name, s.color AS status_color,
               c.task_category_name AS category
@@ -76,12 +99,15 @@ export const createMyTicket = async (req) => {
     const categoryId = Number(req.body?.category_id) || null;
     if (!title || !description) return resBadRequest({ developer_msg: "title and description are required" });
 
+    const cfg = await ticketSettings(req, company_masters_id);
+    if (!cfg.enabled) return DISABLED();
+    if (cfg.categoryRequired && !categoryId) return resBadRequest({ ack_msg: "Please choose a category." });
     if (categoryId) {
       const [ok] = await db.query(`SELECT id FROM task_categories WHERE id = :id AND isDelete = 0 AND visibility = 1`, {
         replacements: { id: categoryId },
         type: QueryTypes.SELECT,
       });
-      if (!ok) return resBadRequest({ ack_msg: "Please choose a valid category." });
+      if (!ok || (cfg.categoryIds.length && !cfg.categoryIds.includes(categoryId))) return resBadRequest({ ack_msg: "Please choose a valid category." });
     }
 
     const [contact] = await db.query(`SELECT person_name, mobile_number FROM contact_masters WHERE id = :id AND isDelete = 0`, {
@@ -99,16 +125,16 @@ export const createMyTicket = async (req) => {
       task_fromdate: moment(now).startOf("day").format("YYYY-MM-DD HH:mm:ss"),
       task_enddate: moment(now).endOf("day").format("YYYY-MM-DD HH:mm:ss"),
       contact_masters_id: contact_master_id,
-      // Same assignee the existing public store-ticket flow uses: the company's own login.
-      assigned_team_member: a_application_login_id,
+      // Configured assignee, else the company's own login (what the existing public store-ticket flow uses).
+      assigned_team_member: cfg.assigneeId || a_application_login_id,
       a_application_login_id,
       company_masters_id,
       created_date_time: created,
       task_type: 5,
-      task_priority: 4,
+      task_priority: cfg.priority,
       task_category_id: categoryId,
       status: 0,
-      external_status: -14,
+      external_status: cfg.initialStatus,
       team_task_assignement_type: 1,
       task_attechment: "",
     });
@@ -154,6 +180,8 @@ export const getMyTicket = async (req) => {
     const { contact_master_id, company_masters_id } = req.storefrontSession;
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) return resError({ ack_msg: "Ticket not found" });
+    const cfg = await ticketSettings(req, company_masters_id);
+    if (!cfg.enabled) return DISABLED();
     const ticket = await ownTicket(req.tenantDB, id, contact_master_id, company_masters_id);
     if (!ticket) return resError({ ack_msg: "Ticket not found" });
 
@@ -173,6 +201,7 @@ export const getMyTicket = async (req) => {
           created_at: ticket.created_date_time,
           status: ticket.status_name || "Open",
           status_color: ticket.status_color || null,
+          can_reply: cfg.replyEnabled,
           messages: messages.map((m) => ({
             id: m.id,
             // Message bodies are CRM HTML ("<strong>..</strong><br>"). The storefront shows plain text, so tags are stripped here.
@@ -203,6 +232,9 @@ export const replyMyTicket = async (req) => {
     const id = Number(req.params.id);
     const text = clean(req.body?.message, MAX_TEXT);
     if (!Number.isInteger(id) || !text) return resBadRequest({ developer_msg: "message is required" });
+    const cfg = await ticketSettings(req, company_masters_id);
+    if (!cfg.enabled) return DISABLED();
+    if (!cfg.replyEnabled) return resError({ ack_msg: "Replies are turned off for support tickets." });
     const ticket = await ownTicket(req.tenantDB, id, contact_master_id, company_masters_id);
     if (!ticket) return resError({ ack_msg: "Ticket not found" });
 
@@ -224,5 +256,29 @@ export const replyMyTicket = async (req) => {
     return resSuccess({ data: { item: { ok: true } } });
   } catch (error) {
     return resError({ developer_msg: `replyMyTicket failed: ${error}` });
+  }
+};
+
+/** POST /storefront/tickets/options (CRM) - what the settings page offers: ticket categories, customer-facing
+ * ticket statuses (stage status order_type 8, visibility 1) and the company's team members. */
+export const getTicketOptions = async (req) => {
+  try {
+    const companyId = Number(req.user?.companyId);
+    if (!companyId) return resBadRequest({ ack_msg: "Company not found" });
+    const [categories, statuses, members] = await Promise.all([
+      req.tenantDB.query(`SELECT id, task_category_name AS name FROM task_categories WHERE isDelete = 0 AND visibility = 1 ORDER BY id ASC`, { type: QueryTypes.SELECT }),
+      req.tenantDB.query(`SELECT id, name FROM stage_status_masters WHERE order_type = 8 AND visibility = 1 AND isDelete = 0 ORDER BY id DESC`, { type: QueryTypes.SELECT }),
+      loginModel.findAll({
+        where: {
+          isDelete: 0,
+          id: { [Op.in]: Sequelize.literal(`(SELECT a_application_login_id FROM company_vs_application_logins WHERE isDelete = 0 AND company_masters_id = ${companyId})`) },
+        },
+        attributes: ["id", "username"],
+        raw: true,
+      }),
+    ]);
+    return resSuccess({ data: { item: { categories, statuses, members: members.map((m) => ({ id: m.id, name: m.username })) } } });
+  } catch (error) {
+    return resError({ developer_msg: `getTicketOptions failed: ${error}` });
   }
 };

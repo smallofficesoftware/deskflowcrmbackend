@@ -13,7 +13,7 @@ import {
 } from "../../services/storefront/storefrontAuthService.js";
 import { getStorefrontMyOrder, getStorefrontMyOrders, getStorefrontMyTransactions } from "../../services/storefront/storefrontAccountService.js";
 import { getChatThread, getMyChat, listChatThreads, replyToChat, sendMyChat } from "../../services/storefront/storefrontChatService.js";
-import { createMyTicket, getMyTicket, getMyTickets, getTicketCategories, replyMyTicket } from "../../services/storefront/storefrontTicketService.js";
+import { createMyTicket, getMyTicket, getMyTickets, getTicketCategories, getTicketOptions, replyMyTicket } from "../../services/storefront/storefrontTicketService.js";
 import callServiceMethod from "../baseController.js";
 
 export const getStorefrontAuthConfigController = async (req, res) => {
@@ -74,6 +74,9 @@ export const replyStorefrontChatController = async (req, res) => {
 
 export const getStorefrontTicketCategoriesController = async (req, res) => {
   await callServiceMethod(req, res, getTicketCategories(req), "getTicketCategories");
+};
+export const getStorefrontTicketOptionsController = async (req, res) => {
+  await callServiceMethod(req, res, getTicketOptions(req), "getTicketOptions");
 };
 export const getStorefrontMyTicketsController = async (req, res) => {
   await callServiceMethod(req, res, getMyTickets(req), "getMyTickets");
