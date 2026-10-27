@@ -3,7 +3,9 @@ import { tallyListContactMappingsProvider, tallySaveContactMappingProvider } fro
 import { tallyListGstLedgerMappingsProvider, tallySaveGstLedgerMappingProvider } from "../../../controllers/tally/tallyGstLedgerMappingController.js";
 import { tallyListProductMappingsProvider, tallySaveProductMappingProvider } from "../../../controllers/tally/tallyMappingController.js";
 import { tallyListVoucherTypeMappingsProvider, tallySaveVoucherTypeMappingProvider } from "../../../controllers/tally/tallyVoucherTypeMappingController.js";
+import { tallyGetNextJobProvider, tallyIssueConnectorKeyProvider, tallyPostJobResultProvider, tallyRevokeConnectorKeyProvider } from "../../../controllers/tally/tallyConnectorController.js";
 import { authenticateToken } from "../../../middlewares/auth.js";
+import { checkConnectorKey } from "../../../middlewares/checkConnectorKey.js";
 import { requireAddon } from "../../../middlewares/requireAddon.js";
 import { tenantMiddleware } from "../../../middlewares/tenantMiddleware.js";
 
@@ -28,4 +30,16 @@ export default (app) => {
   app.post("/tally/mappings/voucher-types/save", authenticateToken, tenantMiddleware, requireAddon("tally"), tallySaveVoucherTypeMappingProvider);
   app.post("/tally/mappings/gst-ledgers/get", authenticateToken, tenantMiddleware, requireAddon("tally"), tallyListGstLedgerMappingsProvider);
   app.post("/tally/mappings/gst-ledgers/save", authenticateToken, tenantMiddleware, requireAddon("tally"), tallySaveGstLedgerMappingProvider);
+
+  // Connector key lifecycle - user-session gated (the CRM web app's Tally
+  // settings screen), NOT connector-key gated.
+  app.post("/tally/connector-key/issue", authenticateToken, tenantMiddleware, requireAddon("tally"), tallyIssueConnectorKeyProvider);
+  app.post("/tally/connector-key/revoke", authenticateToken, tenantMiddleware, requireAddon("tally"), tallyRevokeConnectorKeyProvider);
+
+  // Job queue - the connector itself calls these, with NO user session at all.
+  // tenantMiddleware resolves company from companyCode in the body (no JWT,
+  // same tokenless path Miracle's webhook uses); checkConnectorKey is this
+  // addon's own gate in place of requireAddon, since there is no req.user.
+  app.post("/tally/connector/jobs/next", tenantMiddleware, checkConnectorKey("tally"), tallyGetNextJobProvider);
+  app.post("/tally/connector/jobs/result", tenantMiddleware, checkConnectorKey("tally"), tallyPostJobResultProvider);
 };
