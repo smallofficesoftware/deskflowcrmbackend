@@ -1,5 +1,6 @@
 import { marketplaceAddonRecordMappingsModel } from "../../models/marketplace/marketplaceAddonRecordMappingsModel.js";
 import { resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
+import { resolveCompanyId } from "./tallyAuthHelper.js";
 
 const ADDON_CODE = "tally";
 const ENTITY_VOUCHER_TYPE = "voucher_type";
@@ -29,7 +30,7 @@ const DEFAULT_VOUCHER_TYPES = [
 /** List the fixed voucher-type slots with their current mapping, or the Q6 default suggestion if unmapped. */
 export const listVoucherTypeMappings = async (req) => {
   try {
-    const company_masters_id = req.user?.companyId;
+    const company_masters_id = resolveCompanyId(req);
     if (!req.tenantDB || !company_masters_id) {
       return resBadRequest({ developer_msg: "Tenant DB or company context missing" });
     }
@@ -60,7 +61,7 @@ export const listVoucherTypeMappings = async (req) => {
 /** Confirm or edit one voucher type's Tally voucher type name. */
 export const saveVoucherTypeMapping = async (req) => {
   try {
-    const company_masters_id = req.user?.companyId;
+    const company_masters_id = resolveCompanyId(req);
     if (!req.tenantDB || !company_masters_id) {
       return resBadRequest({ developer_msg: "Tenant DB or company context missing" });
     }

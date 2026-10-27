@@ -42,4 +42,19 @@ export default (app) => {
   // addon's own gate in place of requireAddon, since there is no req.user.
   app.post("/tally/connector/jobs/next", tenantMiddleware, checkConnectorKey("tally"), tallyGetNextJobProvider);
   app.post("/tally/connector/jobs/result", tenantMiddleware, checkConnectorKey("tally"), tallyPostJobResultProvider);
+
+  // Connector-key-gated mirror of the mapping endpoints above (Q6: "Connector
+  // local UI and CRM web UI both read/write tally_mappings through the same
+  // API"). Same controllers/services as the user-session routes - each
+  // service resolves company_masters_id via resolveCompanyId(), which checks
+  // req.user?.companyId OR req.connectorKeyRow?.company_masters_id, so no
+  // duplicated logic, just a different auth chain reaching the same code.
+  app.post("/tally/connector/mappings/products/get", tenantMiddleware, checkConnectorKey("tally"), tallyListProductMappingsProvider);
+  app.post("/tally/connector/mappings/products/save", tenantMiddleware, checkConnectorKey("tally"), tallySaveProductMappingProvider);
+  app.post("/tally/connector/mappings/contacts/get", tenantMiddleware, checkConnectorKey("tally"), tallyListContactMappingsProvider);
+  app.post("/tally/connector/mappings/contacts/save", tenantMiddleware, checkConnectorKey("tally"), tallySaveContactMappingProvider);
+  app.post("/tally/connector/mappings/voucher-types/get", tenantMiddleware, checkConnectorKey("tally"), tallyListVoucherTypeMappingsProvider);
+  app.post("/tally/connector/mappings/voucher-types/save", tenantMiddleware, checkConnectorKey("tally"), tallySaveVoucherTypeMappingProvider);
+  app.post("/tally/connector/mappings/gst-ledgers/get", tenantMiddleware, checkConnectorKey("tally"), tallyListGstLedgerMappingsProvider);
+  app.post("/tally/connector/mappings/gst-ledgers/save", tenantMiddleware, checkConnectorKey("tally"), tallySaveGstLedgerMappingProvider);
 };

@@ -1,6 +1,7 @@
 import { contactModel } from "../../models/activities/contactModel.js";
 import { marketplaceAddonRecordMappingsModel } from "../../models/marketplace/marketplaceAddonRecordMappingsModel.js";
 import { resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
+import { resolveCompanyId } from "./tallyAuthHelper.js";
 
 const ADDON_CODE = "tally";
 const ENTITY_CONTACT = "contact";
@@ -20,7 +21,7 @@ const ENTITY_CONTACT = "contact";
 /** List every CRM contact for this company with its current Tally mapping status, if any. */
 export const listContactMappings = async (req) => {
   try {
-    const company_masters_id = req.user?.companyId;
+    const company_masters_id = resolveCompanyId(req);
     if (!req.tenantDB || !company_masters_id) {
       return resBadRequest({ developer_msg: "Tenant DB or company context missing" });
     }
@@ -66,7 +67,7 @@ export const listContactMappings = async (req) => {
 /** Create/update one contact's mapping - user confirming or editing a suggestion. */
 export const saveContactMapping = async (req) => {
   try {
-    const company_masters_id = req.user?.companyId;
+    const company_masters_id = resolveCompanyId(req);
     if (!req.tenantDB || !company_masters_id) {
       return resBadRequest({ developer_msg: "Tenant DB or company context missing" });
     }

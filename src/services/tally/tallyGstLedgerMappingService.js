@@ -3,6 +3,7 @@ import { productModel } from "../../models/product_settings/productModel.js";
 import { taxModel } from "../../models/product_settings/taxModel.js";
 import { marketplaceAddonRecordMappingsModel } from "../../models/marketplace/marketplaceAddonRecordMappingsModel.js";
 import { resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
+import { resolveCompanyId } from "./tallyAuthHelper.js";
 
 const ADDON_CODE = "tally";
 const ENTITY_GST_LEDGER = "gst_ledger";
@@ -34,7 +35,7 @@ const defaultLedgerName = (slot, ratePercent) => {
 /** List every CRM tax rate x the 6 duty slots, with current mapping or the default suggestion. */
 export const listGstLedgerMappings = async (req) => {
   try {
-    const company_masters_id = req.user?.companyId;
+    const company_masters_id = resolveCompanyId(req);
     if (!req.tenantDB || !company_masters_id) {
       return resBadRequest({ developer_msg: "Tenant DB or company context missing" });
     }
@@ -100,7 +101,7 @@ export const listGstLedgerMappings = async (req) => {
 /** Confirm or edit one tax rate's one duty-slot Tally ledger name. */
 export const saveGstLedgerMapping = async (req) => {
   try {
-    const company_masters_id = req.user?.companyId;
+    const company_masters_id = resolveCompanyId(req);
     if (!req.tenantDB || !company_masters_id) {
       return resBadRequest({ developer_msg: "Tenant DB or company context missing" });
     }

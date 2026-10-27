@@ -1,6 +1,7 @@
 import { productModel } from "../../models/product_settings/productModel.js";
 import { marketplaceAddonRecordMappingsModel } from "../../models/marketplace/marketplaceAddonRecordMappingsModel.js";
 import { resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
+import { resolveCompanyId } from "./tallyAuthHelper.js";
 
 const ADDON_CODE = "tally";
 const ENTITY_PRODUCT = "product";
@@ -22,7 +23,7 @@ const ENTITY_PRODUCT = "product";
 /** List every CRM product for this company with its current Tally mapping status, if any. */
 export const listProductMappings = async (req) => {
   try {
-    const company_masters_id = req.user?.companyId;
+    const company_masters_id = resolveCompanyId(req);
     if (!req.tenantDB || !company_masters_id) {
       return resBadRequest({ developer_msg: "Tenant DB or company context missing" });
     }
@@ -63,7 +64,7 @@ export const listProductMappings = async (req) => {
 /** Create/update one product's mapping - user confirming or editing a suggestion. */
 export const saveProductMapping = async (req) => {
   try {
-    const company_masters_id = req.user?.companyId;
+    const company_masters_id = resolveCompanyId(req);
     if (!req.tenantDB || !company_masters_id) {
       return resBadRequest({ developer_msg: "Tenant DB or company context missing" });
     }
