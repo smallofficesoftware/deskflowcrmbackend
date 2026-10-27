@@ -239,6 +239,68 @@ export const verifyStorefrontOtp = async (req) => {
   }
 };
 
+/** POST /storefront/:companySlug/chat/guest/otp { mobile } - OTP to a guest's mobile, so they can chat / raise tickets
+ * without an account. Not gated on the store's login-method toggles or invite-only: this never grants a login. */
+export const requestGuestChatOtp = async (req) => {
+  try {
+    const { companySlug } = req.params;
+    const { resolved, error } = await resolveAndGate(companySlug);
+    if (error) return error;
+    const settings = await getStorefrontAuthSettings(resolved.tenantDB, resolved.company_masters_id);
+    if (!settings.chat_enabled || !settings.chat_guest_enabled) return resError({ ack_msg: "Guest chat is not available." });
+
+    const mobile = req.body?.mobile;
+    const lookupValue = lookupValueFor("mobile", mobile);
+    if (!lookupValue) return resError({ ack_msg: "Enter a valid mobile number." });
+
+    const { code, token } = createOtpChallenge(mobile);
+    const sent = await ClaudeOfficeWhatsAppOtp(code, normalizeToTenDigit(mobile));
+    if (sent?.ack !== 1) return resError({ ack_msg: "Couldn't send the code over WhatsApp. Check the number and try again." });
+    return resSuccess({ ack_msg: "A code was sent on WhatsApp.", data: { token } });
+  } catch (error) {
+    return resError({ developer_msg: `requestGuestChatOtp failed: ${error}` });
+  }
+};
+
+/** POST /storefront/:companySlug/chat/guest/verify { mobile, name, token, code }
+ * Finds or creates the contact for this verified mobile and issues a chat-scope session (see storefrontSession.js). */
+export const verifyGuestChatOtp = async (req) => {
+  try {
+    const { companySlug } = req.params;
+    const { mobile, name, token, code } = req.body || {};
+    const { resolved, error } = await resolveAndGate(companySlug);
+    if (error) return error;
+    const settings = await getStorefrontAuthSettings(resolved.tenantDB, resolved.company_masters_id);
+    if (!settings.chat_enabled || !settings.chat_guest_enabled) return resError({ ack_msg: "Guest chat is not available." });
+
+    const verified = verifyOtpChallenge(token, mobile, code);
+    if (!verified.ok) return resError({ ack_msg: verified.error, data: { token: verified.token || null } });
+
+    const lookupValue = lookupValueFor("mobile", mobile);
+    if (!lookupValue) return resError({ ack_msg: "Invalid mobile number." });
+
+    let contact = await findContact(resolved.tenantDB, resolved.company_masters_id, "mobile", lookupValue);
+    if (contact) {
+      // An existing CRM contact keeps its own name and is NOT stamped as a storefront account (that would also
+      // lift an invite-only restriction on a later real login) - only the mobile is now known to be verified.
+      await contact.update({ storefront_is_verified_mobile: 1 });
+    } else {
+      contact = await contactModel(resolved.tenantDB).create({
+        company_masters_id: resolved.company_masters_id,
+        person_name: String(name ?? "").replace(/\s+/g, " ").trim().slice(0, 100) || "Guest",
+        mobile_number: lookupValue,
+        contact_status: -1,
+        storefront_is_verified_mobile: 1,
+      });
+    }
+
+    const sessionToken = createSessionToken(contact, resolved.a_application_login_id, "chat");
+    return resSuccess({ data: { token: sessionToken } });
+  } catch (error) {
+    return resError({ developer_msg: `verifyGuestChatOtp failed: ${error}` });
+  }
+};
+
 /** POST /storefront/me/pin { pin } - protected (requireStorefrontSession).
  * Sets/replaces the logged-in customer's PIN after they've verified via OTP. */
 export const setStorefrontPin = async (req) => {

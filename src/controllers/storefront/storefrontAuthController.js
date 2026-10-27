@@ -1,5 +1,7 @@
 import {
   getStorefrontAuthConfig,
+  requestGuestChatOtp,
+  verifyGuestChatOtp,
   getStorefrontMe,
   requestStorefrontOtp,
   setStorefrontPin,
@@ -84,6 +86,13 @@ export const getStorefrontMyTicketController = async (req, res) => {
 };
 export const replyStorefrontMyTicketController = async (req, res) => {
   await callServiceMethod(req, res, replyMyTicket(req), "replyMyTicket");
+};
+
+export const requestGuestChatOtpController = async (req, res) => {
+  await callServiceMethod(req, res, requestGuestChatOtp(req), "requestGuestChatOtp");
+};
+export const verifyGuestChatOtpController = async (req, res) => {
+  await callServiceMethod(req, res, verifyGuestChatOtp(req), "verifyGuestChatOtp");
 };
 
 export const getStorefrontMeController = async (req, res) => {

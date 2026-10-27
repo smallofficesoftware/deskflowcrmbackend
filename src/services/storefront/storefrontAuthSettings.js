@@ -25,6 +25,8 @@ const DEFAULTS = {
   public_browsing_enabled: true,
   // In-store chat widget (customers message the team; replies come from the CRM). Off by default.
   chat_enabled: false,
+  // Guests (not logged in) may chat / raise tickets after verifying a mobile number by OTP - which creates a contact.
+  chat_guest_enabled: true,
   // Not auth-specific, but the same config_json row - storefrontCatalogService.js's
   // applyDefaultPriceList used to read this via its own separate query; checkout
   // (P4) needs it too, so it's read once here instead of twice.

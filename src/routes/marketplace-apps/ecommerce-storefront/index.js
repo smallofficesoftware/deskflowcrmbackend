@@ -34,7 +34,9 @@ import {
   sendStorefrontMyChatController,
   getStorefrontMyOrdersController,
   getStorefrontMyTransactionsController,
+  requestGuestChatOtpController,
   requestStorefrontOtpController,
+  verifyGuestChatOtpController,
   setStorefrontPinController,
   storefrontInviteLoginController,
   storefrontLightLoginController,
@@ -55,7 +57,7 @@ import {
 } from "../../../controllers/storefront/storefrontPaymentController.js";
 import { authenticateToken } from "../../../middlewares/auth.js";
 import { requireAddon } from "../../../middlewares/requireAddon.js";
-import { requireStorefrontSession } from "../../../services/storefront/storefrontSession.js";
+import { requireStorefrontChatSession, requireStorefrontSession } from "../../../services/storefront/storefrontSession.js";
 import { tenantMiddleware } from "../../../middlewares/tenantMiddleware.js";
 
 // First slice of the ecommerce storefront addon's CRM admin settings page
@@ -111,6 +113,8 @@ export default (app) => {
   // (storefrontAuthService.js's resolveAndGate helper) - identified during P1/P2
   // as a requirement requireAddon() itself can't satisfy for this audience.
   app.get("/storefront/:companySlug/auth/config", getStorefrontAuthConfigController);
+  app.post("/storefront/:companySlug/chat/guest/otp", requestGuestChatOtpController);
+  app.post("/storefront/:companySlug/chat/guest/verify", verifyGuestChatOtpController);
   app.post("/storefront/:companySlug/auth/otp/request", requestStorefrontOtpController);
   app.post("/storefront/:companySlug/auth/otp/verify", verifyStorefrontOtpController);
   app.post("/storefront/:companySlug/auth/pin-login", storefrontPinLoginController);
@@ -134,13 +138,13 @@ export default (app) => {
   // middleware's own comment; no tenantMiddleware here, that one assumes CRM staff
   // auth shape).
   app.get("/storefront/me", requireStorefrontSession, getStorefrontMeController);
-  app.get("/storefront/me/chat", requireStorefrontSession, getStorefrontMyChatController);
-  app.post("/storefront/me/chat", requireStorefrontSession, sendStorefrontMyChatController);
-  app.get("/storefront/me/tickets/categories", requireStorefrontSession, getStorefrontTicketCategoriesController);
-  app.get("/storefront/me/tickets", requireStorefrontSession, getStorefrontMyTicketsController);
-  app.post("/storefront/me/tickets", requireStorefrontSession, createStorefrontMyTicketController);
-  app.get("/storefront/me/tickets/:id", requireStorefrontSession, getStorefrontMyTicketController);
-  app.post("/storefront/me/tickets/:id/messages", requireStorefrontSession, replyStorefrontMyTicketController);
+  app.get("/storefront/me/chat", requireStorefrontChatSession, getStorefrontMyChatController);
+  app.post("/storefront/me/chat", requireStorefrontChatSession, sendStorefrontMyChatController);
+  app.get("/storefront/me/tickets/categories", requireStorefrontChatSession, getStorefrontTicketCategoriesController);
+  app.get("/storefront/me/tickets", requireStorefrontChatSession, getStorefrontMyTicketsController);
+  app.post("/storefront/me/tickets", requireStorefrontChatSession, createStorefrontMyTicketController);
+  app.get("/storefront/me/tickets/:id", requireStorefrontChatSession, getStorefrontMyTicketController);
+  app.post("/storefront/me/tickets/:id/messages", requireStorefrontChatSession, replyStorefrontMyTicketController);
   app.get("/storefront/me/orders", requireStorefrontSession, getStorefrontMyOrdersController);
   app.get("/storefront/me/orders/:id", requireStorefrontSession, getStorefrontMyOrderController);
   app.get("/storefront/me/transactions", requireStorefrontSession, getStorefrontMyTransactionsController);

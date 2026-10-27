@@ -24,22 +24,27 @@ const EXPIRES_IN = "30d";
 // REVISED 23-10-2026: a storefront customer IS a contact_masters row (no
 // separate storefront_customers table - see migration 20261023100000's own
 // comment), so this now carries contact_master_id, not storefront_customer_id.
-export const createSessionToken = (contact, a_application_login_id) =>
+// `scope: "chat"` marks a guest session proven only by a mobile OTP (no account/login). It is honoured by
+// requireStorefrontChatSession alone (chat + support tickets); every other check rejects it, so a chat guest can
+// never act as a logged-in customer (checkout, orders, price lists, browsing an invite-only/private store).
+export const createSessionToken = (contact, a_application_login_id, scope) =>
   jwt.sign(
     {
       aud: AUDIENCE,
       contact_master_id: contact.id,
       company_masters_id: contact.company_masters_id,
       a_application_login_id,
+      ...(scope ? { scope } : {}),
     },
     JWT_TOKEN_SIGNATURE,
     { expiresIn: EXPIRES_IN }
   );
 
-export const verifySessionToken = (token) => {
+export const verifySessionToken = (token, { allowChatScope = false } = {}) => {
   try {
     const decoded = jwt.verify(token, JWT_TOKEN_SIGNATURE);
     if (decoded?.aud !== AUDIENCE) return null;
+    if (decoded.scope === "chat" && !allowChatScope) return null;
     return decoded;
   } catch {
     return null;
@@ -60,9 +65,9 @@ export const verifySessionToken = (token) => {
  * no cookie. The frontend BFF layer decides how it persists the token
  * (its own first-party cookie on its own domain, etc.) - this backend only
  * issues/verifies it. */
-export const requireStorefrontSession = async (req, res, next) => {
+const buildSessionMiddleware = (options) => async (req, res, next) => {
   const token = req.headers.authorization;
-  const session = token ? verifySessionToken(token) : null;
+  const session = token ? verifySessionToken(token, options) : null;
   if (!session) {
     return res.status(200).send({
       code: 403,
@@ -88,3 +93,7 @@ export const requireStorefrontSession = async (req, res, next) => {
   req.tenantDB = tenantDBInfo.sequelize;
   next();
 };
+
+export const requireStorefrontSession = buildSessionMiddleware({});
+/** Same, but also accepts a mobile-OTP guest (chat-scope) session - for chat and support tickets only. */
+export const requireStorefrontChatSession = buildSessionMiddleware({ allowChatScope: true });
