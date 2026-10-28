@@ -1,3 +1,5 @@
+import fs from "fs-extra";
+import path from "path";
 import { marketplaceAddonSettingsModel } from "../../models/marketplace/marketplaceAddonSettingsModel.js";
 import { applyLockDecisions, countAffectedAccounts, newlyDisabledMethods } from "./storefrontModeSwitch.js";
 import { resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
@@ -109,3 +111,98 @@ export const saveStorefrontSettings = async (req) => {
     return resError({ developer_msg: `saveStorefrontSettings failed: ${error}` });
   }
 };
+
+// ---------------------------------------------------------------- favicon (tab icon + web-app icon)
+// The file is stored beside the company's other images (media-folder/company_image/<company id>/, served at
+// /companyImg/) and only its relative path lives in config_json.favicon_path, like theme_accent_color.
+
+const FAVICON_NAME = /^\d+\/storefront-favicon-\d+\.(png|ico|jpg|webp)$/;
+
+/** Real type from the file's first bytes - never from the client-supplied name or mime type. */
+const faviconTypeFromBytes = (buf) => {
+  if (buf.length >= 8 && buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return "png";
+  if (buf.length >= 4 && buf.subarray(0, 4).equals(Buffer.from([0x00, 0x00, 0x01, 0x00]))) return "ico";
+  if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return "jpg";
+  if (buf.length >= 12 && buf.subarray(0, 4).toString("latin1") === "RIFF" && buf.subarray(8, 12).toString("latin1") === "WEBP") return "webp";
+  return null;
+};
+
+const readConfig = (row) => {
+  let config = row?.config_json;
+  if (typeof config === "string") {
+    try {
+      config = JSON.parse(config);
+    } catch {
+      config = {};
+    }
+  }
+  return config && typeof config === "object" ? config : {};
+};
+
+const companyImageDir = () => path.join(process.cwd(), "media-folder", "company_image");
+
+const removeFaviconFile = async (relativePath) => {
+  if (typeof relativePath !== "string" || !FAVICON_NAME.test(relativePath)) return; // never delete anything we did not write
+  await fs.remove(path.join(companyImageDir(), relativePath)).catch(() => {});
+};
+
+const saveFaviconPath = async (req, company_masters_id, favicon_path) => {
+  const model = marketplaceAddonSettingsModel(req.tenantDB);
+  const existing = await model.findOne({ where: { company_masters_id, addon_code: ADDON_CODE, isDelete: 0 } });
+  const previousConfig = readConfig(existing); // read BEFORE the update: the instance reflects the new value afterwards
+  const config = { ...previousConfig, favicon_path };
+  if (existing) await existing.update({ config_json: config, modified_date: new Date() });
+  else await model.create({ company_masters_id, addon_code: ADDON_CODE, config_json: config, modified_date: new Date() });
+  return previousConfig.favicon_path;
+};
+
+/** POST /storefront/favicon/upload - multipart, field "favicon". */
+export const uploadStorefrontFavicon = async (req) => {
+  const tempPath = req.file?.path;
+  try {
+    const company_masters_id = req.user?.companyId;
+    if (!req.tenantDB || !company_masters_id) return resBadRequest({ developer_msg: "Tenant DB or company context missing" });
+    if (!tempPath) return resBadRequest({ ack_msg: "Choose an image to upload." });
+
+    const head = Buffer.alloc(16);
+    const handle = await fs.open(tempPath, "r");
+    try {
+      await fs.read(handle, head, 0, 16, 0);
+    } finally {
+      await fs.close(handle);
+    }
+    const type = faviconTypeFromBytes(head);
+    if (!type) return resBadRequest({ ack_msg: "That file is not a valid PNG, ICO, JPG or WEBP image." });
+
+    const dir = path.join(companyImageDir(), String(company_masters_id));
+    await fs.mkdirp(dir);
+    const fileName = `storefront-favicon-${Date.now()}.${type}`;
+    await fs.move(tempPath, path.join(dir, fileName));
+
+    const favicon_path = `${company_masters_id}/${fileName}`;
+    const previous = await saveFaviconPath(req, company_masters_id, favicon_path);
+    if (previous !== favicon_path) await removeFaviconFile(previous);
+
+    return resSuccess({ data: { item: { favicon_path } } });
+  } catch (error) {
+    return resError({ developer_msg: `uploadStorefrontFavicon failed: ${error}` });
+  } finally {
+    if (tempPath) await fs.remove(tempPath).catch(() => {}); // already moved on success
+  }
+};
+
+/** POST /storefront/favicon/remove */
+export const removeStorefrontFavicon = async (req) => {
+  try {
+    const company_masters_id = req.user?.companyId;
+    if (!req.tenantDB || !company_masters_id) return resBadRequest({ developer_msg: "Tenant DB or company context missing" });
+
+    const previous = await saveFaviconPath(req, company_masters_id, "");
+    await removeFaviconFile(previous);
+    return resSuccess({ data: { item: { favicon_path: "" } } });
+  } catch (error) {
+    return resError({ developer_msg: `removeStorefrontFavicon failed: ${error}` });
+  }
+};
+
+export { FAVICON_NAME };

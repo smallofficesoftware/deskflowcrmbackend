@@ -1014,3 +1014,28 @@ export const formBuilderUpload = multer({
     }
   },
 }).any();
+
+// Storefront favicon (ecommerce addon settings). Lands in a temp folder that is NOT served statically;
+// the service verifies the real file type from its bytes, then moves it under company_image/<company id>/.
+const storefrontFaviconStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const storagePath = path.join(process.cwd(), "media-folder/storefront_favicon_temp");
+    fs.ensureDirSync(storagePath);
+    cb(null, storagePath);
+  },
+  filename: function (req, file, cb) {
+    cb(null, `${Date.now()}-${Math.round(Math.random() * 1e6)}.upload`);
+  },
+});
+
+export const storefrontFaviconUpload = multer({
+  storage: storefrontFaviconStorage,
+  limits: { fileSize: 256 * 1024, files: 1 },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (![".png", ".ico", ".jpg", ".jpeg", ".webp"].includes(ext)) {
+      return cb(new Error("Favicon must be a PNG, ICO, JPG or WEBP image."));
+    }
+    cb(null, true);
+  },
+}).single("favicon");

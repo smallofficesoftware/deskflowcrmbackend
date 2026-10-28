@@ -12,6 +12,7 @@ import { resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions
 import { resolveCompanyBySlug } from "./storefrontCompanyResolver.js";
 import { getStorefrontAuthSettings } from "./storefrontAuthSettings.js";
 import { verifySessionToken } from "./storefrontSession.js";
+import { FAVICON_NAME } from "./storefrontSettingsService.js";
 
 // PUBLIC catalog reads (plans/2026-10-15-ecommerce-b2b-b2c-plan.txt, P2/4.2) - no
 // requireAddon() gate on these specifically, per 4.2's own text: "Middleware
@@ -161,6 +162,10 @@ export const getStorefrontCompanyInfo = async (req) => {
     // Strict hex only - the storefront injects this into a <style> block.
     const accent = config?.theme_accent_color;
     company.theme_accent_color = typeof accent === "string" && /^#[0-9a-fA-F]{6}$/.test(accent) ? accent : "#ff0000";
+
+    // Tab/web-app icon uploaded in the CRM settings. Only a path of exactly the shape the upload writes is
+    // ever returned, so a hand-edited config_json cannot point the storefront at an arbitrary file.
+    company.favicon = typeof config?.favicon_path === "string" && FAVICON_NAME.test(config.favicon_path) ? config.favicon_path : null;
 
     // Verified custom domain (Q11) - the storefront emits it as the canonical URL.
     const domainRow = await storefrontDomainModel.findOne({

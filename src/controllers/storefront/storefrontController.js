@@ -1,5 +1,5 @@
 import { getStorefrontDomain, resolveStorefrontDomain, saveStorefrontDomain, verifyStorefrontDomain } from "../../services/storefront/storefrontDomainService.js";
-import { getStorefrontSettings, saveStorefrontSettings } from "../../services/storefront/storefrontSettingsService.js";
+import { getStorefrontSettings, removeStorefrontFavicon, saveStorefrontSettings, uploadStorefrontFavicon } from "../../services/storefront/storefrontSettingsService.js";
 import { getStorefrontThemes, selectStorefrontTheme } from "../../services/storefront/storefrontThemeService.js";
 import { getLockedAccounts, unlockStorefrontAccount } from "../../services/storefront/storefrontModeSwitch.js";
 import callServiceMethod from "../baseController.js";
@@ -42,4 +42,12 @@ export const verifyStorefrontDomainController = async (req, res) => {
 
 export const resolveStorefrontDomainController = async (req, res) => {
   await callServiceMethod(req, res, resolveStorefrontDomain(req), "resolveStorefrontDomain");
+};
+
+export const uploadStorefrontFaviconController = async (req, res) => {
+  await callServiceMethod(req, res, uploadStorefrontFavicon(req), "uploadStorefrontFavicon");
+};
+
+export const removeStorefrontFaviconController = async (req, res) => {
+  await callServiceMethod(req, res, removeStorefrontFavicon(req), "removeStorefrontFavicon");
 };

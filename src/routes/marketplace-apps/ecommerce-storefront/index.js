@@ -8,6 +8,8 @@ import {
 } from "../../../controllers/storefront/storefrontCatalogController.js";
 import {
   getLockedAccountsController,
+  removeStorefrontFaviconController,
+  uploadStorefrontFaviconController,
   getStorefrontDomainController,
   resolveStorefrontDomainController,
   saveStorefrontDomainController,
@@ -57,6 +59,8 @@ import {
   verifyStorefrontPaymentController,
 } from "../../../controllers/storefront/storefrontPaymentController.js";
 import { authenticateToken } from "../../../middlewares/auth.js";
+import { storefrontFaviconUpload } from "../../../middlewares/multer.js";
+import { resError } from "../../../utils/sharedFunctions.js";
 import { requireAddon } from "../../../middlewares/requireAddon.js";
 import { requireStorefrontChatSession, requireStorefrontSession } from "../../../services/storefront/storefrontSession.js";
 import { tenantMiddleware } from "../../../middlewares/tenantMiddleware.js";
@@ -71,6 +75,22 @@ import { tenantMiddleware } from "../../../middlewares/tenantMiddleware.js";
 export default (app) => {
   app.post("/storefront/settings/get", authenticateToken, tenantMiddleware, requireAddon("ecommerce-storefront"), getStorefrontSettingsController);
   app.post("/storefront/settings/save", authenticateToken, tenantMiddleware, requireAddon("ecommerce-storefront"), saveStorefrontSettingsController);
+  // multer runs after the auth/addon gates (so an anonymous caller can never write a file) and its errors
+  // (wrong type, over 256 KB) are returned as the usual JSON ack instead of an HTML error page.
+  app.post(
+    "/storefront/favicon/upload",
+    authenticateToken,
+    tenantMiddleware,
+    requireAddon("ecommerce-storefront"),
+    (req, res, next) =>
+      storefrontFaviconUpload(req, res, (err) => {
+        if (!err) return next();
+        const tooBig = err.code === "LIMIT_FILE_SIZE";
+        return res.status(200).send(resError({ ack_msg: tooBig ? "Favicon must be 256 KB or smaller." : err.message, developer_msg: String(err) }));
+      }),
+    uploadStorefrontFaviconController
+  );
+  app.post("/storefront/favicon/remove", authenticateToken, tenantMiddleware, requireAddon("ecommerce-storefront"), removeStorefrontFaviconController);
   app.post("/storefront/themes/get", authenticateToken, tenantMiddleware, requireAddon("ecommerce-storefront"), getStorefrontThemesController);
   app.post("/storefront/theme/select", authenticateToken, tenantMiddleware, requireAddon("ecommerce-storefront"), selectStorefrontThemeController);
   app.post("/storefront/domain/get", authenticateToken, tenantMiddleware, requireAddon("ecommerce-storefront"), getStorefrontDomainController);
