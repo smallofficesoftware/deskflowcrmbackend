@@ -121,7 +121,8 @@ export const statusWiseReport = async (req) => {
         };
 
         // === Helper: fetch task counts grouped by status ===
-        const getTaskCounts = async (isSupportTicket) => {
+        // column: 'status' for internal statuses, 'external_status' for external ones
+        const getTaskCounts = async (isSupportTicket, column = 'status') => {
             return await TaskManagementModel.findAll({
                 where: {
                     ...taskWhere,
@@ -130,13 +131,13 @@ export const statusWiseReport = async (req) => {
                     created_date_time: {
                         [Op.between]: [`${startDate} 00:00:00`, `${endDate} 23:59:59`]
                     },
-                    status: { [Op.ne]: null }
+                    [column]: { [Op.ne]: null }
                 },
                 attributes: [
-                    'status',
+                    [Sequelize.col(column), 'status'],
                     [Sequelize.fn('COUNT', Sequelize.col('id')), 'count']
                 ],
-                group: ['status'],
+                group: [column],
                 raw: true
             });
         };
@@ -187,15 +188,17 @@ export const statusWiseReport = async (req) => {
         const internalIds = internalStatuses.map(s => s.id);
         const externalIds = externalStatuses.map(s => s.id);
 
-        const [supportRows, normalRows] = await Promise.all([
-            getTaskCounts(1),
-            getTaskCounts(0),
+        const [supportRows, normalRows, extSupportRows, extNormalRows] = await Promise.all([
+            getTaskCounts(1, 'status'),
+            getTaskCounts(0, 'status'),
+            getTaskCounts(1, 'external_status'),
+            getTaskCounts(0, 'external_status'),
         ]);
 
         const internalSupportMap = CountMap(supportRows, internalIds);
         const internalNormalMap = CountMap(normalRows, internalIds);
-        const externalSupportMap = CountMap(supportRows, externalIds);
-        const externalNormalMap = CountMap(normalRows, externalIds);
+        const externalSupportMap = CountMap(extSupportRows, externalIds);
+        const externalNormalMap = CountMap(extNormalRows, externalIds);
 
         return resSuccess({
             data: {
