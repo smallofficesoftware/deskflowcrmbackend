@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Auto-deploy script triggered by the GitHub webhook on push to `dev`.
-# Usage: deploy-dev.sh <backend|frontend|adminpanel>
+# Usage: deploy-dev.sh <backend|frontend|adminpanel|storefront>
 #
 # EDIT THESE to match the actual paths / pm2 process names on this server:
 BACKEND_DIR="${BACKEND_DIR:-/var/www/demobackend.smalloffice.in}"
 FRONTEND_DIR="${FRONTEND_DIR:-/var/www/demo.smalloffice.in}"
 ADMINPANEL_DIR="${ADMINPANEL_DIR:-/var/www/demosys.smalloffice.in}"
+STOREFRONT_DIR="${STOREFRONT_DIR:-/var/www/demo.deskflowshop.com}"
 PM2_BACKEND_NAME="${PM2_BACKEND_NAME:-deskflowcrm-backend}"
 PM2_ADMINPANEL_BACKEND_NAME="${PM2_ADMINPANEL_BACKEND_NAME:-deskflowadminpanel-backend}"
 BACKEND_NODE_ENV="${BACKEND_NODE_ENV:-DEMO}"
@@ -102,6 +103,23 @@ deploy_adminpanel() {
   log "=== Adminpanel deploy done ==="
 }
 
+deploy_storefront() {
+  # The storefront repo carries its own server-side deploy script (reset to
+  # origin/dev, npm ci if the lockfile changed, pm2 delete+start with the
+  # ecosystem env). Its build is committed from a developer machine, so
+  # nothing is built here. It resets the checkout first, so run the
+  # script that is already on disk once to get the latest copy of itself.
+  log "=== Storefront deploy start ==="
+  cd "$STOREFRONT_DIR" || { log "ERROR: cannot cd to $STOREFRONT_DIR"; return 1; }
+  git fetch origin dev >> "$LOG_FILE" 2>&1
+  git reset --hard origin/dev >> "$LOG_FILE" 2>&1
+  bash deploy/deploy-dev.sh >> "$LOG_FILE" 2>&1
+  if [ $? -ne 0 ]; then
+    log "!!! STOREFRONT DEPLOY FAILED, see above in this log !!!"
+  fi
+  log "=== Storefront deploy done ==="
+}
+
 case "$1" in
   backend)
     deploy_backend
@@ -112,8 +130,11 @@ case "$1" in
   adminpanel)
     deploy_adminpanel
     ;;
+  storefront)
+    deploy_storefront
+    ;;
   *)
-    log "ERROR: unknown target '$1' (expected backend|frontend|adminpanel)"
+    log "ERROR: unknown target '$1' (expected backend|frontend|adminpanel|storefront)"
     exit 1
     ;;
 esac
