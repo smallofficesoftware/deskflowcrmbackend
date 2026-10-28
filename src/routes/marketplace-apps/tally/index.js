@@ -6,6 +6,8 @@ import { tallyListVoucherTypeMappingsProvider, tallySaveVoucherTypeMappingProvid
 import {
   tallyConnectorDownloadProvider,
   tallyConnectorInfoProvider,
+  tallyConnectorUpdateDownloadProvider,
+  tallyConnectorUpdateInfoProvider,
   tallyGetNextJobProvider,
   tallyIssueConnectorKeyProvider,
   tallyPostJobResultProvider,
@@ -72,6 +74,9 @@ export default (app) => {
   // addon's own gate in place of requireAddon, since there is no req.user.
   app.post("/tally/connector/jobs/next", tenantMiddleware, checkConnectorKey("tally"), tallyGetNextJobProvider);
   app.post("/tally/connector/jobs/result", tenantMiddleware, checkConnectorKey("tally"), tallyPostJobResultProvider);
+  // Self-update: the installed connector asks for the latest version and downloads it (connector key, no user session).
+  app.post("/tally/connector/version", tenantMiddleware, checkConnectorKey("tally"), tallyConnectorUpdateInfoProvider);
+  app.post("/tally/connector/update", tenantMiddleware, checkConnectorKey("tally"), tallyConnectorUpdateDownloadProvider);
 
   // Connector-key-gated mirror of the mapping endpoints above (Q6: "Connector
   // local UI and CRM web UI both read/write tally_mappings through the same

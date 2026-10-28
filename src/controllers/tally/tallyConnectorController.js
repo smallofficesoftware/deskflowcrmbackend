@@ -1,4 +1,4 @@
-import { getConnectorInfo, streamConnector } from "../../services/tally/tallyConnectorDownloadService.js";
+import { getConnectorInfo, getConnectorUpdateInfo, streamConnector, streamConnectorUpdate } from "../../services/tally/tallyConnectorDownloadService.js";
 import { getNextJob, issueConnectorKey, postJobResult, revokeConnectorKey } from "../../services/tally/tallyConnectorService.js";
 import callServiceMethod from "../baseController.js";
 
@@ -24,3 +24,5 @@ export const tallyIssueConnectorKeyProvider = async (req, res) => {
 export const tallyRevokeConnectorKeyProvider = async (req, res) => {
   await callServiceMethod(req, res, revokeConnectorKey(req), "tallyRevokeConnectorKey");
 };
+export const tallyConnectorUpdateInfoProvider = (req, res) => callServiceMethod(req, res, getConnectorUpdateInfo(req), "getConnectorUpdateInfo");
+export const tallyConnectorUpdateDownloadProvider = (req, res) => streamConnectorUpdate(req, res);
