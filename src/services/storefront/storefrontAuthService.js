@@ -14,6 +14,10 @@ import { isMethodLocked } from "./storefrontModeSwitch.js";
 import { resolveCompanyBySlug } from "./storefrontCompanyResolver.js";
 import { normalizeToTenDigit, resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
 
+// Every contact created by the storefront (signup, login, guest chat, checkout) carries the same source marker
+// the old online-store module uses for its contacts. An existing CRM contact that is merely upgraded keeps its own source.
+const STOREFRONT_SOURCE_TYPE_ID = -18;
+
 // Customer accounts for the ecommerce storefront (plans/2026-10-15-ecommerce-
 // b2b-b2c-plan.txt, P3 - Q3's six independently-toggleable auth methods +
 // Q3's invite-only signup restriction).
@@ -81,7 +85,14 @@ const hasStorefrontAccount = (contact) => !!contact?.storefront_signup_method;
  * enabled, regardless of this flag. Only consulted before FIRST establishing
  * one. Requires a pre-existing CRM contact row with storefront_invited=1 -
  * there is nothing to "invite" if no such contact exists at all. */
-const canSignUp = (settings, contact) => !settings.auth_invite_only || !!contact?.storefront_invited;
+const canSignUp = (settings, contact) =>
+  (settings.signup_enabled !== false && !settings.auth_invite_only) || !!contact?.storefront_invited;
+
+/** Message for a visitor who may not sign up: signups switched off, or invite-only mode. */
+const signupBlockedMessage = (settings) =>
+  settings.signup_enabled === false
+    ? "New registrations are closed for this store. Contact the seller for access."
+    : "This store is invite-only. Contact the seller for access.";
 
 /** Creates a brand-new contact_masters row for a storefront-only signup
  * (mirrors the old online-store module's own create-shape - person_name
@@ -97,6 +108,7 @@ async function createOrUpgradeContact(tenantDB, { company_masters_id, channel, l
     company_masters_id,
     person_name: "Guest",
     contact_status: -1,
+    source_type_id: STOREFRONT_SOURCE_TYPE_ID,
     storefront_signup_method: signupMethod,
     ...extra,
   };
@@ -170,7 +182,7 @@ export const requestStorefrontOtp = async (req) => {
 
     const contact = await findContact(resolved.tenantDB, resolved.company_masters_id, channel, lookupValue);
     if (!hasStorefrontAccount(contact) && !canSignUp(settings, contact)) {
-      return resError({ ack_msg: "This store is invite-only. Contact the seller for access." });
+      return resError({ ack_msg: signupBlockedMessage(settings) });
     }
     if (contact && isMethodLocked(contact, channel === "mobile" ? "otp_mobile" : "otp_email")) {
       return resError({ ack_msg: "This login method has been disabled for your account. Contact the seller for help." });
@@ -216,7 +228,7 @@ export const verifyStorefrontOtp = async (req) => {
 
     let contact = await findContact(resolved.tenantDB, resolved.company_masters_id, channel, lookupValue);
     if (!hasStorefrontAccount(contact) && !canSignUp(settings, contact)) {
-      return resError({ ack_msg: "This store is invite-only. Contact the seller for access." });
+      return resError({ ack_msg: signupBlockedMessage(settings) });
     }
 
     const verifiedField = channel === "mobile" ? "storefront_is_verified_mobile" : "storefront_is_verified_email";
@@ -290,6 +302,7 @@ export const verifyGuestChatOtp = async (req) => {
         person_name: String(name ?? "").replace(/\s+/g, " ").trim().slice(0, 100) || "Guest",
         mobile_number: lookupValue,
         contact_status: -1,
+        source_type_id: STOREFRONT_SOURCE_TYPE_ID,
         storefront_is_verified_mobile: 1,
       });
     }
@@ -371,7 +384,7 @@ export const storefrontLightLogin = async (req) => {
 
     let contact = await findContact(resolved.tenantDB, resolved.company_masters_id, "mobile", lookupValue);
     if (!hasStorefrontAccount(contact) && !canSignUp(settings, contact)) {
-      return resError({ ack_msg: "This store is invite-only. Contact the seller for access." });
+      return resError({ ack_msg: signupBlockedMessage(settings) });
     }
     if (contact && isMethodLocked(contact, "light")) {
       return resError({ ack_msg: "This login method has been disabled for your account. Contact the seller for help." });
@@ -452,7 +465,7 @@ export const getStorefrontMe = async (req) => {
 
 // Free text on contact_masters - safe for a storefront customer to write
 // directly.
-const EDITABLE_PROFILE_FIELDS = ["person_name", "address", "shipping_address", "pincode"];
+const EDITABLE_PROFILE_FIELDS = ["person_name", "company_name", "address", "shipping_address", "pincode"];
 
 // country/state/city/area are int(11) foreign keys despite the Sequelize
 // model's STRING declaration (confirmed via SHOW COLUMNS) - into the real,
@@ -488,6 +501,23 @@ export const updateStorefrontMe = async (req) => {
       updates[field] = String(body[field] ?? "").trim();
     }
     if (updates.person_name === "") return resBadRequest({ developer_msg: "person_name cannot be empty" });
+
+    // Contact details the customer did not log in with. The identifier they verified (mobile or email) is never
+    // changed here - only a still-empty field can be filled in, and never with a value another contact already
+    // owns (that would silently link two people's accounts). Filled this way it stays unverified.
+    for (const [field, channel] of [["mobile_number", "mobile"], ["email_id", "email"]]) {
+      if (body[field] === undefined) continue;
+      const raw = String(body[field] ?? "").trim();
+      if (!raw) continue;
+      if (String(contact[field] ?? "").trim()) continue;
+      const value = lookupValueFor(channel, raw);
+      if (!value) return resBadRequest({ ack_msg: channel === "mobile" ? "Enter a valid mobile number." : "Enter a valid email address." });
+      const taken = await findContact(req.tenantDB, company_masters_id, channel, value);
+      if (taken && taken.id !== contact.id) {
+        return resError({ ack_msg: channel === "mobile" ? "That mobile number belongs to another account." : "That email belongs to another account." });
+      }
+      updates[field] = value;
+    }
 
     for (const [field, model] of Object.entries(LOCATION_FIELD_MODELS)) {
       if (body[field] === undefined) continue;
