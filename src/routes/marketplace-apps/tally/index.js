@@ -4,6 +4,7 @@ import { tallyListGstLedgerMappingsProvider, tallySaveGstLedgerMappingProvider }
 import { tallyListProductMappingsProvider, tallySaveProductMappingProvider } from "../../../controllers/tally/tallyMappingController.js";
 import { tallyListVoucherTypeMappingsProvider, tallySaveVoucherTypeMappingProvider } from "../../../controllers/tally/tallyVoucherTypeMappingController.js";
 import { tallyGetNextJobProvider, tallyIssueConnectorKeyProvider, tallyPostJobResultProvider, tallyRevokeConnectorKeyProvider } from "../../../controllers/tally/tallyConnectorController.js";
+import { tallyPullStatusProvider, tallyRequestPullProvider, tallySyncLogProvider } from "../../../controllers/tally/tallySyncController.js";
 import { authenticateToken } from "../../../middlewares/auth.js";
 import { checkConnectorKey } from "../../../middlewares/checkConnectorKey.js";
 import { requireAddon } from "../../../middlewares/requireAddon.js";
@@ -30,6 +31,12 @@ export default (app) => {
   app.post("/tally/mappings/voucher-types/save", authenticateToken, tenantMiddleware, requireAddon("tally"), tallySaveVoucherTypeMappingProvider);
   app.post("/tally/mappings/gst-ledgers/get", authenticateToken, tenantMiddleware, requireAddon("tally"), tallyListGstLedgerMappingsProvider);
   app.post("/tally/mappings/gst-ledgers/save", authenticateToken, tenantMiddleware, requireAddon("tally"), tallySaveGstLedgerMappingProvider);
+
+  // Pull requests + sync log for the settings screen - user-session gated. The
+  // jobs themselves are picked up by the connector via the routes further down.
+  app.post("/tally/sync/request-pull", authenticateToken, tenantMiddleware, requireAddon("tally"), tallyRequestPullProvider);
+  app.post("/tally/sync/pull-status", authenticateToken, tenantMiddleware, requireAddon("tally"), tallyPullStatusProvider);
+  app.post("/tally/sync/log", authenticateToken, tenantMiddleware, requireAddon("tally"), tallySyncLogProvider);
 
   // Connector key lifecycle - user-session gated (the CRM web app's Tally
   // settings screen), NOT connector-key gated.
