@@ -1,6 +1,7 @@
 import moment from "moment";
 import { QueryTypes } from "sequelize";
 import { contactMessageHistory } from "../../models/activities/contactMessageHistoryModel.js";
+import { contactModel } from "../../models/activities/contactModel.js";
 import emitToCompany from "../1socketIOServices/emitToCompany.js";
 import { resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { getStorefrontAuthSettings } from "./storefrontAuthSettings.js";
@@ -24,6 +25,17 @@ const cleanText = (value) => String(value ?? "").replace(/\s+/g, " ").trim().sli
 const shape = (r) => ({ id: r.id, from: Number(r.message_side) === SIDE_CUSTOMER ? "you" : "store", text: r.description || "", at: r.created_date_time });
 
 const chatEnabled = async (db, companyId) => Boolean((await getStorefrontAuthSettings(db, companyId)).chat_enabled);
+
+// The contact list is ordered by contact_masters.modified_date DESC, so a chat message (either side) bumps
+// that column - the contact then moves to the top, like any other new activity on it. Best effort: a failed
+// bump must never fail the message itself.
+const touchContact = async (db, companyId, contactId) => {
+  try {
+    await contactModel(db).update({ modified_date: moment().format("YYYY-MM-DD HH:mm:ss") }, { where: { id: contactId, company_masters_id: companyId } });
+  } catch (e) {
+    console.error("storefront chat: could not touch contact", e);
+  }
+};
 
 // ---------------------------------------------------------------- customer side (storefront session)
 
@@ -77,6 +89,7 @@ export const sendMyChat = async (req) => {
       isDelete: 0,
       isActive: 1,
     });
+    await touchContact(db, company_masters_id, contact_master_id);
 
     try {
       emitToCompany(req.app.get("io"), company_masters_id, "storefront-chat-message", { contact_id: contact_master_id });
@@ -177,6 +190,7 @@ export const replyToChat = async (req) => {
       isDelete: 0,
       isActive: 1,
     });
+    await touchContact(req.tenantDB, companyId, contactId);
     return resSuccess({ data: { item: { id: row.id } } });
   } catch (error) {
     return resError({ developer_msg: `replyToChat failed: ${error}` });
