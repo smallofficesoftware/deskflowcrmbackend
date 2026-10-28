@@ -19,6 +19,8 @@ const DEFAULTS = {
   auth_email_otp_enabled: false,
   auth_light_mode_enabled: false,
   auth_invite_only: false,
+  // false = brand-new customers cannot sign up (only existing storefront accounts and contacts the team invited can log in).
+  signup_enabled: true,
   guest_checkout_enabled: true,
   // false = anonymous visitors can only reach /account (login); every other
   // storefront page redirects there until they have a valid session.
