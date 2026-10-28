@@ -43,6 +43,7 @@ import { generateTaskDueListPdf } from "../pdfmeEngine/taskDueListGenerate.js";
 import { applyTemplateOptions } from "../pdfmeEngine/templates.js";
 import { getAssignedPersonDetails } from "../pdfmeEngine/assignedPerson.js";
 import { logAuditEvent } from "./auditLogServices.js";
+import { getPrimaryImagePaths } from "../product_settings/primaryProductImage.js";
 
 function formatAccountTransactionDateAndTime(dateStr) {
   const d = new Date(dateStr);
@@ -1390,8 +1391,10 @@ const renderTemplateAsPdf = async ({ req, company_masters_id, draftTemplate, car
         attributes: ["id", "product_img"],
         raw: true,
       });
+      // The primary photo in product_images (older images were copied there by the create-product-images migration).
+      const primaryImagePaths = await getPrimaryImagePaths(req.tenantDB, productIds);
       const productMap = {};
-      products.forEach((p) => { productMap[p.id] = p; });
+      products.forEach((p) => { productMap[p.id] = { ...p, product_img: primaryImagePaths.get(p.id) }; });
 
       cart = cartRow.dataValues;
       items = cartItems.map((item) => ({

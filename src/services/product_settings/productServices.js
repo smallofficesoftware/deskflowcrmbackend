@@ -33,6 +33,7 @@ import { getCompanyByLoginId } from "../commonServices.js";
 import { normalizeSellerIds, productSellerFilter } from "./productSellerGuard.js";
 import { stockCartItemConditions } from "./stockCondition.js";
 import { findProductUsage } from "./productUsage.js";
+import { getPrimaryImagePaths } from "./primaryProductImage.js";
 export const getAllProduct = async (req) => {
   try {
     let { ul, ll, selectedDates, productId } = req.body;
@@ -223,6 +224,7 @@ export const getAllProduct = async (req) => {
     //   { id: "9", type: "dispatch" },
     // ];
     const net_rate_override_cart_type = [4, 5, 8, 7]
+    const primaryImagePaths = await getPrimaryImagePaths(req.tenantDB, resultProduct.map((p) => p.dataValues.id));
     const productsWithStock = await Promise.all(
       resultProduct.map(async (product) => {
         let calOpenQty = 0;
@@ -330,10 +332,13 @@ export const getAllProduct = async (req) => {
           rate = product.dataValues.purchase_rate;
         }
 
+        // The primary photo in product_images (older images were copied there by the create-product-images migration).
+        const imagePath = primaryImagePaths.get(product.dataValues.id);
+
         return {
           ...product.dataValues,
-          product_img: product.dataValues.product_img
-            ? PRODUCT_IMG_LINK_EXTENDED + product.dataValues.product_img
+          product_img: imagePath
+            ? PRODUCT_IMG_LINK_EXTENDED + imagePath
             : "",
           closing_qty: OpenQty,
           last_item_net_rate: lastItemNetRate,

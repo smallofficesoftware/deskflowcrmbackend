@@ -78,6 +78,7 @@ import {
 } from "../commonServices.js";
 import { emitAutomationEvent, automationBefore } from "../automation/emit.js";
 import { assertProductsAllowed } from "../product_settings/productSellerGuard.js";
+import { getPrimaryImagePaths } from "../product_settings/primaryProductImage.js";
 import { stockCartItemConditions } from "../product_settings/stockCondition.js";
 import { getAssignedPersonDetails } from "../pdfmeEngine/assignedPerson.js";
 
@@ -1374,6 +1375,10 @@ export const orderById = async (req, res) => {
         }));
       }
 
+      const primaryImagePaths = await getPrimaryImagePaths(
+        req.tenantDB,
+        itemsWithPendingQty.map((i) => i.item_product_id)
+      );
       itemsWithPendingQty = await Promise.all(
         itemsWithPendingQty.map(async (item) => {
           const productModels = productModel(req.tenantDB)
@@ -1384,9 +1389,11 @@ export const orderById = async (req, res) => {
             attributes: ["product_img", "is_serial_number"]
           });
 
+          // The primary photo in product_images (older images were copied there by the create-product-images migration).
           let imageUrl = "";
-          if (productImage.length > 0 && productImage[0].product_img) {
-            imageUrl = PRODUCT_IMG_LINK_EXTENDED + productImage[0].product_img;
+          const imagePath = primaryImagePaths.get(item.item_product_id);
+          if (imagePath) {
+            imageUrl = PRODUCT_IMG_LINK_EXTENDED + imagePath;
           }
 
           const serialNumberData = await CATSerialNumberModal.findAll({
@@ -1716,6 +1723,10 @@ export const orderByMultipleId = async (req, res) => {
         const CATSerialNumberModal = cartSerialNumberModel(req.tenantDB);
 
         // ✅ Add product image
+        const primaryImagePaths = await getPrimaryImagePaths(
+          req.tenantDB,
+          itemsWithPendingQty.map((i) => i.item_product_id)
+        );
         itemsWithPendingQty = await Promise.all(
           itemsWithPendingQty.map(async (item) => {
             const productModels = productModel(req.tenantDB);
@@ -1739,9 +1750,11 @@ export const orderByMultipleId = async (req, res) => {
               (sn) => sn.serial_numbers
             );
 
+            // The primary photo in product_images (older images were copied there by the create-product-images migration).
             let imageUrl = "";
-            if (productImage?.product_img) {
-              imageUrl = PRODUCT_IMG_LINK_EXTENDED + productImage.product_img;
+            const imagePath = primaryImagePaths.get(item.item_product_id);
+            if (imagePath) {
+              imageUrl = PRODUCT_IMG_LINK_EXTENDED + imagePath;
             }
 
             return {
@@ -4341,12 +4354,15 @@ const generateSingleOrderPdf = async (req, res) => {
       raw: true,
     });
 
+    // The primary photo in product_images (older images were copied there by the create-product-images migration).
+    const primaryImagePaths = await getPrimaryImagePaths(req.tenantDB, productIds);
     const productMap = {};
     products.forEach(p => {
+      const imagePath = primaryImagePaths.get(p.id);
       productMap[p.id] = {
         ...p,
-        product_img: p.product_img
-          ? PRODUCT_IMG_LINK_EXTENDED + p.product_img
+        product_img: imagePath
+          ? PRODUCT_IMG_LINK_EXTENDED + imagePath
           : null
       };
     });

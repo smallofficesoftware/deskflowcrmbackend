@@ -11,6 +11,7 @@ import { productModel } from "../../models/product_settings/productModel.js";
 import { PRODUCT_BOM_IMG_LINK_EXTENDED, PRODUCT_IMG_LINK_EXTENDED } from "../../utils/appConstants.js";
 import { resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { getCompanyByLoginId } from "../commonServices.js";
+import { getPrimaryImagePaths } from "./primaryProductImage.js";
 
 
 export const createBomDetails = async (req) => {
@@ -1078,9 +1079,9 @@ export const allBomDataGet = async (req) => {
             raw: true
         });
 
-        if (resultOfProduct.product_img) {
-            resultOfProduct.product_img = PRODUCT_IMG_LINK_EXTENDED + resultOfProduct.product_img;
-        }
+        // The primary photo in product_images (older images were copied there by the create-product-images migration).
+        const bomImagePath = (await getPrimaryImagePaths(req.tenantDB, [Number(product_id)])).get(Number(product_id));
+        resultOfProduct.product_img = bomImagePath ? PRODUCT_IMG_LINK_EXTENDED + bomImagePath : null;
 
         const bomVsProcessListsModelInstance = bomVsProcessListsModel(req.tenantDB)
         const resultOfProcessList = await bomVsProcessListsModelInstance.findAll({
