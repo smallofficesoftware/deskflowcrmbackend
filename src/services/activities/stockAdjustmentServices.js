@@ -138,9 +138,13 @@ export const inserStockAdjustment = async (req) => {
             return resError({ ack_msg: "Stock adjustment type not find" });
         }
         // Taking stock out (type 3) is checked as strictly as the company's
-        // stock switches ask; transfers and additions are never checked.
+        // stock switches ask; additions are never checked. A transfer (type 1)
+        // moves stock out of one warehouse, so it is always checked against the
+        // source warehouse whatever the switches say.
         let response = { status: true };
-        if (stockDetail.stock_adjustment_type == 3 && !stockDetail.skip_stock_check) {
+        if (stockDetail.stock_adjustment_type == 1 && !stockDetail.skip_stock_check) {
+            response = await checkWarehouseWiseStock(req, stockItem);
+        } else if (stockDetail.stock_adjustment_type == 3 && !stockDetail.skip_stock_check) {
             const mode = await getStockCheckMode(a_application_login_id);
             if (mode === 2) response = await checkWarehouseWiseStock(req, stockItem);
             else if (mode === 1) response = await checkStockAvailability(req, stockDetail, stockItem);
