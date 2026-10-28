@@ -356,7 +356,7 @@ const companyPlaneCreateWayJoin = async ({
 
 export const getByIdTeam = async (req) => {
   try {
-    const { a_application_login_id, searchTerm } = req.body;
+    const { a_application_login_id, searchTerm, include_inactive } = req.body;
 
     const findAllApplicationLogin = await getCompanyByLoginId(
       a_application_login_id
@@ -409,11 +409,14 @@ export const getByIdTeam = async (req) => {
       }
     }
 
+    // Deactivated members stay out of assignment lists until reactivated;
+    // screens that manage the team itself pass include_inactive to keep them.
     const companyVsApplicationLoginResult =
       await companyVsApplicationLoginModel.findAll({
         where: {
           isDelete: 0,
           company_masters_id: { [Op.in]: targetCompanyIds },
+          ...(include_inactive ? {} : { isActive: 1 }),
         },
       });
 

@@ -1,5 +1,6 @@
 import { deativateTeamList, invitationKeyJoin, leaveCompany, myTeamList, myTeamListChainWise, planVsStatistics, removeTeamList } from "../../controllers/company_setup/companyVsApplicationLoginController.js";
 import { companyTeamList } from "../../controllers/company_setup/companyTeamListController.js";
+import { teamReassign } from "../../controllers/company_setup/teamReassignController.js";
 import { authenticateToken } from "../../middlewares/auth.js";
 import { tenantMiddleware } from "../../middlewares/tenantMiddleware.js";
 
@@ -10,6 +11,7 @@ export default (app) => {
   app.post("/my-team-chain-wise", authenticateToken, myTeamListChainWise);
   app.post("/my-team-remove", authenticateToken, removeTeamList);
   app.post("/my-team-deactive", authenticateToken, deativateTeamList);
+  app.post("/my-team-reassign", authenticateToken, tenantMiddleware, teamReassign);
   app.post("/company-leave", authenticateToken, leaveCompany);
   app.post("/get-plan-statistics", authenticateToken, tenantMiddleware, planVsStatistics);
 
