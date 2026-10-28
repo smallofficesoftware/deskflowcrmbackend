@@ -3,8 +3,21 @@ import { tallyListContactMappingsProvider, tallySaveContactMappingProvider } fro
 import { tallyListGstLedgerMappingsProvider, tallySaveGstLedgerMappingProvider } from "../../../controllers/tally/tallyGstLedgerMappingController.js";
 import { tallyListProductMappingsProvider, tallySaveProductMappingProvider } from "../../../controllers/tally/tallyMappingController.js";
 import { tallyListVoucherTypeMappingsProvider, tallySaveVoucherTypeMappingProvider } from "../../../controllers/tally/tallyVoucherTypeMappingController.js";
-import { tallyGetNextJobProvider, tallyIssueConnectorKeyProvider, tallyPostJobResultProvider, tallyRevokeConnectorKeyProvider } from "../../../controllers/tally/tallyConnectorController.js";
+import {
+  tallyConnectorDownloadProvider,
+  tallyConnectorInfoProvider,
+  tallyGetNextJobProvider,
+  tallyIssueConnectorKeyProvider,
+  tallyPostJobResultProvider,
+  tallyRevokeConnectorKeyProvider,
+} from "../../../controllers/tally/tallyConnectorController.js";
 import { tallyPullStatusProvider, tallyRequestPullProvider, tallySyncLogProvider } from "../../../controllers/tally/tallySyncController.js";
+import {
+  tallyDocumentsProvider,
+  tallyListPaymentModeMappingsProvider,
+  tallySavePaymentModeMappingProvider,
+  tallySendProvider,
+} from "../../../controllers/tally/tallyVoucherController.js";
 import { authenticateToken } from "../../../middlewares/auth.js";
 import { checkConnectorKey } from "../../../middlewares/checkConnectorKey.js";
 import { requireAddon } from "../../../middlewares/requireAddon.js";
@@ -38,8 +51,18 @@ export default (app) => {
   app.post("/tally/sync/pull-status", authenticateToken, tenantMiddleware, requireAddon("tally"), tallyPullStatusProvider);
   app.post("/tally/sync/log", authenticateToken, tenantMiddleware, requireAddon("tally"), tallySyncLogProvider);
 
+  // Sending sales invoices and receipts to Tally (manual path; the auto-sync job queues the same way).
+  app.post("/tally/sync/documents", authenticateToken, tenantMiddleware, requireAddon("tally"), tallyDocumentsProvider);
+  app.post("/tally/sync/send", authenticateToken, tenantMiddleware, requireAddon("tally"), tallySendProvider);
+  app.post("/tally/mappings/payment-modes/get", authenticateToken, tenantMiddleware, requireAddon("tally"), tallyListPaymentModeMappingsProvider);
+  app.post("/tally/mappings/payment-modes/save", authenticateToken, tenantMiddleware, requireAddon("tally"), tallySavePaymentModeMappingProvider);
+
   // Connector key lifecycle - user-session gated (the CRM web app's Tally
   // settings screen), NOT connector-key gated.
+  // The connector installer itself (what to download, and the values its config file needs).
+  app.post("/tally/connector/download-info", authenticateToken, tenantMiddleware, requireAddon("tally"), tallyConnectorInfoProvider);
+  app.post("/tally/connector/download", authenticateToken, tenantMiddleware, requireAddon("tally"), tallyConnectorDownloadProvider);
+
   app.post("/tally/connector-key/issue", authenticateToken, tenantMiddleware, requireAddon("tally"), tallyIssueConnectorKeyProvider);
   app.post("/tally/connector-key/revoke", authenticateToken, tenantMiddleware, requireAddon("tally"), tallyRevokeConnectorKeyProvider);
 

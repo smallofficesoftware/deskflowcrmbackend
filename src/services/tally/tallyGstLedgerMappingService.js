@@ -32,6 +32,14 @@ const defaultLedgerName = (slot, ratePercent) => {
   return `${sideLabel} @${pct}%`;
 };
 
+/** The suggested Tally ledger name for a duty slot key ("output_cgst" ...) at a tax rate - what the
+ *  voucher push uses when the accountant has not mapped that rate/slot to a ledger of their own. */
+export const defaultGstLedgerName = (crmRef, ratePercent) => {
+  const slot = DUTY_SLOTS.find((s) => s.crm_ref === crmRef);
+  if (!slot) throw new Error(`Unknown duty slot '${crmRef}'`);
+  return defaultLedgerName(slot, ratePercent);
+};
+
 /** List every CRM tax rate x the 6 duty slots, with current mapping or the default suggestion. */
 export const listGstLedgerMappings = async (req) => {
   try {

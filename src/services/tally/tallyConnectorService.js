@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { marketplaceAddonConnectorKeysModel } from "../../models/marketplace/marketplaceAddonConnectorKeysModel.js";
 import { marketplaceAddonSyncJobsModel } from "../../models/marketplace/marketplaceAddonSyncJobsModel.js";
 import { resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
+import { recordVoucherResult } from "./tallyVoucherService.js";
 
 const ADDON_CODE = "tally";
 
@@ -48,6 +49,13 @@ export const postJobResult = async (req) => {
     if (!job) return resBadRequest({ developer_msg: `Job ${job_id} not found for this company` });
 
     await job.update({ status, result_json, error_message, completed_at: new Date() });
+    // A failure to record must not turn a successful Tally write into an error for the connector -
+    // the voucher IS in Tally; the worst case is the screen still showing it as unsent.
+    try {
+      await recordVoucherResult(req.tenantDB, job.get({ plain: true }));
+    } catch (recordError) {
+      console.error(`recordVoucherResult failed for job ${job.id}: ${recordError}`);
+    }
     return resSuccess({ data: { item: job } });
   } catch (error) {
     return resError({ developer_msg: `postJobResult failed: ${error}` });
