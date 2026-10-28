@@ -18,6 +18,9 @@ export const getCompanyTeamList = async (req) => {
     const me = Number(req.body?.a_application_login_id) || Number(req.user?.id);
     if (!me) return resBadRequest({ ack_msg: "Login id not found" });
 
+    // The Team List is where a deactivated member is reactivated, so it keeps them
+    // (the pickers that call /my-team directly do not list them).
+    req.body = { ...req.body, include_inactive: true };
     const response = await getByIdTeam(req);
     const rawItems = response?.data?.item;
     if (response?.ack !== 1 || !Array.isArray(rawItems)) return response;
