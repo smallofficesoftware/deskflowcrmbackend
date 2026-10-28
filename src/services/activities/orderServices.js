@@ -3672,8 +3672,47 @@ export const covertOrderSystem = async (req, res) => {
           return {
             ...rest,
             old_cart_item_id: id,
+            old_cart_item_ids: [id],
           };
         });
+
+      // Same item coming from several carts becomes one line with summed
+      // quantities. Lines only combine when product, rate, gst, discount, unit,
+      // warehouse and every product custom column match.
+      const customColumnKeys = Object.keys(CATItemModel.rawAttributes).filter((key) =>
+        key.startsWith("products_column_")
+      );
+      const groupedCartItems = new Map();
+      for (const item of mergedCartItems) {
+        const groupKey = JSON.stringify(
+          [
+            "item_product_id",
+            "item_rate",
+            "item_gst",
+            "item_discount_pct",
+            "item_discount_pr",
+            "item_unit_name",
+            "item_warehouse_id",
+            ...customColumnKeys,
+          ].map((key) => item[key] ?? null)
+        );
+        const existing = groupedCartItems.get(groupKey);
+        if (!existing) {
+          groupedCartItems.set(groupKey, { ...item });
+          continue;
+        }
+        for (const key of [
+          "item_qty",
+          "item_inner_quantity",
+          "item_outer_quantity",
+          "item_loose_quantity",
+          "item_total",
+        ]) {
+          existing[key] = parseFloat(existing[key] || 0) + parseFloat(item[key] || 0);
+        }
+        existing.old_cart_item_ids.push(...item.old_cart_item_ids);
+      }
+      mergedCartItems = [...groupedCartItems.values()];
 
       // Initialize cart totals
       let calculatedTaxableAmt = 0;
@@ -3859,7 +3898,7 @@ export const covertOrderSystem = async (req, res) => {
         emitAutomationEvent(req, "cart.created", { id: cartId });
 
         const cartItemsBody = mergedCartItems.map((item) => {
-          const { old_cart_item_id, ...rest } = item;
+          const { old_cart_item_id, old_cart_item_ids, ...rest } = item;
 
           return {
             ...rest,
@@ -3893,7 +3932,7 @@ export const covertOrderSystem = async (req, res) => {
               const sourceItem = mergedCartItems[index];
 
               const matchedSerials = oldSerialNumbers.filter(
-                sn => sn.cart_item_id == sourceItem.old_cart_item_id
+                sn => sourceItem.old_cart_item_ids.includes(sn.cart_item_id)
               );
 
               matchedSerials.forEach((serialRow) => {
