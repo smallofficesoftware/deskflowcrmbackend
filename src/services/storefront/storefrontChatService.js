@@ -1,4 +1,5 @@
 import moment from "moment";
+import sanitizeHtml from "sanitize-html";
 import { QueryTypes } from "sequelize";
 import { contactMessageHistory } from "../../models/activities/contactMessageHistoryModel.js";
 import { contactModel } from "../../models/activities/contactModel.js";
@@ -22,7 +23,44 @@ const PAGE = 200;
 
 const cleanText = (value) => String(value ?? "").replace(/\s+/g, " ").trim().slice(0, MAX_LENGTH);
 
-const shape = (r) => ({ id: r.id, from: Number(r.message_side) === SIDE_CUSTOMER ? "you" : "store", text: r.description || "", at: r.created_date_time });
+// The CRM chat editor saves rich text (<p>asdf</p>, <br>, &nbsp;), but the store widget shows plain text - so a
+// team message is flattened before it reaches the customer. Customer messages are already plain (cleanText).
+const htmlToPlainText = (html) =>
+  String(html ?? "")
+    .replace(/<\s*br\s*\/?>/gi, "\n")
+    .replace(/<\/\s*(p|div|li|h[1-6])\s*>/gi, "\n")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&amp;/gi, "&")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+// Team messages keep their formatting (bold, lists, links...) but only through a strict allow-list: this HTML is
+// rendered in the customer's browser, so scripts, event handlers, styles, images and non-http(s)/mailto/tel links
+// never get through. Customer messages stay plain text (cleanText) and are never rendered as HTML.
+const TEAM_HTML_OPTIONS = {
+  allowedTags: ["p", "br", "div", "span", "b", "strong", "i", "em", "u", "s", "strike", "ul", "ol", "li", "blockquote", "a"],
+  allowedAttributes: { a: ["href", "target", "rel"] },
+  allowedSchemes: ["http", "https", "mailto", "tel"],
+  allowProtocolRelative: false,
+  transformTags: { a: sanitizeHtml.simpleTransform("a", { target: "_blank", rel: "noopener noreferrer" }) },
+};
+
+const shape = (r) => {
+  const fromCustomer = Number(r.message_side) === SIDE_CUSTOMER;
+  if (fromCustomer) return { id: r.id, from: "you", text: r.description || "", at: r.created_date_time };
+  return {
+    id: r.id,
+    from: "store",
+    text: htmlToPlainText(r.description),
+    html: sanitizeHtml(String(r.description ?? ""), TEAM_HTML_OPTIONS),
+    at: r.created_date_time,
+  };
+};
 
 const chatEnabled = async (db, companyId) => Boolean((await getStorefrontAuthSettings(db, companyId)).chat_enabled);
 
