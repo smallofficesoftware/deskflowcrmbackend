@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import companyModel from "../../models/company_setup/companyModel.js";
@@ -81,4 +82,80 @@ export const streamConnector = (req, res) => {
       res.status(200).send(resError({ developer_msg: `Connector download failed: ${error.message}` }));
     }
   });
+};
+
+// ---------------------------------------------------------------- self-update (connector -> CRM)
+// The installed connector asks whether a newer build exists and, if so, downloads it. Only files named
+// tally-connector-<major>.<minor>.<patch>.exe take part, so "newest" is the highest version number (not
+// whatever was copied last) and a plain tally-connector.exe with no version never triggers an update.
+
+const VERSIONED_EXE = /^tally-connector-(\d+)\.(\d+)\.(\d+)\.exe$/i;
+
+/** The highest-versioned connector exe in the folder, or null. Exported for tests (dir is injectable). */
+export const findLatestVersionedConnector = (dir = connectorDir()) => {
+  let names;
+  try {
+    names = fs.readdirSync(dir);
+  } catch {
+    return null;
+  }
+  let best = null;
+  for (const name of names) {
+    const m = VERSIONED_EXE.exec(name);
+    if (!m || path.basename(name) !== name) continue;
+    const parts = [Number(m[1]), Number(m[2]), Number(m[3])];
+    const fullPath = path.join(dir, name);
+    const stat = fs.statSync(fullPath);
+    if (!stat.isFile()) continue;
+    const newer = !best || parts[0] > best.parts[0] || (parts[0] === best.parts[0] && (parts[1] > best.parts[1] || (parts[1] === best.parts[1] && parts[2] > best.parts[2])));
+    if (newer) best = { name, fullPath, size: stat.size, mtimeMs: stat.mtimeMs, parts, version: parts.join(".") };
+  }
+  return best;
+};
+
+// Hashing ~80 MB on every poll would be wasteful: remember the digest per file (path + size + mtime).
+const digestCache = new Map();
+const sha256Of = (file) => {
+  const key = `${file.fullPath}|${file.size}|${file.mtimeMs}`;
+  if (!digestCache.has(key)) {
+    digestCache.set(
+      key,
+      new Promise((resolve, reject) => {
+        const hash = crypto.createHash("sha256");
+        fs.createReadStream(file.fullPath)
+          .on("data", (chunk) => hash.update(chunk))
+          .on("end", () => resolve(hash.digest("hex")))
+          .on("error", reject);
+      }).catch((error) => {
+        digestCache.delete(key);
+        throw error;
+      })
+    );
+  }
+  return digestCache.get(key);
+};
+
+/** POST /tally/connector/version (connector key) - what the connector compares its own version against. */
+export const getConnectorUpdateInfo = async () => {
+  try {
+    const file = findLatestVersionedConnector();
+    if (!file) return resSuccess({ data: { item: null } });
+    return resSuccess({ data: { item: { version: file.version, size_bytes: file.size, sha256: await sha256Of(file) } } });
+  } catch (error) {
+    return resError({ developer_msg: `getConnectorUpdateInfo failed: ${error}` });
+  }
+};
+
+/** POST /tally/connector/update (connector key) - streams the latest versioned exe. Same error shape as streamConnector. */
+export const streamConnectorUpdate = (req, res) => {
+  const file = findLatestVersionedConnector();
+  if (!file) {
+    return res.status(200).send(resError({ code: 404, ack_msg: "No connector update is available.", developer_msg: `No tally-connector-<version>.exe in ${connectorDir()}` }));
+  }
+  res.setHeader("Content-Type", "application/octet-stream");
+  res.setHeader("Content-Length", String(file.size));
+  res.setHeader("X-Connector-Version", file.version);
+  const stream = fs.createReadStream(file.fullPath);
+  stream.on("error", () => res.destroy());
+  return stream.pipe(res);
 };
