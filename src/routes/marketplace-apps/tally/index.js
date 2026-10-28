@@ -4,7 +4,6 @@ import { tallyListGstLedgerMappingsProvider, tallySaveGstLedgerMappingProvider }
 import { tallyListProductMappingsProvider, tallySaveProductMappingProvider } from "../../../controllers/tally/tallyMappingController.js";
 import { tallyListVoucherTypeMappingsProvider, tallySaveVoucherTypeMappingProvider } from "../../../controllers/tally/tallyVoucherTypeMappingController.js";
 import {
-  tallyConnectorDownloadProvider,
   tallyConnectorInfoProvider,
   tallyConnectorUpdateDownloadProvider,
   tallyConnectorUpdateInfoProvider,
@@ -66,9 +65,8 @@ export default (app) => {
 
   // Connector key lifecycle - user-session gated (the CRM web app's Tally
   // settings screen), NOT connector-key gated.
-  // The connector installer itself (what to download, and the values its config file needs).
+  // The connector installer itself (the values its config file needs; the installer itself is hosted at a public URL).
   app.post("/tally/connector/download-info", authenticateToken, tenantMiddleware, requireAddon("tally"), tallyConnectorInfoProvider);
-  app.post("/tally/connector/download", authenticateToken, tenantMiddleware, requireAddon("tally"), tallyConnectorDownloadProvider);
 
   app.post("/tally/connector-key/issue", authenticateToken, tenantMiddleware, requireAddon("tally"), tallyIssueConnectorKeyProvider);
   app.post("/tally/connector-key/revoke", authenticateToken, tenantMiddleware, requireAddon("tally"), tallyRevokeConnectorKeyProvider);
