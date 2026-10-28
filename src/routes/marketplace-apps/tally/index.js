@@ -16,7 +16,9 @@ import {
 import { tallyPullStatusProvider, tallyRequestPullProvider, tallySyncLogProvider } from "../../../controllers/tally/tallySyncController.js";
 import {
   tallyDocumentsProvider,
+  tallyListFieldMappingsProvider,
   tallyListPaymentModeMappingsProvider,
+  tallySaveFieldMappingProvider,
   tallySavePaymentModeMappingProvider,
   tallySendProvider,
 } from "../../../controllers/tally/tallyVoucherController.js";
@@ -58,6 +60,9 @@ export default (app) => {
   app.post("/tally/sync/send", authenticateToken, tenantMiddleware, requireAddon("tally"), tallySendProvider);
   app.post("/tally/mappings/payment-modes/get", authenticateToken, tenantMiddleware, requireAddon("tally"), tallyListPaymentModeMappingsProvider);
   app.post("/tally/mappings/payment-modes/save", authenticateToken, tenantMiddleware, requireAddon("tally"), tallySavePaymentModeMappingProvider);
+  // Custom fields (UDFs): which CRM invoice field feeds which UDF the customer created in Tally.
+  app.post("/tally/mappings/fields/get", authenticateToken, tenantMiddleware, requireAddon("tally"), tallyListFieldMappingsProvider);
+  app.post("/tally/mappings/fields/save", authenticateToken, tenantMiddleware, requireAddon("tally"), tallySaveFieldMappingProvider);
 
   // Connector key lifecycle - user-session gated (the CRM web app's Tally
   // settings screen), NOT connector-key gated.
