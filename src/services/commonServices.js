@@ -7,6 +7,7 @@ import { Op } from "sequelize";
 import { requestContext } from "../config/context.js";
 import sequelize from "../config/sequelize.js";
 import { statusLogsMessageConfig } from "../helpers/statusLogsMessageConfig.js";
+import { generateUniqueSlug } from "../utils/slugify.js";
 import { accountTransactionsModel } from "../models/activities/accountTransactionsModel.js";
 import { resolveAccountTransactionSeries } from "./activities/accountTransactionSeries.js";
 import { resolveInvoiceEntrySeries } from "./activities/invoiceEntrySeries.js";
@@ -715,6 +716,16 @@ export const createCommon = async (req) => {
 
     }
     if (parsedData.entry_flag !== 1) {
+
+      // SEO fields for the ecommerce storefront's catalog pages (plans/2026-10-15-
+      // ecommerce-b2b-b2c-plan.txt, Q12/4.7) - categories is the only "common"
+      // master this applies to; products goes through its own dedicated
+      // productCreate (productServices.js), not this generic path.
+      if (table === "categories") {
+        parsedData.slug = await generateUniqueSlug(sequelize.models.categories, parsedData.category_name);
+        parsedData.meta_title = (parsedData.category_name || "").toString().slice(0, 255);
+        parsedData.meta_description = null;
+      }
 
       const createdItem = await sequelize.models[table].create(parsedData);
       if (!createdItem) {
@@ -2214,6 +2225,20 @@ export const updateCommon = async (req) => {
           }
         }
       }
+    }
+
+    // Regenerate the slug when a category is renamed (plans/2026-10-15-ecommerce-
+    // b2b-b2c-plan.txt, 4.7) - only when category_name is actually part of this
+    // update, not on every unrelated field edit. No redirect from the old slug to
+    // the new one yet (4.7 leaves that mechanism for when Q12 needs it) - flagged
+    // as a known gap, not built here.
+    if (table === "categories" && updateData.category_name) {
+      updateData.slug = await generateUniqueSlug(
+        sequelize.models.categories,
+        updateData.category_name,
+        whereObj.id
+      );
+      updateData.meta_title = updateData.category_name.toString().slice(0, 255);
     }
 
     const __automationBefore = await automationBefore(req, table, whereObj);

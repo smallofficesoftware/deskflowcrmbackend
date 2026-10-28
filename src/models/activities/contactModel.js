@@ -98,6 +98,53 @@ export const contactModel = (sequelize) => {
     assinged_to_price_list: {
       type: INTEGER,
     },
+    // Ecommerce storefront invite-only allowlist flag (plans/2026-10-15-
+    // ecommerce-b2b-b2c-plan.txt, P3/Q3).
+    storefront_invited: {
+      type: TINYINT,
+    },
+    // B2B credit control (plans/2026-10-15-ecommerce-b2b-b2c-plan.txt, P5) -
+    // null/0 = no limit/not set. credit_limit checked against the SAME
+    // closing-balance convention this file's own getContactById already
+    // computes (SUM(type=2 Debit) - SUM(type=1 Credit) from
+    // account_transactions) plus the new order's grand_total - see
+    // storefrontCheckoutService.js's checkCreditLimit. payment_terms is
+    // informational only this phase (days, e.g. 30 for "Net 30") - no
+    // automated due-date enforcement/reminders.
+    credit_limit: {
+      type: DOUBLE,
+    },
+    payment_terms: {
+      type: INTEGER,
+    },
+    // Storefront auth state (plans/2026-10-15-ecommerce-b2b-b2c-plan.txt, P3/Q3,
+    // REVISED 23-10-2026) - a storefront customer IS a contact, not a separate
+    // identity (see migration 20261023100000's own comment for why).
+    storefront_pin_hash: {
+      type: STRING,
+    },
+    storefront_is_verified_mobile: {
+      type: TINYINT,
+    },
+    storefront_is_verified_email: {
+      type: TINYINT,
+    },
+    // Non-null means "this contact has a storefront account" - used by
+    // storefrontAuthService.js's invite-only gate to distinguish an existing
+    // storefront customer from a CRM contact who's never used the storefront.
+    storefront_signup_method: {
+      type: STRING,
+    },
+    storefront_last_login_date: {
+      type: DATE,
+    },
+    // Mode-switch lock (Q3(d), 23-10-2026) - comma-separated method keys
+    // ('light'|'invite'|'otp_mobile'|'otp_email') this contact is denylisted
+    // from, independent of the company-wide toggle. See migration
+    // 20261023110000's own comment for why this only matters on re-enable.
+    storefront_locked_methods: {
+      type: TEXT,
+    },
     assinged_to_work_a_application_id: {
       type: TEXT,
     },

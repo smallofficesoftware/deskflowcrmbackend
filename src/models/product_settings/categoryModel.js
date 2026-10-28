@@ -30,6 +30,29 @@ export const categoryModel = (sequelize) => {
     group_id: {
       type: INTEGER,
     },
+    slug: {
+      type: STRING,
+    },
+    meta_title: {
+      type: STRING,
+    },
+    meta_description: {
+      type: STRING,
+    },
+    parent_category_id: {
+      type: INTEGER,
+    },
+    // Category image for the storefront (23-10-2026) - one image per
+    // category, same webp+thumbnail convention as product_images.
+    image_path: {
+      type: STRING,
+    },
+    webp_path: {
+      type: STRING,
+    },
+    thumbnail_path: {
+      type: STRING,
+    },
     isDelete: {
       type: TINYINT,
       defaultValue: "0",

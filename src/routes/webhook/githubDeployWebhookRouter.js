@@ -10,6 +10,7 @@ const REPO_TO_APP = {
   deskflowcrmbackend: "backend",
   deskflowcrmfrontend: "frontend",
   deskflowadminpanel: "adminpanel",
+  storefront: "storefront",
 };
 
 const verifySignature = (req) => {

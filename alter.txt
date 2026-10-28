@@ -5016,6 +5016,74 @@ CREATE TABLE `marketplace_addon_field_mappings` (
   KEY `idx_mafm_company_addon_form` (`company_masters_id`, `addon_code`, `form_type`)
 );
 
+21-10-2026 Dhaval
+-- MASTER DB only. Page-lookup row for the B2B/B2C ecommerce storefront marketplace addon
+-- (plans/2026-10-15-ecommerce-b2b-b2c-plan.txt, P1/4.5). Looked up by page_slug='ecommerce-storefront'
+-- only, for the generic requireAddon(appCode) primitive reading a_application_login_type_rights
+-- (tenant DB) - same pattern as the Tally page row above, deliberately NOT inserted into
+-- plan_vs_pages, not wired into the old page-entitlement system.
+-- migration: migration/master/migrations/20261021100000-add-ecommerce-storefront-application-page.js
+INSERT INTO `a_application_pages` (`page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES ('Ecommerce Storefront', 'Ecommerce Storefront', 'ecommerce-storefront', 'B2B/B2C ecommerce storefront (marketplace addon)', '0', '0', '0', '1', NOW(), UNIX_TIMESTAMP(), '0', '1');
+
+
+21-10-2026 Dhaval
+-- MASTER DB only. Theme catalog for the ecommerce storefront addon (plans/2026-10-15-
+-- ecommerce-b2b-b2c-plan.txt, 4.6). Pharmacy seeded as the only theme today, required_tier='basic'.
+-- migration: migration/master/migrations/20261021110000-create-storefront-themes.js
+CREATE TABLE `storefront_themes` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `code` VARCHAR(50) NOT NULL,
+  `name` VARCHAR(100) NOT NULL,
+  `description` VARCHAR(255) NULL,
+  `preview_image` VARCHAR(255) NULL,
+  `required_tier` VARCHAR(20) NOT NULL DEFAULT 'basic',
+  `sort_order` INT NOT NULL DEFAULT 0,
+  `isActive` TINYINT NOT NULL DEFAULT 1,
+  `isDelete` TINYINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_storefront_themes_code` (`code`)
+);
+INSERT INTO `storefront_themes` (`code`, `name`, `description`, `required_tier`, `sort_order`, `isActive`, `isDelete`) VALUES ('pharmacy', 'Pharmacy', 'Pharmacy storefront theme, ported from a purchased ThemeForest template (customerdata/pharmacy-template-extract/).', 'basic', 0, 1, 0);
+
+
+21-10-2026 Dhaval
+-- Every tenant DB + smalloffice_sample_tenant. A company's active storefront theme pick
+-- (plans/2026-10-15-ecommerce-b2b-b2c-plan.txt, 4.6) - storefront_theme_id points at the
+-- MASTER DB storefront_themes.id above, no cross-DB FK, resolved in application code.
+-- migration: migration/tenant/migrations/20261021120000-create-company-storefront-theme.js
+CREATE TABLE `company_storefront_theme` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `company_masters_id` INT NOT NULL,
+  `storefront_theme_id` INT NOT NULL,
+  `activated_date` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_date_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `modified_date` DATETIME NULL,
+  `isActive` TINYINT NOT NULL DEFAULT 1,
+  `isDelete` TINYINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_cst_company` (`company_masters_id`)
+);
+
+
+21-10-2026 Dhaval
+-- Every tenant DB + smalloffice_sample_tenant. SEO columns (slug, meta_title, meta_description)
+-- for the ecommerce storefront's catalog pages (plans/2026-10-15-ecommerce-b2b-b2c-plan.txt, Q12/4.7).
+-- Auto-generated at product/category create/update, backfilled for existing rows by this migration.
+-- migration: migration/tenant/migrations/20261021130000-add-seo-fields-to-products-and-categories.js
+ALTER TABLE `products`
+  ADD COLUMN `slug` VARCHAR(255) NULL,
+  ADD COLUMN `meta_title` VARCHAR(255) NULL,
+  ADD COLUMN `meta_description` VARCHAR(500) NULL;
+ALTER TABLE `categories`
+  ADD COLUMN `slug` VARCHAR(255) NULL,
+  ADD COLUMN `meta_title` VARCHAR(255) NULL,
+  ADD COLUMN `meta_description` VARCHAR(500) NULL;
+-- Backfill (slug derived from product_name/category_name, meta_title from the same, meta_description
+-- from product_description truncated, nothing for categories which has no description field) is done
+-- in application code by the migration above, not raw SQL here - a uniqueness-suffix loop isn't
+-- expressible as a single statement.
+
+
 22-10-2026 Dhaval
 -- Every tenant DB + smalloffice_sample_tenant. Product-wise team assignment: comma-separated
 -- a_application_login_id of team members allowed to sell the product. NULL/empty = everyone.
@@ -5023,6 +5091,124 @@ CREATE TABLE `marketplace_addon_field_mappings` (
 ALTER TABLE `products`
   ADD COLUMN `sellers_a_application_login_id` TEXT NULL DEFAULT NULL COMMENT 'Comma-separated a_application_login_id of team members allowed to sell this product; empty = everyone';
 
+
+22-10-2026 Dhaval
+-- Every tenant DB + smalloffice_sample_tenant. Per-product visibility toggle for the
+-- ecommerce storefront's public catalog (plans/2026-10-15-ecommerce-b2b-b2c-plan.txt, P2).
+-- Variant-specific (like rate/is_serial_number), not shared - defaults to 1 (shown), opt-out model.
+-- migration: migration/tenant/migrations/20261022100000-add-show-in-ecommerce-to-products.js
+ALTER TABLE `products`
+  ADD COLUMN `show_in_ecommerce` TINYINT NOT NULL DEFAULT 1;
+
+
+22-10-2026 Dhaval
+-- Every tenant DB + smalloffice_sample_tenant. Subcategory support for the ecommerce storefront's
+-- category browse pages (plans/2026-10-15-ecommerce-b2b-b2c-plan.txt, P2/4.7). categories.group_id
+-- is a different, unrelated concept (links to product_groups) - this is a new self-referencing
+-- relationship, one level deep for phase 1.
+-- migration: migration/tenant/migrations/20261022110000-add-parent-category-id-to-categories.js
+ALTER TABLE `categories`
+  ADD COLUMN `parent_category_id` INT NULL;
+
+
+22-10-2026 Dhaval
+-- Every tenant DB + smalloffice_sample_tenant. Invite-only allowlist flag for the ecommerce
+-- storefront (plans/2026-10-15-ecommerce-b2b-b2c-plan.txt, P3/Q3) - admin marks specific
+-- existing CRM contacts as allowed to create/use a storefront account.
+-- migration: migration/tenant/migrations/20261022140000-add-storefront-invited-to-contacts.js
+ALTER TABLE `contact_masters`
+  ADD COLUMN `storefront_invited` TINYINT NOT NULL DEFAULT 0;
+
+
+23-10-2026 Dhaval
+-- Every tenant DB + smalloffice_sample_tenant. Mode-switch per-method lock (Q3(d)) -
+-- plans/2026-10-15-ecommerce-b2b-b2c-plan.txt, P3.
+-- migration: migration/tenant/migrations/20261023110000-add-storefront-locked-methods-to-contacts.js
+ALTER TABLE `contact_masters`
+  ADD COLUMN `storefront_locked_methods` TEXT NULL;
+
+
+23-10-2026 Dhaval
+-- Every tenant DB + smalloffice_sample_tenant. Storefront customer auth state on
+-- contact_masters (REVISED 23-10-2026 - a storefront customer IS a contact, not a
+-- separate identity) - plans/2026-10-15-ecommerce-b2b-b2c-plan.txt, P3/Q3.
+-- NOTE: this entry was missed when the migration was first written - caught by a
+-- migration-vs-alter.txt audit, not run against any live server until now.
+-- migration: migration/tenant/migrations/20261023100000-add-storefront-auth-fields-to-contacts.js
+ALTER TABLE `contact_masters`
+  ADD COLUMN `storefront_pin_hash` VARCHAR(255) NULL,
+  ADD COLUMN `storefront_is_verified_mobile` TINYINT NOT NULL DEFAULT 0,
+  ADD COLUMN `storefront_is_verified_email` TINYINT NOT NULL DEFAULT 0,
+  ADD COLUMN `storefront_signup_method` VARCHAR(30) NULL,
+  ADD COLUMN `storefront_last_login_date` DATETIME NULL;
+
+
+23-10-2026 Dhaval
+-- Every tenant DB + smalloffice_sample_tenant. Category images for the ecommerce
+-- storefront - categories had no image column at all (confirmed via SHOW COLUMNS).
+-- One image per category, same webp+thumbnail convention as product_images -
+-- plans/2026-10-15-ecommerce-b2b-b2c-plan.txt.
+-- migration: migration/tenant/migrations/20261023120000-add-image-fields-to-categories.js
+ALTER TABLE `categories`
+  ADD COLUMN `image_path` VARCHAR(255) NULL,
+  ADD COLUMN `webp_path` VARCHAR(255) NULL,
+  ADD COLUMN `thumbnail_path` VARCHAR(255) NULL;
+
+
+23-10-2026 Dhaval
+-- Every tenant DB + smalloffice_sample_tenant. Ecommerce storefront P4 payment
+-- confirmation - Razorpay's own order/payment ids, linked to a cart via the
+-- EXISTING reference_table/reference_id columns (no payment_status on carts -
+-- see plans/2026-10-15-ecommerce-b2b-b2c-plan.txt, P4).
+-- migration: migration/tenant/migrations/20261023130000-add-gateway-ids-to-account-transactions.js
+ALTER TABLE `account_transactions`
+  ADD COLUMN `gateway_order_id` VARCHAR(255) NULL,
+  ADD COLUMN `gateway_payment_id` VARCHAR(255) NULL;
+
+
+24-10-2026 Dhaval
+-- Every tenant DB + smalloffice_sample_tenant. P5 B2B mode - credit_limit
+-- (checked at checkout against the contact's existing account_transactions
+-- closing balance) and payment_terms (informational days, no automated
+-- enforcement this phase) - plans/2026-10-15-ecommerce-b2b-b2c-plan.txt.
+-- migration: migration/tenant/migrations/20261024100000-add-credit-limit-payment-terms-to-contacts.js
+ALTER TABLE `contact_masters`
+  ADD COLUMN `credit_limit` DOUBLE NULL,
+  ADD COLUMN `payment_terms` INT NULL;
+
+
+26-10-2026 Dhaval
+-- MASTER DB only (not tenant DBs, not smalloffice_sample_tenant). Custom-domain
+-- -> company lookup for the ecommerce storefront (Q8/4.3a).
+-- migration: migration/master/migrations/20261026100000-create-storefront-domains.js
+CREATE TABLE `storefront_domains` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `company_masters_id` INT NOT NULL,
+  `a_application_login_id` INT NOT NULL,
+  `domain` VARCHAR(255) NOT NULL,
+  `verification_token` VARCHAR(64) NOT NULL,
+  `verified_at` DATETIME NULL,
+  `isDelete` TINYINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_storefront_domains_domain` (`domain`),
+  UNIQUE KEY `uq_storefront_domains_company` (`company_masters_id`)
+);
+
+26-10-2026 Ravi
+-- migration: migration/tenant/migrations/20261026110000-create-price-list-qty-slabs.js
+CREATE TABLE `price_list_qty_slabs` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `company_masters_id` INT NOT NULL,
+  `a_application_login_id` INT NOT NULL,
+  `pricelist_masters_id` INT NOT NULL DEFAULT 0,
+  `product_id` INT NOT NULL,
+  `min_qty` INT NOT NULL,
+  `rate` DOUBLE NOT NULL,
+  `net_rate` DOUBLE NOT NULL,
+  `isDelete` TINYINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  KEY `idx_qty_slabs_product_list` (`product_id`, `pricelist_masters_id`)
+);
 24-10-2026 Dhaval
 -- Every tenant DB + smalloffice_sample_tenant. Price list history: old/new rate, discount and net rate of every
 -- price_lists insert/update, filled by triggers (covers every write path). Used by the Price List Report.
@@ -5067,3 +5253,52 @@ WHERE NOT (OLD.`rate` <=> NEW.`rate`) OR NOT (OLD.`discount` <=> NEW.`discount`)
 -- MASTER DB only. New report page "Price List Rates" so Team Rights lists it by name (id 202 = next after Ecommerce Storefront 201 locally; re-check SELECT MAX(id) FROM a_application_pages on demo/live first). No new table, so no create_company_copy.sql change.
 INSERT INTO `a_application_pages` (`id`, `page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES (202, 'Price List Rates', 'Price List Rates', 'price_list_rates', 'Current rate of every product in each price list and the history of rate changes', '0', '0', '0', '1', NOW(), UNIX_TIMESTAMP(), '0', '1');
 INSERT INTO `plan_vs_pages` (`plan_id`, `page_id`, `data_limit`, `extra_information`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) SELECT pm.`id`, p.`id`, '0', '', NOW(), current_timestamp(), '0', '1' FROM `plan_masters` pm JOIN `a_application_pages` p ON p.`page_slug` = 'price_list_rates' WHERE pm.`isDelete` = 0 AND NOT EXISTS (SELECT 1 FROM `plan_vs_pages` x WHERE x.`plan_id` = pm.`id` AND x.`page_id` = p.`id`);
+
+27-10-2026 Dhaval
+-- migration: migration/tenant/migrations/20261027120000-backfill-attribute-master-rights.js
+-- TENANT DB (run once per tenant DB, including smalloffice_sample_tenant). Attribute Master
+-- (page_slug 'attribute_master') got its a_application_pages row + plan_vs_pages grants on
+-- 19-10-2026, but existing logins were never granted a_application_login_type_rights for it -
+-- same gap as Serial Number Wise Stock Check (page 185, 17-09-2026 below). Found while
+-- investigating a live "permission denied / upgrade your plan" report: the page_id for this
+-- slug is NOT the same number on every database (plain AUTO_INCREMENT, and the admin panel's
+-- own platform-page migrations write to the same a_application_pages table independently - id
+-- 196 on the dev DB vs 200 on demobackend). Resolve the id by page_slug against the master DB
+-- at run time instead of hardcoding either number - do not copy this as a literal id into any
+-- other tenant DB's SQL console; always run the migration file so it resolves per-database.
+INSERT INTO `a_application_login_type_rights`
+  (`a_application_login_id`, `company_masters_id`, `page_id`, `page_name`, `a_page_id_rights_jason`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`)
+SELECT DISTINCT
+  t.`a_application_login_id`, t.`company_masters_id`,
+  (SELECT id FROM `smalloffice`.`a_application_pages` WHERE page_slug = 'attribute_master' AND isDelete = 0 LIMIT 1),
+  'Attribute Master',
+  '{"view":1,"add":1,"edit":1,"delete":1,"approve":0,"import":0,"print":0,"share":0,"all_data":0,"personal":0,"limit":"0"}',
+  NOW(), NOW(), 0, 1
+FROM `a_application_login_type_rights` t
+WHERE t.isDelete = 0
+  AND NOT EXISTS (
+    SELECT 1 FROM `a_application_login_type_rights` x
+    WHERE x.a_application_login_id = t.a_application_login_id
+      AND x.page_id = (SELECT id FROM `smalloffice`.`a_application_pages` WHERE page_slug = 'attribute_master' AND isDelete = 0 LIMIT 1)
+      AND x.isDelete = 0
+  );
+-- (replace `smalloffice` above with that database server's actual master DB name if different -
+-- the migration file itself reads this from process.env.TENANT_DB_DB_NAME, so it never needs editing)
+
+27-10-2026 Dhaval
+-- Permission-check hardening, no schema change (recorded here per the alter.txt convention of
+-- logging the incident, not because it's a DB alter). a_application_pages ids drift between
+-- databases (see entry above) - this is a code fix, not SQL, split across:
+--   backend: src/services/application_login/loginService.js (onLoad's resultRights now carries
+--     page_slug, joined from a_application_pages), src/helpers/rightsHelper.js (getUserRights
+--     accepts page_slug as an alternative to page_id), src/services/company_setup/
+--     printSettingServices.js (new-rights-print passes page_slug through)
+--   frontend: hooks/useCheckUserPermission.ts, pages/side-view/ReportsTileView.tsx,
+--     pages/side-view/SideBarView.tsx, pages/left-side/header/Setting/work-flow-automation/
+--     MiracleSynchronizationView.tsx (all 4 local permission-check implementations now match by
+--     page_slug when given a string instead of a numeric PAGE_ID), common/SharedFunction.tsx
+--     (newRightsForPrint accepts a slug), attribute-master/AttributeMasterView.tsx + Create
+--     AttributeMasterView.tsx (now pass "attribute_master" instead of the removed
+--     PAGE_ID.ATTRIBUTE_MASTER enum member)
+-- Existing numeric PAGE_ID.* call sites (127 other pages) are untouched and unaffected - this
+-- only adds an alternative slug path for any page added after today.

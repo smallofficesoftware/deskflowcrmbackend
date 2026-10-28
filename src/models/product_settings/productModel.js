@@ -36,6 +36,18 @@ export const productModel = (sequelize) => {
       product_description: {
         type: TEXT,
       },
+      slug: {
+        type: STRING,
+      },
+      meta_title: {
+        type: STRING,
+      },
+      meta_description: {
+        type: STRING,
+      },
+      show_in_ecommerce: {
+        type: TINYINT,
+      },
       created_date_time: {
         type: DATE,
         defaultValue: NOW,

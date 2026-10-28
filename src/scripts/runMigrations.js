@@ -171,6 +171,55 @@ async function verifyConnection(sequelize, label = '') {
     }
 }
 
+// Mirrors runTenantMigrationsUpSelfHealing below - the master DB has the
+// same history (schema changes applied by hand via alter.txt before this
+// runner existed, so SequelizeMeta is missing rows for structure that's
+// already live). Only used for migration/up; seeders and down still go
+// through plain sequelize-cli below.
+async function runMasterMigrationsUpSelfHealing() {
+    const sequelize = new SequelizePkg(
+        process.env.TENANT_DB_DB_NAME,
+        process.env.TENANT_DB_USER_NAME,
+        process.env.TENANT_DB_PASSWORD,
+        {
+            host: process.env.TENANT_DB_HOST_NAME,
+            dialect: 'mysql',
+            logging: false,
+            timezone: "+05:30",
+            define: { timestamps: false },
+        }
+    );
+    try {
+        const [rows] = await sequelize.query('SELECT name FROM `SequelizeMeta`');
+        const applied = new Set(rows.map(r => r.name));
+        const absMigrationsPath = path.resolve(process.cwd(), migrationsPath);
+        const files = (await fsp.readdir(absMigrationsPath)).filter(f => f.endsWith('.js')).sort();
+        const queryInterface = sequelize.getQueryInterface();
+
+        for (const file of files) {
+            if (applied.has(file)) continue;
+            const modulePath = path.join(absMigrationsPath, file).replace(/\\/g, '/');
+            const migration = await import(`file://${modulePath}`);
+            try {
+                await migration.up(queryInterface, SequelizePkg);
+                await sequelize.query('INSERT INTO `SequelizeMeta` (`name`) VALUES (:name)', { replacements: { name: file } });
+                console.log(`Master: migrated ${file}`);
+            } catch (err) {
+                if (isAlreadyExistsError(err)) {
+                    await sequelize.query('INSERT INTO `SequelizeMeta` (`name`) VALUES (:name)', { replacements: { name: file } });
+                    console.log(`Master: already applied, marked complete - ${file}`);
+                } else {
+                    console.error(`Master: FAILED at ${file}: ${err.message}`);
+                    break;
+                }
+            }
+        }
+        console.log('Master: done');
+    } finally {
+        await sequelize.close?.();
+    }
+}
+
 async function runMaster(category, action) {
     const dialect = 'mysql';
     if (category === 'verify') {
@@ -200,6 +249,10 @@ async function runMaster(category, action) {
     }
     const isSeeder = category === 'seeder';
     const baseCommand = isSeeder ? 'db:seed' : 'db:migrate';
+    if (action === 'up' && !isSeeder) {
+        await runMasterMigrationsUpSelfHealing();
+        return;
+    }
     if (action === 'up') {
         const args = ['sequelize-cli', `${baseCommand}${isSeeder ? ':all' : ''}`, '--config', masterDBConfigPath, '--env', NODE_ENV];
         if (isSeeder) args.push('--seeders-path', seedersPath);

@@ -71,6 +71,7 @@ CREATE TABLE `price_list_history` LIKE smalloffice_sample_tenant.price_list_hist
 -- Triggers are not copied by LIKE: price_lists -> price_list_history (migration 20261024100000-create-price-list-history.js)
 CREATE TRIGGER `trg_price_lists_history_insert` AFTER INSERT ON `price_lists` FOR EACH ROW INSERT INTO `price_list_history` (`company_masters_id`, `pricelist_masters_id`, `price_list_id`, `product_id`, `change_type`, `new_rate`, `new_discount`, `new_discount_amount`, `new_net_rate`, `changed_by`, `changed_date_time`) VALUES (NEW.`company_masters_id`, NEW.`pricelist_masters_id`, NEW.`id`, NEW.`product_id`, 'insert', NEW.`rate`, NEW.`discount`, NEW.`discount_amount`, NEW.`net_rate`, COALESCE(NULLIF(NEW.`last_updated_by`, 0), NEW.`a_application_login_id`), NOW());
 CREATE TRIGGER `trg_price_lists_history_update` AFTER UPDATE ON `price_lists` FOR EACH ROW INSERT INTO `price_list_history` (`company_masters_id`, `pricelist_masters_id`, `price_list_id`, `product_id`, `change_type`, `old_rate`, `new_rate`, `old_discount`, `new_discount`, `old_discount_amount`, `new_discount_amount`, `old_net_rate`, `new_net_rate`, `changed_by`, `changed_date_time`) SELECT NEW.`company_masters_id`, NEW.`pricelist_masters_id`, NEW.`id`, NEW.`product_id`, 'update', OLD.`rate`, NEW.`rate`, OLD.`discount`, NEW.`discount`, OLD.`discount_amount`, NEW.`discount_amount`, OLD.`net_rate`, NEW.`net_rate`, COALESCE(NULLIF(NEW.`last_updated_by`, 0), NEW.`a_application_login_id`), NOW() FROM DUAL WHERE NOT (OLD.`rate` <=> NEW.`rate`) OR NOT (OLD.`discount` <=> NEW.`discount`) OR NOT (OLD.`discount_amount` <=> NEW.`discount_amount`) OR NOT (OLD.`net_rate` <=> NEW.`net_rate`);
+CREATE TABLE `price_list_qty_slabs` LIKE smalloffice_sample_tenant.price_list_qty_slabs;
 CREATE TABLE `product_types` LIKE smalloffice_sample_tenant.product_types;
 ALTER TABLE `product_types`  DISABLE KEYS;
 START TRANSACTION;
@@ -248,6 +249,7 @@ CREATE TABLE `marketplace_addon_connector_keys` LIKE smalloffice_sample_tenant.m
 CREATE TABLE `marketplace_addon_record_mappings` LIKE smalloffice_sample_tenant.marketplace_addon_record_mappings;
 CREATE TABLE `marketplace_addon_sync_jobs` LIKE smalloffice_sample_tenant.marketplace_addon_sync_jobs;
 CREATE TABLE `marketplace_addon_field_mappings` LIKE smalloffice_sample_tenant.marketplace_addon_field_mappings;
+CREATE TABLE `company_storefront_theme` LIKE smalloffice_sample_tenant.company_storefront_theme;
 
 ALTER TABLE `contact_masters`  DISABLE KEYS;
 START TRANSACTION;
