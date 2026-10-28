@@ -33,7 +33,7 @@ import { getCompanyByLoginId } from "../commonServices.js";
 import { normalizeSellerIds, productSellerFilter } from "./productSellerGuard.js";
 import { stockCartItemConditions } from "./stockCondition.js";
 import { findProductUsage } from "./productUsage.js";
-import { getPrimaryImagePaths } from "./primaryProductImage.js";
+import { getPrimaryImagePaths, setPrimaryImagePath } from "./primaryProductImage.js";
 export const getAllProduct = async (req) => {
   try {
     let { ul, ll, selectedDates, productId } = req.body;
@@ -689,6 +689,14 @@ export const productCreate = async (req) => {
       products_column_radio_5: req.body.products_column_radio_5 || "",
     });
 
+    if (createProductResult && productImg) {
+      await setPrimaryImagePath(req.tenantDB, {
+        productId: createProductResult.id,
+        companyId: findCompanyId.company_masters_id,
+        imagePath: convertPath,
+      });
+    }
+
     if (createProductResult) {
       return resSuccess({
         ack_msg: "Product added successfully",
@@ -1002,6 +1010,14 @@ export const productUpdate = async (req) => {
         where: { id: product_id },
       }
     );
+    if (updateProductResult && productImg) {
+      await setPrimaryImagePath(req.tenantDB, {
+        productId: product_id,
+        companyId: findCompanyId.company_masters_id,
+        imagePath: convertPath,
+      });
+    }
+
     if (updateProductResult) {
       return resSuccess({
         ack_msg: "Product updated successfully",

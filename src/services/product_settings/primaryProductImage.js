@@ -5,6 +5,24 @@ import { productImageModel } from "../../models/product_settings/productImageMod
 // so documents and order screens show the primary photo from here.
 
 /**
+ * Makes `imagePath` the product's primary photo. Used by the create/update product
+ * endpoints, which the mobile app still uses to upload a photo: without this the
+ * file would only land in products.product_img and no document would show it.
+ * An existing primary row is pointed at the new file (its webp/thumbnail copies
+ * belong to the old file, so they are cleared); otherwise a primary row is added.
+ */
+export const setPrimaryImagePath = async (tenantDB, { productId, companyId, imagePath }) => {
+  if (!productId || !imagePath) return;
+  const ProductImage = productImageModel(tenantDB);
+  const primary = await ProductImage.findOne({ where: { product_id: productId, is_primary: 1, isDelete: 0 } });
+  if (primary) {
+    await primary.update({ image_path: imagePath, webp_path: null, thumbnail_path: null });
+  } else {
+    await ProductImage.create({ company_masters_id: companyId, product_id: productId, image_path: imagePath, display_order: 0, is_primary: 1 });
+  }
+};
+
+/**
  * Map of product id -> original image path relative to media-folder/product-images
  * ("<companyId>/<file>"), primary photo first, then display order. Products with no
  * photo are absent from the map. The original is used, not the webp copy, because
