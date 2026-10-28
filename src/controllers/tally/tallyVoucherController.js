@@ -1,3 +1,4 @@
+import { listFieldMappings, saveFieldMapping } from "../../services/tally/tallyFieldMappingService.js";
 import { listPaymentModeMappings, savePaymentModeMapping } from "../../services/tally/tallyPaymentModeMappingService.js";
 import { listTallyDocuments, sendToTally } from "../../services/tally/tallyVoucherService.js";
 import callServiceMethod from "../baseController.js";
@@ -16,4 +17,12 @@ export const tallyListPaymentModeMappingsProvider = async (req, res) => {
 
 export const tallySavePaymentModeMappingProvider = async (req, res) => {
   await callServiceMethod(req, res, savePaymentModeMapping(req), "tallySavePaymentModeMapping");
+};
+
+export const tallyListFieldMappingsProvider = async (req, res) => {
+  await callServiceMethod(req, res, listFieldMappings(req), "tallyListFieldMappings");
+};
+
+export const tallySaveFieldMappingProvider = async (req, res) => {
+  await callServiceMethod(req, res, saveFieldMapping(req), "tallySaveFieldMapping");
 };

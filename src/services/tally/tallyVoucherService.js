@@ -12,6 +12,8 @@ import { taxModel } from "../../models/product_settings/taxModel.js";
 import { resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { resolveCompanyId } from "./tallyAuthHelper.js";
 import { defaultGstLedgerName } from "./tallyGstLedgerMappingService.js";
+import { buildUdfList } from "./tallyFieldMapping.js";
+import { loadInvoiceCustomFields, loadInvoiceFieldMappings } from "./tallyFieldMappingService.js";
 import { buildReceiptPayload, buildSalesInvoicePayload, LEDGER_ROLES, resolveLedgerNames } from "./tallyVoucherBuilder.js";
 
 const ADDON_CODE = "tally";
@@ -79,6 +81,11 @@ const buildInvoice = async ({ tenantDB, company_masters_id, config, cartId, shar
     shared.gstMappings = await mappingMap(tenantDB, company_masters_id, "gst_ledger", null, (m) => `${m.crm_id}:${m.crm_ref}`);
     shared.company = await companyModel.findOne({ where: { isDelete: 0, id: company_masters_id }, raw: true, attributes: ["gst_number", "state_id"] });
   }
+  // Custom-field (UDF) mappings: also once per batch.
+  if (!shared.udfMappings) {
+    shared.udfMappings = await loadInvoiceFieldMappings(tenantDB, company_masters_id);
+    shared.customFieldsById = new Map((await loadInvoiceCustomFields(tenantDB, company_masters_id)).map((f) => [Number(f.id), f]));
+  }
   const gstLedgerName = (rate, slot) => {
     const taxId = shared.taxIdByRate.get(Number(rate));
     const mapped = taxId ? mappedName(shared.gstMappings.get(`${taxId}:output_${slot}`)) : "";
@@ -100,7 +107,11 @@ const buildInvoice = async ({ tenantDB, company_masters_id, config, cartId, shar
     stockItemName,
     gstLedgerName,
   });
-  if (built.payload) built.payload.crm = { contactId: contact?.id ?? null };
+  if (built.payload) {
+    built.payload.crm = { contactId: contact?.id ?? null };
+    const udfs = buildUdfList(shared.udfMappings, shared.customFieldsById, cart);
+    if (udfs.length) built.payload.udfs = udfs;
+  }
   return built;
 };
 
