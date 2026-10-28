@@ -1951,7 +1951,8 @@ export const orderUpdate = async (req, res) => {
     }
 
     // Series / typed voucher number picked for the advance payment entry
-    if (is_approve == 1 && [2, 3, 4, 5, 6, 7].includes(Number(update_cart.type))) {
+    // Skipped for approve-only calls (multi-approve): they send no update_cart, so there is no advance entry to check.
+    if (is_approve == 1 && update_cart && [2, 3, 4, 5, 6, 7].includes(Number(update_cart.type))) {
       const advanceSeriesError = await checkAdvanceSeries(req, {
         cart: update_cart,
         companyMasterId: findCompanyId.company_masters_id,
