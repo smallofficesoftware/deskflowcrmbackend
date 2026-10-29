@@ -2374,6 +2374,29 @@ export const processContact = async (req) => {
             existingCities.forEach(c => cityMap.set(c.city_name.trim().toLowerCase(), c.id));
         }
 
+        // A state or city Miracle has that the CRM does not: add it, as the Miracle webhook does. Without this the
+        // contact got city/state null, and contact_masters.city / state do not accept null ("Column 'city' cannot be null").
+        for (const name of uniqueStates) {
+            const key = name.trim().toLowerCase();
+            if (stateMap.has(key)) continue;
+            const [row] = await stateModelInstance.findOrCreate({
+                where: { state_name: name.trim(), isDelete: 0 },
+                defaults: { state_name: name.trim(), country_id: 101 }
+            });
+            stateMap.set(key, row.id);
+        }
+        for (const name of uniqueCities) {
+            const key = name.trim().toLowerCase();
+            if (cityMap.has(key)) continue;
+            const owner = baseContacts.find(c => c.citynm && c.citynm.trim().toLowerCase() === key);
+            const ownerStateId = owner?.statenm ? stateMap.get(owner.statenm.trim().toLowerCase()) || null : null;
+            const [row] = await cityModelInstance.findOrCreate({
+                where: { city_name: name.trim(), isDelete: 0 },
+                defaults: { city_name: name.trim(), state_id: ownerStateId, country_id: 101 }
+            });
+            cityMap.set(key, row.id);
+        }
+
         // ---------------------------------------------------------
         // Match against CRM Database
         // ---------------------------------------------------------
@@ -2406,8 +2429,9 @@ export const processContact = async (req) => {
                 email_id: tp.email || "",
                 client_code: tp.accalinm || "",
                 country: 101,
-                state: stateId,
-                city: cityId,
+                // "" (not null) when Miracle has no state / city for the party: the columns do not accept null.
+                state: stateId ?? "",
+                city: cityId ?? "",
                 address: tp.addr1,
                 source_type_id: -21,
                 miracle_UniqueId: tp.accid,
