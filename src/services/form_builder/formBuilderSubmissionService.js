@@ -57,6 +57,7 @@ import { isDateField, resolveDateValue, checkDateLimits, sameStoredDate } from "
 import { hasFormPermission, getMyFormPermissions } from "./formBuilderPermissions.js";
 import { assignAutoNumber, validateManualAutoNumber } from "./formBuilderAutoNumber.js";
 import { linkScheduleEntry } from "./formBuilderScheduleService.js";
+import { buildDefaultFilterClause, describeDefaultFilters, parseSavedFilters, pickSavedFilter } from "./formBuilderDefaultFilters.js";
 import loginModel from "../../models/application_login/loginModel.js";
 import { getCompanyByLoginId } from "../commonServices.js";
 import { normalizeToTenDigit } from "../../utils/sharedFunctions.js";
@@ -94,6 +95,18 @@ function q(key) {
     throw new Error(`Invalid identifier: ${key}`);
   }
   return `\`${key}\``;
+}
+
+// A date / datetime field, or a calculation that works out a date (stored in a DATE column): true when the
+// column holds a day that the entries list can match as typed text.
+function dateColumnTypeOf(field) {
+  return field?.type === "date" || field?.type === "datetime" || (field?.type === "calculation" && field?.result_type === "date");
+}
+
+// SQL: a date column's text matches `:param` (a %text% pattern) in the ways people write dates -
+// 17-10-2026, 2026-10-17, 17/10/2026 and 17 Oct 2026. `col` is an already quoted column.
+function dateLikeSql(col, param) {
+  return `(${col} IS NOT NULL AND (DATE_FORMAT(${col}, '%d-%m-%Y') LIKE :${param} OR DATE_FORMAT(${col}, '%Y-%m-%d') LIKE :${param} OR DATE_FORMAT(${col}, '%d/%m/%Y') LIKE :${param} OR DATE_FORMAT(${col}, '%d %b %Y') LIKE :${param}))`;
 }
 
 // ---------- Per-field validation (plan §4 "Server-side validation
@@ -1066,6 +1079,16 @@ export const listSubmissions = async (req) => {
         replacements[`search_${i}`] = `%${search}%`;
         return `(${q(col)} LIKE :search_${i} AND ${q(col)} NOT LIKE 'fbenc:%')`;
       });
+      // Dates: typed the way people read them (17-10-2026, 2026-10-17, 17/10/2026, 17 Oct 2026), and the entry's
+      // own submitted date.
+      const dateCols = [
+        ...searchableFields.filter((f) => dateColumnTypeOf(f)).map((f) => f.key),
+        "created_date_time",
+      ];
+      dateCols.forEach((col, i) => {
+        replacements[`search_date_${i}`] = `%${search}%`;
+        likeClauses.push(dateLikeSql(q(col), `search_date_${i}`));
+      });
       // Customer lookup fields store a contact id - match on the contact's
       // name / company / mobile, the same fields the lookup itself searches.
       const customerCols = searchableFields.filter((f) => f.type === "customer-lookup").map((f) => f.key);
@@ -1111,13 +1134,22 @@ export const listSubmissions = async (req) => {
           }
           continue;
         }
+        if (key === "_submitted") {
+          // The Submitted column: the entry's own date.
+          const param = `colf_${cfIndex++}`;
+          replacements[param] = `%${value}%`;
+          whereClauses.push(dateLikeSql(q("created_date_time"), param));
+          continue;
+        }
         const field = fields.find(
-          (f) => f.key === key && COLUMN_FILTER_TYPES.includes(f.type) && !NO_COLUMN_TYPES.has(f.type) && !isEncryptedAadhaarField(f) && !noRead.has(f.key),
+          (f) => f.key === key && (COLUMN_FILTER_TYPES.includes(f.type) || dateColumnTypeOf(f)) && !NO_COLUMN_TYPES.has(f.type) && !isEncryptedAadhaarField(f) && !noRead.has(f.key),
         );
         if (!field) continue;
         const param = `colf_${cfIndex++}`;
         replacements[param] = `%${value}%`;
-        if (field.type === "customer-lookup") {
+        if (dateColumnTypeOf(field)) {
+          whereClauses.push(dateLikeSql(q(key), param));
+        } else if (field.type === "customer-lookup") {
           // Stores a contact id - match on the contact's name / company / mobile.
           whereClauses.push(
             `${q(key)} IN (SELECT id FROM \`contact_masters\` WHERE isDelete = 0 AND (person_name LIKE :${param} OR company_name LIKE :${param} OR mobile_number LIKE :${param} OR raw_mobile_number LIKE :${param}))`,
@@ -1125,6 +1157,23 @@ export const listSubmissions = async (req) => {
         } else {
           whereClauses.push(`(${q(key)} LIKE :${param} AND ${q(key)} NOT LIKE 'fbenc:%')`);
         }
+      }
+    }
+
+    // The form's saved default filter (Form settings > Default filters), applied while the screen's
+    // "default filter" switch is on. Fields the user may not read are left out of it, like the column filters.
+    const savedFilters = parseSavedFilters(form.published_settings_json);
+    const readableFields = fields.filter((f) => f.key && !isEncryptedAadhaarField(f) && !noRead.has(f.key));
+    const activeFilter = pickSavedFilter(savedFilters, req.body?.filter_id);
+    if (activeFilter) {
+      // "me" and "waiting for me" in a saved filter mean the person looking at the list.
+      const clause = buildDefaultFilterClause(activeFilter, readableFields, {
+        quote: q,
+        ctx: { loginId: a_application_login_id, pendingForMe: () => pendingForMeCondition(actorCtx) },
+      });
+      if (clause) {
+        whereClauses.push(clause.sql);
+        Object.assign(replacements, clause.replacements);
       }
     }
 
@@ -1149,6 +1198,9 @@ export const listSubmissions = async (req) => {
       data: {
         item: enriched.map((r) => applyReadRestrictions(withFileCounts(r, fileCounts), restricted)),
         total: Number(totalCount) || 0,
+        // The form's default filter as one readable line (null = the form has none), for the list's switch.
+        saved_filters: savedFilters.map((f) => ({ id: f.id, name: f.name, is_default: f.is_default, text: describeDefaultFilters(f, readableFields) })),
+        active_filter_id: activeFilter ? activeFilter.id : "",
         restricted,
         approval: approvalSummary(actorCtx),
         can_reveal_sensitive: perms.see_masked_fields,

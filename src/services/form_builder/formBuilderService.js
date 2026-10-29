@@ -22,6 +22,7 @@ import { getReferenceOptions } from "./formBuilderMasterRegistry.js";
 import { sensitiveStoragePublishMessage } from "./formBuilderSensitiveValue.js";
 import { findConditionProblems } from "./formBuilderConditions.js";
 import { findDateRuleProblems } from "./formBuilderDateRules.js";
+import { findSavedFilterProblems } from "./formBuilderDefaultFilters.js";
 import { findLookupProblems } from "./formBuilderLookups.js";
 import { getExistingCustomListIds } from "./formBuilderCustomLists.js";
 import { validateAutoNumberConfig, previewAutoNumber } from "./formBuilderAutoNumber.js";
@@ -538,6 +539,9 @@ export const publishForm = async (req) => {
     if (conditionMessage) return resError({ ack_msg: conditionMessage });
     const dateRuleMessage = findDateRuleProblems(draftFields);
     if (dateRuleMessage) return resError({ ack_msg: dateRuleMessage });
+    // Saved filters (Form settings): named, one default at most, every condition points at a real field.
+    const savedFilterMessage = findSavedFilterProblems(form.settings_json, draftFields);
+    if (savedFilterMessage) return resError({ ack_msg: savedFilterMessage });
     // Lookup fields (plan E, F): custom lists still exist, customer-lookup
     // "fill these fields" settings point at real text fields.
     const lookupMessage = findLookupProblems(draftFields, {
