@@ -90,6 +90,7 @@ import {
 } from "../utils/sharedFunctions.js";
 import { emitAutomationEvent, automationBefore } from "./automation/emit.js";
 import { assertInquiryProductsAllowed } from "./product_settings/productSellerGuard.js";
+import { notifyStorefrontOrderStatus } from "./storefront/storefrontPushService.js";
 
 
 // Contacts are stored with the canonical mobile (91 + 10 digits, see the write path in
@@ -3553,6 +3554,8 @@ export const insertStagesAndStatusLogs = async (req, detail) => {
       ...(stage_form_data ? { stage_form_data } : {}),
     }, detail.transaction ? { transaction: detail.transaction } : undefined);
     if (lastEntry) emitAutomationEvent(req, "status.changed", { reference_table, reference_id, status_id, previous_status_id: lastEntry.status_id });
+    // Storefront customers get a push when their order moves to a new stage (no-op without VAPID keys).
+    if (reference_table === "carts" && lastEntry?.status_id !== status_id && !detail.transaction) notifyStorefrontOrderStatus(tenantDB, reference_id, status_id);
     return createdLog;
 
   } catch (error) {

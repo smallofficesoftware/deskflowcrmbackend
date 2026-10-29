@@ -62,6 +62,7 @@ import { authenticateToken } from "../../../middlewares/auth.js";
 import { storefrontFaviconUpload } from "../../../middlewares/multer.js";
 import { storefrontLogoUpload } from "../../../middlewares/storefrontLogoUpload.js";
 import { removeStorefrontLogoController, uploadStorefrontLogoController } from "../../../controllers/storefront/storefrontLogoController.js";
+import { getStorefrontPushKeyController, subscribeStorefrontPushController, unsubscribeStorefrontPushController } from "../../../controllers/storefront/storefrontPushController.js";
 import { resError } from "../../../utils/sharedFunctions.js";
 import { requireAddon } from "../../../middlewares/requireAddon.js";
 import { requireStorefrontChatSession, requireStorefrontSession } from "../../../services/storefront/storefrontSession.js";
@@ -115,6 +116,7 @@ export default (app) => {
   app.post("/storefront/domain/verify", authenticateToken, tenantMiddleware, requireAddon("ecommerce-storefront"), verifyStorefrontDomainController);
   // PUBLIC - must be registered before the /storefront/:companySlug/* routes so "resolve-domain" is not read as a slug.
   app.get("/storefront/resolve-domain", resolveStorefrontDomainController);
+  app.get("/storefront/push/key", getStorefrontPushKeyController);
   // CRM staff side of the in-store chat.
   app.post("/storefront/tickets/options", authenticateToken, tenantMiddleware, requireAddon("ecommerce-storefront"), getStorefrontTicketOptionsController);
   app.post("/storefront/chat/threads", authenticateToken, tenantMiddleware, requireAddon("ecommerce-storefront"), listStorefrontChatThreadsController);
@@ -177,6 +179,8 @@ export default (app) => {
   // middleware's own comment; no tenantMiddleware here, that one assumes CRM staff
   // auth shape).
   app.get("/storefront/me", requireStorefrontSession, getStorefrontMeController);
+  app.post("/storefront/me/push/subscribe", requireStorefrontSession, subscribeStorefrontPushController);
+  app.post("/storefront/me/push/unsubscribe", requireStorefrontSession, unsubscribeStorefrontPushController);
   app.get("/storefront/me/chat", requireStorefrontChatSession, getStorefrontMyChatController);
   app.post("/storefront/me/chat", requireStorefrontChatSession, sendStorefrontMyChatController);
   app.get("/storefront/me/tickets/categories", requireStorefrontChatSession, getStorefrontTicketCategoriesController);

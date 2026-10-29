@@ -6,6 +6,7 @@ import { contactModel } from "../../models/activities/contactModel.js";
 import emitToCompany from "../1socketIOServices/emitToCompany.js";
 import { resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { getStorefrontAuthSettings } from "./storefrontAuthSettings.js";
+import { notifyStorefrontContact } from "./storefrontPushService.js";
 
 // In-store chat. A storefront customer IS a contact_masters row, so chat lives in the CRM's existing
 // contact_message_histories table - the same history the team already sees per contact - tagged
@@ -229,6 +230,7 @@ export const replyToChat = async (req) => {
       isActive: 1,
     });
     await touchContact(req.tenantDB, companyId, contactId);
+    notifyStorefrontContact(req.tenantDB, companyId, contactId, { title: "New message from the store", body: text.slice(0, 120), url: "/account", tag: "chat" });
     return resSuccess({ data: { item: { id: row.id } } });
   } catch (error) {
     return resError({ developer_msg: `replyToChat failed: ${error}` });

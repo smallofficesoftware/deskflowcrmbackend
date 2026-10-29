@@ -5350,3 +5350,33 @@ WHERE ci.isDelete = 0
     OR (ci.cart_type = 3 AND ci.reference_type != 9)
     OR ci.cart_type IN (6,7,8,9,10,11)
   );
+
+29-10-2026 Dhaval
+-- migration: migration/tenant/migrations/20261029130000-create-storefront-push-subscriptions.js
+CREATE TABLE `storefront_push_subscriptions` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `company_masters_id` INT NOT NULL,
+  `contact_masters_id` INT NOT NULL,
+  `endpoint` VARCHAR(500) NOT NULL,
+  `p256dh` VARCHAR(255) NOT NULL,
+  `auth` VARCHAR(255) NOT NULL,
+  `user_agent` VARCHAR(255) NULL,
+  `created_date_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `isDelete` TINYINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  KEY `idx_sf_push_contact` (`contact_masters_id`),
+  UNIQUE KEY `idx_sf_push_endpoint` (`endpoint`)
+);
+
+29-10-2026 Dhaval
+-- MASTER DB only. Eight more ready-made storefront themes (re-skins of Pharmacy, see storefront/src/themes/skins.tsx).
+-- migration: migration/master/migrations/20261029140000-seed-storefront-skin-themes.js
+INSERT INTO `storefront_themes` (`code`, `name`, `description`, `required_tier`, `sort_order`, `isActive`, `isDelete`) VALUES
+('midnight', 'Midnight', 'Dark mode storefront with a bright blue accent.', 'basic', 1, 1, 0),
+('ocean', 'Ocean', 'Clean white layout with a fresh sky-blue accent and rounded cards.', 'basic', 2, 1, 0),
+('forest', 'Forest', 'Natural greens on warm cream with serif headings - organic and grocery stores.', 'basic', 3, 1, 0),
+('sunset', 'Sunset', 'Warm orange-to-coral header, friendly and energetic.', 'basic', 4, 1, 0),
+('royal', 'Royal', 'Deep purple and gold with serif headings - premium and jewellery stores.', 'basic', 5, 1, 0),
+('rose', 'Rose Boutique', 'Soft pink with big rounded corners - fashion, beauty and gifts.', 'basic', 6, 1, 0),
+('mono', 'Mono Minimal', 'Black and white, sharp corners, no shadows - editorial and modern.', 'basic', 7, 1, 0),
+('marketplace', 'Marketplace', 'Dense, bold marketplace look - navy header with an amber accent.', 'basic', 8, 1, 0);

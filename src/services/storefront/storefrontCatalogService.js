@@ -5,6 +5,7 @@ import companyModel from "../../models/company_setup/companyModel.js";
 import { categoryModel } from "../../models/product_settings/categoryModel.js";
 import { marketplaceAddonSettingsModel } from "../../models/marketplace/marketplaceAddonSettingsModel.js";
 import { priceListModel } from "../../models/product_settings/priceListModel.js";
+import { productGroupModel } from "../../models/product_settings/productGroupModel.js";
 import { productImageModel } from "../../models/product_settings/productImageModel.js";
 import { productModel } from "../../models/product_settings/productModel.js";
 import { getVariantAttributesForParent, getVariantsForParent } from "./storefrontVariantHelpers.js";
@@ -218,10 +219,18 @@ export const getStorefrontCategoryTree = async (req) => {
     const CategoryModel = categoryModel(resolved.tenantDB);
     const all = await CategoryModel.findAll({
       where: { company_masters_id: resolved.company_masters_id, isDelete: 0 },
-      attributes: ["id", "category_name", "slug", "parent_category_id", "image_path", "webp_path", "thumbnail_path"],
+      attributes: ["id", "category_name", "slug", "parent_category_id", "group_id", "image_path", "webp_path", "thumbnail_path"],
       order: [["category_name", "ASC"]],
       raw: true,
     });
+
+    // Product group names, so the header mega menu can nest Group > Category > Subcategory.
+    const groupRows = await productGroupModel(resolved.tenantDB).findAll({
+      where: { company_masters_id: resolved.company_masters_id, isDelete: 0 },
+      attributes: ["id", "group_name"],
+      raw: true,
+    });
+    const groupNameById = new Map(groupRows.map((g) => [g.id, g.group_name]));
 
     // Group children by their parent id first, so looking a category's children
     // up by id is correct regardless of which order the flat list came back in -
@@ -235,6 +244,7 @@ export const getStorefrontCategoryTree = async (req) => {
     });
     const topLevel = (childrenByParentId.get(null) || []).map((c) => ({
       ...attachCategoryImage(c),
+      group_name: groupNameById.get(c.group_id) || null,
       children: (childrenByParentId.get(c.id) || []).map(attachCategoryImage),
     }));
 
