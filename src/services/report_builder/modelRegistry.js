@@ -53,6 +53,7 @@ import { JobCardsModel } from "../../models/production/JobCardsModel.js";
 import { productionTransactionModel } from "../../models/production/productionTransactionModel.js";
 import { productionTransactionsItemsModel } from "../../models/production/productionTransactionsItemsModel.js";
 import { categoryModel } from "../../models/product_settings/categoryModel.js";
+import { wareHouseModel } from "../../models/other_settings/wareHouseModel.js";
 import { bomVsProcessVsConsAndRejctsModel } from "../../models/product_settings/bomProcessVsConsAndRejctsModel.js";
 import { bomVsProcessListsModel } from "../../models/product_settings/bomVsProcessListsModel.js";
 import { productModel } from "../../models/product_settings/productModel.js";
@@ -1220,6 +1221,9 @@ export const MODEL_REGISTRY = {
       // Real column, previously unwhitelisted (found via registry-vs-DB
       // diff) — no per-warehouse breakdown was possible before.
       item_warehouse_id: { label: "Warehouse", type: "lookup", filterable: true, sortable: false, groupable: true },
+      // 1 = one side of a warehouse-to-warehouse transfer (an out line and an in line sharing a transfer number),
+      // 0 = any other movement. Filter "Is Transfer = 1" for transfers only.
+      is_transfer: { label: "Is Transfer (1 = yes)", type: "number", filterable: true, sortable: false, groupable: true },
       ...COUNT_COLUMN,
     },
     // Category not directly on this table — product-only for slot 7.
@@ -1240,6 +1244,16 @@ export const MODEL_REGISTRY = {
         // pattern used everywhere else, instead of a hand-curated 5-column
         // subset that silently drifted out of sync with PRODUCT_COLUMNS.
         modelKey: "products",
+      },
+      // Shows the warehouse name instead of its id for item_warehouse_id.
+      warehouse: {
+        label: "Warehouse",
+        foreignKey: "item_warehouse_id",
+        getModel: (tenantDB) => wareHouseModel(tenantDB),
+        targetKey: "id",
+        columns: {
+          warehouse_name: { label: "Warehouse Name", type: "string" },
+        },
       },
     },
   },

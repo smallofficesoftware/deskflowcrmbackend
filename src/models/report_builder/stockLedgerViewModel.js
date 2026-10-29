@@ -47,6 +47,10 @@ export const stockLedgerViewModel = (sequelize) => {
       a_application_login_id: {
         type: INTEGER,
       },
+      // 1 when this row is one side of a warehouse-to-warehouse transfer (see alter.txt, 29-10-2026).
+      is_transfer: {
+        type: TINYINT,
+      },
       isDelete: {
         type: TINYINT,
       },

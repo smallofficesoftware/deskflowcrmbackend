@@ -332,8 +332,15 @@ SELECT
     WHEN (ci.cart_type = 4 AND ci.reference_type != 8) OR ci.cart_type IN (6,8,10) THEN ci.item_qty
     WHEN (ci.cart_type = 3 AND ci.reference_type != 9) OR ci.cart_type IN (7,9,11) THEN -ci.item_qty
     ELSE 0
-  END AS qty_delta
+  END AS qty_delta,
+  CASE
+    WHEN ci.cart_type IN (10,11) AND c.sr_by_number IS NOT NULL
+      AND EXISTS (SELECT 1 FROM `carts` t WHERE t.sr_by_number = c.sr_by_number AND t.cart_date = c.cart_date AND t.company_masters_id = c.company_masters_id AND t.type = 10 AND t.isDelete = 0)
+      AND EXISTS (SELECT 1 FROM `carts` t WHERE t.sr_by_number = c.sr_by_number AND t.cart_date = c.cart_date AND t.company_masters_id = c.company_masters_id AND t.type = 11 AND t.isDelete = 0)
+    THEN 1 ELSE 0
+  END AS is_transfer
 FROM `cart_items` ci
+LEFT JOIN `carts` c ON c.id = ci.cart_id
 WHERE ci.isDelete = 0
   AND ci.cart_number IS NOT NULL AND ci.cart_number != ''
   AND (
