@@ -1580,6 +1580,15 @@ function normalize(value) {
 }
 
 /**
+ * The fields to match Miracle products to CRM products by: the Miracle id first, then the fields the user ticked.
+ * Matching only on the ticked fields (code / name / alias) missed a CRM product that already held the Miracle id but
+ * had been renamed, so the import inserted a second product with the same miracle_UniqueId.
+ */
+function withMiracleIdFirst(chosen) {
+    return chosen.length === 0 ? chosen : ['unique_id', ...chosen.filter((f) => f !== 'unique_id')];
+}
+
+/**
  * Builds one Map per match field: normalized value -> our product row.
  */
 function buildLookupMaps(ourProducts, matchFields) {
@@ -1619,9 +1628,11 @@ function findMatch(thirdPartyProduct, maps, matchFields) {
 export const fetchMiracleProducts = async (req) => {
     try {
         const { mconfig } = req.body;
-        const matchBy = (req.body?.matchBy || []).filter((f) => VALID_MATCH_FIELDS.includes(f));
+        const chosenMatchBy = (req.body?.matchBy || []).filter((f) => VALID_MATCH_FIELDS.includes(f));
+        // A product that already holds this Miracle id is always the match (see withMiracleIdFirst).
+        const matchBy = withMiracleIdFirst(chosenMatchBy);
 
-        if (matchBy.length === 0) {
+        if (chosenMatchBy.length === 0) {
             return resError({
                 ack_msg: "Select at least one field to match products.",
             });
@@ -1794,9 +1805,11 @@ async function processInChunksWithResults(items, chunkSize, processItem) {
 export const processProducts = async (req) => {
     try {
         const { mconfig, a_application_login_id } = req.body;
-        const matchBy = (req.body?.matchBy || []).filter((f) => VALID_MATCH_FIELDS.includes(f));
+        const chosenMatchBy = (req.body?.matchBy || []).filter((f) => VALID_MATCH_FIELDS.includes(f));
+        // A product that already holds this Miracle id is always the match (see withMiracleIdFirst).
+        const matchBy = withMiracleIdFirst(chosenMatchBy);
 
-        if (matchBy.length === 0) {
+        if (chosenMatchBy.length === 0) {
             return resError({
                 ack_msg: "Select at least one field to match products.",
             });
@@ -1999,9 +2012,16 @@ export const processProducts = async (req) => {
         const recordsToInsert = [];
         const recordsToUpdate = [];
         const currentTimestamp = moment().format("YYYY-MM-DD HH:mm:ss");
+        // Miracle ids already queued for insert in THIS run: the same product listed twice is added once.
+        const queuedMiracleIds = new Set();
 
         baseProducts.forEach((tp) => {
             const { matchedProduct } = findMatch(tp, lookupMaps, matchBy);
+            if (!matchedProduct && tp.prdid) {
+                const idKey = normalize(tp.prdid);
+                if (queuedMiracleIds.has(idKey)) return;
+                queuedMiracleIds.add(idKey);
+            }
 
             // Extract IDs from our pre-synced Maps
             const groupId = tp.grpnm ? groupMap.get(tp.grpnm.trim().toLowerCase()) : null;
