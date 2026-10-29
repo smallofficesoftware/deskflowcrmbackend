@@ -13,6 +13,7 @@ import { resolveCompanyBySlug } from "./storefrontCompanyResolver.js";
 import { getStorefrontAuthSettings } from "./storefrontAuthSettings.js";
 import { verifySessionToken } from "./storefrontSession.js";
 import { FAVICON_NAME } from "./storefrontSettingsService.js";
+import { arePricesHidden, withoutPrices } from "./storefrontPriceVisibility.js";
 
 // PUBLIC catalog reads (plans/2026-10-15-ecommerce-b2b-b2c-plan.txt, P2/4.2) - no
 // requireAddon() gate on these specifically, per 4.2's own text: "Middleware
@@ -33,6 +34,13 @@ const requireBrowseAccess = async (req, resolved) => {
   const session = token ? verifySessionToken(token) : null;
   if (session && Number(session.company_masters_id) === Number(resolved.company_masters_id)) return null;
   return resError({ ack_msg: "Please log in to continue.", developer_msg: "Public browsing is disabled for this store" });
+};
+
+/** Price visibility setting: when this request may not see prices, every product comes back with rate/net_rate
+ * null and price_hidden true (the storefront then shows "Ask for rate"). See storefrontPriceVisibility.js. */
+const maskPrices = async (req, resolved, products) => {
+  const settings = await getStorefrontAuthSettings(resolved.tenantDB, resolved.company_masters_id);
+  return (await arePricesHidden(req, resolved, settings)) ? products.map(withoutPrices) : products;
 };
 
 /** Overrides a product's rate/net_rate from the company's configured default price
@@ -285,7 +293,7 @@ export const getStorefrontCategoryBySlug = async (req) => {
       raw: true,
     });
     const pricedProducts = await applyDefaultPriceList(resolved.tenantDB, resolved.company_masters_id, products);
-    const productsWithImages = await attachPrimaryImages(resolved.tenantDB, pricedProducts);
+    const productsWithImages = await maskPrices(req, resolved, await attachPrimaryImages(resolved.tenantDB, pricedProducts));
 
     return resSuccess({ data: { item: { category: attachCategoryImage(category), parent, children, products: productsWithImages } } });
   } catch (error) {
@@ -316,7 +324,7 @@ export const getStorefrontProducts = async (req) => {
       raw: true,
     });
     const pricedProducts = await applyDefaultPriceList(resolved.tenantDB, resolved.company_masters_id, products);
-    const productsWithImages = await attachPrimaryImages(resolved.tenantDB, pricedProducts);
+    const productsWithImages = await maskPrices(req, resolved, await attachPrimaryImages(resolved.tenantDB, pricedProducts));
 
     return resSuccess({ data: { item: productsWithImages } });
   } catch (error) {
@@ -356,7 +364,7 @@ export const getStorefrontSearchResults = async (req) => {
       raw: true,
     });
     const pricedProducts = await applyDefaultPriceList(resolved.tenantDB, resolved.company_masters_id, products);
-    const productsWithImages = await attachPrimaryImages(resolved.tenantDB, pricedProducts);
+    const productsWithImages = await maskPrices(req, resolved, await attachPrimaryImages(resolved.tenantDB, pricedProducts));
 
     return resSuccess({ data: { item: productsWithImages } });
   } catch (error) {
@@ -393,6 +401,7 @@ export const getStorefrontProductBySlug = async (req) => {
     // logged-in contact, so only the store's default list and the product's
     // own base slabs can apply; checkout re-prices with the contact's list.
     const authSettings = await getStorefrontAuthSettings(resolved.tenantDB, resolved.company_masters_id);
+    const pricesHidden = await arePricesHidden(req, resolved, authSettings);
     const slabContext = await loadQtySlabs(resolved.tenantDB, {
       contactPriceListId: null,
       defaultPriceListId: authSettings.default_price_list_id || null,
@@ -418,10 +427,18 @@ export const getStorefrontProductBySlug = async (req) => {
       variantsWithImages.forEach((v) => {
         v.qty_slabs = slabsForProduct(variantSlabContext, v.id).map((s) => ({ min_qty: s.min_qty, net_rate: s.net_rate }));
       });
-      return resSuccess({ data: { item: { product: withImages, attributes, variants: variantsWithImages } } });
+      return resSuccess({
+        data: {
+          item: {
+            product: pricesHidden ? withoutPrices(withImages) : withImages,
+            attributes,
+            variants: pricesHidden ? variantsWithImages.map(withoutPrices) : variantsWithImages,
+          },
+        },
+      });
     }
 
-    return resSuccess({ data: { item: { product: withImages } } });
+    return resSuccess({ data: { item: { product: pricesHidden ? withoutPrices(withImages) : withImages } } });
   } catch (error) {
     return resError({ developer_msg: `getStorefrontProductBySlug failed: ${error}` });
   }

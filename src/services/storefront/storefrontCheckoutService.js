@@ -13,6 +13,7 @@ import { getStorefrontAuthSettings } from "./storefrontAuthSettings.js";
 import { loadQtySlabs, pickSlab, slabsForProduct } from "./storefrontQtySlabs.js";
 import { resolveCompanyBySlug } from "./storefrontCompanyResolver.js";
 import { verifySessionToken } from "./storefrontSession.js";
+import { arePricesHidden } from "./storefrontPriceVisibility.js";
 import { getNumberSeries, normalizeToTenDigit, resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
 
 // P4 (plans/2026-10-15-ecommerce-b2b-b2c-plan.txt) - first slice: checkout
@@ -314,6 +315,12 @@ export const createStorefrontCheckout = async (req) => {
       guest_person_name,
     });
     if (contactError) return resError({ ack_msg: contactError });
+
+    // Price visibility: a customer who is not shown prices cannot check out either (no calling this API around the
+    // hidden price). They ask for a rate in the store chat instead.
+    if (await arePricesHidden(req, resolved, settings)) {
+      return resError({ ack_msg: "Prices are not shown for you on this store, so this order can't be placed online. Please ask for a rate." });
+    }
 
     const productIds = items.map((i) => Number(i.product_id)).filter(Boolean);
     const products = await productModel(resolved.tenantDB).findAll({

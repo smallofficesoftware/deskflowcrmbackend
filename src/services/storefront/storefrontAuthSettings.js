@@ -41,6 +41,9 @@ const DEFAULTS = {
   // applyDefaultPriceList used to read this via its own separate query; checkout
   // (P4) needs it too, so it's read once here instead of twice.
   default_price_list_id: null,
+  // Who sees prices: "everyone" | "login" | "price_list" | "never" - see storefrontPriceVisibility.js.
+  // A hidden price is replaced by an "Ask for rate" button that opens the store chat.
+  price_visibility: "everyone",
   // P4 payment settings (23-10-2026, per the user: settings UI now, real
   // payment wiring built right after) - same config_json blob, no new keys
   // table. razorpay_key_secret never leaves the server (storefrontPaymentService.js
