@@ -5302,3 +5302,12 @@ WHERE t.isDelete = 0
 --     PAGE_ID.ATTRIBUTE_MASTER enum member)
 -- Existing numeric PAGE_ID.* call sites (127 other pages) are untouched and unaffected - this
 -- only adds an alternative slug path for any page added after today.
+
+29-10-2026 Dhaval
+-- Miracle sync creates contacts with source_type_id -21 ("Miracle Cust."). The row was only inserted on some tenant DBs
+-- (13-07-2026 entry above), so tenants without it show a blank source on those contacts. Safe to run again: inserts only when missing.
+-- Run on every tenant DB and on smalloffice_sample_tenant (create_company_copy.sql clones source_types from it).
+INSERT INTO `source_types` (`id`, `company_masters_id`, `a_application_login_id`, `source_name`, `api_key`, `webhook`, `color`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`, `modified_date`)
+SELECT -21, 0, 0, 'Miracle Cust.', '', '', '#2b388f', '2026-02-25 11:48:49', '2026-02-25 16:36:13', 0, 1, '2026-02-25 16:36:13'
+FROM DUAL
+WHERE NOT EXISTS (SELECT 1 FROM `source_types` WHERE `id` = -21);
