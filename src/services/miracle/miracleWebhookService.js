@@ -552,6 +552,8 @@ async function createOrUpdateProductFromDetail(tenantDB, companyId, tenantId, pr
         max_stock_quantity: ordlev,
         miracle_UniqueId: uniqueId,
         miracle_update_date_time: new Date(),
+        // Miracle's UOM name (Product master "uomnm"), only when GetProduct returns it - never blanks one already saved.
+        ...(productDetail.uomnm && String(productDetail.uomnm).trim() ? { miracle_uom_name: String(productDetail.uomnm).trim() } : {}),
         ...customFields,
     };
 
