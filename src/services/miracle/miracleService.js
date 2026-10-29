@@ -1584,6 +1584,17 @@ function normalize(value) {
 }
 
 /**
+ * The Product Ledger names the alias column `prdaliam` (guide v1.3, 13.3) while the Product master and the rest of this
+ * file call it `prdalinm`. The import asks for `prdaliam`; this copies it to `prdalinm` so the code and alias matching
+ * keep reading one name. If Miracle refuses `prdaliam`, postLedger drops it and the products simply have no alias, as before.
+ */
+function useLedgerAlias(products) {
+    for (const p of products) {
+        if (p && p.prdaliam != null && (p.prdalinm == null || p.prdalinm === '')) p.prdalinm = p.prdaliam;
+    }
+}
+
+/**
  * The fields to match Miracle products to CRM products by: the Miracle id first, then the fields the user ticked.
  * Matching only on the ticked fields (code / name / alias) missed a CRM product that already held the Miracle id but
  * had been renamed, so the import inserted a second product with the same miracle_UniqueId.
@@ -1657,7 +1668,7 @@ export const fetchMiracleProducts = async (req) => {
         // ---------------------------------------------------------
         const ledgerPayload = {
             "rptfield": [
-                "prdnm", "prdid", "grpnm", "catnm", "gstunt", "hsncode", "minstk", "ordlev", "lprate", "lsrate", "prdmrp", "commnm", "slabnm", "opamt", "opqty1", "recqty1", "iqty1", "clqty1", "prdcrdt", "prdupdt"
+                "prdnm", "prdid", "prdaliam", "grpnm", "catnm", "gstunt", "hsncode", "minstk", "ordlev", "lprate", "lsrate", "prdmrp", "commnm", "slabnm", "opamt", "opqty1", "recqty1", "iqty1", "clqty1", "prdcrdt", "prdupdt"
             ]
         };
 
@@ -1677,6 +1688,7 @@ export const fetchMiracleProducts = async (req) => {
                 data: { items: [], totalFetched: 0, totalMatched: 0, totalNew: 0 }
             });
         }
+        useLedgerAlias(baseProducts);
 
         // ---------------------------------------------------------
         // STEP 2: Match against CRM Database & Format Output
@@ -1835,7 +1847,7 @@ export const processProducts = async (req) => {
         // STEP 1: Fetch Base Product List from Miracle
         // ---------------------------------------------------------
         const ledgerPayload = {
-            "rptfield": ["prdnm", "prdid", "grpnm", "catnm", "gstunt", "hsncode", "minstk", "ordlev", "lprate", "lsrate", "prdmrp", "commnm", "slabnm", "opamt", "opqty1", "recqty1", "iqty1", "clqty1", "prdcrdt", "prdupdt"]
+            "rptfield": ["prdnm", "prdid", "prdaliam", "grpnm", "catnm", "gstunt", "hsncode", "minstk", "ordlev", "lprate", "lsrate", "prdmrp", "commnm", "slabnm", "opamt", "opqty1", "recqty1", "iqty1", "clqty1", "prdcrdt", "prdupdt"]
         };
 
         const ledgerResponse = await postLedger(api, 'TPA/M2/V1/ProductLedger', ledgerPayload);
@@ -1854,6 +1866,7 @@ export const processProducts = async (req) => {
                 data: { updatedCount: 0, createdCount: 0, failedCount: 0 }
             });
         }
+        useLedgerAlias(baseProducts);
 
         // ---------------------------------------------------------
         // STEP 2: Pre-Sync Dependencies (Groups & Categories)
