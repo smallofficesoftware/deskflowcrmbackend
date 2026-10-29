@@ -5,6 +5,8 @@ import companyModel from "../../models/company_setup/companyModel.js";
 import { categoryModel } from "../../models/product_settings/categoryModel.js";
 import { marketplaceAddonSettingsModel } from "../../models/marketplace/marketplaceAddonSettingsModel.js";
 import { priceListModel } from "../../models/product_settings/priceListModel.js";
+import storefrontThemeModel from "../../models/storefront/storefrontThemeModel.js";
+import { companyStorefrontThemeModel } from "../../models/storefront/companyStorefrontThemeModel.js";
 import { productGroupModel } from "../../models/product_settings/productGroupModel.js";
 import { productImageModel } from "../../models/product_settings/productImageModel.js";
 import { productModel } from "../../models/product_settings/productModel.js";
@@ -186,6 +188,22 @@ export const getStorefrontCompanyInfo = async (req) => {
       raw: true,
     });
     company.custom_domain = domainRow?.verified_at ? domainRow.domain : null;
+
+    // The theme the admin picked in Ecommerce settings (code from the master catalog); null = the default, Pharmacy.
+    company.theme_code = null;
+    try {
+      const picked = await companyStorefrontThemeModel(resolved.tenantDB).findOne({
+        where: { company_masters_id: resolved.company_masters_id, isDelete: 0 },
+        attributes: ["storefront_theme_id"],
+        raw: true,
+      });
+      if (picked?.storefront_theme_id) {
+        const theme = await storefrontThemeModel.findOne({ where: { id: picked.storefront_theme_id, isDelete: 0, isActive: 1 }, attributes: ["code"], raw: true });
+        company.theme_code = theme?.code || null;
+      }
+    } catch (themeError) {
+      console.error("storefront info: could not read the selected theme", themeError); // fall back to the default theme
+    }
 
     return resSuccess({ data: { item: company } });
   } catch (error) {

@@ -5380,3 +5380,9 @@ INSERT INTO `storefront_themes` (`code`, `name`, `description`, `required_tier`,
 ('rose', 'Rose Boutique', 'Soft pink with big rounded corners - fashion, beauty and gifts.', 'basic', 6, 1, 0),
 ('mono', 'Mono Minimal', 'Black and white, sharp corners, no shadows - editorial and modern.', 'basic', 7, 1, 0),
 ('marketplace', 'Marketplace', 'Dense, bold marketplace look - navy header with an amber accent.', 'basic', 8, 1, 0);
+
+29-10-2026 Dhaval
+-- MASTER DB only. Storefront uses Poppins everywhere, so Forest and Royal no longer have serif headings.
+-- migration: migration/master/migrations/20261029150000-fix-storefront-skin-theme-descriptions.js
+UPDATE `storefront_themes` SET `description` = 'Natural greens on warm cream - organic and grocery stores.' WHERE `code` = 'forest';
+UPDATE `storefront_themes` SET `description` = 'Deep purple and gold - premium and jewellery stores.' WHERE `code` = 'royal';
