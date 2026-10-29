@@ -2201,9 +2201,11 @@ function findMatchContact(thirdPartyRecord, maps, matchFields, mapping) {
 export const fetchContact = async (req) => {
     try {
         const { mconfig } = req.body;
-        const matchBy = (req.body?.matchBy || []).filter((f) => VALID_MATCH_FIELDS_CONTACT.includes(f));
+        const chosenMatchBy = (req.body?.matchBy || []).filter((f) => VALID_MATCH_FIELDS_CONTACT.includes(f));
+        // A contact that already holds this Miracle id is always the match (see withMiracleIdFirst).
+        const matchBy = withMiracleIdFirst(chosenMatchBy);
 
-        if (matchBy.length === 0) {
+        if (chosenMatchBy.length === 0) {
             return resError({
                 ack_msg: "Select at least one field to match contacts.",
             });
@@ -2321,9 +2323,11 @@ export const fetchContact = async (req) => {
 export const processContact = async (req) => {
     try {
         const { mconfig, a_application_login_id } = req.body;
-        const matchBy = (req.body?.matchBy || []).filter((f) => VALID_MATCH_FIELDS_CONTACT.includes(f));
+        const chosenMatchBy = (req.body?.matchBy || []).filter((f) => VALID_MATCH_FIELDS_CONTACT.includes(f));
+        // A contact that already holds this Miracle id is always the match (see withMiracleIdFirst).
+        const matchBy = withMiracleIdFirst(chosenMatchBy);
 
-        if (matchBy.length === 0) {
+        if (chosenMatchBy.length === 0) {
             return resError({
                 ack_msg: "Select at least one field to match contacts.",
             });
@@ -2432,9 +2436,16 @@ export const processContact = async (req) => {
         const recordsToInsert = [];
         const recordsToUpdate = [];
         const currentTimestamp = moment().format("YYYY-MM-DD HH:mm:ss");
+        // Miracle ids already queued for insert in THIS run: the same contact listed twice is added once.
+        const queuedMiracleIds = new Set();
 
         baseContacts.forEach((tp) => {
             const { matchedRecord } = findMatchContact(tp, lookupMaps, matchBy, FIELD_MAPPING_CONTACT);
+            if (!matchedRecord && tp.accid) {
+                const idKey = normalize(tp.accid);
+                if (queuedMiracleIds.has(idKey)) return;
+                queuedMiracleIds.add(idKey);
+            }
 
             // Resolve State and City IDs
             const stateId = tp.statenm ? (stateMap.get(tp.statenm.trim().toLowerCase()) || null) : null;
