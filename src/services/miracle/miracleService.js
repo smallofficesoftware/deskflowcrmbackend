@@ -1653,7 +1653,7 @@ export const fetchMiracleProducts = async (req) => {
         // ---------------------------------------------------------
         const ledgerPayload = {
             "rptfield": [
-                "prdnm", "prdid", "gstunt", "hsncode", "minstk", "ordlev", "lprate", "lsrate", "prdmrp", "commnm", "slabnm", "opamt", "opqty1", "recqty1", "iqty1", "clqty1", "prdcrdt", "prdupdt"
+                "prdnm", "prdid", "grpnm", "catnm", "gstunt", "hsncode", "minstk", "ordlev", "lprate", "lsrate", "prdmrp", "commnm", "slabnm", "opamt", "opqty1", "recqty1", "iqty1", "clqty1", "prdcrdt", "prdupdt"
             ]
         };
 
@@ -1704,7 +1704,8 @@ export const fetchMiracleProducts = async (req) => {
                 name: tp.prdnm || "",
                 alias: tp.prdalinm || null,
                 price: tp.lsrate || 0,       // Mapped to lsrate (Local Sale Rate) since salrate was removed
-                category: tp.catnm || ""
+                category: tp.catnm || "",
+                group: tp.grpnm || ""
             };
 
             // 2. Format the Matched CRM Product
@@ -1830,7 +1831,7 @@ export const processProducts = async (req) => {
         // STEP 1: Fetch Base Product List from Miracle
         // ---------------------------------------------------------
         const ledgerPayload = {
-            "rptfield": ["prdnm", "prdid", "gstunt", "hsncode", "minstk", "ordlev", "lprate", "lsrate", "prdmrp", "commnm", "slabnm", "opamt", "opqty1", "recqty1", "iqty1", "clqty1", "prdcrdt", "prdupdt"]
+            "rptfield": ["prdnm", "prdid", "grpnm", "catnm", "gstunt", "hsncode", "minstk", "ordlev", "lprate", "lsrate", "prdmrp", "commnm", "slabnm", "opamt", "opqty1", "recqty1", "iqty1", "clqty1", "prdcrdt", "prdupdt"]
         };
 
         const ledgerResponse = await postLedger(api, 'TPA/M2/V1/ProductLedger', ledgerPayload);
