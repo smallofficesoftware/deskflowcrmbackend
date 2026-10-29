@@ -1,6 +1,7 @@
 import axios from 'axios';
 import https from 'https';
 import { getValidAccessToken } from '../middlewares/miracleTokenManager.js';
+import { isTokenExpiredBody } from './miracleTokenExpired.js';
 import { insertApiLog } from '../services/activities/logService.js';
 import { insertMiracleLog } from '../services/activities/miracleLogService.js';
 
@@ -54,6 +55,27 @@ export const createAxiosIntance = ({
     instance.interceptors.response.use(
         async (response) => {
             const { config } = response;
+
+            // Miracle can answer HTTP 200 with { IsError: true, Message: "Token is Expired." } (the 401 case is handled in
+            // the error interceptor below). The request was refused before it ran, so it is safe to send it again once
+            // with a freshly issued token instead of logging a failure and showing the user an error.
+            if (isTokenExpiredBody(response?.data) && config && !config._retry && getAuthContext) {
+                config._retry = true;
+                try {
+                    const auth = await getAuthContext();
+                    if (auth) {
+                        const newToken = await getValidAccessToken(auth, true);
+                        if (newToken) {
+                            config.headers = config.headers || {};
+                            config.headers.Authorization = `Bearer ${newToken}`;
+                            return instance(config);
+                        }
+                    }
+                } catch (retryErr) {
+                    console.log("[miracleAxiosInstance] Token refresh retry (200 body) failed:", retryErr.message);
+                }
+            }
+
             const responseTime = Date.now() - (config?.metadata?.startTime || Date.now());
             const fullUrl = `${config?.baseURL || ""}${config?.url || ""}`;
             const isMiracleError = Boolean(response?.data?.IsError);
