@@ -7,6 +7,7 @@ import emitToCompany from "../1socketIOServices/emitToCompany.js";
 import { resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { getStorefrontAuthSettings } from "./storefrontAuthSettings.js";
 import { notifyStorefrontContact } from "./storefrontPushService.js";
+import { onStorefrontCustomerMessage } from "./storefrontChatNotify.js";
 
 // In-store chat. A storefront customer IS a contact_masters row, so chat lives in the CRM's existing
 // contact_message_histories table - the same history the team already sees per contact - tagged
@@ -129,6 +130,7 @@ export const sendMyChat = async (req) => {
       isActive: 1,
     });
     await touchContact(db, company_masters_id, contact_master_id);
+    onStorefrontCustomerMessage(db, company_masters_id, contact_master_id, text);
 
     try {
       emitToCompany(req.app.get("io"), company_masters_id, "storefront-chat-message", { contact_id: contact_master_id });
