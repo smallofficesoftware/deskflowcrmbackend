@@ -154,6 +154,10 @@ export const syncProduct = async (req) => {
             delete payload['gstper'];
             delete payload['slabnm'];
             delete payload['prdstp'];
+            // Guide v1.3: slabnm, uomnm, commnm and hsncode are Add-only. The live log shows edits sending uomnm "U1" for
+            // products whose Miracle UOM is something else, and Miracle rejecting them with "Product cannot be Unmap,
+            // Stock is Present" (189 of the last 200 failures). An edit leaves the UOM as Miracle has it.
+            delete payload['uomnm'];
         }
 
         const customUfddet = await getMiracleUfdDet(req.tenantDB, company_id, 4, getProductDb);
