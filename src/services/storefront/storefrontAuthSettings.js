@@ -86,7 +86,7 @@ const DEFAULTS = {
   // already uses, not a new status machine. stock_check_mode: 'derived'
   // (P4's existing ledger-only calc, unchanged default) or 'reserved' (holds
   // stock against OTHER concurrent storefront checkouts too - see
-  // storefrontCheckoutService.js's reserveStockForCheckout).
+  // storefrontCheckoutService.js's reserveStockForCheckout), or 'off' (this store never checks stock at checkout).
   credit_limit_action: "warn",
   approval_mode_enabled: false,
   stock_check_mode: "derived",

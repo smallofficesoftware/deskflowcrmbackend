@@ -440,10 +440,13 @@ export const createStorefrontCheckout = async (req) => {
     // ("Only takes effect when strict stock checking is already on") and
     // checkDerivedStock's own mode 0/2 short-circuit.
     const stockMode = await getStorefrontStockCheckMode(resolved.company_masters_id);
-    const reservedMode = !isDraftOnly && stockMode === 1 && settings.stock_check_mode === "reserved";
+    // stock_check_mode "off": this store never checks stock at checkout, whatever the company's strict-stock setting
+    // says (a store that sells to order, or tracks stock elsewhere).
+    const stockCheckOff = settings.stock_check_mode === "off";
+    const reservedMode = !stockCheckOff && !isDraftOnly && stockMode === 1 && settings.stock_check_mode === "reserved";
     let cartStatus = 0;
 
-    if (!reservedMode) {
+    if (!reservedMode && !stockCheckOff) {
       // Unchanged P4 path - derived calc, outside any transaction.
       const stockResult = await checkDerivedStock(resolved.tenantDB, resolved.company_masters_id, stockItems);
       if (!stockResult.status) {

@@ -5386,3 +5386,8 @@ INSERT INTO `storefront_themes` (`code`, `name`, `description`, `required_tier`,
 -- migration: migration/master/migrations/20261029150000-fix-storefront-skin-theme-descriptions.js
 UPDATE `storefront_themes` SET `description` = 'Natural greens on warm cream - organic and grocery stores.' WHERE `code` = 'forest';
 UPDATE `storefront_themes` SET `description` = 'Deep purple and gold - premium and jewellery stores.' WHERE `code` = 'royal';
+
+29-10-2026 Dhaval
+-- MASTER DB only. The default storefront theme is shown as "Classic" with a plain description (code 'pharmacy' unchanged).
+-- migration: migration/master/migrations/20261029160000-rename-pharmacy-storefront-theme.js
+UPDATE `storefront_themes` SET `name` = 'Classic', `description` = 'Clean light layout with product cards and a sidebar. Buttons, prices and the menu underline follow your Accent Colour.' WHERE `code` = 'pharmacy';
