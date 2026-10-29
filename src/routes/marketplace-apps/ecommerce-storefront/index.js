@@ -60,6 +60,8 @@ import {
 } from "../../../controllers/storefront/storefrontPaymentController.js";
 import { authenticateToken } from "../../../middlewares/auth.js";
 import { storefrontFaviconUpload } from "../../../middlewares/multer.js";
+import { storefrontLogoUpload } from "../../../middlewares/storefrontLogoUpload.js";
+import { removeStorefrontLogoController, uploadStorefrontLogoController } from "../../../controllers/storefront/storefrontLogoController.js";
 import { resError } from "../../../utils/sharedFunctions.js";
 import { requireAddon } from "../../../middlewares/requireAddon.js";
 import { requireStorefrontChatSession, requireStorefrontSession } from "../../../services/storefront/storefrontSession.js";
@@ -91,6 +93,21 @@ export default (app) => {
     uploadStorefrontFaviconController
   );
   app.post("/storefront/favicon/remove", authenticateToken, tenantMiddleware, requireAddon("ecommerce-storefront"), removeStorefrontFaviconController);
+  // Storefront logo: same gates and error handling as the favicon above (1 MB limit).
+  app.post(
+    "/storefront/logo/upload",
+    authenticateToken,
+    tenantMiddleware,
+    requireAddon("ecommerce-storefront"),
+    (req, res, next) =>
+      storefrontLogoUpload(req, res, (err) => {
+        if (!err) return next();
+        const tooBig = err.code === "LIMIT_FILE_SIZE";
+        return res.status(200).send(resError({ ack_msg: tooBig ? "Logo must be 1 MB or smaller." : err.message, developer_msg: String(err) }));
+      }),
+    uploadStorefrontLogoController
+  );
+  app.post("/storefront/logo/remove", authenticateToken, tenantMiddleware, requireAddon("ecommerce-storefront"), removeStorefrontLogoController);
   app.post("/storefront/themes/get", authenticateToken, tenantMiddleware, requireAddon("ecommerce-storefront"), getStorefrontThemesController);
   app.post("/storefront/theme/select", authenticateToken, tenantMiddleware, requireAddon("ecommerce-storefront"), selectStorefrontThemeController);
   app.post("/storefront/domain/get", authenticateToken, tenantMiddleware, requireAddon("ecommerce-storefront"), getStorefrontDomainController);

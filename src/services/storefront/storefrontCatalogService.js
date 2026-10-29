@@ -13,6 +13,7 @@ import { resolveCompanyBySlug } from "./storefrontCompanyResolver.js";
 import { getStorefrontAuthSettings } from "./storefrontAuthSettings.js";
 import { verifySessionToken } from "./storefrontSession.js";
 import { FAVICON_NAME } from "./storefrontSettingsService.js";
+import { LOGO_NAME } from "./storefrontLogoService.js";
 import { arePricesHidden, withoutPrices } from "./storefrontPriceVisibility.js";
 
 // PUBLIC catalog reads (plans/2026-10-15-ecommerce-b2b-b2c-plan.txt, P2/4.2) - no
@@ -143,7 +144,7 @@ export const getStorefrontCompanyInfo = async (req) => {
 
     const company = await companyModel.findOne({
       where: { id: resolved.company_masters_id, isDelete: 0 },
-      attributes: ["id", "company_name", "company_logo", "banner_img_one", "banner_img_two", "company_email", "company_contact"],
+      attributes: ["id", "company_name", "company_logo", "banner_img_one", "banner_img_two", "company_email", "company_contact", "address"],
       raw: true,
     });
     if (!company) return resError({ ack_msg: "Store not found" });
@@ -174,6 +175,8 @@ export const getStorefrontCompanyInfo = async (req) => {
     // Tab/web-app icon uploaded in the CRM settings. Only a path of exactly the shape the upload writes is
     // ever returned, so a hand-edited config_json cannot point the storefront at an arbitrary file.
     company.favicon = typeof config?.favicon_path === "string" && FAVICON_NAME.test(config.favicon_path) ? config.favicon_path : null;
+    // The store's own logo (Ecommerce settings > Storefront logo); null = use the company logo. Same path check.
+    company.storefront_logo = typeof config?.logo_path === "string" && LOGO_NAME.test(config.logo_path) ? config.logo_path : null;
 
     // Verified custom domain (Q11) - the storefront emits it as the canonical URL.
     const domainRow = await storefrontDomainModel.findOne({

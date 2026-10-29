@@ -205,4 +205,4 @@ export const removeStorefrontFavicon = async (req) => {
   }
 };
 
-export { FAVICON_NAME };
+export { FAVICON_NAME, companyImageDir, faviconTypeFromBytes, readConfig };
