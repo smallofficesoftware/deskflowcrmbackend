@@ -4,6 +4,17 @@ import { isValid, resBadRequest, resError, resSuccess } from "../../utils/shared
 
 const round = (n) => Math.round((Number(n) || 0) * 10000) / 10000;
 
+const SOURCE_LABELS = {
+    transfer: "Warehouse transfer",
+    stock_adjustment: "Stock adjustment (+/-)",
+    dispatch: "Dispatch",
+    sales_invoice: "Sales invoice (direct, no dispatch)",
+    sales_return: "Sales return",
+    grn: "GRN / Inward",
+    purchase_invoice: "Purchase invoice (direct, no GRN)",
+    purchase_return: "Purchase return",
+};
+
 /**
  * Warehouse transfer plus/minus report.
  *
@@ -13,8 +24,12 @@ const round = (n) => Math.round((Number(n) || 0) * 10000) / 10000;
  * counts as a transfer when both a type 10 and a type 11 cart share its
  * `sr_by_number`.
  *
+ * The per-warehouse and per-product rows also carry total_in / total_out: every stock movement, not only
+ * transfers (dispatch, direct invoice, GRN, sales return, purchase return, plain stock add / out), with the
+ * same in/out rules as the Stock Ledger report. source_wise breaks those totals down by source.
+ *
  * Body: { from_date, to_date, warehouse_id? (id or "1,3"), product_id? } (dates YYYY-MM-DD)
- * Returns { summary, product_wise, transfers, totals }.
+ * Returns { summary, product_wise, source_wise, transfers, totals }.
  */
 export const getWarehouseTransferReport = async (req) => {
     try {
@@ -92,6 +107,37 @@ export const getWarehouseTransferReport = async (req) => {
             }
         }
 
+        // Every stock movement per warehouse (not only transfers), using the same direction rules as the Stock
+        // Ledger report (stock_ledger_view): in = purchase invoice without a GRN reference, sales return, GRN,
+        // stock add; out = sales invoice without a dispatch reference, purchase return, dispatch, stock out.
+        const movementRows = await req.tenantDB.query(
+            `SELECT i.cart_type, i.reference_type, c.sr_by_number, i.item_product_id, i.item_product_name, i.item_product_code,
+                    i.item_qty, i.item_warehouse_id, w.warehouse_name,
+                    CASE WHEN i.cart_type IN (10, 11) AND c.sr_by_number IN (
+                        SELECT sr_by_number FROM carts
+                        WHERE isDelete = 0 AND type IN (10, 11) AND sr_by_number IS NOT NULL
+                        GROUP BY sr_by_number
+                        HAVING SUM(type = 10) > 0 AND SUM(type = 11) > 0
+                    ) THEN 1 ELSE 0 END AS is_transfer
+             FROM cart_items i
+             JOIN carts c ON c.id = i.cart_id AND c.isDelete = 0
+             JOIN warehouses w ON w.id = i.item_warehouse_id
+             WHERE i.isDelete = 0
+               AND i.cart_number IS NOT NULL AND i.cart_number != ''
+               AND DATE(c.cart_date) BETWEEN :from_date AND :to_date
+               AND (
+                   (i.cart_type = 4 AND i.reference_type != 8)
+                   OR (i.cart_type = 3 AND i.reference_type != 9)
+                   OR i.cart_type IN (6, 7, 8, 9, 10, 11)
+               )`,
+            { replacements: { from_date, to_date }, type: QueryTypes.SELECT }
+        );
+        const sourceOf = (m) => {
+            if (m.cart_type == 10 || m.cart_type == 11) return m.is_transfer ? "transfer" : "stock_adjustment";
+            return { 3: "sales_invoice", 4: "purchase_invoice", 6: "sales_return", 7: "purchase_return", 8: "grn", 9: "dispatch" }[m.cart_type];
+        };
+        const isIn = (m) => (m.cart_type == 4 && m.reference_type != 8) || [6, 8, 10].includes(Number(m.cart_type));
+
         const keep = (t) =>
             (warehouseFilter === null || warehouseFilter.has(t.from_warehouse_id) || warehouseFilter.has(t.to_warehouse_id)) &&
             (productFilter === null || t.product_id === productFilter);
@@ -101,10 +147,8 @@ export const getWarehouseTransferReport = async (req) => {
         const summaryMap = new Map();
         const productMap = new Map();
         const bump = (map, key, seed, field, qty) => {
-            if (!map.has(key)) map.set(key, { ...seed, transfer_in: 0, transfer_out: 0, net: 0 });
-            const e = map.get(key);
-            e[field] += qty;
-            e.net = e.transfer_in - e.transfer_out;
+            if (!map.has(key)) map.set(key, { ...seed, transfer_in: 0, transfer_out: 0, total_in: 0, total_out: 0 });
+            map.get(key)[field] += qty;
         };
         for (const t of filteredTransfers) {
             const sides = [
@@ -123,21 +167,45 @@ export const getWarehouseTransferReport = async (req) => {
                 );
             }
         }
-        const finish = (list) => list.map((e) => ({ ...e, transfer_in: round(e.transfer_in), transfer_out: round(e.transfer_out), net: round(e.net) }));
-        const summary = finish([...summaryMap.values()]).sort((a, b) => String(a.warehouse_name).localeCompare(String(b.warehouse_name)));
+        // Add every movement (all sources) to the same per-warehouse / per-product rows, and to a source-wise view.
+        const sourceMap = new Map();
+        for (const m of movementRows) {
+            if (warehouseFilter !== null && !warehouseFilter.has(m.item_warehouse_id)) continue;
+            if (productFilter !== null && m.item_product_id !== productFilter) continue;
+            const qty = Number(m.item_qty) || 0;
+            const field = isIn(m) ? "total_in" : "total_out";
+            const seed = { warehouse_id: m.item_warehouse_id, warehouse_name: m.warehouse_name };
+            bump(summaryMap, m.item_warehouse_id, seed, field, qty);
+            bump(productMap, `${m.item_product_id}_${m.item_warehouse_id}`, { ...seed, product_id: m.item_product_id, product_name: m.item_product_name, product_code: m.item_product_code }, field, qty);
+            bump(sourceMap, `${m.item_warehouse_id}_${sourceOf(m)}`, { ...seed, source: SOURCE_LABELS[sourceOf(m)] }, field, qty);
+        }
+        const finish = (list) =>
+            list.map((e) => ({
+                ...e,
+                transfer_in: round(e.transfer_in),
+                transfer_out: round(e.transfer_out),
+                total_in: round(e.total_in),
+                total_out: round(e.total_out),
+                net: round(e.total_in - e.total_out),
+            }));
+        const byWarehouseThenName = (a, b) => String(a.warehouse_name).localeCompare(String(b.warehouse_name));
+        const summary = finish([...summaryMap.values()]).sort(byWarehouseThenName);
         const productWise = finish([...productMap.values()]).sort(
-            (a, b) => String(a.product_name).localeCompare(String(b.product_name)) || String(a.warehouse_name).localeCompare(String(b.warehouse_name))
+            (a, b) => String(a.product_name).localeCompare(String(b.product_name)) || byWarehouseThenName(a, b)
         );
+        const sourceWise = finish([...sourceMap.values()]).sort((a, b) => byWarehouseThenName(a, b) || String(a.source).localeCompare(String(b.source)));
 
         const totals = {
             transfer_in: round(summary.reduce((s, e) => s + e.transfer_in, 0)),
             transfer_out: round(summary.reduce((s, e) => s + e.transfer_out, 0)),
+            total_in: round(summary.reduce((s, e) => s + e.total_in, 0)),
+            total_out: round(summary.reduce((s, e) => s + e.total_out, 0)),
             net: round(summary.reduce((s, e) => s + e.net, 0)),
             transfer_count: new Set(filteredTransfers.map((t) => t.sr_by_number)).size,
         };
 
         return resSuccess({
-            data: { summary, product_wise: productWise, transfers: filteredTransfers, totals },
+            data: { summary, product_wise: productWise, source_wise: sourceWise, transfers: filteredTransfers, totals },
         });
     } catch (error) {
         console.log("getWarehouseTransferReport Error", error);

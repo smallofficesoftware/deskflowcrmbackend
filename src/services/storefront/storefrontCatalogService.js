@@ -1,6 +1,6 @@
 import { loadQtySlabs, slabsForProduct } from "./storefrontQtySlabs.js";
 import storefrontDomainModel from "../../models/storefront/storefrontDomainModel.js";
-import { Op } from "sequelize";
+import { Op, QueryTypes } from "sequelize";
 import companyModel from "../../models/company_setup/companyModel.js";
 import { categoryModel } from "../../models/product_settings/categoryModel.js";
 import { marketplaceAddonSettingsModel } from "../../models/marketplace/marketplaceAddonSettingsModel.js";
@@ -189,6 +189,9 @@ export const getStorefrontCompanyInfo = async (req) => {
     });
     company.custom_domain = domainRow?.verified_at ? domainRow.domain : null;
 
+    // Support tickets can be switched off in the settings; the storefront hides its Support Tickets menu item then.
+    company.tickets_enabled = config?.tickets_enabled !== false;
+
     // The theme the admin picked in Ecommerce settings (code from the master catalog); null = the default, Pharmacy.
     company.theme_code = null;
     try {
@@ -224,6 +227,18 @@ const attachCategoryImage = (category) => {
   };
 };
 
+/** category_id -> number of products the store would list on that category's page (active, shown in the store,
+ * not an individual variant). Categories missing from the map have none and are hidden from every storefront list. */
+const storefrontProductCountByCategory = async (db, companyId) => {
+  const rows = await db.query(
+    `SELECT category_id, COUNT(*) AS n FROM products
+      WHERE company_masters_id = :companyId AND isDelete = 0 AND isActive = 1 AND show_in_ecommerce = 1 AND parent_product_id IS NULL
+      GROUP BY category_id`,
+    { replacements: { companyId }, type: QueryTypes.SELECT }
+  );
+  return new Map(rows.map((r) => [Number(r.category_id), Number(r.n)]));
+};
+
 /** GET /storefront/:companySlug/categories - full tree (top-level categories
  * with their direct subcategories nested), for nav/menus. */
 export const getStorefrontCategoryTree = async (req) => {
@@ -244,7 +259,8 @@ export const getStorefrontCategoryTree = async (req) => {
 
     // Product group names, so the header mega menu can nest Group > Category > Subcategory.
     const groupRows = await productGroupModel(resolved.tenantDB).findAll({
-      where: { company_masters_id: resolved.company_masters_id, isDelete: 0 },
+      // company 0 = the shared default group ("Demo Product Group", id -1) every company's categories can use.
+      where: { company_masters_id: { [Op.in]: [resolved.company_masters_id, 0] }, isDelete: 0 },
       attributes: ["id", "group_name"],
       raw: true,
     });
@@ -260,11 +276,17 @@ export const getStorefrontCategoryTree = async (req) => {
       if (!childrenByParentId.has(key)) childrenByParentId.set(key, []);
       childrenByParentId.get(key).push(c);
     });
-    const topLevel = (childrenByParentId.get(null) || []).map((c) => ({
-      ...attachCategoryImage(c),
-      group_name: groupNameById.get(c.group_id) || null,
-      children: (childrenByParentId.get(c.id) || []).map(attachCategoryImage),
-    }));
+    // Hide categories with nothing to show: product counts use the same rules as a category page's own product
+    // list (active, shown in the store, not an individual variant). A sub category stays only when it has products;
+    // a top level category stays when it has products itself or any sub category that does.
+    const productCount = await storefrontProductCountByCategory(resolved.tenantDB, resolved.company_masters_id);
+    const topLevel = (childrenByParentId.get(null) || [])
+      .map((c) => ({
+        ...attachCategoryImage(c),
+        group_name: groupNameById.get(c.group_id) || null,
+        children: (childrenByParentId.get(c.id) || []).filter((child) => productCount.get(child.id) > 0).map(attachCategoryImage),
+      }))
+      .filter((c) => productCount.get(c.id) > 0 || c.children.length > 0);
 
     return resSuccess({ data: { item: topLevel } });
   } catch (error) {
@@ -306,7 +328,9 @@ export const getStorefrontCategoryBySlug = async (req) => {
           })
         : null,
     ]);
-    const children = childrenRaw.map(attachCategoryImage);
+    // Sub categories with no products are hidden here too (same rule as the category tree).
+    const productCount = await storefrontProductCountByCategory(resolved.tenantDB, resolved.company_masters_id);
+    const children = childrenRaw.filter((child) => productCount.get(child.id) > 0).map(attachCategoryImage);
     const parent = parentRaw ? attachCategoryImage(parentRaw) : null;
 
     const ProductModel = productModel(resolved.tenantDB);
