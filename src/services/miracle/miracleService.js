@@ -878,12 +878,17 @@ export const syncContact = async (req) => {
             "email": getContactDetail.email_id,
         };
 
-        payload.regtypedet = [
-            {
-                "regtype": regType,
-                "regappdt": regAppDate
-            }
-        ];
+        // Miracle TPA guide v1.3, Account: a party's registration type cannot be changed on Edit (error 424, "Modifying
+        // Party Registration Type details is not allowed during Edit."). Send it only when adding the party; an edit
+        // leaves whatever type Miracle already has.
+        if (payload.action === "A") {
+            payload.regtypedet = [
+                {
+                    "regtype": regType,
+                    "regappdt": regAppDate
+                }
+            ];
+        }
 
         // API call
         const api = createAxiosIntance({
