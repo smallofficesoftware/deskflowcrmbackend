@@ -1,5 +1,5 @@
 import moment from "moment";
-import { Op, Sequelize } from "sequelize";
+import { Op, QueryTypes, Sequelize } from "sequelize";
 import { buildSearchQuery } from "../../helpers/searchAlgoV1.js";
 import { cartItemModel } from "../../models/activities/cartItemsModel.js";
 import { cartModel } from "../../models/activities/cartsModel.js";
@@ -370,12 +370,27 @@ export const getStockAdjustment = async (req) => {
                 activeTeamList.map(user => [user.id, user.username])
             );
         }
+        // Warehouse name(s) per entry: each line of an entry carries its own warehouse, so an entry that touches
+        // several shows them joined. Empty when no line has a warehouse (item_warehouse_id 0).
+        const warehouseByCart = new Map();
+        if (resultDb.length > 0) {
+            const warehouseRows = await req.tenantDB.query(
+                `SELECT i.cart_id, GROUP_CONCAT(DISTINCT w.warehouse_name ORDER BY w.warehouse_name SEPARATOR ', ') AS warehouse_name
+                   FROM cart_items i
+                   JOIN warehouses w ON w.id = i.item_warehouse_id
+                  WHERE i.isDelete = 0 AND i.cart_id IN (:cartIds)
+                  GROUP BY i.cart_id`,
+                { replacements: { cartIds: resultDb.map((v) => v.id) }, type: QueryTypes.SELECT }
+            );
+            warehouseRows.forEach((r) => warehouseByCart.set(r.cart_id, String(r.warehouse_name || "").replace(/\s+,/g, ",").trim()));
+        }
         const result = resultDb.map((v) => {
             return {
                 ...v,
                 created_date_time: moment(v.created_date_time).format("YYYY-MM-DD hh:mm A"),
                 created_by_name: activeTeamMap.get(Number(v.a_application_login_id)) || "",
                 cart_date: moment(v.cart_date).format("DD-MM-YYYY"),
+                warehouse_name: warehouseByCart.get(v.id) || "",
             }
         })
         return resSuccess({
