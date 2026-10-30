@@ -7,8 +7,6 @@ import { buildSearchQuery } from "../../helpers/searchAlgoV1.js";
 import { cartItemModel } from "../../models/activities/cartItemsModel.js";
 import { cartSerialNumberModel } from "../../models/activities/cartSerialNumberModel.js";
 import { contactModel } from "../../models/activities/contactModel.js";
-import { taskManagementModel } from "../../models/activities/taskManagementModel.js";
-import { visitsModel } from "../../models/activities/visitModel.js";
 import { applicationLoginTypeRightModel } from "../../models/application_login/applicationLoginTypeRightModel.js";
 import companyModel from "../../models/company_setup/companyModel.js";
 import { customFieldFormModel } from "../../models/other_settings/customFieldFormModel.js";
@@ -2493,82 +2491,7 @@ export const SerialNumberWiseStockCheck = async (req) => {
         )
       );
 
-    // =========================
-    // TASK / VISIT HISTORY
-    // (task_managements.serial_number / visits.serial_number, added by
-    // 20261007100000-add-product-serial-to-task-managements-and-visits.js -
-    // same serial, so queried directly off this table's own column rather
-    // than re-deriving it through cart_item_id like the order movements above.)
-    // =========================
-
-    const taskManagements =
-      taskManagementModel(req.tenantDB);
-
-    const visits =
-      visitsModel(req.tenantDB);
-
-    const [
-      taskHistoryRaw,
-      visitHistoryRaw,
-    ] = await Promise.all([
-      taskManagements.findAll({
-        where: {
-          isDelete: 0,
-          serial_number: serial_number.trim(),
-        },
-        attributes: [
-          "id",
-          "task_title",
-          "is_support_ticket",
-          "contact_masters_id",
-          "task_fromdate",
-          "completed_date",
-        ],
-        raw: true,
-      }),
-      visits.findAll({
-        where: {
-          isDelete: 0,
-          serial_number: serial_number.trim(),
-        },
-        attributes: [
-          "id",
-          "remark",
-          "contact_id",
-          "start_date",
-          "end_date",
-        ],
-        raw: true,
-      }),
-    ]);
-
-    const taskHistory = await Promise.all(
-      taskHistoryRaw.map(async (item) => {
-        let contact_name = "";
-        if (item.contact_masters_id) {
-          const findContact = await contactMasters.findOne({
-            where: { id: item.contact_masters_id },
-            attributes: ["person_name", "company_name"],
-          });
-          contact_name = findContact?.person_name || findContact?.company_name || "";
-        }
-        return { ...item, contact_name };
-      })
-    );
-
-    const visitHistory = await Promise.all(
-      visitHistoryRaw.map(async (item) => {
-        let contact_name = "";
-        if (item.contact_id) {
-          const findContact = await contactMasters.findOne({
-            where: { id: item.contact_id },
-            attributes: ["person_name", "company_name"],
-          });
-          contact_name = findContact?.person_name || findContact?.company_name || "";
-        }
-        return { ...item, contact_name };
-      })
-    );
+    // Tasks, support tickets and visits are not listed here: the Serial Number Full Trace report owns that history.
 
     // =========================
     // RESPONSE
@@ -2590,10 +2513,6 @@ export const SerialNumberWiseStockCheck = async (req) => {
           findIndiaMartApiKey
             ?.dataValues
             ?.order_qty_unit,
-
-        task_history: taskHistory,
-
-        visit_history: visitHistory,
       },
     });
 
