@@ -4,6 +4,9 @@ import { isValid, resBadRequest, resError, resSuccess } from "../../utils/shared
 
 const round = (n) => Math.round((Number(n) || 0) * 10000) / 10000;
 
+// Most document lines the Details tab returns; the warehouse / product / source totals always cover everything.
+const MOVEMENT_ROW_LIMIT = 5000;
+
 const SOURCE_LABELS = {
     transfer: "Warehouse transfer",
     stock_adjustment: "Stock adjustment (+/-)",
@@ -29,7 +32,7 @@ const SOURCE_LABELS = {
  * same in/out rules as the Stock Ledger report. source_wise breaks those totals down by source.
  *
  * Body: { from_date, to_date, warehouse_id? (id or "1,3"), product_id? } (dates YYYY-MM-DD)
- * Returns { summary, product_wise, source_wise, transfers, totals }.
+ * Returns { summary, product_wise, source_wise, transfers, movements (every document line, newest first, capped), movements_total, totals }.
  */
 export const getWarehouseTransferReport = async (req) => {
     try {
@@ -114,7 +117,8 @@ export const getWarehouseTransferReport = async (req) => {
         // "include stock back" off) or copies made from another document. That is the shared rule in
         // product_settings/stockCondition.js, so this report agrees with Stock Summary and the product stock.
         const movementRows = await req.tenantDB.query(
-            `SELECT i.cart_type, i.reference_type, c.sr_by_number, i.item_product_id, i.item_product_name, i.item_product_code,
+            `SELECT i.cart_type, i.reference_type, c.sr_by_number, i.cart_number, DATE_FORMAT(c.cart_date, '%Y-%m-%d') AS cart_date,
+                    i.item_product_id, i.item_product_name, i.item_product_code,
                     i.item_qty, i.item_warehouse_id, w.warehouse_name,
                     CASE WHEN i.cart_type IN (10, 11) AND c.sr_by_number IN (
                         SELECT sr_by_number FROM carts
@@ -173,11 +177,27 @@ export const getWarehouseTransferReport = async (req) => {
         }
         // Add every movement (all sources) to the same per-warehouse / per-product rows, and to a source-wise view.
         const sourceMap = new Map();
+        // One line per document line, so any total can be traced to its documents (the Details tab).
+        const movements = [];
         for (const m of movementRows) {
             if (warehouseFilter !== null && !warehouseFilter.has(m.item_warehouse_id)) continue;
             if (productFilter !== null && m.item_product_id !== productFilter) continue;
             const qty = Number(m.item_qty) || 0;
             const field = isIn(m) ? "total_in" : "total_out";
+            movements.push({
+                cart_date_sort: m.cart_date,
+                cart_date: moment(m.cart_date).format("DD-MM-YYYY"),
+                warehouse_id: m.item_warehouse_id,
+                warehouse_name: m.warehouse_name,
+                product_id: m.item_product_id,
+                source_key: sourceOf(m),
+                source: SOURCE_LABELS[sourceOf(m)],
+                cart_number: m.cart_number,
+                product_name: m.item_product_name,
+                product_code: m.item_product_code,
+                in_qty: field === "total_in" ? round(qty) : 0,
+                out_qty: field === "total_out" ? round(qty) : 0,
+            });
             const seed = { warehouse_id: m.item_warehouse_id, warehouse_name: m.warehouse_name };
             bump(summaryMap, m.item_warehouse_id, seed, field, qty);
             bump(productMap, `${m.item_product_id}_${m.item_warehouse_id}`, { ...seed, product_id: m.item_product_id, product_name: m.item_product_name, product_code: m.item_product_code }, field, qty);
@@ -208,8 +228,20 @@ export const getWarehouseTransferReport = async (req) => {
             transfer_count: new Set(filteredTransfers.map((t) => t.sr_by_number)).size,
         };
 
+        // Newest first; a very large period is capped so the screen stays fast (the totals above are never capped).
+        movements.sort((a, b) => String(b.cart_date_sort).localeCompare(String(a.cart_date_sort)) || String(b.cart_number).localeCompare(String(a.cart_number)));
+        const movementsShown = movements.slice(0, MOVEMENT_ROW_LIMIT).map(({ cart_date_sort, ...line }) => line); // eslint-disable-line no-unused-vars
+
         return resSuccess({
-            data: { summary, product_wise: productWise, source_wise: sourceWise, transfers: filteredTransfers, totals },
+            data: {
+                summary,
+                product_wise: productWise,
+                source_wise: sourceWise,
+                transfers: filteredTransfers,
+                movements: movementsShown,
+                movements_total: movements.length,
+                totals,
+            },
         });
     } catch (error) {
         console.log("getWarehouseTransferReport Error", error);
