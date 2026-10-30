@@ -5391,3 +5391,11 @@ UPDATE `storefront_themes` SET `description` = 'Deep purple and gold - premium a
 -- MASTER DB only. The default storefront theme is shown as "Classic" with a plain description (code 'pharmacy' unchanged).
 -- migration: migration/master/migrations/20261029160000-rename-pharmacy-storefront-theme.js
 UPDATE `storefront_themes` SET `name` = 'Classic', `description` = 'Clean light layout with product cards and a sidebar. Buttons, prices and the menu underline follow your Accent Colour.' WHERE `code` = 'pharmacy';
+
+30-10-2026 Dhaval
+-- migration: migration/tenant/migrations/20261030100000-add-show-on-storefront-to-custom-field-form-masters.js
+-- Every tenant DB + smalloffice_sample_tenant. A Product Master custom field (form_type 4) can be shown on the
+-- online store's product page under Specifications. Opt-in: default 2 (No), so no existing field appears to
+-- customers until it is switched on. 1 = Yes, 2 = No (same values as print_or_not).
+ALTER TABLE `custom_field_form_masters`
+  ADD COLUMN `show_on_storefront` TINYINT NOT NULL DEFAULT 2 COMMENT '1=Yes, 2=No (default) - show on the online store product page; Product Master fields only';

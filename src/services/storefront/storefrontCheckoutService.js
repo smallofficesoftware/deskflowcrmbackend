@@ -325,7 +325,7 @@ export const createStorefrontCheckout = async (req) => {
     const productIds = items.map((i) => Number(i.product_id)).filter(Boolean);
     const products = await productModel(resolved.tenantDB).findAll({
       where: { id: productIds, company_masters_id: resolved.company_masters_id, isDelete: 0, isActive: 1, show_in_ecommerce: 1 },
-      attributes: ["id", "product_name", "product_code", "rate", "GST", "net_rate", "hsn_code", "is_variant_parent"],
+      attributes: ["id", "product_name", "product_code", "rate", "GST", "net_rate", "hsn_code", "is_variant_parent", "unit"],
       raw: true,
     });
     const productById = new Map(products.map((p) => [p.id, p]));
@@ -392,6 +392,7 @@ export const createStorefrontCheckout = async (req) => {
         item_product_id: p.id,
         item_product_code: p.product_code || "",
         item_product_name: p.product_name,
+        item_unit_name: p.unit || "", // so the order line (CRM and the customer's order page) shows the unit
         item_rate: Number(price.rate),
         item_gst: Number(p.GST) || 0,
         item_net_rate: Number(price.net_rate),

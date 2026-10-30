@@ -41,7 +41,7 @@ export const getStorefrontMyOrders = async (req) => {
 
     const lines = orders.length
       ? await db.query(
-          `SELECT cart_id, item_product_name, item_qty, item_net_rate, item_total
+          `SELECT cart_id, item_product_name, item_unit_name, item_qty, item_net_rate, item_total
              FROM cart_items
             WHERE cart_id IN (:ids) AND isDelete = 0
             ORDER BY id ASC`,
@@ -51,7 +51,7 @@ export const getStorefrontMyOrders = async (req) => {
     const byCart = new Map();
     for (const l of lines) {
       const list = byCart.get(l.cart_id) || [];
-      list.push({ name: l.item_product_name, qty: l.item_qty, rate: l.item_net_rate, total: l.item_total });
+      list.push({ name: l.item_product_name, unit: l.item_unit_name || null, qty: l.item_qty, rate: l.item_net_rate, total: l.item_total });
       byCart.set(l.cart_id, list);
     }
 
@@ -135,7 +135,7 @@ export const getStorefrontMyOrder = async (req) => {
     if (!order) return resError({ ack_msg: "Order not found" });
 
     const lines = await db.query(
-      `SELECT item_product_name, item_product_code, item_hsn_code, item_qty, item_rate, item_gst, item_net_rate, item_total
+      `SELECT item_product_name, item_unit_name, item_product_code, item_hsn_code, item_qty, item_rate, item_gst, item_net_rate, item_total
          FROM cart_items WHERE cart_id = :id AND isDelete = 0 ORDER BY id ASC`,
       { replacements: { id: orderId }, type: QueryTypes.SELECT }
     );
@@ -167,6 +167,7 @@ export const getStorefrontMyOrder = async (req) => {
           customer: { name: order.to_customer_name || null, phone: order.to_customer_phone || null, email: order.to_customer_email || null },
           items: lines.map((l) => ({
             name: l.item_product_name,
+            unit: l.item_unit_name || null,
             code: l.item_product_code || null,
             hsn: l.item_hsn_code || null,
             qty: l.item_qty,

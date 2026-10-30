@@ -7,6 +7,7 @@ import { marketplaceAddonSettingsModel } from "../../models/marketplace/marketpl
 import { priceListModel } from "../../models/product_settings/priceListModel.js";
 import storefrontThemeModel from "../../models/storefront/storefrontThemeModel.js";
 import { companyStorefrontThemeModel } from "../../models/storefront/companyStorefrontThemeModel.js";
+import { customFieldsForRow, loadStorefrontCustomFieldDefs } from "./storefrontCustomFields.js";
 import { productGroupModel } from "../../models/product_settings/productGroupModel.js";
 import { productImageModel } from "../../models/product_settings/productImageModel.js";
 import { productModel } from "../../models/product_settings/productModel.js";
@@ -130,6 +131,8 @@ const attachAllImages = async (tenantDB, products) => {
 const PUBLIC_PRODUCT_FIELDS = [
   "id", "product_name", "slug", "meta_title", "meta_description", "product_description", "rate", "net_rate",
   "category_id", "is_variant_parent", "parent_product_id", "unit", "image", "images", "variant_options",
+  // Specifications block on the product page (length / width / height as entered in the CRM, weight in grams).
+  "product_length", "product_width", "product_height", "weight_or_size",
 ];
 const toPublicProduct = (p) => Object.fromEntries(PUBLIC_PRODUCT_FIELDS.filter((k) => k in p).map((k) => [k, p[k]]));
 
@@ -343,7 +346,7 @@ export const getStorefrontCategoryBySlug = async (req) => {
         show_in_ecommerce: 1,
         parent_product_id: null, // Parent shown as one entry, not its individual variants - same convention as Order Creation's excludeVariants.
       },
-      attributes: ["id", "product_name", "slug", "meta_title", "meta_description", "rate", "net_rate", "is_variant_parent"],
+      attributes: ["id", "product_name", "slug", "meta_title", "meta_description", "rate", "net_rate", "is_variant_parent", "unit"],
       order: [["product_name", "ASC"]],
       raw: true,
     });
@@ -374,7 +377,7 @@ export const getStorefrontProducts = async (req) => {
         show_in_ecommerce: 1,
         parent_product_id: null,
       },
-      attributes: ["id", "product_name", "slug", "meta_title", "meta_description", "rate", "net_rate", "category_id", "is_variant_parent"],
+      attributes: ["id", "product_name", "slug", "meta_title", "meta_description", "rate", "net_rate", "category_id", "is_variant_parent", "unit"],
       order: [["product_name", "ASC"]],
       raw: true,
     });
@@ -413,7 +416,7 @@ export const getStorefrontSearchResults = async (req) => {
         parent_product_id: null,
         [Op.or]: [{ product_name: { [Op.like]: `%${q}%` } }, { product_code: { [Op.like]: `%${q}%` } }],
       },
-      attributes: ["id", "product_name", "slug", "meta_title", "meta_description", "rate", "net_rate", "category_id", "is_variant_parent"],
+      attributes: ["id", "product_name", "slug", "meta_title", "meta_description", "rate", "net_rate", "category_id", "is_variant_parent", "unit"],
       order: [["product_name", "ASC"]],
       limit: 60,
       raw: true,
@@ -463,6 +466,9 @@ export const getStorefrontProductBySlug = async (req) => {
       productIds: [product.id],
     });
     withImages.qty_slabs = slabsForProduct(slabContext, product.id).map((s) => ({ min_qty: s.min_qty, net_rate: s.net_rate }));
+    // Product custom fields the store owner switched on ("Show On Online Store?") - shown under Specifications.
+    const customFieldDefs = await loadStorefrontCustomFieldDefs(resolved.tenantDB, resolved.company_masters_id);
+    withImages.custom_fields = customFieldsForRow(customFieldDefs, product, "product");
 
     if (Number(product.is_variant_parent) === 1) {
       const [attributes, variants] = await Promise.all([
@@ -472,7 +478,11 @@ export const getStorefrontProductBySlug = async (req) => {
       const visibleVariants = variants
         .filter((v) => Number(v.show_in_ecommerce) !== 0)
         .map(({ product_img: _legacyImg, ...v }) => v); // eslint-disable-line no-unused-vars
+      const variantCustomFields = new Map(visibleVariants.map((v) => [v.id, customFieldsForRow(customFieldDefs, v, "variant")]));
       const variantsWithImages = (await attachAllImages(resolved.tenantDB, await attachPrimaryImages(resolved.tenantDB, visibleVariants))).map(toPublicProduct);
+      variantsWithImages.forEach((v) => {
+        v.custom_fields = variantCustomFields.get(v.id) || [];
+      });
       // Each variant is its own product row, so slabs are looked up per variant id.
       const variantSlabContext = await loadQtySlabs(resolved.tenantDB, {
         contactPriceListId: null,

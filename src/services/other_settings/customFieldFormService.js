@@ -86,6 +86,8 @@ export const addCustomFieldFrom = async (req) => {
       third_party_field_name: req.body.third_party_field_name ? String(req.body.third_party_field_name).trim() : null,
       applicable_modules: req.body.applicable_modules ? String(req.body.applicable_modules).trim() : null,
       variant_scope: [1, 2, 3].includes(Number(req.body.variant_scope)) ? Number(req.body.variant_scope) : 3,
+      // Only a Product Master field (form_type 4) can be shown on the online store; anything else stays No.
+      show_on_storefront: Number(req.body.form_type) === 4 && Number(req.body.show_on_storefront) === 1 ? 1 : 2,
       display_on: Number(req.body.display_on) === 2 ? 2 : 1,
       stage_ids: Number(req.body.display_on) === 2 && req.body.stage_ids ? String(req.body.stage_ids).trim() : null,
       calc_config: req.body.calc_config ? String(req.body.calc_config).trim() : null,
@@ -147,6 +149,7 @@ export const getAllCustomFieldFrom = async (req) => {
         "third_party_field_name",
         "applicable_modules",
         "variant_scope",
+        "show_on_storefront",
         "calc_config",
         "form_type",
         "display_on",

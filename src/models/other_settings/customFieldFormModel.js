@@ -71,6 +71,12 @@ export const customFieldFormModel = (sequelize) => {
       type: TINYINT,
       defaultValue: 3,
     },
+    // 1 = Yes, 2 = No (default): show this Product Master field on the online store's product page.
+    show_on_storefront: {
+      type: TINYINT,
+      allowNull: false,
+      defaultValue: 2,
+    },
     display_on: {
       type: TINYINT,
       allowNull: false,
