@@ -1,8 +1,7 @@
 import { Op } from "sequelize";
 import { productAttributeMasterModel } from "../../models/product_settings/productAttributeMasterModel.js";
 import { productAttributeValueMasterModel } from "../../models/product_settings/productAttributeValueMasterModel.js";
-import { productVariantAttributeModel } from "../../models/product_settings/productVariantAttributeModel.js";
-import { productVariantAttributeValueModel } from "../../models/product_settings/productVariantAttributeValueModel.js";
+import { inUseMessage, productsUsingAttribute, productsUsingAttributeValue } from "./productAttributeUsage.js";
 import { resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { getCompanyByLoginId } from "../commonServices.js";
 
@@ -106,14 +105,9 @@ export const deleteAttributeMaster = async (req) => {
     const { id } = req.body;
     if (!id) return resBadRequest({ developer_msg: "id is required" });
 
-    const AttributeModel = productVariantAttributeModel(req.tenantDB);
-    const inUse = await AttributeModel.findOne({
-      where: { product_attribute_master_id: id, isDelete: 0 },
-    });
-    if (inUse) {
-      return resError({
-        ack_msg: "This attribute is already used on one or more products and cannot be deleted",
-      });
+    const usedBy = await productsUsingAttribute(req.tenantDB, id);
+    if (usedBy.length > 0) {
+      return resError({ ack_msg: inUseMessage("attribute", usedBy) });
     }
 
     const ValueMasterModel = productAttributeValueMasterModel(req.tenantDB);
@@ -186,14 +180,9 @@ export const deleteAttributeValueMaster = async (req) => {
     const { id } = req.body;
     if (!id) return resBadRequest({ developer_msg: "id is required" });
 
-    const ValueModel = productVariantAttributeValueModel(req.tenantDB);
-    const inUse = await ValueModel.findOne({
-      where: { product_attribute_value_master_id: id, isDelete: 0 },
-    });
-    if (inUse) {
-      return resError({
-        ack_msg: "This value is already used on one or more products and cannot be deleted",
-      });
+    const usedBy = await productsUsingAttributeValue(req.tenantDB, id);
+    if (usedBy.length > 0) {
+      return resError({ ack_msg: inUseMessage("value", usedBy) });
     }
 
     const ValueMasterModel = productAttributeValueMasterModel(req.tenantDB);
