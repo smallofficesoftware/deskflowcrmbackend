@@ -6,14 +6,24 @@ import { resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions
 // installed storefront app / browser. Keys come from the environment (generate once with
 // `npx web-push generate-vapid-keys`): STOREFRONT_VAPID_PUBLIC_KEY, STOREFRONT_VAPID_PRIVATE_KEY and
 // STOREFRONT_VAPID_SUBJECT (a mailto: or https: contact). Without keys the feature is off and every
-// call here is a harmless no-op.
+// call here is a harmless no-op. A badly formed setting must never stop the backend from starting: this file
+// loads at startup, so any problem with the keys just switches push off and is logged.
 
-const PUBLIC_KEY = process.env.STOREFRONT_VAPID_PUBLIC_KEY || "";
-const PRIVATE_KEY = process.env.STOREFRONT_VAPID_PRIVATE_KEY || "";
-const SUBJECT = process.env.STOREFRONT_VAPID_SUBJECT || "mailto:support@smalloffice.in";
+const PUBLIC_KEY = (process.env.STOREFRONT_VAPID_PUBLIC_KEY || "").trim();
+const PRIVATE_KEY = (process.env.STOREFRONT_VAPID_PRIVATE_KEY || "").trim();
+const RAW_SUBJECT = (process.env.STOREFRONT_VAPID_SUBJECT || "").trim() || "mailto:support@smalloffice.in";
+// The push library wants a URL: a plain address like info@example.com becomes mailto:info@example.com.
+const SUBJECT = /^(mailto:|https:\/\/)/i.test(RAW_SUBJECT) ? RAW_SUBJECT : `mailto:${RAW_SUBJECT}`;
 
-const pushEnabled = Boolean(PUBLIC_KEY && PRIVATE_KEY);
-if (pushEnabled) webpush.setVapidDetails(SUBJECT, PUBLIC_KEY, PRIVATE_KEY);
+let pushEnabled = false;
+if (PUBLIC_KEY && PRIVATE_KEY) {
+  try {
+    webpush.setVapidDetails(SUBJECT, PUBLIC_KEY, PRIVATE_KEY);
+    pushEnabled = true;
+  } catch (error) {
+    console.error("storefront push is switched off - the STOREFRONT_VAPID_* settings are not valid:", error?.message || error);
+  }
+}
 
 /** GET /storefront/push/key - public: the VAPID public key the browser subscribes with (null = push is off). */
 export const getStorefrontPushKey = async () => resSuccess({ data: { item: { public_key: pushEnabled ? PUBLIC_KEY : null } } });
