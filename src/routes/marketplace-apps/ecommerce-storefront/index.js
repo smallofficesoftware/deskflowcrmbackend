@@ -63,6 +63,7 @@ import { storefrontFaviconUpload } from "../../../middlewares/multer.js";
 import { storefrontLogoUpload } from "../../../middlewares/storefrontLogoUpload.js";
 import { removeStorefrontLogoController, uploadStorefrontLogoController } from "../../../controllers/storefront/storefrontLogoController.js";
 import { getStorefrontPushKeyController, subscribeStorefrontPushController, unsubscribeStorefrontPushController } from "../../../controllers/storefront/storefrontPushController.js";
+import { republishStorefrontController } from "../../../controllers/storefront/storefrontRepublishController.js";
 import { resError } from "../../../utils/sharedFunctions.js";
 import { requireAddon } from "../../../middlewares/requireAddon.js";
 import { requireStorefrontChatSession, requireStorefrontSession } from "../../../services/storefront/storefrontSession.js";
@@ -114,6 +115,7 @@ export default (app) => {
   app.post("/storefront/domain/get", authenticateToken, tenantMiddleware, requireAddon("ecommerce-storefront"), getStorefrontDomainController);
   app.post("/storefront/domain/save", authenticateToken, tenantMiddleware, requireAddon("ecommerce-storefront"), saveStorefrontDomainController);
   app.post("/storefront/domain/verify", authenticateToken, tenantMiddleware, requireAddon("ecommerce-storefront"), verifyStorefrontDomainController);
+  app.post("/storefront/republish", authenticateToken, tenantMiddleware, requireAddon("ecommerce-storefront"), republishStorefrontController);
   // PUBLIC - must be registered before the /storefront/:companySlug/* routes so "resolve-domain" is not read as a slug.
   app.get("/storefront/resolve-domain", resolveStorefrontDomainController);
   app.get("/storefront/push/key", getStorefrontPushKeyController);

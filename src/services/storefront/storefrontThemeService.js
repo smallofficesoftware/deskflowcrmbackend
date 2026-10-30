@@ -1,6 +1,7 @@
 import storefrontThemeModel from "../../models/storefront/storefrontThemeModel.js";
 import { companyStorefrontThemeModel } from "../../models/storefront/companyStorefrontThemeModel.js";
 import { resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
+import { triggerStorefrontRepublish } from "./storefrontRepublishService.js";
 
 // Theme picker for the ecommerce storefront addon's CRM admin settings page
 // (plans/2026-10-15-ecommerce-b2b-b2c-plan.txt, 4.6). Tier-filtering (hiding
@@ -67,6 +68,7 @@ export const selectStorefrontTheme = async (req) => {
     };
     const row = existing ? await existing.update(fields) : await CompanyThemeModel.create(fields);
 
+    triggerStorefrontRepublish(company_masters_id); // visitors get the new theme now, not after the daily refresh
     return resSuccess({ data: { item: row } });
   } catch (error) {
     return resError({ developer_msg: `selectStorefrontTheme failed: ${error}` });

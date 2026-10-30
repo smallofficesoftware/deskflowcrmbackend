@@ -3,6 +3,7 @@ import path from "path";
 import { marketplaceAddonSettingsModel } from "../../models/marketplace/marketplaceAddonSettingsModel.js";
 import { applyLockDecisions, countAffectedAccounts, newlyDisabledMethods } from "./storefrontModeSwitch.js";
 import { resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
+import { triggerStorefrontRepublish } from "./storefrontRepublishService.js";
 
 const ADDON_CODE = "ecommerce-storefront";
 
@@ -106,6 +107,7 @@ export const saveStorefrontSettings = async (req) => {
 
     const row = existing ? await existing.update(fields) : await model.create(fields);
 
+    triggerStorefrontRepublish(company_masters_id); // the store's cached info (accent colour, prices rules...) is stale now
     return resSuccess({ data: { item: row } });
   } catch (error) {
     return resError({ developer_msg: `saveStorefrontSettings failed: ${error}` });
@@ -183,6 +185,7 @@ export const uploadStorefrontFavicon = async (req) => {
     const previous = await saveFaviconPath(req, company_masters_id, favicon_path);
     if (previous !== favicon_path) await removeFaviconFile(previous);
 
+    triggerStorefrontRepublish(company_masters_id);
     return resSuccess({ data: { item: { favicon_path } } });
   } catch (error) {
     return resError({ developer_msg: `uploadStorefrontFavicon failed: ${error}` });
@@ -199,6 +202,7 @@ export const removeStorefrontFavicon = async (req) => {
 
     const previous = await saveFaviconPath(req, company_masters_id, "");
     await removeFaviconFile(previous);
+    triggerStorefrontRepublish(company_masters_id);
     return resSuccess({ data: { item: { favicon_path: "" } } });
   } catch (error) {
     return resError({ developer_msg: `removeStorefrontFavicon failed: ${error}` });

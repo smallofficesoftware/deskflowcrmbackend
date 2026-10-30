@@ -3,6 +3,7 @@ import fs from "fs-extra";
 import { marketplaceAddonSettingsModel } from "../../models/marketplace/marketplaceAddonSettingsModel.js";
 import { resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { companyImageDir, faviconTypeFromBytes, readConfig } from "./storefrontSettingsService.js";
+import { triggerStorefrontRepublish } from "./storefrontRepublishService.js";
 
 // The store's own logo (Ecommerce settings > Storefront logo), separate from the company logo the CRM uses on
 // documents. It is usually a wide logo, shown in the storefront header and footer; without one the storefront falls
@@ -54,6 +55,7 @@ export const uploadStorefrontLogo = async (req) => {
     const previous = await saveLogoPath(req, company_masters_id, logo_path);
     if (previous !== logo_path) await removeLogoFile(previous);
 
+    triggerStorefrontRepublish(company_masters_id);
     return resSuccess({ data: { item: { logo_path } } });
   } catch (error) {
     return resError({ developer_msg: `uploadStorefrontLogo failed: ${error}` });
@@ -70,6 +72,7 @@ export const removeStorefrontLogo = async (req) => {
 
     const previous = await saveLogoPath(req, company_masters_id, "");
     await removeLogoFile(previous);
+    triggerStorefrontRepublish(company_masters_id);
     return resSuccess({ data: { item: { logo_path: "" } } });
   } catch (error) {
     return resError({ developer_msg: `removeStorefrontLogo failed: ${error}` });

@@ -118,6 +118,28 @@ export const getPriceListReport = async (req) => {
             users.forEach((u) => userMap.set(Number(u.id), u.username));
         }
 
+        // The last 5 net rate changes of each listed item, whatever the selected period (newest first), for the
+        // Net Rate column. Only worked out when a price list or product is chosen - the screen shows rows only then.
+        const recentByItem = new Map();
+        if ((masterIds.length > 0 || productIds.length > 0) && current.length > 0) {
+            const recent = await req.tenantDB.query(
+                `SELECT h.price_list_id, h.old_net_rate, h.new_net_rate,
+                        DATE_FORMAT(h.changed_date_time, '%d-%m-%Y') AS changed_on
+                 FROM price_list_history h
+                 WHERE h.change_type = 'update'
+                   AND h.price_list_id IN (:itemIds)
+                   AND NOT (h.old_net_rate <=> h.new_net_rate)
+                 ORDER BY h.changed_date_time DESC, h.id DESC
+                 LIMIT :recentLimit`,
+                { replacements: { itemIds: current.map((r) => r.price_list_id), recentLimit: ROW_LIMIT * 5 }, type: QueryTypes.SELECT }
+            );
+            recent.forEach((h) => {
+                const list = recentByItem.get(h.price_list_id) || [];
+                if (list.length < 5) list.push({ date: h.changed_on, old_net_rate: round(h.old_net_rate), new_net_rate: round(h.new_net_rate) });
+                recentByItem.set(h.price_list_id, list);
+            });
+        }
+
         const currentRows = current.map((r) => ({
             ...r,
             rate: round(r.rate),
@@ -126,6 +148,7 @@ export const getPriceListReport = async (req) => {
             net_rate: round(r.net_rate),
             last_updated: !r.last_updated || r.last_updated.startsWith("00-00-0000") ? "" : r.last_updated,
             last_updated_by_name: userMap.get(Number(r.last_updated_by)) || "",
+            recent_changes: recentByItem.get(r.price_list_id) || [],
         }));
         const historyRows = history.map((r) => ({
             ...r,
