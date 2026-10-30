@@ -110,6 +110,9 @@ export const getWarehouseTransferReport = async (req) => {
         // Every stock movement per warehouse (not only transfers), using the same direction rules as the Stock
         // Ledger report (stock_ledger_view): in = purchase invoice without a GRN reference, sales return, GRN,
         // stock add; out = sales invoice without a dispatch reference, purchase return, dispatch, stock out.
+        // Lines with stock_type 0 are left out: documents saved with no stock effect (a sales return with
+        // "include stock back" off) or copies made from another document. That is the shared rule in
+        // product_settings/stockCondition.js, so this report agrees with Stock Summary and the product stock.
         const movementRows = await req.tenantDB.query(
             `SELECT i.cart_type, i.reference_type, c.sr_by_number, i.item_product_id, i.item_product_name, i.item_product_code,
                     i.item_qty, i.item_warehouse_id, w.warehouse_name,
@@ -124,6 +127,7 @@ export const getWarehouseTransferReport = async (req) => {
              JOIN warehouses w ON w.id = i.item_warehouse_id
              WHERE i.isDelete = 0
                AND i.cart_number IS NOT NULL AND i.cart_number != ''
+               AND i.stock_type != 0
                AND DATE(c.cart_date) BETWEEN :from_date AND :to_date
                AND (
                    (i.cart_type = 4 AND i.reference_type != 8)
