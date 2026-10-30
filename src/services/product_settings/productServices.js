@@ -31,6 +31,7 @@ import {
 } from "../../utils/sharedFunctions.js";
 import { getCompanyByLoginId } from "../commonServices.js";
 import { normalizeSellerIds, productSellerFilter } from "./productSellerGuard.js";
+import { loadSellerDirectory, SELLERS_COLUMN, sellersToSheetText } from "./productSellerExcel.js";
 import { stockCartItemConditions } from "./stockCondition.js";
 import { findProductUsage } from "./productUsage.js";
 import { getPrimaryImagePaths, setPrimaryImagePath } from "./primaryProductImage.js";
@@ -1770,6 +1771,8 @@ export const getExportsProductsForUpdateData = async (req) => {
       purchase_rate: "purchase_rate",
       purchase_gst_id: "purchase_gst_label",
       is_serial_number: "serial_number_tracking",
+      // Team members allowed to sell the product, by name ("All" = everyone) - see productSellerExcel.js.
+      sellers: SELLERS_COLUMN,
       ...(innerQtyActive && {
         product_inner_qty: "product_inner_qty",
         product_inner_unit: "product_inner_unit",
@@ -1875,8 +1878,11 @@ export const getExportsProductsForUpdateData = async (req) => {
       productsList.map((p) => p.id)
     );
 
+    const sellerDirectory = await loadSellerDirectory(companyDetail.company_masters_id);
+
     const sanitizedContacts = productsList.map((productItem) => {
       const sanitized = sanitizeObjectOfNull(productItem.toJSON());
+      sanitized['sellers'] = sellersToSheetText(sanitized['sellers_a_application_login_id'], sellerDirectory)
       sanitized['gst_id'] = sanitized['gst_id'] ? taxMasterIdGroupSet.get(Number(sanitized['gst_id'])) : ''
       sanitized['purchase_gst_id'] = sanitized['purchase_gst_id'] ? taxMasterIdGroupSet.get(Number(sanitized['purchase_gst_id'])) : ''
       sanitized['product_group'] = sanitized['group_name'] || ''

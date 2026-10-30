@@ -133,8 +133,10 @@ function convertByRule(value, ruleType, fallback = null, dataSourceValue = null)
 
     // ------------------ DECIMAL RULE -----------------------
     if (ruleType === 8) {
+        // A blank cell is 0, like the Number rule above - the date `fallback` is for date/time rules only (a number
+        // column given it stored the year).
         const n = parseFloat(value);
-        return isNaN(n) ? fallback : n;
+        return isNaN(n) ? 0 : n;
     }
 
     // ------------------ SWITCH RULE -----------------------

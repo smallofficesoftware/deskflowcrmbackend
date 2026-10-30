@@ -21,6 +21,7 @@ import {
     resSuccess
 } from "../../utils/sharedFunctions.js";
 import { getCompanyByLoginId } from "../commonServices.js";
+import { loadSellerDirectory, parseSellersCell, SELLERS_COLUMN } from "../product_settings/productSellerExcel.js";
 
 // Convert Excel serial number to JS Date
 // function excelSerialToJsDate(serial) {
@@ -130,8 +131,10 @@ function convertByRule(value, ruleType, fallback = null, dataSourceValue = null)
 
     // ------------------ DECIMAL RULE -----------------------
     if (ruleType === 8) {
+        // A blank (or 0, which the row mapper turns into "") cell is 0, like the Number rule above. The date
+        // `fallback` is for date/time rules only: a number column given it stored the year (2026).
         const n = parseFloat(value);
-        return isNaN(n) ? fallback : n;
+        return isNaN(n) ? 0 : n;
     }
 
     // ------------------ SWITCH RULE -----------------------
@@ -1126,6 +1129,8 @@ export const addProductByExcelSheetUpdateData = async (req) => {
             "purchase_rate": "purchase_rate",
             "purchase_gst_label": "purchase_gst_id",
             "serial_number_tracking": "is_serial_number",
+            // Team members allowed to sell the product (names, comma separated; "All" = everyone).
+            [SELLERS_COLUMN]: "sellers",
             ...(innerQtyActive && {
                 "product_inner_qty": "product_inner_qty",
                 "product_inner_unit": "product_inner_unit",
@@ -1406,6 +1411,10 @@ export const addProductByExcelSheetUpdateData = async (req) => {
             existingProducts.map((p) => Number(p.id))
         );
 
+        // Team members by name, for the sellers column (productSellerExcel.js).
+        const sellerDirectory = await loadSellerDirectory(findCompanyId.company_masters_id);
+        const sellerErrorMessages = [];
+
         // Multi-variant products (plans/2026-10-18-product-variants-and-qty-pricing-plan.txt)
         // - resolves a "Variant" row's parent_product_code to the parent's real id.
         const productIdByCode = new Map(
@@ -1607,6 +1616,19 @@ export const addProductByExcelSheetUpdateData = async (req) => {
                 continue;
             }
 
+            // ================= SELLERS =================
+            // Blank cell / no column = leave the product's sellers as they are; "All" = everyone; otherwise
+            // every name must match exactly one active team member of this company.
+
+            const sellersResult = parseSellersCell(v.sellers, sellerDirectory);
+            if (sellersResult.action === "invalid") {
+                const parts = [];
+                if (sellersResult.unknown.length) parts.push(`Seller not found: ${sellersResult.unknown.join(", ")}`);
+                if (sellersResult.ambiguous.length) parts.push(`More than one team member is named ${sellersResult.ambiguous.join(", ")}`);
+                sellerErrorMessages.push(`Row Number <b>${rowNumber}</b> : ${parts.join(". ")}.<br/>`);
+                continue;
+            }
+
             // ================= NEGATIVE VALIDATION =================
 
             if (
@@ -1650,6 +1672,7 @@ export const addProductByExcelSheetUpdateData = async (req) => {
                 min_stock_quantity,
                 max_stock_quantity,
 
+                ...(sellersResult.action === "set" && { sellers_a_application_login_id: sellersResult.value }),
                 ...(product_inner_qty !== undefined && { product_inner_qty }),
                 ...(product_outer_qty !== undefined && { product_outer_qty }),
                 ...(product_inner_unit !== undefined && { product_inner_unit }),
@@ -1669,6 +1692,7 @@ export const addProductByExcelSheetUpdateData = async (req) => {
             delete objCreated.product_group;
             delete objCreated.category_name;
             delete objCreated.product_category;
+            delete objCreated.sellers; // raw sheet text, consumed above into sellers_a_application_login_id
             // Raw variant columns consumed above into is_variant_parent/parent_product_id/
             // variantAttributePairs - not real products columns themselves.
             delete objCreated.product_type;
@@ -1762,6 +1786,7 @@ export const addProductByExcelSheetUpdateData = async (req) => {
                     .join("")
             )
             .join("");
+        responseMessage += sellerErrorMessages.join("");
 
         // ================= NO VALID DATA =================
 
