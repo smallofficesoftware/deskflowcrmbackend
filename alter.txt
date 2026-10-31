@@ -5551,3 +5551,16 @@ ALTER TABLE `call_histories`
 
 31-10-2026 Dhaval
 env ma new variable TENANT_POOL_MAX=30 (max DB connections per tenant pool, default 15 in src/config/tenantConnectionCache.js)
+
+31-10-2026 Dhaval
+env ma new variables (added 15-10-2026 till 31-10-2026). Set on every server; only the ones marked REQUIRED have no usable default.
+-- 20-10 ADMIN_PANEL_API_URL=http://localhost:4000/api/v1 (admin panel API, next training event on login; default localhost:4000)
+-- 26-10 STOREFRONT_PUBLIC_BASE=<storefront base domain> (storefront custom domains DNS instructions; default localhost:3002)
+-- 28-10 TALLY_CONNECTOR_DIR=<folder> (Tally connector download; default <cwd>/media-folder/tally-connector)
+-- 29-10 STOREFRONT_VAPID_PUBLIC_KEY / STOREFRONT_VAPID_PRIVATE_KEY (REQUIRED for storefront web push, generate once with `npx web-push generate-vapid-keys`)
+-- 29-10 STOREFRONT_VAPID_SUBJECT=mailto:support@smalloffice.in (default same)
+-- 30-10 STOREFRONT_REVALIDATE_URL=<storefront url> and STOREFRONT_REVALIDATE_SECRET=<secret> (REQUIRED for Republish Site; the secret must be the same value in the storefront env)
+-- 31-10 CRONE_TAB_PRIVACY_KEY=<secret> (cron endpoints stay unprotected while unset; once set the crontab curl must send header `crone-tab-privacy: <key>`)
+-- 31-10 TENANT_POOL_MAX=30 (default 15), TENANT_POOL_ACQUIRE_MS (default 30000), TENANT_CONN_CACHE_MAX (default 150), TENANT_CONN_IDLE_EVICT_MS (default 900000), TENANT_ROW_CACHE_TTL_MS (default 60000)
+-- 31-10 MASTER_POOL_MAX (default 80), GLOBAL_POOL_MAX (default 40), MASTER_POOL_ACQUIRE_MS (default 30000)
+-- 31-10 SQL_LOGGING=1 prints every SQL query (default off), LOG_REQUEST_BODY=1 logs request bodies (default off)
