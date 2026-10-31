@@ -4074,3 +4074,6 @@ WHERE `credit_series_prefix` = 'BR' AND `debit_series_prefix` = 'BP' AND LOWER(T
 -- migration: migration/master/migrations/20261017120000-add-invoice-entry-series-to-company-masters.js
 -- MASTER DB only (company_masters). Default series of the debit / credit entry an invoice creates in Account Transaction: one prefix + one pattern per cart type (sales invoice, purchase invoice, sales return, purchase return). A blank prefix = that entry gets no voucher number.
 ALTER TABLE `company_masters` ADD `invoice_entry_prefix` VARCHAR(50) NULL, ADD `invoice_entry_series_pattern` VARCHAR(100) NULL, ADD `purchase_entry_prefix` VARCHAR(50) NULL, ADD `purchase_entry_series_pattern` VARCHAR(100) NULL, ADD `return_sales_entry_prefix` VARCHAR(50) NULL, ADD `return_sales_entry_series_pattern` VARCHAR(100) NULL, ADD `return_purchase_entry_prefix` VARCHAR(50) NULL, ADD `return_purchase_entry_series_pattern` VARCHAR(100) NULL;
+
+31-10-2026 Dhaval
+env ma new variables: SENTRY_DSN=<project dsn> (error reporting stays off while unset; run `npm install` so @sentry/node is installed), SENTRY_ENVIRONMENT=local|demo|sandbox|production, SENTRY_SERVER_NAME (optional), SENTRY_RELEASE (optional), SENTRY_TRACES_SAMPLE_RATE (default 0)

@@ -8,6 +8,7 @@ import maintenanceMode from "./middlewares/maintenanceMode.js";
 import maintenanceModesModel from "./models/configuration/maintenanceModesModel.js";
 import { decryptRequest, encryptRequest } from "./middlewares/payloadSecurity.js";
 import pinoMiddleware from './middlewares/pinoMiddleware.js';
+import { captureError, initSentry } from "./config/sentry.js";
 import routers from "./routes/indexRouter.js";
 import storeSocketId from "./services/1socketIOServices/storeSocketId.js";
 import { getCompanyByLoginId } from "./services/commonServices.js";
@@ -100,11 +101,13 @@ app.use(decryptRequest);
 app.use(encryptRequest);
 app.use(maintenanceMode);
 app.use((err, req, res, next) => {
+    captureError(err);
     return resError({
         ack_msg: "Internal Server Error",
         developer_msg: "Internal Server Error",
     })
 })
+initSentry().catch(() => { });
 // Admin-panel kill-switch: when maintenance_modes.is_socket_disabled = 1 the
 // backend refuses every new socket.io connection (and reconnect attempt).
 // Fails open on a DB error so a lookup blip can't take live sync down.
