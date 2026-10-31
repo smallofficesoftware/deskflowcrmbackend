@@ -316,6 +316,10 @@ export function buildItemsTableField(columnOptions) {
       fontColor: "#000000",
       fontSize: 7,
       alignment: "center",
+      // pdfme's head default has no borders at all, so the header row showed no column dividers while
+      // the body rows (0.1 mm grey on every side) did. Right edge only, same grey as the body.
+      borderColor: "#888888",
+      borderWidth: { top: 0, right: 0.1, bottom: 0, left: 0 },
       padding: { top: 1.5, right: 1.5, bottom: 1.5, left: 1.5 },
     },
     bodyStyles: {

@@ -1,4 +1,5 @@
 import { productImageModel } from "../../models/product_settings/productImageModel.js";
+import { productModel } from "../../models/product_settings/productModel.js";
 
 // Products keep their photos in product_images (one is primary). The
 // create-product-images migration copied every old products.product_img into it,
@@ -40,6 +41,22 @@ export const getPrimaryImagePaths = async (tenantDB, productIds) => {
   });
   for (const row of rows) {
     if (row.image_path && !paths.has(row.product_id)) paths.set(row.product_id, row.image_path);
+  }
+  // A variant with no photo of its own shows its parent product's primary photo.
+  const missing = ids.filter((id) => !paths.has(id));
+  if (missing.length > 0) {
+    const variants = await productModel(tenantDB).findAll({
+      where: { id: missing, isDelete: 0 },
+      attributes: ["id", "parent_product_id"],
+      raw: true,
+    });
+    const parentOf = new Map(variants.filter((v) => v.parent_product_id).map((v) => [v.id, v.parent_product_id]));
+    if (parentOf.size > 0) {
+      const parentPaths = await getPrimaryImagePaths(tenantDB, [...parentOf.values()]);
+      for (const [variantId, parentId] of parentOf) {
+        if (parentPaths.has(parentId)) paths.set(variantId, parentPaths.get(parentId));
+      }
+    }
   }
   return paths;
 };
