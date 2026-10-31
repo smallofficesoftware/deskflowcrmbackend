@@ -878,12 +878,17 @@ export const syncContact = async (req) => {
             "email": getContactDetail.email_id,
         };
 
-        payload.regtypedet = [
-            {
-                "regtype": regType,
-                "regappdt": regAppDate
-            }
-        ];
+        // Miracle TPA guide v1.3, Account: a party's registration type cannot be changed on Edit (error 424, "Modifying
+        // Party Registration Type details is not allowed during Edit."). Send it only when adding the party; an edit
+        // leaves whatever type Miracle already has.
+        if (payload.action === "A") {
+            payload.regtypedet = [
+                {
+                    "regtype": regType,
+                    "regappdt": regAppDate
+                }
+            ];
+        }
 
         // API call
         const api = createAxiosIntance({
@@ -1575,6 +1580,15 @@ function normalize(value) {
 }
 
 /**
+ * The fields to match Miracle products to CRM products by: the Miracle id first, then the fields the user ticked.
+ * Matching only on the ticked fields (code / name / alias) missed a CRM product that already held the Miracle id but
+ * had been renamed, so the import inserted a second product with the same miracle_UniqueId.
+ */
+function withMiracleIdFirst(chosen) {
+    return chosen.length === 0 ? chosen : ['unique_id', ...chosen.filter((f) => f !== 'unique_id')];
+}
+
+/**
  * Builds one Map per match field: normalized value -> our product row.
  */
 function buildLookupMaps(ourProducts, matchFields) {
@@ -1614,9 +1628,11 @@ function findMatch(thirdPartyProduct, maps, matchFields) {
 export const fetchMiracleProducts = async (req) => {
     try {
         const { mconfig } = req.body;
-        const matchBy = (req.body?.matchBy || []).filter((f) => VALID_MATCH_FIELDS.includes(f));
+        const chosenMatchBy = (req.body?.matchBy || []).filter((f) => VALID_MATCH_FIELDS.includes(f));
+        // A product that already holds this Miracle id is always the match (see withMiracleIdFirst).
+        const matchBy = withMiracleIdFirst(chosenMatchBy);
 
-        if (matchBy.length === 0) {
+        if (chosenMatchBy.length === 0) {
             return resError({
                 ack_msg: "Select at least one field to match products.",
             });
@@ -1637,7 +1653,7 @@ export const fetchMiracleProducts = async (req) => {
         // ---------------------------------------------------------
         const ledgerPayload = {
             "rptfield": [
-                "prdnm", "prdid", "gstunt", "hsncode", "minstk", "ordlev", "lprate", "lsrate", "prdmrp", "commnm", "slabnm", "opamt", "opqty1", "recqty1", "iqty1", "clqty1", "prdcrdt", "prdupdt"
+                "prdnm", "prdid", "grpnm", "catnm", "gstunt", "hsncode", "minstk", "ordlev", "lprate", "lsrate", "prdmrp", "commnm", "slabnm", "opamt", "opqty1", "recqty1", "iqty1", "clqty1", "prdcrdt", "prdupdt"
             ]
         };
 
@@ -1688,7 +1704,8 @@ export const fetchMiracleProducts = async (req) => {
                 name: tp.prdnm || "",
                 alias: tp.prdalinm || null,
                 price: tp.lsrate || 0,       // Mapped to lsrate (Local Sale Rate) since salrate was removed
-                category: tp.catnm || ""
+                category: tp.catnm || "",
+                group: tp.grpnm || ""
             };
 
             // 2. Format the Matched CRM Product
@@ -1789,9 +1806,11 @@ async function processInChunksWithResults(items, chunkSize, processItem) {
 export const processProducts = async (req) => {
     try {
         const { mconfig, a_application_login_id } = req.body;
-        const matchBy = (req.body?.matchBy || []).filter((f) => VALID_MATCH_FIELDS.includes(f));
+        const chosenMatchBy = (req.body?.matchBy || []).filter((f) => VALID_MATCH_FIELDS.includes(f));
+        // A product that already holds this Miracle id is always the match (see withMiracleIdFirst).
+        const matchBy = withMiracleIdFirst(chosenMatchBy);
 
-        if (matchBy.length === 0) {
+        if (chosenMatchBy.length === 0) {
             return resError({
                 ack_msg: "Select at least one field to match products.",
             });
@@ -1812,7 +1831,7 @@ export const processProducts = async (req) => {
         // STEP 1: Fetch Base Product List from Miracle
         // ---------------------------------------------------------
         const ledgerPayload = {
-            "rptfield": ["prdnm", "prdid", "gstunt", "hsncode", "minstk", "ordlev", "lprate", "lsrate", "prdmrp", "commnm", "slabnm", "opamt", "opqty1", "recqty1", "iqty1", "clqty1", "prdcrdt", "prdupdt"]
+            "rptfield": ["prdnm", "prdid", "grpnm", "catnm", "gstunt", "hsncode", "minstk", "ordlev", "lprate", "lsrate", "prdmrp", "commnm", "slabnm", "opamt", "opqty1", "recqty1", "iqty1", "clqty1", "prdcrdt", "prdupdt"]
         };
 
         const ledgerResponse = await postLedger(api, 'TPA/M2/V1/ProductLedger', ledgerPayload);
@@ -1994,9 +2013,16 @@ export const processProducts = async (req) => {
         const recordsToInsert = [];
         const recordsToUpdate = [];
         const currentTimestamp = moment().format("YYYY-MM-DD HH:mm:ss");
+        // Miracle ids already queued for insert in THIS run: the same product listed twice is added once.
+        const queuedMiracleIds = new Set();
 
         baseProducts.forEach((tp) => {
             const { matchedProduct } = findMatch(tp, lookupMaps, matchBy);
+            if (!matchedProduct && tp.prdid) {
+                const idKey = normalize(tp.prdid);
+                if (queuedMiracleIds.has(idKey)) return;
+                queuedMiracleIds.add(idKey);
+            }
 
             // Extract IDs from our pre-synced Maps
             const groupId = tp.grpnm ? groupMap.get(tp.grpnm.trim().toLowerCase()) : null;
@@ -2176,9 +2202,11 @@ function findMatchContact(thirdPartyRecord, maps, matchFields, mapping) {
 export const fetchContact = async (req) => {
     try {
         const { mconfig } = req.body;
-        const matchBy = (req.body?.matchBy || []).filter((f) => VALID_MATCH_FIELDS_CONTACT.includes(f));
+        const chosenMatchBy = (req.body?.matchBy || []).filter((f) => VALID_MATCH_FIELDS_CONTACT.includes(f));
+        // A contact that already holds this Miracle id is always the match (see withMiracleIdFirst).
+        const matchBy = withMiracleIdFirst(chosenMatchBy);
 
-        if (matchBy.length === 0) {
+        if (chosenMatchBy.length === 0) {
             return resError({
                 ack_msg: "Select at least one field to match contacts.",
             });
@@ -2296,9 +2324,11 @@ export const fetchContact = async (req) => {
 export const processContact = async (req) => {
     try {
         const { mconfig, a_application_login_id } = req.body;
-        const matchBy = (req.body?.matchBy || []).filter((f) => VALID_MATCH_FIELDS_CONTACT.includes(f));
+        const chosenMatchBy = (req.body?.matchBy || []).filter((f) => VALID_MATCH_FIELDS_CONTACT.includes(f));
+        // A contact that already holds this Miracle id is always the match (see withMiracleIdFirst).
+        const matchBy = withMiracleIdFirst(chosenMatchBy);
 
-        if (matchBy.length === 0) {
+        if (chosenMatchBy.length === 0) {
             return resError({
                 ack_msg: "Select at least one field to match contacts.",
             });
@@ -2369,6 +2399,29 @@ export const processContact = async (req) => {
             existingCities.forEach(c => cityMap.set(c.city_name.trim().toLowerCase(), c.id));
         }
 
+        // A state or city Miracle has that the CRM does not: add it, as the Miracle webhook does. Without this the
+        // contact got city/state null, and contact_masters.city / state do not accept null ("Column 'city' cannot be null").
+        for (const name of uniqueStates) {
+            const key = name.trim().toLowerCase();
+            if (stateMap.has(key)) continue;
+            const [row] = await stateModelInstance.findOrCreate({
+                where: { state_name: name.trim(), isDelete: 0 },
+                defaults: { state_name: name.trim(), country_id: 101 }
+            });
+            stateMap.set(key, row.id);
+        }
+        for (const name of uniqueCities) {
+            const key = name.trim().toLowerCase();
+            if (cityMap.has(key)) continue;
+            const owner = baseContacts.find(c => c.citynm && c.citynm.trim().toLowerCase() === key);
+            const ownerStateId = owner?.statenm ? stateMap.get(owner.statenm.trim().toLowerCase()) || null : null;
+            const [row] = await cityModelInstance.findOrCreate({
+                where: { city_name: name.trim(), isDelete: 0 },
+                defaults: { city_name: name.trim(), state_id: ownerStateId, country_id: 101 }
+            });
+            cityMap.set(key, row.id);
+        }
+
         // ---------------------------------------------------------
         // Match against CRM Database
         // ---------------------------------------------------------
@@ -2384,9 +2437,16 @@ export const processContact = async (req) => {
         const recordsToInsert = [];
         const recordsToUpdate = [];
         const currentTimestamp = moment().format("YYYY-MM-DD HH:mm:ss");
+        // Miracle ids already queued for insert in THIS run: the same contact listed twice is added once.
+        const queuedMiracleIds = new Set();
 
         baseContacts.forEach((tp) => {
             const { matchedRecord } = findMatchContact(tp, lookupMaps, matchBy, FIELD_MAPPING_CONTACT);
+            if (!matchedRecord && tp.accid) {
+                const idKey = normalize(tp.accid);
+                if (queuedMiracleIds.has(idKey)) return;
+                queuedMiracleIds.add(idKey);
+            }
 
             // Resolve State and City IDs
             const stateId = tp.statenm ? (stateMap.get(tp.statenm.trim().toLowerCase()) || null) : null;
@@ -2401,8 +2461,9 @@ export const processContact = async (req) => {
                 email_id: tp.email || "",
                 client_code: tp.accalinm || "",
                 country: 101,
-                state: stateId,
-                city: cityId,
+                // "" (not null) when Miracle has no state / city for the party: the columns do not accept null.
+                state: stateId ?? "",
+                city: cityId ?? "",
                 address: tp.addr1,
                 source_type_id: -21,
                 miracle_UniqueId: tp.accid,
