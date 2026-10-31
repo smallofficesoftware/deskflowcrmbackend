@@ -5548,3 +5548,6 @@ DELETE FROM `call_histories` WHERE id IN (
 );
 ALTER TABLE `call_histories`
   ADD UNIQUE KEY `ux_call_histories_call` (`a_application_login_id`, `call_type`, `mobile_number`(32), `call_date_time`, `duration`(16));
+
+31-10-2026 Dhaval
+env ma new variable TENANT_POOL_MAX=30 (max DB connections per tenant pool, default 15 in src/config/tenantConnectionCache.js)
