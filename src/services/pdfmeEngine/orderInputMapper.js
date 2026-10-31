@@ -497,7 +497,7 @@ export function buildInputsForCart({ company, buyer, order, computed, items, pen
         case "image":
           return "";
         case "description":
-          return (item.description ?? "") + (belowLines > 0 && itemImages?.[index] ? "\n".repeat(belowLines) : "");
+          return (item.description ?? "") + (belowLines > 0 && itemImages?.[index] ? "\n".repeat(belowLines) + " " : "");
         case "hsn":
           return item.hsn ?? "";
         case "qty":
