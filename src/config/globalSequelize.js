@@ -10,10 +10,10 @@ export const dbConfig = {
   DB: TENANT_DB_DB_NAME,
   dialect: "mysql",
   pool: {
-    max: 200000, // Increase max connections
+    max: Number(process.env.GLOBAL_POOL_MAX) || 40, // tenant_masters lookups etc.
     min: 0,
-    acquire: 300000, // Increase acquire timeout (default: 10000ms)
-    idle: 100000, // Connection idle timeout
+    acquire: Number(process.env.MASTER_POOL_ACQUIRE_MS) || 30000, // fail fast instead of waiting 5 min
+    idle: 10000, // Connection idle timeout
   }
 };
 
@@ -34,7 +34,7 @@ export const globalSequelize = new Sequelize(
       acquire: dbConfig.pool.acquire,
       idle: dbConfig.pool.idle,
     },
-    logging: true,
-    // logging: (msg) => logger.info(msg),
+    // SQL logging off by default (huge logs); set SQL_LOGGING=1 to debug
+    logging: process.env.SQL_LOGGING === "1" ? console.log : false,
   }
 );

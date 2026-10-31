@@ -38,10 +38,26 @@ import {
     prepareMailAndWhatsappSenderToTheContact
 } from "../other_settings/wrkflwAutoAssignmentContactService.js";
 import { emitAutomationEvent } from "../automation/emit.js";
+import {
+    MAX_SHEET_CACHE_AGE_MS,
+    clearSheetCache,
+    compactError,
+    getBrokenReason,
+    getSheetCache,
+    isPermanentSheetError,
+    isQuotaBlocked,
+    isQuotaError,
+    markBroken,
+    markQuotaHit,
+    setSheetCache,
+    sheetKey,
+    throttleSheetCall,
+} from "./sheetsSyncGuard.js";
 
 // ==================== CONSTANTS ====================
 const SCOPES = ["https://www.googleapis.com/auth/spreadsheets"];
 const MAX_ROWS_TO_FETCH = 25;
+const LAST_ROW_LOOKAHEAD = 300; // rows past the cached last row fetched in the 1-request fast path
 const DEFAULT_SHEET_NAME = "Sheet1";
 const DEFAULT_SOURCE_TYPE_ID = 0;
 
@@ -237,55 +253,86 @@ async function fetchSheetData(
             ])
         );
 
-        // Fetch header row
-        const headerRange = `${sheetName}!A1:BO1`;
-        const headerResponse = await sheets.spreadsheets.values.get({
-            spreadsheetId,
-            range: headerRange,
-        });
+        // Google Sheets read quota is 60 requests/min for the whole project, so keep
+        // the request count per sheet low: 1 request when the header + last row are
+        // cached (fast path), otherwise 2 (header + column A in one batchGet, then data).
+        const cacheKey = sheetKey(spreadsheetId, sheetName);
+        const cached = getSheetCache(cacheKey);
+        let trimmedHeaders = null;
+        let dataRows = null;
 
-        const titleColumnNames = headerResponse?.data?.values?.[0] || [];
+        if (cached?.lastRow && Date.now() - cached.headersAt < MAX_SHEET_CACHE_AGE_MS) {
+            const fastStart = Math.max(cached.lastRow - MAX_ROWS_TO_FETCH, 2);
+            const fastEnd = cached.lastRow + LAST_ROW_LOOKAHEAD;
+            const fastResponse = await sheets.spreadsheets.values.get({
+                spreadsheetId,
+                range: `${sheetName}!A${fastStart}:BO${fastEnd}`,
+            });
+            const fastRows = fastResponse?.data?.values || [];
 
-        if (!titleColumnNames.length) {
-            console.warn(`No headers found in sheet: ${sheetName}`);
-            return [];
+            // Trailing empty rows are trimmed by the API, so a result shorter than the
+            // requested span means we saw the real end of the data.
+            if (fastRows.length > 0 && fastRows.length < fastEnd - fastStart + 1) {
+                trimmedHeaders = cached.headers;
+                dataRows = fastRows;
+                setSheetCache(cacheKey, {
+                    headers: cached.headers,
+                    headersAt: cached.headersAt,
+                    lastRow: fastStart + fastRows.length - 1,
+                });
+            } else {
+                // Sheet shrank or grew past the lookahead: rebuild via the full path.
+                clearSheetCache(cacheKey);
+            }
         }
 
-        const trimmedHeaders = titleColumnNames.map(v => v?.trim() || "");
+        if (!dataRows) {
+            // Header row + column A in a single request
+            const batchResponse = await sheets.spreadsheets.values.batchGet({
+                spreadsheetId,
+                ranges: [`${sheetName}!A1:BO1`, `${sheetName}!A:A`],
+            });
+            const [headerRange, columnARange] = batchResponse?.data?.valueRanges || [];
 
-        // Validate 'id' column exists
-        if (!trimmedHeaders.includes("id")) {
-            throw new Error(`'id' column not found in sheet: ${sheetName}`);
+            const titleColumnNames = headerRange?.values?.[0] || [];
+
+            if (!titleColumnNames.length) {
+                console.warn(`No headers found in sheet: ${sheetName}`);
+                return [];
+            }
+
+            trimmedHeaders = titleColumnNames.map(v => v?.trim() || "");
+
+            // Validate 'id' column exists
+            if (!trimmedHeaders.includes("id")) {
+                throw new Error(`'id' column not found in sheet: ${sheetName}`);
+            }
+
+            const totalRows = columnARange?.values?.length || 0;
+
+            if (totalRows <= 1) {
+                console.warn(`No data rows in sheet: ${sheetName}`);
+                return [];
+            }
+
+            // Calculate data range to fetch (last 25 rows or less)
+            const startRow =
+                totalRows > 11
+                    ? Math.max(totalRows - MAX_ROWS_TO_FETCH, 2)
+                    : 2;
+
+            const dataResponse = await sheets.spreadsheets.values.get({
+                spreadsheetId,
+                range: `${sheetName}!A${startRow}:BO${totalRows}`,
+            });
+
+            dataRows = dataResponse?.data?.values || [];
+            setSheetCache(cacheKey, {
+                headers: trimmedHeaders,
+                headersAt: Date.now(),
+                lastRow: totalRows,
+            });
         }
-
-        // Get total row count
-        const columnARange = `${sheetName}!A:A`;
-        const columnAResponse = await sheets.spreadsheets.values.get({
-            spreadsheetId,
-            range: columnARange,
-        });
-
-        const totalRows = columnAResponse?.data?.values?.length || 0;
-
-        if (totalRows <= 1) {
-            console.warn(`No data rows in sheet: ${sheetName}`);
-            return [];
-        }
-
-        // Calculate data range to fetch (last 25 rows or less)
-        const startRow =
-            totalRows > 11
-                ? Math.max(totalRows - MAX_ROWS_TO_FETCH, 2)
-                : 2;
-
-        const dataRange = `${sheetName}!A${startRow}:BO${totalRows}`;
-
-        const dataResponse = await sheets.spreadsheets.values.get({
-            spreadsheetId,
-            range: dataRange,
-        });
-
-        let dataRows = dataResponse?.data?.values || [];
 
         // Skip first row if it is header row
         if (dataRows.length > 0) {
@@ -334,7 +381,8 @@ async function fetchSheetData(
         return parsedData.filter(row => Object.keys(row).length > 0);
 
     } catch (error) {
-        console.error(`Error fetching sheet data for ${sheetName}:`, error);
+        // Short line only: the raw GaxiosError carries the full request config + stack
+        console.error(`Error fetching sheet data for ${sheetName}: ${compactError(error)}`);
         throw error;
     }
 }
@@ -357,8 +405,21 @@ async function fetchAllSheetsData(
             continue;
         }
 
+        const sheetName = customSheetName || DEFAULT_SHEET_NAME;
+        const brokenKey = sheetKey(spreadsheetId, sheetName);
+
+        // Config known to be broken (bad range / no id column / not found): skip until retry window ends
+        if (getBrokenReason(brokenKey)) {
+            continue;
+        }
+
+        // Quota hit recently: make no Google call, let the next cron run retry
+        if (isQuotaBlocked()) {
+            throw new Error(`Sheet fetch skipped (${configKey}): Google Sheets quota cooldown`);
+        }
+
         try {
-            const sheetName = customSheetName || DEFAULT_SHEET_NAME;
+            await throttleSheetCall();
 
             const sheetData = await fetchSheetData(
                 sheets,
@@ -373,7 +434,20 @@ async function fetchAllSheetsData(
             allSheetData.push(...sheetData);
 
         } catch (error) {
-            console.error(`Failed to fetch data from sheet config: ${configKey}`, error);
+            if (isQuotaError(error)) {
+                // Stop on 429 and wait for the next run instead of retrying
+                markQuotaHit();
+                clearSheetCache(brokenKey);
+                console.error(`Google Sheets quota hit at ${configKey}, pausing sync`);
+                throw new Error(`Sheet fetch failed (${configKey}): quota exceeded`);
+            }
+            if (isPermanentSheetError(error)) {
+                // Will fail the same way every run until the user fixes the sheet
+                markBroken(brokenKey, compactError(error));
+                console.error(`Sheet config ${configKey} marked broken (skipped for a while): ${compactError(error)}`);
+                continue;
+            }
+            console.error(`Failed to fetch data from sheet config: ${configKey}: ${compactError(error)}`);
             throw new Error(`Sheet fetch failed (${configKey}): ${error.message}`);
         }
     }

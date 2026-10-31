@@ -58,6 +58,13 @@ import { productVariantAttributeValueModel } from "../models/product_settings/pr
 import { productVariantOptionValueModel } from "../models/product_settings/productVariantOptionValueModel.js";
 import { taxModel } from "../models/product_settings/taxModel.js";
 import { globalSequelize } from "./globalSequelize.js";
+import {
+    TENANT_POOL,
+    cachedTenantRow,
+    getCachedConnection,
+    storeConnection,
+    tenantConnectionKey,
+} from "./tenantConnectionCache.js";
 
 // const tenantConnections = {};
 export const getTenantDB = async (tenantId, companyId) => {
@@ -66,29 +73,41 @@ export const getTenantDB = async (tenantId, companyId) => {
     // }
     let tenant = null;
     if (companyId) {
-        const [result] = await globalSequelize.query(
-            "SELECT * FROM tenant_masters WHERE company_masters_id = ? AND isDelete = 0 LIMIT 1",
-            {
-                replacements: [companyId],
-                type: Sequelize.QueryTypes.SELECT,
-            }
-        );
-        tenant = result;
+        tenant = await cachedTenantRow(`c:${companyId}`, async () => {
+            const [result] = await globalSequelize.query(
+                "SELECT * FROM tenant_masters WHERE company_masters_id = ? AND isDelete = 0 LIMIT 1",
+                {
+                    replacements: [companyId],
+                    type: Sequelize.QueryTypes.SELECT,
+                }
+            );
+            return result;
+        });
     }
     if (!tenant && tenantId) {
-        const [result] = await globalSequelize.query(
-            "SELECT * FROM tenant_masters WHERE a_application_login_id = ? AND isDelete = 0 ORDER BY id DESC LIMIT 1",
-            {
-                replacements: [tenantId],
-                type: Sequelize.QueryTypes.SELECT,
-            }
-        );
-        tenant = result;
+        tenant = await cachedTenantRow(`t:${tenantId}`, async () => {
+            const [result] = await globalSequelize.query(
+                "SELECT * FROM tenant_masters WHERE a_application_login_id = ? AND isDelete = 0 ORDER BY id DESC LIMIT 1",
+                {
+                    replacements: [tenantId],
+                    type: Sequelize.QueryTypes.SELECT,
+                }
+            );
+            return result;
+        });
     }
 
     if (!tenant) {
         throw new Error("Tenant not found");
     }
+
+    // Reuse the tenant's existing connection pool + models when we have one
+    const cacheKey = tenantConnectionKey(tenant);
+    const cachedConnection = getCachedConnection(cacheKey);
+    if (cachedConnection) {
+        return cachedConnection;
+    }
+
     const tenantSequelize = new Sequelize(
         tenant.db_name,
         tenant.db_user,
@@ -100,8 +119,9 @@ export const getTenantDB = async (tenantId, companyId) => {
             define: {
                 timestamps: false,
             },
-            logging: true,
-            // logging: (msg) => logger.info(msg),
+            pool: TENANT_POOL,
+            // SQL logging off by default (huge logs); set SQL_LOGGING=1 to debug
+            logging: process.env.SQL_LOGGING === "1" ? console.log : false,
         }
     );
     const models = {
@@ -167,6 +187,6 @@ export const getTenantDB = async (tenantId, companyId) => {
 
 
     }
-    return { sequelize: tenantSequelize, models };
+    return storeConnection(cacheKey, tenantSequelize, models);
 };
 

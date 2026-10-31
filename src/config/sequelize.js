@@ -10,10 +10,10 @@ export const dbConfig = {
     DB: TENANT_DB_DB_NAME,
     dialect: "mysql",
     pool: {
-        max: 200000,
+        max: Number(process.env.MASTER_POOL_MAX) || 80,
         min: 0,
-        acquire: 300000,
-        idle: 100000,
+        acquire: Number(process.env.MASTER_POOL_ACQUIRE_MS) || 30000,
+        idle: 10000,
     },
 
 }
@@ -33,8 +33,8 @@ export const sequelize = new Sequelize(dbConfig.DB, dbConfig.USER, dbConfig.PASS
         acquire: dbConfig.pool.acquire,
         idle: dbConfig.pool.idle
     },
-    logging: true,
-    // logging: (msg) => logger.info(msg),
+    // SQL logging off by default (huge logs); set SQL_LOGGING=1 to debug
+    logging: process.env.SQL_LOGGING === "1" ? console.log : false,
 });
 
 const modelsProxy = new Proxy(sequelize.models, {

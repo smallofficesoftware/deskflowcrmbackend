@@ -737,7 +737,29 @@ const sendSingalNotification = async (deviceToken, title, body) => {
   }
 };
 
-export const sendMultipleNotification = async ({
+// Push sending is slow when FCM is unreachable (15 s timeout per token, sequential), and
+// ~50 callers `await` it inside request handlers (create/update/message send), which made
+// those requests hang for tens of seconds. Nobody uses its return value, so the public
+// function now starts the sends in the background and returns immediately. Failures are
+// still logged by the worker below.
+const MAX_BACKGROUND_PUSH_JOBS = 200;
+let backgroundPushJobs = 0;
+
+export const sendMultipleNotification = (args) => {
+  if (backgroundPushJobs >= MAX_BACKGROUND_PUSH_JOBS) {
+    console.warn(`[push] dropped notification, ${backgroundPushJobs} sends already in flight (FCM slow/unreachable?)`);
+    return Promise.resolve([]);
+  }
+  backgroundPushJobs++;
+  sendMultipleNotificationNow(args)
+    .catch((err) => console.error(`[push] background send failed: ${err?.message || err}`))
+    .finally(() => {
+      backgroundPushJobs--;
+    });
+  return Promise.resolve([]);
+};
+
+const sendMultipleNotificationNow = async ({
   deviceTokens,
   title,
   body,

@@ -14,10 +14,17 @@ const pinoMiddleware = (req, res, next) => {
       contentType = 'unknown';
     }
   }
+  // Full request bodies (GPS batches, uploads, passwords/tokens) made the out log grow
+  // by GBs. Log only the body field names unless LOG_REQUEST_BODY=1 is set for debugging.
+  const hasBody = req.body && typeof req.body === 'object' && Object.keys(req.body).length;
   const logData = {
     url: req.originalUrl,
     ...(Object.keys(req.query).length ? { query: req.query } : {}),
-    ...(req.body && Object.keys(req.body).length ? { body: req.body } : {}),
+    ...(hasBody
+      ? process.env.LOG_REQUEST_BODY === '1'
+        ? { body: req.body }
+        : { bodyKeys: Object.keys(req.body) }
+      : {}),
     ...(req.files?.length ?
       { files: req.files.map((f) => f.originalname) }
       : {})
