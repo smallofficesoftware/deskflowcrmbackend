@@ -5566,3 +5566,5 @@ env ma new variables (added 15-10-2026 till 31-10-2026). Set on every server; on
 -- 31-10 SQL_LOGGING=1 prints every SQL query (default off), LOG_REQUEST_BODY=1 logs request bodies (default off)
 -- 31-10 METRICS_KEY=<secret> (enables GET /api/_metrics with header `x-metrics-key: <key>`; endpoint is a 404 while unset), SLOW_REQUEST_MS (default 3000), METRICS_FLUSH_MS (default 300000), METRICS_LOG_FILE (default <cwd>/logs/request-metrics.log)
 -- 31-10 SENTRY_DSN=<project dsn> (error reporting stays off while unset; also run `npm i @sentry/node`), SENTRY_ENVIRONMENT=local|demo|sandbox|production, SENTRY_SERVER_NAME (optional), SENTRY_RELEASE (optional), SENTRY_TRACES_SAMPLE_RATE (default 0)
+31-10-2026 Dhaval
+env ma new variables: SENTRY_DSN=<project dsn> (error reporting stays off while unset; run `npm install` so @sentry/node is installed), SENTRY_ENVIRONMENT=local|demo|sandbox|production, SENTRY_SERVER_NAME (optional), SENTRY_RELEASE (optional), SENTRY_TRACES_SAMPLE_RATE (default 0)
