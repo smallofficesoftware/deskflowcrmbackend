@@ -5512,3 +5512,39 @@ WHERE sn.isDelete = 0
     OR (sn.cart_type = 3 AND sn.sn_reference_type != 9)
     OR sn.cart_type IN (6,7,8,9,10,11)
   );
+
+31-10-2026 Dhaval
+-- migration: migration/tenant/migrations/20261031120000-add-unique-key-to-call-histories.js
+-- Every tenant DB + smalloffice_sample_tenant. Stops the app uploading the same call twice.
+-- A call = same login + type + number + start time + duration.
+-- Existing duplicate copies are first backed up to call_histories_duplicates_backup, then deleted (lowest id kept).
+CREATE TABLE IF NOT EXISTS `call_histories_duplicates_backup` LIKE `call_histories`;
+INSERT IGNORE INTO `call_histories_duplicates_backup`
+SELECT * FROM `call_histories` WHERE id IN (
+  SELECT id FROM (
+    SELECT c.id FROM `call_histories` c
+    JOIN (
+      SELECT MIN(id) AS keep_id, a_application_login_id, call_type, mobile_number, call_date_time, duration
+      FROM `call_histories`
+      GROUP BY a_application_login_id, call_type, mobile_number, call_date_time, duration
+    ) k ON k.a_application_login_id <=> c.a_application_login_id AND k.call_type <=> c.call_type
+       AND k.mobile_number <=> c.mobile_number AND k.call_date_time <=> c.call_date_time
+       AND k.duration <=> c.duration
+    WHERE c.id <> k.keep_id
+  ) d
+);
+DELETE FROM `call_histories` WHERE id IN (
+  SELECT id FROM (
+    SELECT c.id FROM `call_histories` c
+    JOIN (
+      SELECT MIN(id) AS keep_id, a_application_login_id, call_type, mobile_number, call_date_time, duration
+      FROM `call_histories`
+      GROUP BY a_application_login_id, call_type, mobile_number, call_date_time, duration
+    ) k ON k.a_application_login_id <=> c.a_application_login_id AND k.call_type <=> c.call_type
+       AND k.mobile_number <=> c.mobile_number AND k.call_date_time <=> c.call_date_time
+       AND k.duration <=> c.duration
+    WHERE c.id <> k.keep_id
+  ) d
+);
+ALTER TABLE `call_histories`
+  ADD UNIQUE KEY `ux_call_histories_call` (`a_application_login_id`, `call_type`, `mobile_number`(32), `call_date_time`, `duration`(16));

@@ -29,7 +29,33 @@ const callTypesShowList = [
   { id: "7", type: "Outgoing Call Not Connected", color: "#00b3ff", msg_type: "1" },
   { id: "9", type: "Answered Externally", color: "#FFB300", msg_type: "2" },
 ];
+
+// Serialise call-history uploads per login so two concurrent requests carrying the
+// same calls cannot both pass the "already exists" check and insert duplicates.
+const callHistoryUploadQueues = new Map();
 export const createCall = async (req, res) => {
+  let key = "";
+  try {
+    const raw = typeof req.body?.call_history === "string"
+      ? JSON.parse(req.body.call_history)
+      : req.body?.call_history;
+    key = String(raw?.[0]?.a_application_login_id || "");
+  } catch (e) {
+    key = "";
+  }
+  if (!key) return createCallImpl(req, res);
+
+  const previous = callHistoryUploadQueues.get(key) || Promise.resolve();
+  const current = previous.catch(() => { }).then(() => createCallImpl(req, res));
+  callHistoryUploadQueues.set(key, current);
+  try {
+    return await current;
+  } finally {
+    if (callHistoryUploadQueues.get(key) === current) callHistoryUploadQueues.delete(key);
+  }
+};
+
+const createCallImpl = async (req, res) => {
   try {
 
     let callHistory;
@@ -194,6 +220,7 @@ export const createCall = async (req, res) => {
           call_type: entry.call_type,
           mobile_number: entry.mobile_number,
           call_date_time: entry.call_date_time,
+          duration: entry.duration,
         },
       });
       if (exists.length > 0) {
@@ -201,7 +228,16 @@ export const createCall = async (req, res) => {
       }
       else {
         console.log("rrrrrrrrrrrrrrrr", entry);
-        Callarray.push(entry)
+        // Also drop duplicates inside this same payload.
+        const dupInBatch = Callarray.some(
+          (c) =>
+            c.a_application_login_id === entry.a_application_login_id &&
+            String(c.call_type) === String(entry.call_type) &&
+            c.mobile_number === entry.mobile_number &&
+            String(c.call_date_time) === String(entry.call_date_time) &&
+            String(c.duration) === String(entry.duration)
+        );
+        if (!dupInBatch) Callarray.push(entry)
       }
     }
 
@@ -213,7 +249,31 @@ export const createCall = async (req, res) => {
         ack_msg: "Data dupction found",
       })
     };
-    const createdCalls = await callhistorydata.bulkCreate(Callarray);
+    // ux_call_histories_call (login, type, number, time) rejects a duplicate that slipped past
+    // the check above (e.g. a request handled by another server process). Fall back to row-by-row
+    // inserts and keep only the rows that were really created.
+    let createdCalls;
+    try {
+      createdCalls = await callhistorydata.bulkCreate(Callarray);
+    } catch (err) {
+      if (err?.name !== "SequelizeUniqueConstraintError") throw err;
+      createdCalls = [];
+      const keptEntries = [];
+      for (const entry of Callarray) {
+        try {
+          createdCalls.push(await callhistorydata.create(entry));
+          keptEntries.push(entry);
+        } catch (rowErr) {
+          if (rowErr?.name !== "SequelizeUniqueConstraintError") throw rowErr;
+        }
+      }
+      Callarray.splice(0, Callarray.length, ...keptEntries);
+      if (Callarray.length === 0) {
+        return rescallhistory({
+          ack_msg: "Data dupction found",
+        });
+      }
+    }
     emitAutomationEvent(req, "call.created", { ids: createdCalls.map((c) => c.id) });
     const getCallType = (callTypeId) => {
       const id = String(callTypeId || "");
