@@ -5399,3 +5399,43 @@ UPDATE `storefront_themes` SET `name` = 'Classic', `description` = 'Clean light 
 -- customers until it is switched on. 1 = Yes, 2 = No (same values as print_or_not).
 ALTER TABLE `custom_field_form_masters`
   ADD COLUMN `show_on_storefront` TINYINT NOT NULL DEFAULT 2 COMMENT '1=Yes, 2=No (default) - show on the online store product page; Product Master fields only';
+
+31-10-2026 Dhaval
+-- migration: migration/tenant/migrations/20261031100000-stock-ledger-view-skip-no-stock-effect.js
+-- Every tenant DB + smalloffice_sample_tenant. stock_ledger_view now leaves out lines with stock_type = 0 (a document
+-- saved with no stock effect, or a copy of another document), the same rule as product stock / Stock Summary
+-- (src/services/product_settings/stockCondition.js). Columns unchanged.
+CREATE OR REPLACE VIEW `stock_ledger_view` AS
+SELECT
+  ci.id,
+  ci.company_masters_id,
+  ci.item_product_id,
+  ci.cart_type,
+  ci.reference_type,
+  ci.cart_date,
+  ci.item_qty,
+  ci.stock_type,
+  ci.item_warehouse_id,
+  ci.a_application_login_id,
+  0 AS isDelete,
+  CASE
+    WHEN (ci.cart_type = 4 AND ci.reference_type != 8) OR ci.cart_type IN (6,8,10) THEN ci.item_qty
+    WHEN (ci.cart_type = 3 AND ci.reference_type != 9) OR ci.cart_type IN (7,9,11) THEN -ci.item_qty
+    ELSE 0
+  END AS qty_delta,
+  CASE
+    WHEN ci.cart_type IN (10,11) AND c.sr_by_number IS NOT NULL
+      AND EXISTS (SELECT 1 FROM `carts` t WHERE t.sr_by_number = c.sr_by_number AND t.cart_date = c.cart_date AND t.company_masters_id = c.company_masters_id AND t.type = 10 AND t.isDelete = 0)
+      AND EXISTS (SELECT 1 FROM `carts` t WHERE t.sr_by_number = c.sr_by_number AND t.cart_date = c.cart_date AND t.company_masters_id = c.company_masters_id AND t.type = 11 AND t.isDelete = 0)
+    THEN 1 ELSE 0
+  END AS is_transfer
+FROM `cart_items` ci
+LEFT JOIN `carts` c ON c.id = ci.cart_id
+WHERE ci.isDelete = 0
+  AND ci.cart_number IS NOT NULL AND ci.cart_number != ''
+  AND ci.stock_type != 0
+  AND (
+    (ci.cart_type = 4 AND ci.reference_type != 8)
+    OR (ci.cart_type = 3 AND ci.reference_type != 9)
+    OR ci.cart_type IN (6,7,8,9,10,11)
+  );
