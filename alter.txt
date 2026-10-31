@@ -5564,3 +5564,5 @@ env ma new variables (added 15-10-2026 till 31-10-2026). Set on every server; on
 -- 31-10 TENANT_POOL_MAX=30 (default 15), TENANT_POOL_ACQUIRE_MS (default 30000), TENANT_CONN_CACHE_MAX (default 150), TENANT_CONN_IDLE_EVICT_MS (default 900000), TENANT_ROW_CACHE_TTL_MS (default 60000)
 -- 31-10 MASTER_POOL_MAX (default 80), GLOBAL_POOL_MAX (default 40), MASTER_POOL_ACQUIRE_MS (default 30000)
 -- 31-10 SQL_LOGGING=1 prints every SQL query (default off), LOG_REQUEST_BODY=1 logs request bodies (default off)
+-- 31-10 METRICS_KEY=<secret> (enables GET /api/_metrics with header `x-metrics-key: <key>`; endpoint is a 404 while unset), SLOW_REQUEST_MS (default 3000), METRICS_FLUSH_MS (default 300000), METRICS_LOG_FILE (default <cwd>/logs/request-metrics.log)
+-- 31-10 SENTRY_DSN=<project dsn> (error reporting stays off while unset; also run `npm i @sentry/node`), SENTRY_ENVIRONMENT=local|demo|sandbox|production, SENTRY_SERVER_NAME (optional), SENTRY_RELEASE (optional), SENTRY_TRACES_SAMPLE_RATE (default 0)

@@ -8,6 +8,8 @@ import maintenanceMode from "./middlewares/maintenanceMode.js";
 import maintenanceModesModel from "./models/configuration/maintenanceModesModel.js";
 import { decryptRequest, encryptRequest } from "./middlewares/payloadSecurity.js";
 import pinoMiddleware from './middlewares/pinoMiddleware.js';
+import { metricsHandler, requestMetrics } from "./middlewares/requestMetrics.js";
+import { captureError, initSentry } from "./config/sentry.js";
 import routers from "./routes/indexRouter.js";
 import storeSocketId from "./services/1socketIOServices/storeSocketId.js";
 import { getCompanyByLoginId } from "./services/commonServices.js";
@@ -97,15 +99,28 @@ app.use(
     })
 );
 app.use(pinoMiddleware);
+// Request timing per route / tenant. Placed before decrypt/encrypt so the protected
+// /api/_metrics response is never encrypted (it needs METRICS_KEY, else it is a 404).
+app.use(requestMetrics);
+app.get("/api/_metrics", metricsHandler);
 app.use(decryptRequest);
 app.use(encryptRequest);
 app.use(maintenanceMode);
+// Errors from the middleware above (bad JSON, body over 50mb, CORS rejection, ...).
+// This handler used to `return resError(...)` without sending anything, so the client
+// request just hung until its own timeout. It now answers.
 app.use((err, req, res, next) => {
-    return resError({
-        ack_msg: "Internal Server Error",
-        developer_msg: "Internal Server Error",
-    })
+    captureError(err);
+    if (res.headersSent) return next(err);
+    const status = Number(err?.status || err?.statusCode) || 500;
+    return res.status(status).json(
+        resError({
+            ack_msg: "Internal Server Error",
+            developer_msg: status < 500 ? err?.message || "Bad request" : "Internal Server Error",
+        })
+    );
 })
+initSentry().catch(() => { });
 // Admin-panel kill-switch: when maintenance_modes.is_socket_disabled = 1 the
 // backend refuses every new socket.io connection (and reconnect attempt).
 // Fails open on a DB error so a lookup blip can't take live sync down.
