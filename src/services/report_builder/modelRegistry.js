@@ -1224,6 +1224,9 @@ export const MODEL_REGISTRY = {
       // 1 = one side of a warehouse-to-warehouse transfer (an out line and an in line sharing a transfer number),
       // 0 = any other movement. Filter "Is Transfer = 1" for transfers only.
       is_transfer: { label: "Is Transfer (1 = yes)", type: "number", filterable: true, sortable: false, groupable: true },
+      // 0 = the line has no stock effect (a return saved without "Include stock back", or a copy of another
+      // document): it is listed, but its Stock Movement is 0, so no total counts it.
+      stock_counted: { label: "Counted in Stock (1 = yes, 0 = no)", type: "number", filterable: true, sortable: false, groupable: true },
       ...COUNT_COLUMN,
     },
     // Category not directly on this table — product-only for slot 7.
@@ -1326,6 +1329,8 @@ export const MODEL_REGISTRY = {
         aggregatable: ["sum"],
         runningTotal: { partitionBy: "serial_numbers", orderBy: "created_date_time" },
       },
+      // 0 = the document line has no stock effect: the row is listed, but its Stock Status is 0.
+      stock_counted: { label: "Counted in Stock (1 = yes, 0 = no)", type: "number", filterable: true, sortable: false, groupable: true },
       ...COUNT_COLUMN,
     },
     generalFilters: {

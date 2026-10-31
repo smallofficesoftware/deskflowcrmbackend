@@ -51,6 +51,10 @@ export const serialStockLedgerViewModel = (sequelize) => {
       stock_delta: {
         type: TINYINT,
       },
+      // 0 = the document line has no stock effect (stock_type 0): the row is listed, but its stock_delta is 0.
+      stock_counted: {
+        type: TINYINT,
+      },
       isDelete: {
         type: TINYINT,
       },

@@ -51,6 +51,10 @@ export const stockLedgerViewModel = (sequelize) => {
       is_transfer: {
         type: TINYINT,
       },
+      // 0 = a line with no stock effect (stock_type 0): it is listed, but its qty_delta is 0 so no total counts it.
+      stock_counted: {
+        type: TINYINT,
+      },
       isDelete: {
         type: TINYINT,
       },
