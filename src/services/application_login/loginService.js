@@ -1,4 +1,5 @@
 import axios from "axios";
+import { getCached, setCached } from "../../utils/simpleCache.js";
 import jwt from "jsonwebtoken";
 import moment from "moment";
 import nodemailer from "nodemailer";
@@ -1665,12 +1666,20 @@ export const onLoad = async (req, res) => {
     // (deskflowadmin DB) instead of a direct DB connection, since that table isn't in this
     // app's database. Short timeout + swallow-and-log on any failure so a slow/down adminpanel
     // never holds up or breaks login.
-    let nextEvent = null;
-    try {
-      const { data } = await axios.get(`${ADMIN_PANEL_API_URL}/public/events/next-upcoming`, { timeout: 3000 });
-      nextEvent = data?.event ?? null;
-    } catch (e) {
-      console.error("next_training_event lookup failed:", e.message);
+    // Cached for an hour so onLoad does not call adminpanel on every request; a failed lookup is
+    // cached for a minute only, so a down adminpanel is not retried on every call but recovers fast.
+    const trainingCacheKey = "next_training_event";
+    let nextEvent = getCached(trainingCacheKey);
+    if (nextEvent === undefined) {
+      try {
+        const { data } = await axios.get(`${ADMIN_PANEL_API_URL}/public/events/next-upcoming`, { timeout: 3000 });
+        nextEvent = data?.event ?? null;
+        setCached(trainingCacheKey, nextEvent, 60 * 60 * 1000);
+      } catch (e) {
+        console.error("next_training_event lookup failed:", e.message);
+        nextEvent = null;
+        setCached(trainingCacheKey, null, 60 * 1000);
+      }
     }
 
     /* ===================== RESPONSE ===================== */
