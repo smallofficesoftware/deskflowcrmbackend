@@ -1,5 +1,6 @@
 import { renderPdf } from "./renderPdf.js";
 import { buildAccountStatementTemplate, STATEMENT_COLUMNS } from "./accountStatementTemplate.js";
+import { formatTransactionNumber } from "../../utils/transactionNumber.js";
 
 // Same toNumber/fmtNum/formatBalanceCell logic as
 // allAccountTransactionOfContactV1.ejs — re-parses the already-formatted
@@ -66,7 +67,7 @@ export async function generateAccountStatementPdf({
     STATEMENT_COLUMNS.map((c) => {
       switch (c.key) {
         case "no":
-          return tx.voucher_number || `#${tx.id}`;
+          return formatTransactionNumber(tx.voucher_number, tx.id, tx.payment_date_time);
         case "date":
           return tx.payment_date ?? "";
         case "remark":
