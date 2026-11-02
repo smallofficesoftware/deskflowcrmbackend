@@ -5567,6 +5567,9 @@ env ma new variables (added 15-10-2026 till 31-10-2026). Set on every server; on
 -- 31-10 METRICS_KEY=<secret> (enables GET /api/_metrics with header `x-metrics-key: <key>`; endpoint is a 404 while unset), SLOW_REQUEST_MS (default 3000), METRICS_FLUSH_MS (default 300000), METRICS_LOG_FILE (default <cwd>/logs/request-metrics.log)
 -- 31-10 SENTRY_DSN=<project dsn> (error reporting stays off while unset; also run `npm i @sentry/node`), SENTRY_ENVIRONMENT=local|demo|sandbox|production, SENTRY_SERVER_NAME (optional), SENTRY_RELEASE (optional), SENTRY_TRACES_SAMPLE_RATE (default 0)
 
+31-10-2026 Dhaval
+env ma new variables: SENTRY_DSN=<project dsn> (error reporting stays off while unset; run `npm install` so @sentry/node is installed), SENTRY_ENVIRONMENT=local|demo|sandbox|production, SENTRY_SERVER_NAME (optional), SENTRY_RELEASE (optional), SENTRY_TRACES_SAMPLE_RATE (default 0)
+
 02-11-2026 Dhaval
 -- TENANT DBs. One-time backfill of voucher numbers for OLD account_transactions rows that have none (voucher_number NULL or blank), after the voucher-series columns exist (migration 20261017100000). MySQL 8 / MariaDB 10.2+ (window function).
 -- Per company + mode + type + first prefix of that mode/side + financial year (Apr-Mar): numbered by payment_date_time then id, continuing after the highest existing number. Skips manual-entry modes, modes without a series, and rows with no usable date.
@@ -5601,3 +5604,4 @@ UPDATE `account_transactions` t JOIN (
   ) b ON b.`company_masters_id` = z.`company_masters_id` AND b.`mode` = z.`mode` AND b.`type` = z.`type` AND b.`sr_by_prifix` = z.`pfx` AND b.`fy` = z.`fy`
 ) x ON x.`id` = t.`id`
 SET t.`sr_by_prifix` = x.`pfx`, t.`sr_by_number` = x.`num`, t.`voucher_number` = x.`vn`;
+
