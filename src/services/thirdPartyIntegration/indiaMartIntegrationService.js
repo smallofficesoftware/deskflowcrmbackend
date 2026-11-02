@@ -19,6 +19,7 @@ import { getCompanyByLoginId, insertStagesAndStatusLogs } from "../commonService
 import { autoAssignmentContactIdsGet, prepareMailAndWhatsappSenderToTheContact } from "../other_settings/wrkflwAutoAssignmentContactService.js";
 import logger from "../../utils/logger.js";
 import { emitAutomationEvent } from "../automation/emit.js";
+import { sendMultipleNotification } from "../company_setup/thirdPartyIntegrationService.js";
 
 export const addContactByIndiaMart = async (req) => {
     try {
@@ -694,6 +695,13 @@ export const addContactByIndiaMartPushApi = async (req, res) => {
             where: { isDelete: 0 },
             attributes: ["column_1", "mobile_number"],
         });
+        // Same inquiry de-dupe key as the pull flow (addContactByIndiaMart), so a lead
+        // received by push is not inserted again by the cron pull, and a contact whose
+        // inquiry insert failed earlier gets its inquiry on the next delivery.
+        const existingEntriesInquiry = await CTInquiryModel.findAll({
+            where: { uniqe_india_mart_id: { [Op.ne]: '' } },
+            attributes: ["uniqe_india_mart_id"],
+        });
         const existingProduct = await CTproductModel.findAll({
             where: {
                 isDelete: 0,
@@ -735,6 +743,8 @@ export const addContactByIndiaMartPushApi = async (req, res) => {
         const existingColumn1Set = new Set(existingEntries.map((entry) => String(entry.column_1).trim()));
 
         const contactMobileNumberSet = new Set(existingEntries.map((entry) => String(entry.mobile_number).trim()));
+
+        const existingEntriesInquiryMap = new Set(existingEntriesInquiry.map((entry) => String(entry.uniqe_india_mart_id).trim()));
 
         const countriesDataSet = new Map(countriesData.map((entry) => [entry.country_iso, entry.id]));
 
@@ -800,7 +810,7 @@ export const addContactByIndiaMartPushApi = async (req, res) => {
                     assinged_to_work_a_application_id: contactAssignedIdsStr || findIndiaMartApiKey.dataValues.a_application_login_id,
                 }
             }));
-        const filteredInquiryBody = contactBody.filter((entry) => !existingColumn1Set.has(String(entry.column_1).trim()))
+        const filteredInquiryBody = contactBody.filter((entry) => !existingEntriesInquiryMap.has(String(entry.column_1).trim()))
 
         // 10: Check user limits plan wise
         const userList = await CTContactModel.findAll({
@@ -938,7 +948,8 @@ export const addContactByIndiaMartPushApi = async (req, res) => {
                         inquiry_date_time: matchedEntry.QUERY_TIME,
                         a_application_login_id: findIndiaMartApiKey.dataValues.a_application_login_id,
                         company_masters_id: findCompanyId.company_masters_id,
-                        source_type_id: req.body.source_type_id,
+                        source_type_id: source_type_id,
+                        uniqe_india_mart_id: cm.column_1,
                     };
                 });
             if (insertInquiry.length > 0) {
