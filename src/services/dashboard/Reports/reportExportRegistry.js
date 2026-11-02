@@ -8,6 +8,7 @@
 // needs no entry at all - the generic export service skips the registry
 // whenever `rows` is provided.
 import moment from "moment";
+import { formatTransactionNumber } from "../../../utils/transactionNumber.js";
 import { getAllContactReport } from "./allContactReportServices.js";
 import { getAccountOutstandingReport, getAllAccountTranstionsReport } from "./accountReportServices.js";
 import { getTeamPerformanceReport } from "./teamPerformanceReportServices.js";
@@ -137,8 +138,8 @@ const deriveAccountTxnRows = (typeLabel) => (result) =>
     return {
       ...txn,
       contact_masters_id: composeAccountContact(txn),
-      // an entry made before voucher numbers shows its id
-      voucher_number: txn.voucher_number || `#${txn.id}`,
+      // voucher number (#id before 01-04-2027); an entry without one shows its id
+      voucher_number: formatTransactionNumber(txn.voucher_number, txn.id, txn.payment_date_time),
       ...(typeLabel ? { typeItem: typeLabel } : {}),
       amount: txn.amountwithcurrency || txn.amount,
       remark: stripHtml(txn.remark),

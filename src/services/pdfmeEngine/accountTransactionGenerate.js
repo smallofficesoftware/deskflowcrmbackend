@@ -1,5 +1,6 @@
 import { renderPdf } from "./renderPdf.js";
 import { buildAccountTransactionTemplate } from "./accountTransactionTemplate.js";
+import { formatTransactionNumber } from "../../utils/transactionNumber.js";
 
 // companyDetails/accountTransactions/contactDetails/payment_type_name/settingDetails:
 // same raw shapes accountPDFv1 (accountTransactionServices.js) already builds
@@ -101,7 +102,11 @@ export async function generateAccountTransactionPdf({
 
     // a transaction with a voucher number shows it in place of the row id
     txnIdLabel: accountTransactions?.voucher_number ? "Voucher No.:" : "Transaction ID:",
-    txnIdValue: accountTransactions?.voucher_number || `# ${accountTransactions?.id ?? ""}`,
+    txnIdValue: formatTransactionNumber(
+      accountTransactions?.voucher_number,
+      accountTransactions?.id,
+      accountTransactions?.payment_date_time
+    ),
     entityLabel,
     entityValue: resolvedEntityName,
 

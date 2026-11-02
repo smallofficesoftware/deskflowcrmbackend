@@ -1662,6 +1662,7 @@ export const allAccountTransactionOfContactPDF = async (req, res) => {
       return {
         id: tx.id,
         voucher_number: tx.voucher_number || "",
+        payment_date_time: tx.payment_date_time,
         payment_date: new Date(tx.payment_date_time).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }),
         remark: tx.remark,
         reference: tx.reference_table ? `${tx.reference_table} #${tx.reference_id || ""}` : "-",
