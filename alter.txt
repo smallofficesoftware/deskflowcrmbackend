@@ -5605,3 +5605,27 @@ UPDATE `account_transactions` t JOIN (
 ) x ON x.`id` = t.`id`
 SET t.`sr_by_prifix` = x.`pfx`, t.`sr_by_number` = x.`num`, t.`voucher_number` = x.`vn`;
 
+
+02-11-2026 Dhaval
+-- TENANT DBs. Default voucher series for payment modes that have none yet, taken from the mode name (run BEFORE the voucher-number backfill of old transactions, which reads these columns). Credit prefix = stem + R, debit prefix = stem + P, pattern 1/2/3A.
+-- stem = first letter of the name; if another active mode starts with the same letter, the first two letters (spaces ignored); if those also match, a counter is added (CA1, CA2). Only modes with an empty credit AND debit prefix are changed, a customized series is never overwritten. MySQL 8 / MariaDB 10.2+ (window functions).
+-- Check afterwards for duplicates: SELECT credit_series_prefix, COUNT(*) FROM payment_types WHERE isDelete = 0 GROUP BY credit_series_prefix HAVING COUNT(*) > 1; Ready-made modes (Cash, Cheque, UPI, NEFT, ...) already get their own prefixes from migration 20261017100000; hand-pick a prefix where the counter form (BA1R) is not wanted.
+UPDATE `payment_types` t JOIN (
+  SELECT x.`id`, x.`stem` FROM (
+    SELECT s.`id`,
+      IF(s.`n2` > 1, CONCAT(s.`stem`, ROW_NUMBER() OVER (PARTITION BY s.`stem` ORDER BY s.`id`)), s.`stem`) AS `stem`
+    FROM (
+      SELECT b.*, COUNT(*) OVER (PARTITION BY b.`stem`) AS `n2` FROM (
+        SELECT p.`id`,
+          IF(COUNT(*) OVER (PARTITION BY UPPER(LEFT(TRIM(p.`payment_type_name`), 1))) > 1,
+             UPPER(LEFT(REPLACE(TRIM(p.`payment_type_name`), ' ', ''), 2)),
+             UPPER(LEFT(TRIM(p.`payment_type_name`), 1))) AS `stem`
+        FROM `payment_types` p WHERE p.`isDelete` = 0
+      ) b
+    ) s
+  ) x
+) g ON g.`id` = t.`id`
+SET t.`credit_series_prefix` = CONCAT(g.`stem`, 'R'), t.`credit_series_pattern` = '1/2/3A',
+    t.`debit_series_prefix` = CONCAT(g.`stem`, 'P'), t.`debit_series_pattern` = '1/2/3A'
+WHERE (t.`credit_series_prefix` IS NULL OR t.`credit_series_prefix` = '')
+  AND (t.`debit_series_prefix` IS NULL OR t.`debit_series_prefix` = '');
