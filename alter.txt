@@ -5566,3 +5566,38 @@ env ma new variables (added 15-10-2026 till 31-10-2026). Set on every server; on
 -- 31-10 SQL_LOGGING=1 prints every SQL query (default off), LOG_REQUEST_BODY=1 logs request bodies (default off)
 -- 31-10 METRICS_KEY=<secret> (enables GET /api/_metrics with header `x-metrics-key: <key>`; endpoint is a 404 while unset), SLOW_REQUEST_MS (default 3000), METRICS_FLUSH_MS (default 300000), METRICS_LOG_FILE (default <cwd>/logs/request-metrics.log)
 -- 31-10 SENTRY_DSN=<project dsn> (error reporting stays off while unset; also run `npm i @sentry/node`), SENTRY_ENVIRONMENT=local|demo|sandbox|production, SENTRY_SERVER_NAME (optional), SENTRY_RELEASE (optional), SENTRY_TRACES_SAMPLE_RATE (default 0)
+
+02-11-2026 Dhaval
+-- TENANT DBs. One-time backfill of voucher numbers for OLD account_transactions rows that have none (voucher_number NULL or blank), after the voucher-series columns exist (migration 20261017100000). MySQL 8 / MariaDB 10.2+ (window function).
+-- Per company + mode + type + first prefix of that mode/side + financial year (Apr-Mar): numbered by payment_date_time then id, continuing after the highest existing number. Skips manual-entry modes, modes without a series, and rows with no usable date.
+-- Old values are saved in account_transactions_voucher_backup first (restore: UPDATE account_transactions a JOIN account_transactions_voucher_backup b ON b.id = a.id SET a.sr_by_prifix = b.sr_by_prifix, a.sr_by_number = b.sr_by_number, a.voucher_number = b.voucher_number;). Run once per tenant DB, before new transactions are added; do not re-run after restore without checking.
+CREATE TABLE IF NOT EXISTS `account_transactions_voucher_backup` (`id` INT PRIMARY KEY, `sr_by_prifix` VARCHAR(50) NULL, `sr_by_number` INT NULL, `voucher_number` VARCHAR(100) NULL, `backed_up_at` DATETIME NULL);
+INSERT IGNORE INTO `account_transactions_voucher_backup` SELECT `id`, `sr_by_prifix`, `sr_by_number`, `voucher_number`, NOW() FROM `account_transactions` WHERE `isDelete` = 0 AND (`voucher_number` IS NULL OR `voucher_number` = '');
+UPDATE `account_transactions` t JOIN (
+  SELECT z.`id`, z.`pfx`, z.`rn` + COALESCE(b.`base`, 0) AS `num`,
+    REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(z.`pattern`, '3A', CHAR(1)), '3a', CHAR(2)), '1', CHAR(3)), '2', CHAR(4)),
+      CHAR(1), CONCAT(z.`fy`, '-', z.`fy` + 1)), CHAR(2), CONCAT(RIGHT(z.`fy`, 2), '-', RIGHT(z.`fy` + 1, 2))),
+      CHAR(3), z.`pfx`), CHAR(4), IF(z.`rn` + COALESCE(b.`base`, 0) < 10, CONCAT('0', z.`rn` + COALESCE(b.`base`, 0)), z.`rn` + COALESCE(b.`base`, 0))) AS `vn`
+  FROM (
+    SELECT s.*, ROW_NUMBER() OVER (PARTITION BY s.`company_masters_id`, s.`mode`, s.`type`, s.`pfx`, s.`fy` ORDER BY s.`dt`, s.`id`) AS `rn`
+    FROM (
+      SELECT a.`id`, a.`company_masters_id`, a.`mode`, a.`type`,
+        TRIM(SUBSTRING_INDEX(IF(a.`type` = 1, p.`credit_series_prefix`, p.`debit_series_prefix`), ',', 1)) AS `pfx`,
+        COALESCE(NULLIF(IF(a.`type` = 1, p.`credit_series_pattern`, p.`debit_series_pattern`), ''), '1/2/3A') AS `pattern`,
+        COALESCE(NULLIF(a.`payment_date_time`, '0000-00-00 00:00:00'), a.`created_date_time`) AS `dt`,
+        IF(MONTH(COALESCE(NULLIF(a.`payment_date_time`, '0000-00-00 00:00:00'), a.`created_date_time`)) >= 4, YEAR(COALESCE(NULLIF(a.`payment_date_time`, '0000-00-00 00:00:00'), a.`created_date_time`)), YEAR(COALESCE(NULLIF(a.`payment_date_time`, '0000-00-00 00:00:00'), a.`created_date_time`)) - 1) AS `fy`
+      FROM `account_transactions` a JOIN `payment_types` p ON p.`id` = a.`mode` AND p.`isDelete` = 0
+      WHERE a.`isDelete` = 0 AND (a.`voucher_number` IS NULL OR a.`voucher_number` = '')
+        AND IF(a.`type` = 1, p.`credit_sr_manual`, p.`debit_sr_manual`) = 0
+        AND IF(a.`type` = 1, p.`credit_series_prefix`, p.`debit_series_prefix`) IS NOT NULL
+        AND IF(a.`type` = 1, p.`credit_series_prefix`, p.`debit_series_prefix`) <> ''
+        AND COALESCE(NULLIF(a.`payment_date_time`, '0000-00-00 00:00:00'), a.`created_date_time`) > '1000-01-01'
+    ) s
+  ) z
+  LEFT JOIN (
+    SELECT `company_masters_id`, `mode`, `type`, `sr_by_prifix`, IF(MONTH(`payment_date_time`) >= 4, YEAR(`payment_date_time`), YEAR(`payment_date_time`) - 1) AS `fy`, MAX(`sr_by_number`) AS `base`
+    FROM `account_transactions` WHERE `isDelete` = 0 AND `voucher_number` IS NOT NULL AND `voucher_number` <> '' AND `payment_date_time` > '1000-01-01'
+    GROUP BY `company_masters_id`, `mode`, `type`, `sr_by_prifix`, `fy`
+  ) b ON b.`company_masters_id` = z.`company_masters_id` AND b.`mode` = z.`mode` AND b.`type` = z.`type` AND b.`sr_by_prifix` = z.`pfx` AND b.`fy` = z.`fy`
+) x ON x.`id` = t.`id`
+SET t.`sr_by_prifix` = x.`pfx`, t.`sr_by_number` = x.`num`, t.`voucher_number` = x.`vn`;

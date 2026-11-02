@@ -133,7 +133,8 @@ const makeTempConfigContent = (tenant, dialect) => {
 // `up` will try to replay old CREATE TABLE/ADD COLUMN migrations against
 // structure that's already there and fail. See migration/tenant/README or
 // alter.txt history for the backfill statement.
-const SAMPLE_TENANT_DB_NAME = 'smalloffice_sample_tenant';
+const SAMPLE_TENANT_DB_NAME =
+    process.env.SAMPLE_TENANT_DB_NAME || 'smalloffice_sample_tenant';
 
 const getTenants = async (masterSequelize) => {
     try {

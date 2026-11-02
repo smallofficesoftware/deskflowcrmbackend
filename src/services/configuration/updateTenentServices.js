@@ -57,7 +57,7 @@ export const updateTenent = async (req, res) => {
     const errorMessages = [];
 
     await executeSQLFile(
-      'smalloffice_sample_tenant',
+      process.env.SAMPLE_TENANT_DB_NAME || 'smalloffice_sample_tenant',
       "update-tenant.sql",
       -1,
       -1,

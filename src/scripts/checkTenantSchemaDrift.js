@@ -7,7 +7,9 @@ const NODE_ENV = process.env.NODE_ENV || "production";
 dotenv.config({ path: path.resolve(process.cwd(), `.env.${NODE_ENV}`) });
 
 const REFERENCE_DB_NAME =
-  process.argv[2] || "smalloffice_sample_tenant";
+  process.argv[2] ||
+  process.env.SAMPLE_TENANT_DB_NAME ||
+  "smalloffice_sample_tenant";
 const CONCURRENCY = Number(process.argv[3]) || 5;
 
 const dialect = "mysql";

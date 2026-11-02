@@ -1217,7 +1217,13 @@ const executeSQLFile = async (
       .replace(/\$\{dbHost\}/g, () => TENANT_DB_HOST_NAME)
       .replace(/\$\{dbUser\}/g, () => TENANT_DB_USER_NAME)
       .replace(/\$\{dbPassword\}/g, () => TENANT_DB_PASSWORD)
-      .replace(/\$\{createDateTime\}/g, () => formatDateAndTimeCreateDateTime);
+      .replace(/\$\{createDateTime\}/g, () => formatDateAndTimeCreateDateTime)
+      // Sample-tenant DB to clone from; sandbox/dev set SAMPLE_TENANT_DB_NAME
+      // so they never clone from (or touch) another environment's sample.
+      .replace(
+        /smalloffice_sample_tenant\./g,
+        () => `${process.env.SAMPLE_TENANT_DB_NAME || "smalloffice_sample_tenant"}.`
+      );
 
     logger.info(`Executing SQL for database: ${dbName}`);
     await mysqlSequelize.query(sql);
