@@ -43,8 +43,10 @@ export const getAllExpenseMaster = async (req) => {
     // --------------------------------------------
     // WHERE CLAUSE
     // --------------------------------------------
+    // The user filter must stay a top-level key: the search below sets its own Op.or,
+    // which would otherwise replace it and list every user's expenses.
     let whereClause = {
-      [Op.or]: [{ a_application_login_id }],
+      a_application_login_id,
       isDelete: "0"
     };
 
@@ -261,7 +263,7 @@ export const expenseMasterCreate = async (req) => {
       expense_type_id: expense_type_id,
       amount: amount,
       remark: remark,
-      expense_status: expense_status,
+      expense_status: 1, // a new expense is always pending; pass/reject goes through update
       kilometers: kilometers,
       expense_date: expense_date || formattedDate,
       image: convertPath,
@@ -393,9 +395,40 @@ export const expenseMasterUpdate = async (req) => {
       where: { id: expense_id },
     });
 
+    if (!existingExpense) {
+      return resError({
+        ack_msg: "Expense not found",
+        developer_msg: "Expense not found or already deleted",
+      });
+    }
+
+    // Only an owner (company_flag 1) or the expense owner's reporting person may pass/reject.
+    if (expense_status == 2 || expense_status == 3) {
+      const approver = await companyVsApplicationLoginModel.findOne({
+        where: { a_application_login_id, isDelete: 0 },
+        attributes: ["company_flag"],
+      });
+      let canApprove = approver?.company_flag === 1;
+      if (!canApprove) {
+        const expenseOwner = await loginModel.findOne({
+          where: { id: existingExpense.a_application_login_id, isDelete: 0 },
+          attributes: ["reporting_member"],
+        });
+        canApprove =
+          !!expenseOwner &&
+          Number(expenseOwner.reporting_member) === Number(a_application_login_id);
+      }
+      if (!canApprove) {
+        return resError({
+          ack_msg: "You are not allowed to pass or reject this expense",
+          developer_msg: "Approver is neither company owner nor reporting person",
+        });
+      }
+    }
+
     // Pass (2) / reject (3) is allowed only while the expense is still pending (1),
     // so a double click or retry cannot pass it twice and duplicate the account entry.
-    if ((expense_status == 2 || expense_status == 3) && existingExpense) {
+    if (expense_status == 2 || expense_status == 3) {
       if (Number(existingExpense.expense_status) !== 1) {
         return resError({
           ack_msg: "Expense status is already updated",
