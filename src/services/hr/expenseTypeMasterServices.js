@@ -393,6 +393,16 @@ export const expenseMasterUpdate = async (req) => {
       where: { id: expense_id },
     });
 
+    // Pass (2) / reject (3) is allowed only while the expense is still pending (1),
+    // so a double click or retry cannot pass it twice and duplicate the account entry.
+    if ((expense_status == 2 || expense_status == 3) && existingExpense) {
+      if (Number(existingExpense.expense_status) !== 1) {
+        return resError({
+          ack_msg: "Expense status is already updated",
+          developer_msg: "Expense is not pending, status cannot be changed again",
+        });
+      }
+    }
 
     let convertPath = existingExpense?.image || ""; // Use existing image if no new image is uploaded
     let mediaName = "";
@@ -493,7 +503,8 @@ export const expenseMasterUpdate = async (req) => {
 
       await employeeAccountTransactions.create({
         team_id: team_id,
-        a_application_login_id: a_application_login_id,
+        // Expense owner gets the entry; the logged-in user is the approver.
+        a_application_login_id: existingExpense?.a_application_login_id || a_application_login_id,
         company_masters_id: findCompanyId.company_masters_id,
         type: 2,
         mode: -1,
