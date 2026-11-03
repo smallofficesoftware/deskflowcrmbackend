@@ -21,6 +21,23 @@ import logger from "../../utils/logger.js";
 import { emitAutomationEvent } from "../automation/emit.js";
 import { sendMultipleNotification } from "../company_setup/thirdPartyIntegrationService.js";
 
+// IndiaMART lead ids that already have an inquiry on a contact that is still active.
+// An inquiry left on a deleted contact must not block the lead: the pull recreates
+// the deleted contact (contacts are de-duped with isDelete: 0), and that new contact
+// needs its own inquiry.
+const getActiveInquiryIndiaMartIds = async (CTInquiryModel, CTContactModel) => {
+    const inquiries = await CTInquiryModel.findAll({
+        where: { uniqe_india_mart_id: { [Op.ne]: '' } },
+        attributes: ["uniqe_india_mart_id", "contact_master_id"],
+    });
+    const contactIds = [...new Set(inquiries.map((entry) => entry.contact_master_id).filter(Boolean))];
+    const activeContacts = contactIds.length
+        ? await CTContactModel.findAll({ where: { id: contactIds, isDelete: 0 }, attributes: ["id"] })
+        : [];
+    const activeContactIds = new Set(activeContacts.map((entry) => entry.id));
+    return inquiries.filter((entry) => activeContactIds.has(entry.contact_master_id));
+};
+
 export const addContactByIndiaMart = async (req) => {
     try {
         const { date } = req.body;
@@ -137,10 +154,7 @@ export const addContactByIndiaMart = async (req) => {
             attributes: ["column_1", "mobile_number", "person_name"],
         });
 
-        const existingEntriesInquiry = await CTInquiryModel.findAll({
-            where: { uniqe_india_mart_id: { [Op.ne]: '' } },
-            attributes: ["uniqe_india_mart_id"],
-        });
+        const existingEntriesInquiry = await getActiveInquiryIndiaMartIds(CTInquiryModel, CTContactModel);
         const existingProduct = await CTproductModel.findAll({
             where: {
                 isDelete: 0,
@@ -722,10 +736,7 @@ export const addContactByIndiaMartPushApi = async (req, res) => {
         // Same inquiry de-dupe key as the pull flow (addContactByIndiaMart), so a lead
         // received by push is not inserted again by the cron pull, and a contact whose
         // inquiry insert failed earlier gets its inquiry on the next delivery.
-        const existingEntriesInquiry = await CTInquiryModel.findAll({
-            where: { uniqe_india_mart_id: { [Op.ne]: '' } },
-            attributes: ["uniqe_india_mart_id"],
-        });
+        const existingEntriesInquiry = await getActiveInquiryIndiaMartIds(CTInquiryModel, CTContactModel);
         const existingProduct = await CTproductModel.findAll({
             where: {
                 isDelete: 0,
