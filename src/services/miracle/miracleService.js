@@ -76,6 +76,9 @@ export const syncProduct = async (req) => {
     try {
         const { item_id, mconfig } = req.body;
         const { client_id, api_key, baseurl } = mconfig;
+        if (!item_id) {
+            return resError({ ack_msg: "Select a product to sync with Miracle" });
+        }
         const productModelInstance = productModel(req.tenantDB);
         const taxModelInstance = taxModel(req.tenantDB);
         const categoryModelInstance = categoryModel(req.tenantDB);
