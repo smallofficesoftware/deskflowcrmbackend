@@ -14,7 +14,7 @@ import { countryModel } from "../../models/masters/countryModel.js";
 import { stateModel } from "../../models/masters/stateModel.js";
 import { categoryModel } from "../../models/product_settings/categoryModel.js";
 import { productModel } from "../../models/product_settings/productModel.js";
-import { generateNumber, isValid, normalizeToTenDigit, resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
+import { generateNumber, isDuplicateContact, isValid, normalizeToTenDigit, resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { getCompanyByLoginId, insertStagesAndStatusLogs } from "../commonServices.js";
 import { autoAssignmentContactIdsGet, prepareMailAndWhatsappSenderToTheContact } from "../other_settings/wrkflwAutoAssignmentContactService.js";
 import logger from "../../utils/logger.js";
@@ -40,7 +40,7 @@ export const addContactByIndiaMart = async (req) => {
                 id: findCompanyId.company_masters_id,
                 isDelete: "0",
             },
-            attributes: ["id", "india_mart_api_key", "company_name"],
+            attributes: ["id", "india_mart_api_key", "company_name", "is_contact_validation"],
         });
 
         if (!findIndiaMartApiKey || !findIndiaMartApiKey.dataValues.india_mart_api_key) {
@@ -134,7 +134,7 @@ export const addContactByIndiaMart = async (req) => {
         //  7: Fetch  data tanat model wise
         const existingEntries = await CTContactModel.findAll({
             where: { isDelete: 0 },
-            attributes: ["column_1", "mobile_number"],
+            attributes: ["column_1", "mobile_number", "person_name"],
         });
 
         const existingEntriesInquiry = await CTInquiryModel.findAll({
@@ -193,21 +193,29 @@ export const addContactByIndiaMart = async (req) => {
         const cityDataSet = new Map(cityData.map((entry) => [entry.city_name, entry]));
 
         // Step 9: Filter out existing leads
-        const currentDataMobileNumberCheckSet = new Set();
         const whatsappEmailSendTeamPersonList = [];
+        // Duplicate rule follows the company setting (company_masters.is_contact_validation):
+        // Off -> the same mobile is always a duplicate; On -> only when the name matches too.
+        // Leads of this same fetch are checked against each other as well.
+        const isContactValidationFlag = findIndiaMartApiKey.dataValues.is_contact_validation;
+        const namesByMobile = new Map();
+        const rememberContact = (mobile, name) => {
+            const key = String(mobile).trim();
+            if (!namesByMobile.has(key)) namesByMobile.set(key, []);
+            namesByMobile.get(key).push(name);
+        };
+        existingEntries.forEach((entry) => rememberContact(entry.mobile_number, entry.person_name));
+        const isKnownContact = (mobile, name) =>
+            (namesByMobile.get(String(mobile).trim()) || []).some((existingName) =>
+                isDuplicateContact(isContactValidationFlag, existingName, name)
+            );
         const filteredContactBody = await Promise.all(
             contactBody
                 .filter((entry) => {
-                    const mobile = String(entry.mobile_number).trim();
                     const column1 = String(entry.column_1).trim();
 
-                    if (currentDataMobileNumberCheckSet.has(String(mobile))) {
-                        return false; // skip
-                    }
-                    currentDataMobileNumberCheckSet.add(String(mobile));
-
-                    // First priority: mobile number
-                    if (contactMobileNumberSet.has(mobile)) {
+                    // First priority: mobile number (per the duplicate-contact setting)
+                    if (isKnownContact(entry.mobile_number, entry.person_name)) {
                         return false; // skip
                     }
 
@@ -216,6 +224,7 @@ export const addContactByIndiaMart = async (req) => {
                         return false; // skip
                     }
 
+                    rememberContact(entry.mobile_number, entry.person_name);
                     // Otherwise keep
                     return true;
                 })
@@ -383,10 +392,25 @@ export const addContactByIndiaMart = async (req) => {
                     isDelete: '0',
                     mobile_number: mobile_number
                 },
-                attributes: ["id", "mobile_number"]
+                attributes: ["id", "mobile_number", "person_name"],
+                order: [["id", "ASC"]],
             });
 
-            const contactCollectedIdsSet = new Map(contactCollectedIds.map((entry) => [String(entry.mobile_number).trim(), entry.id]));
+            // With the duplicate-contact setting On, one mobile can belong to several
+            // contacts, so pick the contact by mobile + name (falls back to the latest one
+            // on that mobile, as before).
+            const contactsByMobile = new Map();
+            contactCollectedIds.forEach((entry) => {
+                const key = String(entry.mobile_number).trim();
+                if (!contactsByMobile.has(key)) contactsByMobile.set(key, []);
+                contactsByMobile.get(key).push({ id: entry.id, name: entry.person_name });
+            });
+            const resolveContactId = (mobile, name) => {
+                const list = contactsByMobile.get(String(mobile).trim()) || [];
+                const wanted = String(name || "").trim().toLowerCase();
+                const exact = list.find((c) => String(c.name || "").trim().toLowerCase() === wanted);
+                return (exact || list[list.length - 1])?.id;
+            };
             /* collect contact id */
 
             const insertInquiry = filteredInquiryBody
@@ -403,7 +427,7 @@ export const addContactByIndiaMart = async (req) => {
                     const productId = existingProductMap.get(
                         matchedEntry.QUERY_PRODUCT_NAME
                     );
-                    const contact_id = contactCollectedIdsSet.get(String(cm.mobile_number)?.trim());
+                    const contact_id = resolveContactId(cm.mobile_number, cm.person_name);
                     return {
                         contact_master_id: contact_id,
                         product_id: productId || -1,
@@ -501,7 +525,7 @@ export const addContactByIndiaMart = async (req) => {
                     const matchedEntry = responseBody.find(
                         (a) => a.UNIQUE_QUERY_ID === cm.column_1
                     );
-                    const contact_id = contactCollectedIdsSet.get(cm.mobile_number);
+                    const contact_id = resolveContactId(cm.mobile_number, cm.person_name);
                     return {
                         contact_masters_id: contact_id,
                         a_application_login_id: req.body.a_application_login_id,
@@ -596,7 +620,7 @@ export const addContactByIndiaMartPushApi = async (req, res) => {
                 qr_code: companyCode,
                 isDelete: "0",
             },
-            attributes: ["id", "qr_code", "a_application_login_id", "company_name"],
+            attributes: ["id", "qr_code", "a_application_login_id", "company_name", "is_contact_validation"],
         });
 
 
@@ -693,7 +717,7 @@ export const addContactByIndiaMartPushApi = async (req, res) => {
         //  7: Fetch  data tanat model wise
         const existingEntries = await CTContactModel.findAll({
             where: { isDelete: 0 },
-            attributes: ["column_1", "mobile_number"],
+            attributes: ["column_1", "mobile_number", "person_name"],
         });
         // Same inquiry de-dupe key as the pull flow (addContactByIndiaMart), so a lead
         // received by push is not inserted again by the cron pull, and a contact whose
@@ -755,8 +779,30 @@ export const addContactByIndiaMartPushApi = async (req, res) => {
 
         // Step 9: Filter out existing leads
         const whatsappEmailSendTeamPersonList = [];
+        // Duplicate rule follows the company setting (company_masters.is_contact_validation):
+        // Off -> the same mobile is always a duplicate; On -> only when the name matches too.
+        // Leads of this same delivery are checked against each other as well, so two leads
+        // from one mobile do not create two contacts (the second one used to be left with no
+        // inquiry / chat of its own).
+        const isContactValidationFlag = findIndiaMartApiKey.dataValues.is_contact_validation;
+        const namesByMobile = new Map();
+        const rememberContact = (mobile, name) => {
+            const key = String(mobile).trim();
+            if (!namesByMobile.has(key)) namesByMobile.set(key, []);
+            namesByMobile.get(key).push(name);
+        };
+        existingEntries.forEach((entry) => rememberContact(entry.mobile_number, entry.person_name));
+        const isKnownContact = (mobile, name) =>
+            (namesByMobile.get(String(mobile).trim()) || []).some((existingName) =>
+                isDuplicateContact(isContactValidationFlag, existingName, name)
+            );
         const filteredContactBody = await Promise.all(contactBody
-            .filter((entry) => !existingColumn1Set.has(String(entry.column_1).trim()) && !contactMobileNumberSet.has(String(entry.mobile_number).trim()))
+            .filter((entry) => {
+                if (existingColumn1Set.has(String(entry.column_1).trim())) return false;
+                if (isKnownContact(entry.mobile_number, entry.person_name)) return false;
+                rememberContact(entry.mobile_number, entry.person_name);
+                return true;
+            })
             .map(async (entry) => {
                 const { description, ...restEntry } = entry;
 
@@ -918,11 +964,25 @@ export const addContactByIndiaMartPushApi = async (req, res) => {
                     isDelete: '0',
                     mobile_number: mobile_number
                 },
-                attributes: ["id", "mobile_number"],
-
+                attributes: ["id", "mobile_number", "person_name"],
+                order: [["id", "ASC"]],
             });
 
-            const contactCollectedIdsSet = new Map(contactCollectedIds.map((entry) => [String(entry.mobile_number).trim(), entry.id]));
+            // With the duplicate-contact setting On, one mobile can belong to several
+            // contacts, so pick the contact by mobile + name (falls back to the latest one
+            // on that mobile, as before).
+            const contactsByMobile = new Map();
+            contactCollectedIds.forEach((entry) => {
+                const key = String(entry.mobile_number).trim();
+                if (!contactsByMobile.has(key)) contactsByMobile.set(key, []);
+                contactsByMobile.get(key).push({ id: entry.id, name: entry.person_name });
+            });
+            const resolveContactId = (mobile, name) => {
+                const list = contactsByMobile.get(String(mobile).trim()) || [];
+                const wanted = String(name || "").trim().toLowerCase();
+                const exact = list.find((c) => String(c.name || "").trim().toLowerCase() === wanted);
+                return (exact || list[list.length - 1])?.id;
+            };
             /* collect contact id */
 
             const insertInquiry = filteredInquiryBody
@@ -939,7 +999,7 @@ export const addContactByIndiaMartPushApi = async (req, res) => {
                     const productId = existingProductMap.get(
                         matchedEntry.QUERY_PRODUCT_NAME
                     );
-                    const contact_id = contactCollectedIdsSet.get(String(cm.mobile_number)?.trim());
+                    const contact_id = resolveContactId(cm.mobile_number, cm.person_name);
                     return {
                         contact_master_id: contact_id,
                         product_id: productId || -1,
@@ -1038,7 +1098,7 @@ export const addContactByIndiaMartPushApi = async (req, res) => {
                     const matchedEntry = responseBody.find(
                         (a) => a.UNIQUE_QUERY_ID === cm.column_1
                     );
-                    const contact_id = contactCollectedIdsSet.get(cm.mobile_number);
+                    const contact_id = resolveContactId(cm.mobile_number, cm.person_name);
                     return {
                         contact_masters_id: contact_id,
                         a_application_login_id: findIndiaMartApiKey.dataValues.a_application_login_id,
