@@ -29,6 +29,8 @@ const SOCKET_EVENT_MAP = {
   CreateContactWithReminder: ["contact-changed", "reminder-changed"],
   // A reminder completed from a task chat message.
   ReminderCompleteTaskMsg: "reminder-changed",
+  // Moving a team member's work to someone else changes tasks, contacts and reminders at once.
+  teamReassign: ["task-changed", "support-ticket-changed", "contact-changed", "reminder-changed"],
   visitingCardReadInsertContactProvider: "contact-changed",
   mergeContactProvider: ["contact-changed", "task-changed", "support-ticket-changed"],
   waCloudHookProvider: ["contact-changed", "contact-chat-changed"],

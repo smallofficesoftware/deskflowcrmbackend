@@ -5,6 +5,8 @@ import { createAllTask } from "../../activities/taskManagementServices.js";
 import { resolveTemplate } from "../context.js";
 import { fetchRowById, fetchUser } from "../records.js";
 import { pickAssignee } from "./assign.js";
+import emitToCompany from "../../1socketIOServices/emitToCompany.js";
+import { getAutomationIo } from "../runtime.js";
 import {
   emitFromNode,
   fieldMap,
@@ -340,6 +342,8 @@ export const create_reminder = async ({ ctx, params, run }) => {
   };
   if (run.is_test) return { output: { dry_run: true, would_create: values } };
   const id = await insertRow(run, "reminder_messages", values);
+  // Live refresh: open Reminder lists (web and app) pick up the new reminder.
+  emitToCompany(getAutomationIo(), run.company_masters_id, "reminder-changed", { id });
   return { output: { reminder_id: id, reminder_at: values.reminder_data_time } };
 };
 
