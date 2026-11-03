@@ -135,20 +135,30 @@ export const getAllExpenseMaster = async (req) => {
     // ---------------------------------------------------
     // MAP DATA + ADD created_by_username USING loginModel
     // ---------------------------------------------------
+    // One query for all creators instead of one per row.
+    const creatorIds = [
+      ...new Set(
+        expenseTypeMasterData
+          .map((item) => item.created_by)
+          .filter((creatorId) => creatorId)
+      ),
+    ];
+    const creators = creatorIds.length
+      ? await loginModel.findAll({
+          where: { id: { [Op.in]: creatorIds } },
+          attributes: ["id", "username"],
+          raw: true,
+        })
+      : [];
+    const usernameById = new Map(creators.map((u) => [Number(u.id), u.username]));
+
     const sanitizedContacts = await Promise.all(
       expenseTypeMasterData.map(async (expenseItem) => {
         const sanitized = sanitizeObjectOfNull(expenseItem.toJSON());
 
-        // 🔹 New logic: Find username of created_by
-        let created_by_username = "";
-        if (sanitized.created_by) {
-          const userData = await loginModel.findOne({
-            where: { id: sanitized.created_by },
-            attributes: ["username"]
-          });
-
-          created_by_username = userData ? userData.username : "";
-        }
+        const created_by_username = sanitized.created_by
+          ? usernameById.get(Number(sanitized.created_by)) || ""
+          : "";
         return {
           ...sanitized,
           // image: sanitized.image ? EXPENSE_IMG_LINK_EXTENDED + sanitized.image : "",
@@ -729,8 +739,6 @@ export const expenseMainMasterCreate = async (req) => {
 };
 
 export const expenseMainMasterUpdate = async (req) => {
-  const currentDate = new Date();
-  const formattedDate = moment(currentDate).format("YYYY-MM-DD HH:mm:ss");
   try {
     const {
       id,
@@ -763,8 +771,13 @@ export const expenseMainMasterUpdate = async (req) => {
 
     const expenseTypeMaster = expenseTypeModel(req.tenantDB);
 
-    const formattedMinTime = min_time ? moment(min_time, "HH:mm").format("HH:mm:ss") : null;
-    const formattedMaxTime = max_time ? moment(max_time, "HH:mm").format("HH:mm:ss") : null;
+    // Same default as create: empty time means "no time limit" (00:00:00).
+    const toTime = (t) =>
+      t && moment(t, ["HH:mm", "HH:mm:ss"], true).isValid()
+        ? moment(t, ["HH:mm", "HH:mm:ss"], true).format("HH:mm:ss")
+        : "00:00:00";
+    const formattedMinTime = toTime(min_time);
+    const formattedMaxTime = toTime(max_time);
 
     const whereClause = {
       isDelete: 0,
@@ -772,10 +785,20 @@ export const expenseMainMasterUpdate = async (req) => {
       company_masters_id: findCompanyId.company_masters_id,
     };
 
+    const existingType = await expenseTypeMaster.findOne({
+      where: whereClause,
+      attributes: ["id"],
+    });
+    if (!existingType) {
+      return resError({
+        ack_msg: "Expense type not found",
+        developer_msg: "Expense type not found or already deleted",
+      });
+    }
+
+    // created_date_time and the creating user are left as they were.
     const updatedExpenseData = await expenseTypeMaster.update({
-      a_application_login_id,
       company_masters_id: findCompanyId.company_masters_id,
-      created_date_time: formattedDate,
       expense_name,
       color: color || "#999999",
       expense_subtype,
@@ -838,7 +861,7 @@ export const expenseMainMasterGet = async (req) => {
 
     let allowedExpenseTypeIds = [];
 
-    if (user.expense_types && user.expense_types.trim() !== '') {
+    if (user?.expense_types && user.expense_types.trim() !== '') {
       allowedExpenseTypeIds = user.expense_types
         .split(',')
         .map(id => id.trim())
