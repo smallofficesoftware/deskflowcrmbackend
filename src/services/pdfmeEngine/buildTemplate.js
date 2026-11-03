@@ -96,16 +96,19 @@ export function imageField(overrides) {
   return { ...plugins.image.propPanel.defaultSchema, dataSource: overrides.name, ...overrides };
 }
 
-// "Payment QR" (UPI Scan to Pay) as real Designer fields, for the Add Field catalog only (same
-// opt-in idea as buildCompactTotalsTableField): a template that has `paymentQR` places the QR where its
-// author put it, and orderInputMapper.js's injectPaymentQRField then does NOT add its fixed-position one.
-// Both hide themselves when the company has no payment QR (setting off or no UPI details), so a
-// document without a QR shows nothing there.
-export function buildPaymentQrCatalogFields() {
+// Document types that can print the UPI "Scan to Pay" QR (cart.type 1/2/3/12).
+export const PAYMENT_QR_DOC_TYPES = ["quotation", "salesOrder", "salesInvoice", "proformaInvoice"];
+
+// "Payment QR" (UPI Scan to Pay) as real Designer fields. The QR is no longer added by code at a fixed
+// spot: it prints only where a template has the `paymentQR` field, so its author places it (and it moves
+// with the items table like any other field). These two are part of the default template of every
+// PAYMENT_QR_DOC_TYPES document (so they are also in the Add Field list), A4 coordinates, just above the
+// Terms block. Both hide themselves when the company has no payment QR (setting off or no UPI details).
+export function buildPaymentQrDefaultFields() {
   return [
     imageField({
       name: "paymentQR",
-      position: { x: 10, y: 220 },
+      position: { x: 10, y: 222 },
       width: 22,
       height: 22,
       content: "",
@@ -113,7 +116,7 @@ export function buildPaymentQrCatalogFields() {
     }),
     textField({
       name: "paymentQRLabel",
-      position: { x: 10, y: 242 },
+      position: { x: 10, y: 244 },
       width: 22,
       height: 5,
       fontSize: 6,
@@ -259,7 +262,7 @@ export const FOOTER_BOTTOM_MARGIN = 12; // reserves room for pageNumber below th
 // always full page width regardless of the border's left/right inset).
 // Same repeat-on-every-page mechanism header/footer images use
 // (basePdf.staticSchema, not a cloned.schemas injection — see
-// injectWatermarkField/injectPaymentQRField in orderInputMapper.js for why
+// injectWatermarkField in orderInputMapper.js for why
 // that distinction matters for a multi-page document).
 // customBox ({x, y, width, height}, all numbers) skips the padding-based
 // auto-calc entirely and uses those values as-is — a manual override for
@@ -578,6 +581,8 @@ export function buildDocTemplate(
     pageBorderHeightMM = null,
     marginLeft = 10,
     marginRight = 10,
+    // Adds the Payment QR + "Scan to Pay" fields (templates.js passes true for PAYMENT_QR_DOC_TYPES).
+    paymentQr = false,
   } = {},
 ) {
   // Top padding must clear the header banner's actual height (only the
@@ -937,6 +942,7 @@ export function buildDocTemplate(
           lineHeight: 1.4,
           content: "Terms & Conditions:\n(your terms text)",
         }),
+        ...(paymentQr ? buildPaymentQrDefaultFields() : []),
         textField({
           name: "signatureLine",
           position: { x: 140, y: 255 },

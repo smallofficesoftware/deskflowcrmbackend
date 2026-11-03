@@ -7,6 +7,7 @@
 // data in, before its ejs.render() call) — this module only shapes and
 // transforms, it doesn't reach into raw DB rows itself.
 import QRCode from "qrcode";
+import { PAYMENT_QR_DOC_TYPES } from "./buildTemplate.js";
 import { imageSettings, resolveColumns } from "./tableColumns.js";
 import { formatNumber } from "../../utils/sharedFunctions.js";
 
@@ -172,7 +173,7 @@ export function injectWatermarkField(template, company) {
 // configured UPI details. Same "resolved fresh at generate time, never
 // baked into the saved template_json" reasoning as the watermark above —
 // async because QR PNG generation is, unlike everything else in this file.
-export const PAYMENT_QR_DOC_TYPES = ["quotation", "salesOrder", "salesInvoice", "proformaInvoice"];
+export { PAYMENT_QR_DOC_TYPES };
 
 // The UPI QR as a data URI, or "" when this document should not have one (wrong doc type, setting off, no
 // UPI details, or the QR library failed — a broken UPI string must not take down the whole generate).
@@ -195,52 +196,10 @@ export async function buildPaymentQrDataUri({ docType, company, order, payableAm
   }
 }
 
-// True when the template has its own "Payment QR" field (added from the Designer's Add Field list, or
-// bound to the paymentQR key). Such a template positions the QR itself, so the fixed one is not injected.
-export function templateHasPaymentQrField(template) {
-  return (template?.schemas || []).some((page) =>
-    (page || []).some((field) => field?.name === "paymentQR" || field?.dataSource === "paymentQR"),
-  );
-}
-
-export async function injectPaymentQRField(template, { docType, company, order, payableAmount }) {
-  const qrDataUri = await buildPaymentQrDataUri({ docType, company, order, payableAmount });
-  if (!qrDataUri) return template;
-
-  // basePdf.staticSchema, not cloned.schemas[0] — same reasoning as
-  // injectWatermarkField above: itemsTable's dynamic pagination creates
-  // overflow pages internally, inside generate() itself, after this
-  // function returns, so a schemas[0]-only placement never reaches them.
-  // The QR encodes a fixed total amount regardless of which page it lands
-  // on, so repeating it on every page (rather than trying to target
-  // specifically whichever page ends up last) is both correct and the only
-  // option that's actually reachable here.
-  const cloned = structuredClone(template);
-  cloned.basePdf.staticSchema = [
-    ...(cloned.basePdf.staticSchema || []),
-    {
-      name: "__paymentQR",
-      type: "image",
-      content: qrDataUri,
-      position: { x: 10, y: 220 },
-      width: 22,
-      height: 22,
-      readOnly: true,
-    },
-    {
-      name: "__paymentQRLabel",
-      type: "text",
-      content: "Scan to Pay",
-      position: { x: 10, y: 242 },
-      width: 22,
-      height: 5,
-      fontSize: 6,
-      alignment: "center",
-      readOnly: true,
-    },
-  ];
-  return cloned;
-}
+// The QR is NOT added to the page by code any more (it used to be a fixed-position overlay at x 10 / y 220
+// that landed on top of content that moves with the items table). It prints only where the template has a
+// `paymentQR` image field: generateDocument.js hands this data URI to the paymentQR input, and the
+// default templates (buildTemplate.js buildPaymentQrDefaultFields) and the system gallery carry that field.
 
 // pageText (formType/data_type 11) / pageURL (data_type 12) / designerPage
 // (data_type 14) — per-cart custom-field-driven extra pages, sourced from

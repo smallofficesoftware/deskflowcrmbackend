@@ -5629,3 +5629,18 @@ SET t.`credit_series_prefix` = CONCAT(g.`stem`, 'R'), t.`credit_series_pattern` 
     t.`debit_series_prefix` = CONCAT(g.`stem`, 'P'), t.`debit_series_pattern` = '1/2/3A'
 WHERE (t.`credit_series_prefix` IS NULL OR t.`credit_series_prefix` = '')
   AND (t.`debit_series_prefix` IS NULL OR t.`debit_series_prefix` = '');
+
+
+03-11-2026 Dhaval
+-- MASTER DB. System gallery templates (system_document_templates) of Quotation, Sales Order, Sales Invoice and Proforma Invoice get the Payment QR (UPI "Scan to Pay") as two designer fields: `paymentQR` (image, dataSource paymentQR) and `paymentQRLabel` (text "Scan to Pay"), added to template_json. The QR is no longer drawn by code at a fixed spot (x 10, y 220); it prints only inside a template's `paymentQR` field.
+-- Placed just above each template's own "Terms & Conditions" block, left aligned with it (A4 22 mm; A5 / receipt scaled to the page width, minimum 16 mm). Both fields hide themselves when the company has the payment QR off or no UPI details. Templates that already have `paymentQR` are skipped (safe to re-run).
+-- This is a JSON edit of template_json, not a plain UPDATE: generated via migration/master/migrations/20261103140000-add-payment-qr-to-system-document-templates.js (run it with the master migrate command; do not hand-write the JSON).
+-- Check: SELECT id, doc_type, template_name FROM system_document_templates WHERE isDelete = 0 AND doc_type IN ('quotation','salesOrder','salesInvoice','proformaInvoice') AND template_json NOT LIKE '%"paymentQR"%';  -- expect no rows
+-- Rollback: the migration's down() removes the two fields again.
+
+03-11-2026 Dhaval
+-- TENANT DBs. Companies' own saved templates (document_print_templates) of Quotation, Sales Order, Sales Invoice and Proforma Invoice get the same two designer fields (`paymentQR`, `paymentQRLabel`) in BOTH draft_template_json and published_template_json, so printed documents keep their "Scan to Pay" QR now that it is no longer drawn at a fixed spot by code. Run it on every tenant DB (the sample tenant smalloffice_sample_tenant included).
+-- Only template_purpose = 'main' templates that have an itemsTable field and no `paymentQR` yet are changed (a terms-only or product page saved under the same doc type is left alone). Placement: just above the template's own "Terms & Conditions" block (a template without one gets the old position scaled to the page). Companies without the payment QR enabled are unaffected: the fields hide themselves.
+-- JSON edit, not a plain UPDATE: generated via migration/tenant/migrations/20261103150000-add-payment-qr-to-document-print-templates.js (run with the tenant migrate command; do not hand-write the JSON).
+-- Check: SELECT id, doc_type, template_name FROM document_print_templates WHERE isDelete = 0 AND template_purpose = 'main' AND doc_type IN ('quotation','salesOrder','salesInvoice','proformaInvoice') AND published_template_json LIKE '%"itemsTable"%' AND published_template_json NOT LIKE '%"paymentQR"%';  -- expect no rows
+-- Rollback: the migration's down() removes the two fields again.

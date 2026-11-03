@@ -23,9 +23,7 @@ import {
   buildInputsForCart,
   fillMissingInputsFromContent,
   buildPaymentQrDataUri,
-  injectPaymentQRField,
   injectWatermarkField,
-  templateHasPaymentQrField,
   num,
   resolveDataSources,
 } from "./orderInputMapper.js";
@@ -293,17 +291,15 @@ export async function generateQuotationPdf({
   const computed = buildComputedFields(cart, numberTowords, groupedNumberFormat);
   computed.hsnSummary = buildHsnSummary(items, groupedNumberFormat);
 
-  // A template that has its own "Payment QR" field (Add Field list, or any image field bound to the
-  // paymentQR key) places the QR where its author put it; only a template without one gets the QR added at
-  // the fixed spot (injectPaymentQRField), as before.
-  const qrArgs = { docType: doc_type, company, order, payableAmount: computed.payableAmount };
-  const templateHasQrField = templateHasPaymentQrField(template);
-  let paymentQrDataUri = "";
-  if (templateHasQrField) {
-    paymentQrDataUri = await buildPaymentQrDataUri(qrArgs);
-  } else {
-    template = await injectPaymentQRField(template, qrArgs);
-  }
+  // The UPI "Scan to Pay" QR prints only in a template's own `paymentQR` image field (placed in the
+  // Designer, or carried by the default / gallery templates); there is no fixed-position QR any more.
+  // "" (setting off, no UPI details) hides the field and its label.
+  const paymentQrDataUri = await buildPaymentQrDataUri({
+    docType: doc_type,
+    company,
+    order,
+    payableAmount: computed.payableAmount,
+  });
 
   // Item discount column values are per-unit amounts (not %) when the cart uses
   // flat discount (item_discount_type 2), so the baked-in "Dis(%)" head must follow.
@@ -365,7 +361,7 @@ export async function generateQuotationPdf({
   // than threading it through, same 1:1 index-aligned data-URI shape.
   rawInputs.firstItemImage = itemImages?.[0] || "";
 
-  // Payment QR for a template's own paymentQR field ("" hides it — see buildPaymentQrCatalogFields).
+  // Payment QR for a template's own paymentQR field ("" hides it — see buildPaymentQrDefaultFields).
   rawInputs.paymentQR = paymentQrDataUri;
 
   // Cart custom-field values, keyed by their own reference_column_name

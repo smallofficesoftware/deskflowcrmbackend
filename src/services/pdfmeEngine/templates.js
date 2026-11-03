@@ -1,4 +1,4 @@
-import { buildDocTemplate, HEADER_VARIANTS, shiftFieldY } from "./buildTemplate.js";
+import { buildDocTemplate, HEADER_VARIANTS, PAYMENT_QR_DOC_TYPES, shiftFieldY } from "./buildTemplate.js";
 import { resolvePageDimensions, scaleTemplate } from "./paperSize.js";
 import { buildPendingOrderTemplate } from "./pendingOrderTemplate.js";
 
@@ -39,7 +39,7 @@ export function getTemplate(id, headerOptions = {}) {
   if (PENDING_ORDER_DOC_TYPES.has(id)) {
     return buildPendingOrderTemplate(title, headerOptions);
   }
-  return buildDocTemplate(title, headerOptions);
+  return buildDocTemplate(title, { ...headerOptions, paymentQr: PAYMENT_QR_DOC_TYPES.includes(id) });
 }
 
 // staticSchema fields render their own fixed template `content` — generate()
