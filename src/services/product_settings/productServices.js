@@ -1215,58 +1215,27 @@ export const DeleteProducts = async (req) => {
   const findCompanyId = await getCompanyByLoginId(a_application_login_id);
   const { tenantDB } = req;
 
-  const cartItemModels = cartItemModel(tenantDB);
   const productModels = productModel(tenantDB);
-  const productListCustom = priceListModel(tenantDB);
 
   try {
     // Start a transaction
     return await tenantDB.transaction(async (transaction) => {
-      if (checkAllProducts === 1) {
-        // Check for dependencies in cart or price list
-        const cartItems = await cartItemModels.findAll({
-          where: {
-            isDelete: 0,
-            company_masters_id: findCompanyId.company_masters_id,
-          },
-          transaction,
-        });
-
-        const priceListItems = await productListCustom.findAll({
-          where: {
-            isDelete: 0,
-            company_masters_id: findCompanyId.company_masters_id,
-          },
-          transaction,
-        });
-
-        if (cartItems.length > 0 || priceListItems.length > 0) {
-          return resError({
-            ack_msg:
-              "Cannot delete all products because some exist in cart or price list.",
-          });
-        }
-
-        // Delete all products
-        await productModels.update(
-          { isDelete: 1 },
-          {
-            where: {
-              isDelete: 0,
-              company_masters_id: findCompanyId.company_masters_id,
-            },
-            transaction,
-          }
-        );
-
-        return resSuccess({
-          ack_msg: "All products deleted successfully",
-        });
-      }
-
-      // Handle single or multiple product deletions
+      // Handle single, multiple, or "all" product deletions. For "all", every product of the
+      // company is a candidate and goes through the same usage check as a multi-select: unused
+      // ones are deleted, used ones are skipped and reported.
       let productIds;
-      if (typeof product_id === "string" && product_id.includes(",")) {
+      if (checkAllProducts === 1) {
+        const allRows = await productModels.findAll({
+          where: {
+            isDelete: 0,
+            company_masters_id: findCompanyId.company_masters_id,
+          },
+          attributes: ["id"],
+          raw: true,
+          transaction,
+        });
+        productIds = allRows.map((p) => p.id);
+      } else if (typeof product_id === "string" && product_id.includes(",")) {
         productIds = product_id
           .split(",")
           .map((id) => parseInt(id.trim()))
