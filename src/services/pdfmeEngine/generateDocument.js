@@ -29,6 +29,7 @@ import {
 } from "./orderInputMapper.js";
 import { pluginMap } from "./pluginMap.js";
 import { loadBuyerContactCustomValues } from "./contactCustomValues.js";
+import { formatCustomDate, formatCustomDateValues, isCustomDateColumn } from "./formatCustomDate.js";
 
 // Builds one tiny single-field template sized to match the main document's
 // basePdf, for a pageText/pageURL extra page — same technique the POC's
@@ -376,12 +377,13 @@ export async function generateQuotationPdf({
   (customFieldRows || []).forEach((field) => {
     const dataType = Number(field.data_type);
     if (dataType === 11 || dataType === 12 || dataType === 14) return;
-    rawInputs[field.reference_column_name] = cartValues?.[field.reference_column_name] ?? "";
+    const rawValue = cartValues?.[field.reference_column_name] ?? "";
+    rawInputs[field.reference_column_name] = isCustomDateColumn(field.reference_column_name) ? formatCustomDate(rawValue) : rawValue;
   });
 
   // The buyer contact's own custom fields (cntc_column_*), offered by the
   // dictionary under "Contact Custom Field".
-  Object.assign(rawInputs, await loadBuyerContactCustomValues(tenantDB, company?.id, cart));
+  Object.assign(rawInputs, formatCustomDateValues(await loadBuyerContactCustomValues(tenantDB, company?.id, cart)));
 
   let resolvedInputs = resolveDataSources(template, rawInputs);
   resolvedInputs = fillMissingInputsFromContent(template, resolvedInputs);
