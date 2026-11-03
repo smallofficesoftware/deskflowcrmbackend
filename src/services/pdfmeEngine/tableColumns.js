@@ -68,7 +68,15 @@ export function imageSettings(columnOptions, bodyStyles) {
   const sizeMm = Number.isFinite(typed) && typed > 0 ? Math.min(IMAGE_SIZE_MAX_MM, Math.max(IMAGE_SIZE_MIN_MM, typed)) : IMAGE_SIZE_DEFAULT_MM;
   // Blank lines to add under a description so the row is tall enough for the photo plus a small gap.
   const reserveLines = mode === "below" ? Math.ceil((sizeMm + 1) / bodyLineMm(bodyStyles)) : 0;
-  return { enabled, mode, sizeMm, reserveLines };
+  // Own-column photos are drawn inside the row, capped by (row height - 2 x 2 mm), so on a one-line row
+  // a 20 mm size still came out ~1.6 mm. When the template sets a size on purpose, the photo's cell gets
+  // enough blank lines to make the row that tall. Templates with no size keep the old behaviour.
+  const padV = Number(bodyStyles?.padding?.top ?? 1.5) + Number(bodyStyles?.padding?.bottom ?? 1.5);
+  const columnReserveLines =
+    mode === "column" && Number.isFinite(typed) && typed > 0
+      ? Math.max(1, Math.ceil((sizeMm + 4 - padV) / bodyLineMm(bodyStyles)))
+      : 0;
+  return { enabled, mode, sizeMm, reserveLines, columnReserveLines };
 }
 
 export function resolveColumns(columnOptions) {

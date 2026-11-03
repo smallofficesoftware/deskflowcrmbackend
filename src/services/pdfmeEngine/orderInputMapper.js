@@ -476,7 +476,7 @@ export function buildInputsForCart({ company, buyer, order, computed, items, pen
   // Photos "below the description": every row that has a photo gets blank lines under its text, so
   // imageOverlay.js has room to draw it there. Rows without a photo stay normal height. The line
   // height comes from the table's own body style (A5 templates use a smaller font than A4).
-  const belowLines = imageSettings(columnOptions, itemsTableBodyStyles).reserveLines;
+  const { reserveLines: belowLines, columnReserveLines: columnLines } = imageSettings(columnOptions, itemsTableBodyStyles);
 
   // pendingSalesOrder/pendingPurchaseOrder only — a fulfillment/outstanding-
   // quantity row shape (ordered/invoiced/pending qty), not the generic
@@ -496,7 +496,9 @@ export function buildInputsForCart({ company, buyer, order, computed, items, pen
         case "no":
           return String(index + 1);
         case "image":
-          return "";
+          // Own-column photo: blank lines make the row tall enough for the photo size the template set
+          // (imageSettings.columnReserveLines); the photo itself is drawn later by imageOverlay.js.
+          return columnLines > 0 && itemImages?.[index] ? "\n".repeat(columnLines - 1) + " " : "";
         case "description":
           return (item.description ?? "") + (belowLines > 0 && itemImages?.[index] ? "\n".repeat(belowLines) + " " : "");
         case "hsn":
