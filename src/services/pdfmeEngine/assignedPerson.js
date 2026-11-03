@@ -3,10 +3,11 @@ import { contactModel } from "../../models/activities/contactModel.js";
 import loginModel from "../../models/application_login/loginModel.js";
 
 /**
- * The team member(s) assigned to a customer contact, for the document's "Assigned Person" and
- * "Assigned Person Mobile" fields. Several assignees are joined with ", ", in the same order, so the
- * n-th name matches the n-th mobile number. Returns empty strings when the contact has no assignee,
- * so the fields stay hidden.
+ * The FIRST team member assigned to a customer contact (first in the contact's assignee list that is
+ * still an active user), for the document's "Assigned Person" and "Assigned Person Mobile" fields.
+ * A contact can have several assignees; only the first one's name and mobile are shown, so the name
+ * and mobile always belong to the same person and the fields stay short. Returns empty strings when
+ * the contact has no assignee, so the fields stay hidden.
  */
 export async function getAssignedPersonDetails(tenantDB, contactId) {
   const empty = { assignedPerson: "", assignedPersonMobile: "" };
@@ -30,10 +31,11 @@ export async function getAssignedPersonDetails(tenantDB, contactId) {
     raw: true,
   });
   const byId = new Map(users.map((u) => [Number(u.id), u]));
-  const ordered = ids.map((assignedId) => byId.get(assignedId)).filter(Boolean);
+  const first = ids.map((assignedId) => byId.get(assignedId)).find(Boolean);
+  if (!first) return empty;
 
   return {
-    assignedPerson: ordered.map((u) => u.username).filter(Boolean).join(", "),
-    assignedPersonMobile: ordered.map((u) => u.recovery_mobile).filter(Boolean).join(", "),
+    assignedPerson: first.username || "",
+    assignedPersonMobile: first.recovery_mobile || "",
   };
 }
