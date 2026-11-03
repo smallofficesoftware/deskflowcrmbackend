@@ -172,28 +172,40 @@ export function injectWatermarkField(template, company) {
 // configured UPI details. Same "resolved fresh at generate time, never
 // baked into the saved template_json" reasoning as the watermark above —
 // async because QR PNG generation is, unlike everything else in this file.
-const PAYMENT_QR_DOC_TYPES = ["quotation", "salesOrder", "salesInvoice", "proformaInvoice"];
+export const PAYMENT_QR_DOC_TYPES = ["quotation", "salesOrder", "salesInvoice", "proformaInvoice"];
 
-export async function injectPaymentQRField(template, { docType, company, order, payableAmount }) {
-  if (!PAYMENT_QR_DOC_TYPES.includes(docType)) return template;
-  if (!company?.paymentQREnabled) return template;
-  if (!company?.upiId || !company?.upiName) return template;
+// The UPI QR as a data URI, or "" when this document should not have one (wrong doc type, setting off, no
+// UPI details, or the QR library failed — a broken UPI string must not take down the whole generate).
+export async function buildPaymentQrDataUri({ docType, company, order, payableAmount }) {
+  if (!PAYMENT_QR_DOC_TYPES.includes(docType)) return "";
+  if (!company?.paymentQREnabled) return "";
+  if (!company?.upiId || !company?.upiName) return "";
 
   const upiString =
     `upi://pay?pa=${company.upiId}&pn=${encodeURIComponent(company.upiName)}` +
     `&am=${payableAmount}&cu=INR&tn=${encodeURIComponent(`Invoice No ${order?.number || ""}`)}`;
 
-  let qrDataUri;
   try {
-    qrDataUri = await QRCode.toDataURL(upiString, {
+    return await QRCode.toDataURL(upiString, {
       margin: 2,
       color: { dark: "#000000", light: "#FFFFFF" },
     });
   } catch {
-    // A broken UPI string or QR-lib failure shouldn't take down the whole
-    // generate — just skip the QR code for this one document.
-    return template;
+    return "";
   }
+}
+
+// True when the template has its own "Payment QR" field (added from the Designer's Add Field list, or
+// bound to the paymentQR key). Such a template positions the QR itself, so the fixed one is not injected.
+export function templateHasPaymentQrField(template) {
+  return (template?.schemas || []).some((page) =>
+    (page || []).some((field) => field?.name === "paymentQR" || field?.dataSource === "paymentQR"),
+  );
+}
+
+export async function injectPaymentQRField(template, { docType, company, order, payableAmount }) {
+  const qrDataUri = await buildPaymentQrDataUri({ docType, company, order, payableAmount });
+  if (!qrDataUri) return template;
 
   // basePdf.staticSchema, not cloned.schemas[0] — same reasoning as
   // injectWatermarkField above: itemsTable's dynamic pagination creates

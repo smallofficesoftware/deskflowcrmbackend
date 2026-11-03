@@ -96,6 +96,35 @@ export function imageField(overrides) {
   return { ...plugins.image.propPanel.defaultSchema, dataSource: overrides.name, ...overrides };
 }
 
+// "Payment QR" (UPI Scan to Pay) as real Designer fields, for the Add Field catalog only (same
+// opt-in idea as buildCompactTotalsTableField): a template that has `paymentQR` places the QR where its
+// author put it, and orderInputMapper.js's injectPaymentQRField then does NOT add its fixed-position one.
+// Both hide themselves when the company has no payment QR (setting off or no UPI details), so a
+// document without a QR shows nothing there.
+export function buildPaymentQrCatalogFields() {
+  return [
+    imageField({
+      name: "paymentQR",
+      position: { x: 10, y: 220 },
+      width: 22,
+      height: 22,
+      content: "",
+      visibilityCondition: { mode: "hideIfEmpty" },
+    }),
+    textField({
+      name: "paymentQRLabel",
+      position: { x: 10, y: 242 },
+      width: 22,
+      height: 5,
+      fontSize: 6,
+      alignment: "center",
+      content: "Scan to Pay",
+      readOnly: true,
+      visibilityCondition: { mode: "compare", field: "paymentQR", operator: "isNotEmpty" },
+    }),
+  ];
+}
+
 // NOT @pdfme/schemas' stock `rectangle` plugin — generateDocument.js (and
 // this repo's own DocumentDesignerView.tsx propPanel) registers
 // customRectanglePlugin.js under the SAME "rectangle" type key, which adds

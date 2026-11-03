@@ -304,17 +304,25 @@ const PRODUCTION_ENTRY_RECEIPT_DICTIONARY = [
 
 // doc_type -> which base dictionary applies. All 10 cart-shaped doc_types
 // point at the same array (same pattern as templates.js's titleById).
+// Quotation / Sales Order / Sales Invoice / Proforma Invoice also offer the UPI "Scan to Pay" QR (the
+// same four doc types that get a payment QR, orderInputMapper.js's PAYMENT_QR_DOC_TYPES). It is an IMAGE:
+// bind it to an image field, not a text field. Empty when the company has no payment QR set up.
+const CART_DOC_DICTIONARY_WITH_PAYMENT_QR = [
+  ...CART_DOC_DICTIONARY,
+  { key: "paymentQR", label: "Payment QR - Scan to Pay (image field)", group: "Order" },
+];
+
 const DICTIONARY_BY_DOC_TYPE = {
-  quotation: CART_DOC_DICTIONARY,
-  salesOrder: CART_DOC_DICTIONARY,
-  salesInvoice: CART_DOC_DICTIONARY,
+  quotation: CART_DOC_DICTIONARY_WITH_PAYMENT_QR,
+  salesOrder: CART_DOC_DICTIONARY_WITH_PAYMENT_QR,
+  salesInvoice: CART_DOC_DICTIONARY_WITH_PAYMENT_QR,
   purchaseOrder: CART_DOC_DICTIONARY,
   purchaseInvoice: CART_DOC_DICTIONARY,
   returnSalesInvoice: CART_DOC_DICTIONARY,
   returnPurchaseInvoice: CART_DOC_DICTIONARY,
   inward: CART_DOC_DICTIONARY,
   dispatch: CART_DOC_DICTIONARY,
-  proformaInvoice: CART_DOC_DICTIONARY,
+  proformaInvoice: CART_DOC_DICTIONARY_WITH_PAYMENT_QR,
   // Pending Sales/Purchase Order render via pendingOrderTemplate.js, a
   // completely different field set than the other cart-shaped types —
   // previously pointed at CART_DOC_DICTIONARY, which shares none of its

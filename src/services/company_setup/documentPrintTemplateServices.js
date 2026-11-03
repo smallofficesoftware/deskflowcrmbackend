@@ -29,7 +29,8 @@ import { generateAccountStatementPdf } from "../pdfmeEngine/accountStatementGene
 import { generateContactAddressPdf, generateContactEnvelopePdf } from "../pdfmeEngine/contactPrintGenerate.js";
 import { defaultTemplateForDocType } from "../pdfmeEngine/defaultTemplateForDocType.js";
 import { buildFormCatalogTemplate, parseFormDocTypeId } from "../pdfmeEngine/formDocTypeTemplate.js";
-import { buildCompactTotalsTableField } from "../pdfmeEngine/buildTemplate.js";
+import { buildCompactTotalsTableField, buildPaymentQrCatalogFields } from "../pdfmeEngine/buildTemplate.js";
+import { PAYMENT_QR_DOC_TYPES } from "../pdfmeEngine/orderInputMapper.js";
 import { generateAccountTransactionPdf } from "../pdfmeEngine/accountTransactionGenerate.js";
 import { generateEmployeeAccountStatementPdf } from "../pdfmeEngine/employeeAccountStatementGenerate.js";
 import { generateEmployeeAccountTransactionPdf } from "../pdfmeEngine/employeeAccountTransactionGenerate.js";
@@ -1605,12 +1606,14 @@ export const getDefaultTemplateForDocType = async (req) => {
     // pdfme fields but deliberately never part of the real default
     // template — buildCompactTotalsTableField's own comment explains why
     // (additive alternative to the per-row totals fields, opt-in only).
-    if (!NO_TOTALS_BLOCK_DOC_TYPES.has(doc_type)) {
+    // Payment QR (UPI Scan to Pay) is offered the same way, for the doc types that get one.
+    const catalogFields = [
+      ...(!NO_TOTALS_BLOCK_DOC_TYPES.has(doc_type) ? [buildCompactTotalsTableField()] : []),
+      ...(PAYMENT_QR_DOC_TYPES.includes(doc_type) ? buildPaymentQrCatalogFields() : []),
+    ];
+    if (catalogFields.length) {
       const withCatalogFields = structuredClone(template);
-      withCatalogFields.schemas[0] = [
-        ...(withCatalogFields.schemas[0] || []),
-        buildCompactTotalsTableField(),
-      ];
+      withCatalogFields.schemas[0] = [...(withCatalogFields.schemas[0] || []), ...catalogFields];
       return resSuccess({ data: { item: { template: withCatalogFields } } });
     }
     return resSuccess({ data: { item: { template } } });
