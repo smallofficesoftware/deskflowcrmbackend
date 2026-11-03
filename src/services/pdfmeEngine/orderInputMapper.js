@@ -471,11 +471,12 @@ export function getSampleDataForPreview() {
 // extraction from raw cart.dataValues/companyDetail happens at the call
 // site (orderServices.js), not here — keeps this module's job to shaping,
 // not digging through DB rows it doesn't own the schema of.
-export function buildInputsForCart({ company, buyer, order, computed, items, pendingItems, columnOptions, itemImages, totals = {} }) {
+export function buildInputsForCart({ company, buyer, order, computed, items, pendingItems, columnOptions, itemsTableBodyStyles, itemImages, totals = {} }) {
   const columns = resolveColumns(columnOptions);
   // Photos "below the description": every row that has a photo gets blank lines under its text, so
-  // imageOverlay.js has room to draw it there. Rows without a photo stay normal height.
-  const belowLines = imageSettings(columnOptions).reserveLines;
+  // imageOverlay.js has room to draw it there. Rows without a photo stay normal height. The line
+  // height comes from the table's own body style (A5 templates use a smaller font than A4).
+  const belowLines = imageSettings(columnOptions, itemsTableBodyStyles).reserveLines;
 
   // pendingSalesOrder/pendingPurchaseOrder only — a fulfillment/outstanding-
   // quantity row shape (ordered/invoiced/pending qty), not the generic

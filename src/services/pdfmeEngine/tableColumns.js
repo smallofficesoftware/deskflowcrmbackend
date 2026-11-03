@@ -49,15 +49,25 @@ export const IMAGE_SIZE_MAX_MM = 60;
 // Height of one text line in a body cell (7.5 pt font, line height 1) - used to reserve blank lines
 // under the description for a "below" photo.
 const BODY_LINE_MM = 2.65;
+const PT_TO_MM = 25.4 / 72;
 
-export function imageSettings(columnOptions) {
+// One body-cell text line in mm for THIS table. The A5 templates scale the body font down (e.g.
+// 5.3 pt instead of 7.5 pt), so a fixed 2.65 mm line reserved too little room and the photo was drawn
+// over the description. Falls back to the A4 value when the table's body style is not known.
+export function bodyLineMm(bodyStyles) {
+  const fontSize = Number(bodyStyles?.fontSize);
+  const lineHeight = Number(bodyStyles?.lineHeight ?? 1);
+  return fontSize > 0 && lineHeight > 0 ? fontSize * lineHeight * PT_TO_MM : BODY_LINE_MM;
+}
+
+export function imageSettings(columnOptions, bodyStyles) {
   const opts = columnOptions || {};
   const enabled = opts.image === true;
   const mode = !enabled ? "none" : opts.imageMode === "below" ? "below" : "column";
   const typed = Number(opts.imageSizeMm);
   const sizeMm = Number.isFinite(typed) && typed > 0 ? Math.min(IMAGE_SIZE_MAX_MM, Math.max(IMAGE_SIZE_MIN_MM, typed)) : IMAGE_SIZE_DEFAULT_MM;
   // Blank lines to add under a description so the row is tall enough for the photo plus a small gap.
-  const reserveLines = mode === "below" ? Math.ceil((sizeMm + 1) / BODY_LINE_MM) : 0;
+  const reserveLines = mode === "below" ? Math.ceil((sizeMm + 1) / bodyLineMm(bodyStyles)) : 0;
   return { enabled, mode, sizeMm, reserveLines };
 }
 

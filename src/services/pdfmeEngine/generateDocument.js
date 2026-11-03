@@ -337,6 +337,7 @@ export async function generateQuotationPdf({
     items,
     pendingItems,
     columnOptions: resolvedColumnOptions,
+    itemsTableBodyStyles: templateItemsTableField?.bodyStyles,
     itemImages,
     totals: {
       isSameState,

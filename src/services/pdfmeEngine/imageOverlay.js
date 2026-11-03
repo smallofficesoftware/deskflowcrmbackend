@@ -55,9 +55,13 @@ export async function overlayItemImages({ pdfBytes, template, tableFieldName = "
   const tableSchema = template.schemas[0]?.find((f) => f.name === tableFieldName);
   if (!tableSchema || !itemImages?.some(Boolean)) return pdfBytes;
 
-  const { mode, sizeMm: thumbnailMaxMm } = imageSettings(tableSchema.columnOptions);
+  const { mode, sizeMm: thumbnailMaxMm } = imageSettings(tableSchema.columnOptions, tableSchema.bodyStyles);
   if (mode === "none") return pdfBytes;
   const below = mode === "below";
+  // The table's own cell padding (smaller on the A5 templates) decides where a "below" photo sits.
+  const bodyPad = tableSchema.bodyStyles?.padding;
+  const bodyPadBottomMm = Number.isFinite(Number(bodyPad?.bottom)) ? Number(bodyPad.bottom) : BODY_CELL_PADDING_MM;
+  const bodyPadLeftMm = Number.isFinite(Number(bodyPad?.left)) ? Number(bodyPad.left) : BODY_CELL_PADDING_MM;
 
   const columns = resolveColumns(tableSchema.columnOptions);
   // "column": the photo goes in the Image column. "below": it goes at the bottom of the description
@@ -138,8 +142,8 @@ export async function overlayItemImages({ pdfBytes, template, tableFieldName = "
           const drawHMm = naturalHMm * scale;
           // Own column: centred in the cell. Below the description: left-aligned with the text, at
           // the bottom of the cell.
-          const drawXMm = below ? colXMm + BODY_CELL_PADDING_MM : colXMm + (colWidthMm - drawWMm) / 2;
-          const drawYMm = below ? yMm + rowHeightMm - BODY_CELL_PADDING_MM - drawHMm : yMm + (rowHeightMm - drawHMm) / 2;
+          const drawXMm = below ? colXMm + bodyPadLeftMm : colXMm + (colWidthMm - drawWMm) / 2;
+          const drawYMm = below ? yMm + rowHeightMm - bodyPadBottomMm - drawHMm : yMm + (rowHeightMm - drawHMm) / 2;
           page.drawImage(embedded, {
             x: mm2pt(drawXMm),
             y: pageHeightPt - mm2pt(drawYMm) - mm2pt(drawHMm),
