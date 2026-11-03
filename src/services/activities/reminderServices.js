@@ -29,8 +29,25 @@ export const getAllReminder = async (req) => {
       startDate,
       endDate,
       assignedByMultiTeamMember,
-      createdByMultiTeamMember
+      createdByMultiTeamMember,
+      // Ticket #2449: filter by the reminder contact's labels (-9999 = no label) and sort by label.
+      labelFilter,
+      sortBy,
+      sortOrder,
     } = req.body;
+
+    // SQL condition: the reminder's CONTACT has any of the chosen labels (-9999 = no label at all).
+    const labelIds = (Array.isArray(labelFilter) ? labelFilter : []).map(Number).filter((n) => Number.isInteger(n));
+    const labelCondition = labelIds.length
+      ? Sequelize.literal(
+          `reminder_messages.contact_masters_id IN (SELECT contact_masters.id FROM contact_masters WHERE contact_masters.isDelete = 0 AND (${[
+            ...labelIds.filter((id) => id !== -9999).map((id) => `FIND_IN_SET(${id}, contact_masters.lable) > 0`),
+            ...(labelIds.includes(-9999) ? ["(contact_masters.lable IS NULL OR contact_masters.lable = '')"] : []),
+          ].join(" OR ")}))`
+        )
+      : null;
+    const labelNamesSql =
+      "(SELECT GROUP_CONCAT(lable_masters.lable_name ORDER BY lable_masters.lable_name SEPARATOR ',') FROM lable_masters WHERE lable_masters.isDelete = 0 AND FIND_IN_SET(lable_masters.id, (SELECT contact_masters.lable FROM contact_masters WHERE contact_masters.id = reminder_messages.contact_masters_id)))";
 
     const reminderMSGModel = reminderMessagesModel(req.tenantDB);
 
@@ -196,6 +213,11 @@ export const getAllReminder = async (req) => {
       });
     }
 
+    if (labelCondition) {
+      whereClause[Op.and] = whereClause[Op.and] || [];
+      whereClause[Op.and].push(labelCondition);
+    }
+
     // Counts follow the same filters as the list (ticket #2573): search
     // term, single-day/date-range filter and the creator/assignee
     // multi-selects all apply here too - only the scope (base) each count
@@ -248,6 +270,11 @@ export const getAllReminder = async (req) => {
         });
       }
 
+      if (labelCondition) {
+        result[Op.and] = result[Op.and] || [];
+        result[Op.and].push(labelCondition);
+      }
+
       return result;
     };
 
@@ -295,6 +322,13 @@ export const getAllReminder = async (req) => {
       limit: Number(ll) || 50,
       offset: Number(ul) || 0,
       order: [
+        ...(sortBy === "label"
+          ? [
+              // Contacts without a label always last; then by the contact's label names.
+              [Sequelize.literal(`(${labelNamesSql} IS NULL)`), "ASC"],
+              [Sequelize.literal(labelNamesSql), String(sortOrder).toUpperCase() === "DESC" ? "DESC" : "ASC"],
+            ]
+          : []),
         typeFilter === "future"
           ? [
             Sequelize.fn(
