@@ -24,6 +24,9 @@ export const getTeamReminderReport = async (req) => {
             labelFilter,
             sortBy,
             sortOrder,
+            // Same Created By / Assigned To filters as the Reminder list's "Filter your Reminders".
+            assignedByMultiTeamMember,
+            createdByMultiTeamMember,
         } = req.body;
 
         // ────────────────────────────────────────────────
@@ -137,6 +140,13 @@ export const getTeamReminderReport = async (req) => {
                 [Op.in]: selectedTeamMembers.map(String),   // assuming IDs are strings/numbers
             };
         }
+        // Assigned To (multi-select) and Created By (multi-select).
+        const toIds = (v) => (Array.isArray(v) ? v.map(Number).filter((n) => Number.isInteger(n)) : []);
+        const assignedIds = toIds(assignedByMultiTeamMember);
+        const createdIds = toIds(createdByMultiTeamMember);
+        // Added to the same list as the date range and label filter, so the counts follow them too.
+        if (assignedIds.length > 0) baseDateConditions.push({ assigned_to: { [Op.in]: assignedIds } });
+        if (createdIds.length > 0) baseDateConditions.push({ a_application_login_id: { [Op.in]: createdIds } });
         if (selectedContactId && referenceWiseContact == 1) {
 
             baseWhereClause.contact_masters_id = selectedContactId;

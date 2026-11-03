@@ -34,7 +34,19 @@ export const getAllReminder = async (req) => {
       labelFilter,
       sortBy,
       sortOrder,
+      // Same contact filter as the Reminder report (1 = that contact, 2 = contacts referred by it).
+      selectedContactId,
+      referenceWiseContact,
     } = req.body;
+
+    const contactIdNum = Number(selectedContactId);
+    const contactCondition = Number.isInteger(contactIdNum) && contactIdNum > 0
+      ? Number(referenceWiseContact) === 2
+        ? Sequelize.literal(
+            `reminder_messages.contact_masters_id IN (SELECT contact_masters.id FROM contact_masters WHERE contact_masters.isDelete = 0 AND contact_masters.referance_contact = ${contactIdNum})`
+          )
+        : { contact_masters_id: contactIdNum }
+      : null;
 
     // SQL condition: the reminder's CONTACT has any of the chosen labels (-9999 = no label at all).
     const labelIds = (Array.isArray(labelFilter) ? labelFilter : []).map(Number).filter((n) => Number.isInteger(n));
@@ -217,6 +229,10 @@ export const getAllReminder = async (req) => {
       whereClause[Op.and] = whereClause[Op.and] || [];
       whereClause[Op.and].push(labelCondition);
     }
+    if (contactCondition) {
+      whereClause[Op.and] = whereClause[Op.and] || [];
+      whereClause[Op.and].push(contactCondition);
+    }
 
     // Counts follow the same filters as the list (ticket #2573): search
     // term, single-day/date-range filter and the creator/assignee
@@ -273,6 +289,10 @@ export const getAllReminder = async (req) => {
       if (labelCondition) {
         result[Op.and] = result[Op.and] || [];
         result[Op.and].push(labelCondition);
+      }
+      if (contactCondition) {
+        result[Op.and] = result[Op.and] || [];
+        result[Op.and].push(contactCondition);
       }
 
       return result;
