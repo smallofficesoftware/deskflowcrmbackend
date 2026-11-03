@@ -1087,6 +1087,11 @@ function buildContactObject(
 /**
  * Build message description from all fields
  */
+// Sheet values go into HTML. IndiaMART sends emails like `Name <message-1@reply.indiamart.com>`;
+// unescaped, the mobile app's HTML parser treats it as a tag and drops everything after it.
+const escapeHtmlText = (text) =>
+    String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
 function buildMessageDescription(entry) {
     const expectedColumns = Object.keys(GOOGLE_SHEET_DECLARED_COLUMN_LIST);
     let description = "";
@@ -1096,7 +1101,7 @@ function buildMessageDescription(entry) {
         const label = entry[columnKey]?.[1];
 
         if (isValid(value) && isValid(label)) {
-            description += `<b>${label}:</b> ${formatDateTimeValue(value)}<br>`;
+            description += `<b>${escapeHtmlText(label)}:</b> ${escapeHtmlText(formatDateTimeValue(value))}<br>`;
         }
     });
 
