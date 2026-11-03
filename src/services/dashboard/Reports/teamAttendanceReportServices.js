@@ -139,8 +139,18 @@ export const getTeamAttendanceReport = async (req) => {
   else if (showPersonalData) {
     whereClause = {
       isDelete: 0,
+      company_masters_id: { [Op.in]: targetCompanyIds },
       a_application_login_id: req.body.a_application_login_id
     }
+  }
+  else {
+    // Neither right granted (or the rights lookup failed): fail closed.
+    // Previously whereClause stayed { isDelete: 0 } and returned the
+    // memberships of every company in the DB.
+    return resSuccess({
+      data: { item: [], total: 0 },
+      ack_msg: "Team Attendance report fetched successfully",
+    });
   }
 
 
