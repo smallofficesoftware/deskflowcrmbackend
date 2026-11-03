@@ -257,9 +257,25 @@ export const getCallReport = async (req) => {
     // Fetch ALL matching calls (paginate after the contact-match
     // filter below, so offset/limit and the total reflect the real
     // result set instead of a pre-filter page)
-    const calls = await callModel.findAll({
+    const allCalls = await callModel.findAll({
       where: callWhere,
-      order: [["call_date_time", "DESC"]],
+      order: [["call_date_time", "DESC"], ["id", "DESC"]],
+    });
+
+    // Hide duplicate rows (same user, type, number, time and duration) so the
+    // report, its total and its pagination count each call once.
+    const seenCalls = new Set();
+    const calls = allCalls.filter((c) => {
+      const dedupKey = [
+        c.a_application_login_id,
+        c.call_type,
+        normalizeToTenDigit(c.mobile_number),
+        c.call_date_time instanceof Date ? c.call_date_time.getTime() : String(c.call_date_time),
+        c.duration,
+      ].join("|");
+      if (seenCalls.has(dedupKey)) return false;
+      seenCalls.add(dedupKey);
+      return true;
     });
 
     // Get unique user IDs
