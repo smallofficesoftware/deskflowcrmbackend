@@ -883,6 +883,40 @@ const encodeProductImage = (relativePath) => {
 // builds inline below, exported so any OTHER pdfme-engine caller (e.g.
 // Report Builder's exportReportPdf) can pass real company branding into
 // withCompanyHeader() too instead of only Document Designer's cart docs.
+// Payment QR (UPI "Scan to Pay") settings for a document type, read the same way the real print does
+// (orderServices.js): the Payment QR switch lives in the print setting row of the company's chosen print
+// version for that document, and the UPI id / name on the company. Without these the designer preview could
+// never show the QR a template's paymentQR field prints. {} for doc types that have no payment QR.
+const PAYMENT_QR_PREVIEW_SETTINGS = {
+  quotation: { printType: 1, viewFormatColumn: "quotation_view_formate" },
+  salesOrder: { printType: 2, viewFormatColumn: "order_view_formate" },
+  salesInvoice: { printType: 3, viewFormatColumn: "invoice_view_formate" },
+  // Proforma carts are type 12, but the print-settings UI stores their rows under type 15.
+  proformaInvoice: { printType: 15, viewFormatColumn: "proforma_invoice_view_formate" },
+};
+
+async function loadPaymentQrSettings(tenantDB, company_masters_id, doc_type) {
+  const config = PAYMENT_QR_PREVIEW_SETTINGS[doc_type];
+  if (!config) return {};
+  const companyRow = await companyModel.findOne({
+    where: { id: company_masters_id, isDelete: 0 },
+    attributes: ["upi_id", "upi_name", config.viewFormatColumn],
+    raw: true,
+  });
+  if (!companyRow) return {};
+  const printSettings = await printSettingModel(tenantDB).findOne({
+    where: { type: config.printType, print_version: Number(companyRow[config.viewFormatColumn]) || 1, isDelete: 0 },
+    attributes: ["setting_details"],
+  });
+  let settingDetails = {};
+  try {
+    settingDetails = JSON.parse(printSettings?.dataValues?.setting_details || "{}");
+  } catch {
+    settingDetails = {};
+  }
+  return { paymentQREnabled: !!settingDetails.paymentQR, upiId: companyRow.upi_id, upiName: companyRow.upi_name };
+}
+
 export async function resolveCompanyForPdf(company_masters_id) {
   const companyRow = await companyModel.findOne({ where: { id: company_masters_id, isDelete: 0 } });
   if (!companyRow) return null;
@@ -1464,6 +1498,9 @@ const renderTemplateAsPdf = async ({ req, company_masters_id, draftTemplate, car
       // Sample company text stays real (this company's own branding),
       // only buyer/order/item data is the placeholder set.
     }
+
+    // So a template's paymentQR field shows the QR in the preview, as it will in the real print.
+    Object.assign(company, await loadPaymentQrSettings(req.tenantDB, company_masters_id, doc_type));
 
     const buffer = await generateQuotationPdf({
       templateOverride: draftTemplate,
