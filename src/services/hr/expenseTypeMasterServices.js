@@ -439,6 +439,28 @@ export const expenseMasterUpdate = async (req) => {
       mediaName = expenseImg.originalname || fileName;
     }
 
+    // Pass amount must be within the expense type's min/max (when the type has limits).
+    if (expense_status == 2) {
+      const typeId = expense_type_id || existingExpense?.expense_type_id;
+      const passType = typeId
+        ? await expenseTypMasterModel.findOne({
+            where: { id: typeId, isDelete: 0 },
+            attributes: ["min_amount", "max_amount"],
+          })
+        : null;
+      const minAmt = Number(passType?.min_amount ?? 0);
+      const maxAmt = Number(passType?.max_amount ?? 0);
+      if (passType && minAmt > 0 && maxAmt > 0) {
+        const passAmt = Number(pass_amount);
+        if (isNaN(passAmt) || passAmt < minAmt || passAmt > maxAmt) {
+          return resError({
+            ack_msg: `Pass amount must be between ${minAmt} and ${maxAmt}`,
+            developer_msg: `Pass amount must be between ${minAmt} and ${maxAmt}`,
+          });
+        }
+      }
+    }
+
     if (expense_type_id) {
       const expenseType = await expenseTypMasterModel.findOne({
         where: {
