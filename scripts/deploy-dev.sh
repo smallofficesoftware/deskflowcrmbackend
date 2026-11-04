@@ -107,12 +107,12 @@ deploy_storefront() {
   # The storefront repo carries its own server-side deploy script (reset to
   # origin/dev, npm ci if the lockfile changed, pm2 delete+start with the
   # ecosystem env). Its build is committed from a developer machine, so
-  # nothing is built here. It resets the checkout first, so run the
-  # script that is already on disk once to get the latest copy of itself.
+  # nothing is built here. Do NOT fetch/reset here: the storefront script
+  # compares HEAD before/after its own reset, and skips the pm2 restart when
+  # they match - resetting first made it always skip, leaving the running
+  # process serving a stale build whose chunk files no longer exist.
   log "=== Storefront deploy start ==="
   cd "$STOREFRONT_DIR" || { log "ERROR: cannot cd to $STOREFRONT_DIR"; return 1; }
-  git fetch origin dev >> "$LOG_FILE" 2>&1
-  git reset --hard origin/dev >> "$LOG_FILE" 2>&1
   bash deploy/deploy-dev.sh >> "$LOG_FILE" 2>&1
   if [ $? -ne 0 ]; then
     log "!!! STOREFRONT DEPLOY FAILED, see above in this log !!!"
