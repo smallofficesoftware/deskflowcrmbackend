@@ -10,7 +10,7 @@ import { resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions
 import { isAppEnabledForCompany } from "../../middlewares/requireAddon.js";
 import { getVariantOptionLabelsForProducts } from "../product_settings/productVariantServices.js";
 
-const STOREFRONT_ADDON_CODE = "ecommerce-storefront";
+export const STOREFRONT_ADDON_CODE = "ecommerce-storefront";
 const MAX_LIMIT = 100;
 const DEFAULT_LIMIT = 50;
 
@@ -21,7 +21,7 @@ const DEFAULT_LIMIT = 50;
 // tables and the existing variant-label helper; no existing service is changed.
 
 /** Base URL of the company's storefront (verified custom domain first, else <slug>.<STOREFRONT_PUBLIC_BASE>). */
-const resolveStorefrontBaseUrl = async (company_masters_id) => {
+export const resolveStorefrontBaseUrl = async (company_masters_id) => {
   const domainRow = await storefrontDomainModel.findOne({ where: { company_masters_id, isDelete: 0 }, raw: true });
   if (domainRow?.verified_at && domainRow.domain) return `https://${domainRow.domain}`;
 

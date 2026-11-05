@@ -14,6 +14,7 @@ import { resError } from "../utils/sharedFunctions.js";
 // Add a path here to open another existing route to API tokens.
 export const API_TOKEN_ALLOWED_PATHS = new Set([
   "/api-access/products",
+  "/api-access/categories",
   "/product",
   "/get-product-images",
   "/get-variants",

@@ -1,4 +1,5 @@
 import { getApiAccessStatus, issueApiKey, revokeApiKey } from "../../services/api-access/apiAccessKeyService.js";
+import { listApiCategories } from "../../services/api-access/apiAccessCategoryService.js";
 import { listApiProducts } from "../../services/api-access/apiAccessProductService.js";
 import { createApiToken } from "../../services/api-access/apiAccessTokenService.js";
 import callServiceMethod from "../baseController.js";
@@ -14,6 +15,9 @@ export const apiAccessRevokeKeyProvider = async (req, res) => {
 };
 export const apiAccessTokenProvider = async (req, res) => {
   await callServiceMethod(req, res, createApiToken(req), "apiAccessTokenProvider");
+};
+export const apiAccessCategoriesProvider = async (req, res) => {
+  await callServiceMethod(req, res, listApiCategories(req), "apiAccessCategoriesProvider");
 };
 export const apiAccessProductsProvider = async (req, res) => {
   await callServiceMethod(req, res, listApiProducts(req), "apiAccessProductsProvider");
