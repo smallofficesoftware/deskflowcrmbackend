@@ -607,7 +607,9 @@ export const productCreate = async (req) => {
       // as a Parent again. Enforced here regardless of what the request sends.
       is_variant_parent: req.body.parent_product_id
         ? 0
-        : req.body.is_variant_parent
+        : Number(req.body.is_variant_parent) === 1 ||
+            req.body.is_variant_parent === "true" ||
+            req.body.is_variant_parent === true
           ? 1
           : 0,
       parent_product_id: req.body.parent_product_id || null,
@@ -926,7 +928,9 @@ export const productUpdate = async (req) => {
         // own parent_product_id (never editable here, same as CreateProductView.tsx).
         is_variant_parent: existingProduct?.parent_product_id
           ? 0
-          : req.body.is_variant_parent
+          : Number(req.body.is_variant_parent) === 1 ||
+              req.body.is_variant_parent === "true" ||
+              req.body.is_variant_parent === true
             ? 1
             : 0,
         product_height: product_height,
