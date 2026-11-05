@@ -1,6 +1,7 @@
 import {
   apiAccessCategoriesProvider,
   apiAccessIssueKeyProvider,
+  apiAccessProductGroupsProvider,
   apiAccessProductsProvider,
   apiAccessRevokeKeyProvider,
   apiAccessStatusProvider,
@@ -25,4 +26,5 @@ export default (app) => {
   // Called with the JWT from /api-access/token (or a normal login token).
   app.post("/api-access/products", authenticateToken, tenantMiddleware, requireAddon("api"), apiAccessProductsProvider);
   app.post("/api-access/categories", authenticateToken, tenantMiddleware, requireAddon("api"), apiAccessCategoriesProvider);
+  app.post("/api-access/product-groups", authenticateToken, tenantMiddleware, requireAddon("api"), apiAccessProductGroupsProvider);
 };

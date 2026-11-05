@@ -15,6 +15,7 @@ import { resError } from "../utils/sharedFunctions.js";
 export const API_TOKEN_ALLOWED_PATHS = new Set([
   "/api-access/products",
   "/api-access/categories",
+  "/api-access/product-groups",
   "/product",
   "/get-product-images",
   "/get-variants",
