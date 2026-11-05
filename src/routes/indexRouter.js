@@ -102,6 +102,7 @@ import sourceOfTypesRouter from "./masters/sourceOfTypesRouter.js";
 import getTaskTemplateDataSource from "./masters/taskTemplateRouter.js";
 import miracleRoutes from "./miracle/miracleRoutes.js";
 import marketplaceAppsLoader from "./marketplaceAppsLoader.js";
+import { apiScopeGate } from "../middlewares/apiScopeGate.js";
 import appsRouter from "./apps/appsRouter.js";
 import thirdPartyLogRouter from "./activities/thirdPartyLogRouter.js";
 import onlineStoreRouter from "./online-store/onlineStoreRouter.js";
@@ -128,6 +129,8 @@ import whatsappRoutes from "./whatsapp/whatsappRoutes.js";
 import statusWiseContactCountReportRouter from "./dashboard/Reports/statusWiseContactCountReportRouter.js";
 export default () => {
   const app = Router();
+  // Keeps "API addon" tokens (scope: "api") on their allow-listed product routes; other tokens pass through.
+  app.use(apiScopeGate);
   contactRouter(app);
   userRouter(app);
   userColumnPreferenceRouter(app);

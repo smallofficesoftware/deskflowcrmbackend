@@ -5644,3 +5644,12 @@ WHERE (t.`credit_series_prefix` IS NULL OR t.`credit_series_prefix` = '')
 -- JSON edit, not a plain UPDATE: generated via migration/tenant/migrations/20261103150000-add-payment-qr-to-document-print-templates.js (run with the tenant migrate command; do not hand-write the JSON).
 -- Check: SELECT id, doc_type, template_name FROM document_print_templates WHERE isDelete = 0 AND template_purpose = 'main' AND doc_type IN ('quotation','salesOrder','salesInvoice','proformaInvoice') AND published_template_json LIKE '%"itemsTable"%' AND published_template_json NOT LIKE '%"paymentQR"%';  -- expect no rows
 -- Rollback: the migration's down() removes the two fields again.
+
+
+05-11-2026 Dhaval
+-- MASTER DB only. Page-lookup row for the "API" marketplace addon (company API keys + product API).
+-- Looked up by page_slug='api' only, for the generic requireAddon(appCode) primitive reading a_application_login_type_rights
+-- (tenant DB) - deliberately NOT inserted into plan_vs_pages. No new tables: API keys reuse marketplace_addon_connector_keys (addon_code='api').
+-- migration: migration/master/migrations/20261105120000-add-api-application-page.js
+INSERT INTO `a_application_pages` (`page_name`, `modual_name`, `page_slug`, `description`, `type`, `display_order`, `isPublic`, `isRights`, `created_date_time`, `s_timestemp`, `isDelete`, `isActive`) VALUES ('API', 'API', 'api', 'Company API keys and product API (marketplace addon)', '0', '0', '0', '1', NOW(), UNIX_TIMESTAMP(), '0', '1');
+-- Rollback: DELETE FROM `a_application_pages` WHERE `page_slug` = 'api';
