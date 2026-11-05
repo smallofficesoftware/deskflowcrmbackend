@@ -207,6 +207,10 @@ export const tenantMiddleware = async (req, res, next) => {
       throw new Error("Company is not found or access denied");
     }
 
+    // Token carried no company: use the one just verified against this login above, so code that
+    // reads req.user.companyId (requireAddon, addon services) sees it.
+    if (req.user && !req.user.companyId) req.user.companyId = Number(companyId);
+
     const tenantDBInfo = await getTenantDB(tenantId, companyId);
     req.tenantDB = tenantDBInfo.sequelize;
     req.models = tenantDBInfo.models;

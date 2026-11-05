@@ -73,6 +73,7 @@ import { toSendMail } from "../company_setup/thirdPartyIntegrationService.js";
 import { activationCodeVerifyFromCompany } from "../configuration/activationCodeMasterServices.js";
 import { referralCodeVerifyFromCompany } from "../configuration/refferralCodeMasterService.js";
 import { emitAutomationEvent } from "../automation/emit.js";
+import { issueSessionToken } from "../application_login/loginService.js";
 
 
 export const getAllCompany = async (req) => {
@@ -936,9 +937,13 @@ export const newCompanyStep = async (req, res) => {
       });
     }
 
-    const token = jwt.sign({ a_application_login_id }, JWT_TOKEN_SIGNATURE, {
-      expiresIn: JWT_TOKEN_EXPIRES_TIME,
-    });
+    // Company-bearing token + application_sessions row, same as login. A bare
+    // { a_application_login_id } token left req.user.companyId empty after company creation.
+    const token = await issueSessionToken(
+      a_application_login_id,
+      findCompanyId.company_masters_id,
+      req.body?.platform
+    );
 
     const checkTentat = await tenantMasterModel.findOne({
       where: {

@@ -93,7 +93,7 @@ function computeAutoOutTime(lastCheckOutDateTime, defaultDailyOutTime) {
 // keyed by (a_application_login_id, platform) — so any device's next request resolves
 // the login's current active company from here rather than a possibly stale JWT claim
 // baked in on another device. See migration 20260923100000-create-application-sessions.
-async function issueSessionToken(userId, companyId, platform) {
+export async function issueSessionToken(userId, companyId, platform) {
   const jti = crypto.randomUUID();
   const token = jwt.sign({ id: userId, companyId, jti }, JWT_TOKEN_SIGNATURE, {
     expiresIn: JWT_TOKEN_EXPIRES_TIME,
