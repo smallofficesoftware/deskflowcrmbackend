@@ -7,13 +7,15 @@ import { resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions
 // .allowed_ips, addon_code 'api') that applies to every API key of that company.
 //
 // An EMPTY list blocks everything: an API key is unusable until at least one address is listed. Entries are a
-// single IPv4 / IPv6 address or an IPv4 / IPv6 CIDR range (e.g. 203.0.113.0/24).
+// single IPv4 / IPv6 address or an IPv4 / IPv6 CIDR range (e.g. 203.0.113.0/24), at most 3.
+//
+// The list is EDITED ONLY from the superadmin adminpanel (adminpanel backend modules/companies/companyApiAccess
+// .service.ts, which also validates entries and the limit). The customer's CRM can only read it (getApiAccessIps).
 //
 // Enforced twice: when a key is exchanged for a token (apiAccessTokenService.js) and on every call made with that
 // token (middlewares/apiScopeGate.js) - the same two places that check the key itself.
 
 export const API_ADDON_CODE = "api";
-const MAX_ENTRIES = 50;
 const CACHE_MS = 30 * 1000;
 const listCache = new Map();
 
@@ -34,21 +36,6 @@ export const getClientIp = (req) => {
     .filter(Boolean);
   const picked = hops > 0 && forwarded.length > 0 ? forwarded[Math.max(0, forwarded.length - hops)] : req.socket?.remoteAddress || req.ip;
   return stripV4Mapped(picked);
-};
-
-/** Validates one list entry; returns the normalised string or null. */
-export const normalizeEntry = (raw) => {
-  const value = stripV4Mapped(raw);
-  if (!value) return null;
-  const [addr, prefix, ...rest] = value.split("/");
-  if (rest.length) return null;
-  const family = net.isIP(addr);
-  if (!family) return null;
-  if (prefix === undefined) return addr.toLowerCase();
-  if (!/^\d{1,3}$/.test(prefix)) return null;
-  const bits = Number(prefix);
-  if (bits < 0 || bits > (family === 4 ? 32 : 128)) return null;
-  return `${addr.toLowerCase()}/${bits}`;
 };
 
 /** True when `ip` equals a listed address or falls inside a listed range. */
@@ -104,7 +91,7 @@ export const isClientIpAllowedCached = async (decoded, ip) => {
 
 // ---------------------------------------------------------------- settings screen (CRM staff)
 
-/** POST /api-access/ips/get -> { allowed_ips, your_ip } (your_ip lets the screen offer "add my current IP"). */
+/** POST /api-access/ips/get -> { allowed_ips, your_ip } (read-only; your_ip lets the screen show the caller's own address). */
 export const getApiAccessIps = async (req) => {
   try {
     const company_masters_id = req.user?.companyId;
@@ -112,44 +99,5 @@ export const getApiAccessIps = async (req) => {
     return resSuccess({ data: { item: { allowed_ips: await readList(req.tenantDB, company_masters_id), your_ip: getClientIp(req) } } });
   } catch (error) {
     return resError({ developer_msg: `getApiAccessIps failed: ${error}` });
-  }
-};
-
-/** POST /api-access/ips/save { allowed_ips: string[] } - replaces the whole list. */
-export const saveApiAccessIps = async (req) => {
-  try {
-    const company_masters_id = req.user?.companyId;
-    if (!req.tenantDB || !company_masters_id) return resBadRequest({ developer_msg: "Tenant DB or company context missing" });
-
-    const input = req.body?.allowed_ips;
-    if (!Array.isArray(input)) return resBadRequest({ ack_msg: "allowed_ips must be a list", developer_msg: "allowed_ips is not an array" });
-    if (input.length > MAX_ENTRIES) return resBadRequest({ ack_msg: `At most ${MAX_ENTRIES} entries are allowed.` });
-
-    const cleaned = [];
-    for (const raw of input) {
-      if (!String(raw ?? "").trim()) continue; // blank lines from the textarea
-      const entry = normalizeEntry(raw);
-      if (!entry) return resBadRequest({ ack_msg: `"${String(raw).trim().slice(0, 60)}" is not a valid IP address or range.` });
-      if (!cleaned.includes(entry)) cleaned.push(entry);
-    }
-
-    const model = marketplaceAddonSettingsModel(req.tenantDB);
-    const existing = await model.findOne({ where: { company_masters_id, addon_code: API_ADDON_CODE, isDelete: 0 } });
-    let config = existing?.config_json;
-    if (typeof config === "string") {
-      try {
-        config = JSON.parse(config);
-      } catch {
-        config = {};
-      }
-    }
-    const nextConfig = { ...(config || {}), allowed_ips: cleaned };
-    if (existing) await existing.update({ config_json: nextConfig, modified_date: new Date() });
-    else await model.create({ company_masters_id, addon_code: API_ADDON_CODE, config_json: nextConfig });
-
-    listCache.delete(String(company_masters_id)); // this process applies the change at once
-    return resSuccess({ ack_msg: "Allowed IPs saved", data: { item: { allowed_ips: cleaned } } });
-  } catch (error) {
-    return resError({ developer_msg: `saveApiAccessIps failed: ${error}` });
   }
 };
