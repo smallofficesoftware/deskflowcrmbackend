@@ -134,6 +134,8 @@ export const sendMyChat = async (req) => {
 
     try {
       emitToCompany(req.app.get("io"), company_masters_id, "storefront-chat-message", { contact_id: contact_master_id });
+      // The event the CRM web (RightView) and the Flutter app actually listen to for a contact's chat.
+      emitToCompany(req.app.get("io"), company_masters_id, "contact-chat-changed", { contact_id: contact_master_id });
     } catch (e) {
       console.error("storefront chat emit failed", e); // never fail the send over a live-refresh signal
     }
