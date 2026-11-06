@@ -38,7 +38,7 @@ export const postStorefrontOrderToChat = async (req, { tenantDB, company_masters
     await contactModel(tenantDB).update({ modified_date: now }, { where: { id: contact_id, company_masters_id } });
 
     const io = req.app.get("io");
-    emitToCompany(io, company_masters_id, "contact-chat-changed", { contact_id });
+    emitToCompany(io, company_masters_id, "contact-chat-changed", { contact_id, order_message: description });
   } catch (e) {
     console.error("storefront order -> chat failed", e);
   }
