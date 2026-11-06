@@ -5,6 +5,7 @@ import { JWT_TOKEN_SIGNATURE } from "../../utils/appConstants.js";
 import { resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
 import { isAppEnabledForCompany } from "../../middlewares/requireAddon.js";
 import { API_ADDON_CODE, hashApiKey } from "./apiAccessKeyService.js";
+import { getClientIp, isClientIpAllowed } from "./apiAccessIpService.js";
 
 export const API_TOKEN_SCOPE = "api";
 export const API_TOKEN_EXPIRES_IN = "1h";
@@ -26,6 +27,12 @@ export const createApiToken = async (req) => {
       return resBadRequest({ ack_msg: "Invalid companyCode", developer_msg: "Tenant context missing" });
     }
     if (!api_key) return resBadRequest({ ack_msg: "api_key is required", developer_msg: "api_key missing" });
+
+    // Checked before the key itself so a caller from a blocked address learns nothing about whether a key is valid.
+    const clientIp = getClientIp(req);
+    if (!(await isClientIpAllowed(req.tenantDB, company_masters_id, clientIp))) {
+      return resError({ code: 403, ack_msg: "Your IP address is not allowed to use this API", developer_msg: `IP ${clientIp} is not in the company's API allow-list` });
+    }
 
     const keyRow = await marketplaceAddonConnectorKeysModel(req.tenantDB).findOne({
       where: { company_masters_id, addon_code: API_ADDON_CODE, connector_key: hashApiKey(api_key), isActive: 1, isDelete: 0, revoked_date_time: null },

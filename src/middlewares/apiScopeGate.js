@@ -3,6 +3,7 @@ import { getTenantDB } from "../config/dbManager.js";
 import { marketplaceAddonConnectorKeysModel } from "../models/marketplace/marketplaceAddonConnectorKeysModel.js";
 import { JWT_TOKEN_SIGNATURE } from "../utils/appConstants.js";
 import { resError } from "../utils/sharedFunctions.js";
+import { getClientIp, isClientIpAllowedCached } from "../services/api-access/apiAccessIpService.js";
 
 // Keeps an "API addon" token (JWT with scope "api", see services/api-access/apiAccessTokenService.js) on the
 // product routes it is meant for. authenticateToken only checks the JWT signature, so without this gate an API
@@ -74,6 +75,11 @@ export const apiScopeGate = async (req, res, next) => {
     const path = String(req.path || "").replace(/\/+$/, "") || "/";
     if (!API_TOKEN_ALLOWED_PATHS.has(path)) {
       return deny(res, "This API token cannot call this endpoint", `Path '${path}' is not available to API tokens`);
+    }
+
+    const clientIp = getClientIp(req);
+    if (!(await isClientIpAllowedCached(decoded, clientIp))) {
+      return deny(res, "Your IP address is not allowed to use this API", `IP ${clientIp} is not in the company's API allow-list`);
     }
 
     if (!(await isKeyActive(decoded))) {
