@@ -132,7 +132,8 @@ export const createMyTicket = async (req) => {
       created_date_time: created,
       task_type: 5,
       task_priority: cfg.priority,
-      task_category_id: categoryId,
+      // task_category_id is NOT NULL; the CRM's own convention for "no category" on a ticket is -1.
+      task_category_id: categoryId || -1,
       status: 0,
       external_status: cfg.initialStatus,
       team_task_assignement_type: 1,
