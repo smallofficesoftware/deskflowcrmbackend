@@ -14,6 +14,7 @@ import { loadQtySlabs, pickSlab, slabsForProduct } from "./storefrontQtySlabs.js
 import { resolveCompanyBySlug } from "./storefrontCompanyResolver.js";
 import { verifySessionToken } from "./storefrontSession.js";
 import { arePricesHidden } from "./storefrontPriceVisibility.js";
+import { postStorefrontOrderToChat } from "./storefrontOrderEvents.js";
 import { getNumberSeries, normalizeToTenDigit, resBadRequest, resError, resSuccess } from "../../utils/sharedFunctions.js";
 
 // P4 (plans/2026-10-15-ecommerce-b2b-b2c-plan.txt) - first slice: checkout
@@ -512,6 +513,18 @@ export const createStorefrontCheckout = async (req) => {
         { transaction: t }
       );
       await t.commit();
+      await postStorefrontOrderToChat(req, {
+        tenantDB: resolved.tenantDB,
+        company_masters_id: resolved.company_masters_id,
+        a_application_login_id: resolved.a_application_login_id,
+        cart_id: cart.id,
+        contact_id: contact.id,
+        grand_total: grandTotal,
+        total_qty: totalQty,
+        payment_method: isCashOrder ? (isBank ? "bank" : isUpi ? "upi" : "cash") : "razorpay",
+        cart_number: cartBody.cart_number,
+        requires_approval: isApprovalMode,
+      });
       return resSuccess({
         ack_msg: "Order placed",
         data: {
