@@ -470,6 +470,10 @@ export const createStorefrontCheckout = async (req) => {
       to_customer_email: contact.email_id || "",
       to_customer_price_list_id: contact.assinged_to_price_list || "",
       created_date_time: nowFormatted,
+      // getNumberSeries finds the last used number by max(sr_by_number) over carts whose update_Date_time falls in
+      // the financial year (the CRM's own order creation always sets it). Without it a storefront cart is
+      // invisible to the next numbering call, so every order got the same next number.
+      update_Date_time: nowFormatted,
       a_application_login_id: resolved.a_application_login_id,
       company_masters_id: resolved.company_masters_id,
       cart_status: cartStatus, // reassigned below for reserved mode, inside the transaction.
